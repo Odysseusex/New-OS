@@ -1,0 +1,164 @@
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { PrismaService } from "../prisma/prisma.service";
+import { StockLevelDto, StockMovementDto, StockMovementType, Unit } from "@bakery-os/shared";
+import { AuthenticatedUser } from "../auth/auth.types";
+import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
+import { ReceiveStockDto } from "./dto/receive-stock.dto";
+import { WriteOffStockDto } from "./dto/write-off-stock.dto";
+import { StockMovementType as PrismaStockMovementType } from "@prisma/client";
+
+@Injectable()
+export class InventoryService {
+  constructor(private prisma: PrismaService) {}
+
+  async getStockLevels(user: AuthenticatedUser, requestedLocationId?: string): Promise<StockLevelDto[]> {
+    const locationId = resolveLocationScope(user, requestedLocationId);
+
+    const levels = await this.prisma.stockLevel.findMany({
+      where: {
+        organizationId: user.organizationId,
+        ...(locationId ? { locationId } : {}),
+      },
+      include: { location: true, product: true },
+      orderBy: [{ location: { name: "asc" } }, { product: { name: "asc" } }],
+    });
+
+    return levels.map((level) => ({
+      id: level.id,
+      locationId: level.locationId,
+      locationName: level.location.name,
+      productId: level.productId,
+      productName: level.product.name,
+      sku: level.product.sku,
+      unit: level.product.unit as Unit,
+      category: level.product.category,
+      quantity: level.quantity.toNumber(),
+      minQuantity: level.minQuantity.toNumber(),
+      isLow: level.quantity.toNumber() <= level.minQuantity.toNumber(),
+    }));
+  }
+
+  async getMovements(
+    user: AuthenticatedUser,
+    requestedLocationId?: string,
+    limit = 50,
+  ): Promise<StockMovementDto[]> {
+    const locationId = resolveLocationScope(user, requestedLocationId);
+
+    const movements = await this.prisma.stockMovement.findMany({
+      where: {
+        organizationId: user.organizationId,
+        ...(locationId ? { locationId } : {}),
+      },
+      include: { location: true, product: true, createdBy: true },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    });
+
+    return movements.map((m) => ({
+      id: m.id,
+      locationId: m.locationId,
+      locationName: m.location.name,
+      productId: m.productId,
+      productName: m.product.name,
+      unit: m.product.unit as Unit,
+      type: m.type as StockMovementType,
+      quantity: m.quantity.toNumber(),
+      reason: m.reason,
+      createdByName: m.createdBy.fullName,
+      createdAt: m.createdAt.toISOString(),
+    }));
+  }
+
+  async receive(user: AuthenticatedUser, dto: ReceiveStockDto): Promise<StockMovementDto> {
+    const locationId = requireLocationScope(user, dto.locationId);
+    return this.applyMovement(user, {
+      locationId,
+      productId: dto.productId,
+      quantity: dto.quantity,
+      reason: dto.reason ?? "Поступление",
+      type: PrismaStockMovementType.RECEIPT,
+      delta: dto.quantity,
+    });
+  }
+
+  async writeOff(user: AuthenticatedUser, dto: WriteOffStockDto): Promise<StockMovementDto> {
+    const locationId = requireLocationScope(user, dto.locationId);
+
+    const stockLevel = await this.prisma.stockLevel.findUnique({
+      where: { locationId_productId: { locationId, productId: dto.productId } },
+    });
+    if (!stockLevel || stockLevel.quantity.toNumber() < dto.quantity) {
+      throw new BadRequestException("Недостаточно товара на складе для списания");
+    }
+
+    return this.applyMovement(user, {
+      locationId,
+      productId: dto.productId,
+      quantity: dto.quantity,
+      reason: dto.reason,
+      type: PrismaStockMovementType.WRITE_OFF,
+      delta: -dto.quantity,
+    });
+  }
+
+  private async applyMovement(
+    user: AuthenticatedUser,
+    params: {
+      locationId: string;
+      productId: string;
+      quantity: number;
+      reason: string;
+      type: PrismaStockMovementType;
+      delta: number;
+    },
+  ): Promise<StockMovementDto> {
+    const product = await this.prisma.product.findFirst({
+      where: { id: params.productId, organizationId: user.organizationId },
+    });
+    if (!product) {
+      throw new NotFoundException("Товар не найден");
+    }
+
+    const [movement] = await this.prisma.$transaction([
+      this.prisma.stockMovement.create({
+        data: {
+          organizationId: user.organizationId,
+          locationId: params.locationId,
+          productId: params.productId,
+          type: params.type,
+          quantity: params.quantity,
+          reason: params.reason,
+          createdById: user.id,
+        },
+        include: { location: true, product: true, createdBy: true },
+      }),
+      this.prisma.stockLevel.upsert({
+        where: {
+          locationId_productId: { locationId: params.locationId, productId: params.productId },
+        },
+        update: { quantity: { increment: params.delta } },
+        create: {
+          organizationId: user.organizationId,
+          locationId: params.locationId,
+          productId: params.productId,
+          quantity: params.delta,
+        },
+      }),
+    ]);
+
+    return {
+      id: movement.id,
+      locationId: movement.locationId,
+      locationName: movement.location.name,
+      productId: movement.productId,
+      productName: movement.product.name,
+      unit: movement.product.unit as Unit,
+      type: movement.type as StockMovementType,
+      quantity: movement.quantity.toNumber(),
+      reason: movement.reason,
+      createdByName: movement.createdBy.fullName,
+      createdAt: movement.createdAt.toISOString(),
+    };
+  }
+}

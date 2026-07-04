@@ -6,6 +6,9 @@ import { AuthModule } from "./auth/auth.module";
 import { OrganizationsModule } from "./organizations/organizations.module";
 import { LocationsModule } from "./locations/locations.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
+import { ProductsModule } from "./products/products.module";
+import { InventoryModule } from "./inventory/inventory.module";
+import { SalesModule } from "./sales/sales.module";
 
 @Module({
   imports: [
@@ -15,6 +18,9 @@ import { DashboardModule } from "./dashboard/dashboard.module";
     OrganizationsModule,
     LocationsModule,
     DashboardModule,
+    ProductsModule,
+    InventoryModule,
+    SalesModule,
   ],
   controllers: [AppController],
 })

@@ -33,6 +33,20 @@ enum LocationType {
   WAREHOUSE
 }
 
+enum Unit {
+  PCS
+  KG
+  G
+  L
+}
+
+enum StockMovementType {
+  RECEIPT
+  SALE
+  WRITE_OFF
+  ADJUSTMENT
+}
+
 // A tenant of the platform — one bakery network / company.
 model Organization {
   id        String   @id @default(cuid())
@@ -81,7 +95,10 @@ model Location {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users User[]
+  users          User[]
+  stockLevels    StockLevel[]
+  stockMovements StockMovement[]
+  sales          Sale[]
 
   @@index([organizationId])
   @@index([regionId])
@@ -108,7 +125,101 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  stockMovements StockMovement[]
+  sales          Sale[]
+
   @@unique([organizationId, email])
   @@index([organizationId])
   @@map("users")
+}
+
+// Product/ingredient catalog — shared by Sales, Inventory and (later) Production.
+model Product {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  sku            String
+  unit           Unit
+  category       String
+  price          Decimal  @db.Decimal(12, 2)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  stockLevels    StockLevel[]
+  stockMovements StockMovement[]
+  saleItems      SaleItem[]
+
+  @@unique([organizationId, sku])
+  @@index([organizationId])
+  @@map("products")
+}
+
+// Current quantity on hand for a product at a specific location.
+model StockLevel {
+  id             String   @id @default(cuid())
+  organizationId String
+  locationId     String
+  location       Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity       Decimal  @default(0) @db.Decimal(12, 3)
+  minQuantity    Decimal  @default(0) @db.Decimal(12, 3)
+  updatedAt      DateTime @updatedAt
+
+  @@unique([locationId, productId])
+  @@index([organizationId])
+  @@map("stock_levels")
+}
+
+// Append-only ledger of every stock change — the audit trail behind StockLevel.
+model StockMovement {
+  id             String            @id @default(cuid())
+  organizationId String
+  locationId     String
+  location       Location          @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  type           StockMovementType
+  quantity       Decimal           @db.Decimal(12, 3)
+  reason         String?
+  saleId         String?
+  sale           Sale?             @relation(fields: [saleId], references: [id])
+  createdById    String
+  createdBy      User              @relation(fields: [createdById], references: [id])
+  createdAt      DateTime          @default(now())
+
+  @@index([organizationId, locationId])
+  @@map("stock_movements")
+}
+
+model Sale {
+  id             String   @id @default(cuid())
+  organizationId String
+  locationId     String
+  location       Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  soldAt         DateTime @default(now())
+  totalAmount    Decimal  @db.Decimal(12, 2)
+  createdById    String
+  createdBy      User     @relation(fields: [createdById], references: [id])
+
+  items          SaleItem[]
+  stockMovements StockMovement[]
+
+  @@index([organizationId, locationId])
+  @@index([soldAt])
+  @@map("sales")
+}
+
+model SaleItem {
+  id        String  @id @default(cuid())
+  saleId    String
+  sale      Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Decimal @db.Decimal(12, 3)
+  unitPrice Decimal @db.Decimal(12, 2)
+  subtotal  Decimal @db.Decimal(12, 2)
+
+  @@map("sale_items")
 }

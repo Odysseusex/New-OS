@@ -26,5 +26,28 @@ export const ROLE_LABELS_RU: Record<Role, string> = {
   [Role.ADMIN]: "Администратор",
 };
 
-// Roles allowed to view data across the whole organization / any region.
-export const NETWORK_WIDE_ROLES: Role[] = [Role.OWNER, Role.ADMIN];
+// Roles that see data across the whole organization instead of being pinned
+// to a single location. Everyone else is scoped to their assigned location.
+export const ORG_WIDE_ROLES: Role[] = [
+  Role.OWNER,
+  Role.ADMIN,
+  Role.REGIONAL_MANAGER,
+  Role.ACCOUNTANT,
+];
+
+export const SALE_CREATE_ROLES: Role[] = [
+  Role.OWNER,
+  Role.ADMIN,
+  Role.STORE_MANAGER,
+  Role.CASHIER,
+];
+
+export const INVENTORY_MANAGE_ROLES: Role[] = [
+  Role.OWNER,
+  Role.ADMIN,
+  Role.STORE_MANAGER,
+  Role.WAREHOUSE_STAFF,
+  Role.PRODUCTION_MANAGER,
+];
+
+export const PRODUCT_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.PRODUCTION_MANAGER];

@@ -46,7 +46,7 @@ export const primaryNav: NavItem[] = [
     href: "/sales",
     label: "Продажи",
     icon: TrendingUp,
-    status: "soon",
+    status: "live",
     description: "Выручка по точкам, товарам и каналам",
   },
   {
@@ -60,7 +60,7 @@ export const primaryNav: NavItem[] = [
     href: "/inventory",
     label: "Склад",
     icon: Package,
-    status: "soon",
+    status: "live",
     description: "Остатки, приёмка, списания, инвентаризация",
   },
   {
