@@ -45,6 +45,14 @@ enum StockMovementType {
   SALE
   WRITE_OFF
   ADJUSTMENT
+  PRODUCTION_CONSUMPTION
+  PRODUCTION_OUTPUT
+}
+
+enum ProductionBatchStatus {
+  PLANNED
+  COMPLETED
+  CANCELLED
 }
 
 // A tenant of the platform — one bakery network / company.
@@ -63,11 +71,11 @@ model Organization {
 
 // Optional grouping of locations used for regional roll-up reporting.
 model Region {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   name           String
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt      DateTime @default(now())
+  createdAt      DateTime     @default(now())
 
   locations Location[]
   users     User[]
@@ -95,10 +103,11 @@ model Location {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users          User[]
-  stockLevels    StockLevel[]
-  stockMovements StockMovement[]
-  sales          Sale[]
+  users             User[]
+  stockLevels       StockLevel[]
+  stockMovements    StockMovement[]
+  sales             Sale[]
+  productionBatches ProductionBatch[]
 
   @@index([organizationId])
   @@index([regionId])
@@ -120,13 +129,14 @@ model User {
   email        String
   passwordHash String
   role         Role
-  isActive     Boolean  @default(true)
+  isActive     Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  stockMovements StockMovement[]
-  sales          Sale[]
+  stockMovements    StockMovement[]
+  sales             Sale[]
+  productionBatches ProductionBatch[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -146,9 +156,11 @@ model Product {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  stockLevels    StockLevel[]
-  stockMovements StockMovement[]
-  saleItems      SaleItem[]
+  stockLevels       StockLevel[]
+  stockMovements    StockMovement[]
+  saleItems         SaleItem[]
+  recipe            Recipe?         @relation("RecipeOutput")
+  usedInRecipeItems RecipeItem[]    @relation("RecipeIngredient")
 
   @@unique([organizationId, sku])
   @@index([organizationId])
@@ -185,6 +197,8 @@ model StockMovement {
   reason         String?
   saleId         String?
   sale           Sale?             @relation(fields: [saleId], references: [id])
+  batchId        String?
+  batch          ProductionBatch?  @relation(fields: [batchId], references: [id])
   createdById    String
   createdBy      User              @relation(fields: [createdById], references: [id])
   createdAt      DateTime          @default(now())
@@ -222,4 +236,58 @@ model SaleItem {
   subtotal  Decimal @db.Decimal(12, 2)
 
   @@map("sale_items")
+}
+
+// A техкарта: how many units of `product` one batch of this recipe yields,
+// and which ingredients (other products) it consumes to get there.
+model Recipe {
+  id             String   @id @default(cuid())
+  organizationId String
+  productId      String   @unique
+  product        Product  @relation("RecipeOutput", fields: [productId], references: [id], onDelete: Cascade)
+  yieldQuantity  Decimal  @db.Decimal(12, 3)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  items   RecipeItem[]
+  batches ProductionBatch[]
+
+  @@index([organizationId])
+  @@map("recipes")
+}
+
+model RecipeItem {
+  id                  String  @id @default(cuid())
+  recipeId            String
+  recipe              Recipe  @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  ingredientProductId String
+  ingredientProduct   Product @relation("RecipeIngredient", fields: [ingredientProductId], references: [id])
+  quantity            Decimal @db.Decimal(12, 3)
+
+  @@map("recipe_items")
+}
+
+// A planned/completed run of a recipe at a production location. Completing a
+// batch is the event that turns raw ingredients into finished-goods stock.
+model ProductionBatch {
+  id              String                @id @default(cuid())
+  organizationId  String
+  locationId      String
+  location        Location              @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  recipeId        String
+  recipe          Recipe                @relation(fields: [recipeId], references: [id])
+  status          ProductionBatchStatus @default(PLANNED)
+  plannedQuantity Decimal               @db.Decimal(12, 3)
+  actualQuantity  Decimal?              @db.Decimal(12, 3)
+  scheduledFor    DateTime              @default(now())
+  completedAt     DateTime?
+  createdById     String
+  createdBy       User                  @relation(fields: [createdById], references: [id])
+  createdAt       DateTime              @default(now())
+
+  stockMovements StockMovement[]
+
+  @@index([organizationId, locationId])
+  @@map("production_batches")
 }

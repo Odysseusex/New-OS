@@ -51,3 +51,12 @@ export const INVENTORY_MANAGE_ROLES: Role[] = [
 ];
 
 export const PRODUCT_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.PRODUCTION_MANAGER];
+
+export const RECIPE_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.PRODUCTION_MANAGER];
+
+export const PRODUCTION_MANAGE_ROLES: Role[] = [
+  Role.OWNER,
+  Role.ADMIN,
+  Role.PRODUCTION_MANAGER,
+  Role.PRODUCTION_STAFF,
+];

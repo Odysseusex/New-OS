@@ -3,4 +3,5 @@ export * from "./location";
 export * from "./catalog";
 export * from "./inventory";
 export * from "./sales";
+export * from "./production";
 export * from "./dto";

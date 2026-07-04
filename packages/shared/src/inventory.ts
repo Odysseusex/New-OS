@@ -5,6 +5,8 @@ export enum StockMovementType {
   SALE = "SALE",
   WRITE_OFF = "WRITE_OFF",
   ADJUSTMENT = "ADJUSTMENT",
+  PRODUCTION_CONSUMPTION = "PRODUCTION_CONSUMPTION",
+  PRODUCTION_OUTPUT = "PRODUCTION_OUTPUT",
 }
 
 export const STOCK_MOVEMENT_TYPE_LABELS_RU: Record<StockMovementType, string> = {
@@ -12,6 +14,8 @@ export const STOCK_MOVEMENT_TYPE_LABELS_RU: Record<StockMovementType, string> = 
   [StockMovementType.SALE]: "Продажа",
   [StockMovementType.WRITE_OFF]: "Списание",
   [StockMovementType.ADJUSTMENT]: "Корректировка",
+  [StockMovementType.PRODUCTION_CONSUMPTION]: "Расход на производство",
+  [StockMovementType.PRODUCTION_OUTPUT]: "Выпуск продукции",
 };
 
 export interface StockLevelDto {

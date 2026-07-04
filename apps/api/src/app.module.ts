@@ -9,6 +9,8 @@ import { DashboardModule } from "./dashboard/dashboard.module";
 import { ProductsModule } from "./products/products.module";
 import { InventoryModule } from "./inventory/inventory.module";
 import { SalesModule } from "./sales/sales.module";
+import { RecipesModule } from "./recipes/recipes.module";
+import { ProductionModule } from "./production/production.module";
 
 @Module({
   imports: [
@@ -21,6 +23,8 @@ import { SalesModule } from "./sales/sales.module";
     ProductsModule,
     InventoryModule,
     SalesModule,
+    RecipesModule,
+    ProductionModule,
   ],
   controllers: [AppController],
 })

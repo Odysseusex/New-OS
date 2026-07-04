@@ -53,7 +53,7 @@ export const primaryNav: NavItem[] = [
     href: "/production",
     label: "Производство",
     icon: Factory,
-    status: "soon",
+    status: "live",
     description: "Рецептуры, производственный план, сменные задания",
   },
   {

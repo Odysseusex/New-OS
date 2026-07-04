@@ -1,4 +1,4 @@
-import { PrismaClient, Role, LocationType, Unit, StockMovementType } from "@prisma/client";
+import { PrismaClient, Role, LocationType, Unit, StockMovementType, ProductionBatchStatus } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -134,6 +134,34 @@ async function main() {
     },
   });
 
+  const technologist = await prisma.user.upsert({
+    where: { organizationId_email: { organizationId: org.id, email: "technologist@bakery.demo" } },
+    update: {},
+    create: {
+      organizationId: org.id,
+      email: "technologist@bakery.demo",
+      fullName: "Сауле Жумабекова",
+      passwordHash,
+      role: Role.PRODUCTION_MANAGER,
+      regionId: region.id,
+      locationId: LOC_PRODUCTION,
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { organizationId_email: { organizationId: org.id, email: "baker@bakery.demo" } },
+    update: {},
+    create: {
+      organizationId: org.id,
+      email: "baker@bakery.demo",
+      fullName: "Марат Исаев",
+      passwordHash,
+      role: Role.PRODUCTION_STAFF,
+      regionId: region.id,
+      locationId: LOC_PRODUCTION,
+    },
+  });
+
   const products: {
     id: string;
     name: string;
@@ -172,6 +200,8 @@ async function main() {
     { locationId: LOC_STORE_2, productId: "prod-cake-honey", quantity: 2, minQuantity: 3 },
     { locationId: LOC_WAREHOUSE, productId: "prod-flour", quantity: 480, minQuantity: 200 },
     { locationId: LOC_WAREHOUSE, productId: "prod-butter", quantity: 65, minQuantity: 50 },
+    { locationId: LOC_PRODUCTION, productId: "prod-flour", quantity: 150, minQuantity: 50 },
+    { locationId: LOC_PRODUCTION, productId: "prod-butter", quantity: 20, minQuantity: 10 },
   ];
 
   for (const s of openingStock) {
@@ -250,6 +280,56 @@ async function main() {
               subtotal: i.quantity * i.unitPrice,
             })),
           },
+        },
+      });
+    }
+  }
+
+  const recipes: {
+    productId: string;
+    yieldQuantity: number;
+    items: { ingredientProductId: string; quantity: number }[];
+  }[] = [
+    {
+      productId: "prod-croissant",
+      yieldQuantity: 10,
+      items: [
+        { ingredientProductId: "prod-flour", quantity: 1.2 },
+        { ingredientProductId: "prod-butter", quantity: 0.6 },
+      ],
+    },
+    {
+      productId: "prod-baguette",
+      yieldQuantity: 8,
+      items: [{ ingredientProductId: "prod-flour", quantity: 2 }],
+    },
+  ];
+
+  for (const r of recipes) {
+    await prisma.recipe.upsert({
+      where: { productId: r.productId },
+      update: {},
+      create: {
+        organizationId: org.id,
+        productId: r.productId,
+        yieldQuantity: r.yieldQuantity,
+        items: { create: r.items },
+      },
+    });
+  }
+
+  const existingBatches = await prisma.productionBatch.count({ where: { organizationId: org.id } });
+  if (existingBatches === 0) {
+    const croissantRecipe = await prisma.recipe.findUnique({ where: { productId: "prod-croissant" } });
+    if (croissantRecipe) {
+      await prisma.productionBatch.create({
+        data: {
+          organizationId: org.id,
+          locationId: LOC_PRODUCTION,
+          recipeId: croissantRecipe.id,
+          status: ProductionBatchStatus.PLANNED,
+          plannedQuantity: 30,
+          createdById: technologist.id,
         },
       });
     }

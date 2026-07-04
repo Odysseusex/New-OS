@@ -1,11 +1,16 @@
 import type {
+  CompleteProductionBatchRequestDto,
+  CreateProductionBatchRequestDto,
   CreateProductRequestDto,
+  CreateRecipeRequestDto,
   CreateSaleRequestDto,
   CreateStockMovementRequestDto,
   DashboardSummaryDto,
   LocationDto,
   LoginResponseDto,
   ProductDto,
+  ProductionBatchDto,
+  RecipeDto,
   SaleDetailDto,
   SaleDto,
   SalesSummaryDto,
@@ -86,5 +91,28 @@ export const api = {
       request<SalesSummaryDto>(withQuery("/sales/summary", { locationId })),
     create: (dto: CreateSaleRequestDto) =>
       request<SaleDetailDto>("/sales", { method: "POST", body: JSON.stringify(dto) }),
+  },
+
+  recipes: {
+    list: () => request<RecipeDto[]>("/recipes"),
+    create: (dto: CreateRecipeRequestDto) =>
+      request<RecipeDto>("/recipes", { method: "POST", body: JSON.stringify(dto) }),
+  },
+
+  production: {
+    batches: (locationId?: string) =>
+      request<ProductionBatchDto[]>(withQuery("/production/batches", { locationId })),
+    createBatch: (dto: CreateProductionBatchRequestDto) =>
+      request<ProductionBatchDto>("/production/batches", {
+        method: "POST",
+        body: JSON.stringify(dto),
+      }),
+    completeBatch: (id: string, dto: CompleteProductionBatchRequestDto) =>
+      request<ProductionBatchDto>(`/production/batches/${id}/complete`, {
+        method: "POST",
+        body: JSON.stringify(dto),
+      }),
+    cancelBatch: (id: string) =>
+      request<ProductionBatchDto>(`/production/batches/${id}/cancel`, { method: "POST" }),
   },
 };
