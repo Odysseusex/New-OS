@@ -88,7 +88,7 @@ export const primaryNav: NavItem[] = [
     href: "/finance",
     label: "Финансы",
     icon: Wallet,
-    status: "soon",
+    status: "live",
     description: "P&L, себестоимость, маржинальность, расходы",
   },
   {

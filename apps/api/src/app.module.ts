@@ -15,6 +15,7 @@ import { SuppliersModule } from "./suppliers/suppliers.module";
 import { ProcurementModule } from "./procurement/procurement.module";
 import { VehiclesModule } from "./vehicles/vehicles.module";
 import { LogisticsModule } from "./logistics/logistics.module";
+import { FinanceModule } from "./finance/finance.module";
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { LogisticsModule } from "./logistics/logistics.module";
     ProcurementModule,
     VehiclesModule,
     LogisticsModule,
+    FinanceModule,
   ],
   controllers: [AppController],
 })

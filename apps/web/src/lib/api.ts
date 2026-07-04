@@ -9,14 +9,17 @@ import type {
   CreateStockMovementRequestDto,
   CreateSupplierRequestDto,
   CreateVehicleRequestDto,
+  CreateExpenseRequestDto,
   DashboardSummaryDto,
   DeliveryRouteDto,
   DriverDto,
+  ExpenseDto,
   LocationDto,
   LocationOverviewDto,
   LoginResponseDto,
   ProductDto,
   ProductionBatchDto,
+  ProfitAndLossDto,
   PurchaseOrderDto,
   RecipeDto,
   SaleDetailDto,
@@ -164,5 +167,14 @@ export const api = {
       }),
     cancelRoute: (routeId: string) =>
       request<DeliveryRouteDto>(`/logistics/routes/${routeId}/cancel`, { method: "POST" }),
+  },
+
+  finance: {
+    pnl: (from: string, to: string, locationId?: string) =>
+      request<ProfitAndLossDto>(withQuery("/finance/pnl", { from, to, locationId })),
+    expenses: (locationId?: string) =>
+      request<ExpenseDto[]>(withQuery("/finance/expenses", { locationId })),
+    createExpense: (dto: CreateExpenseRequestDto) =>
+      request<ExpenseDto>("/finance/expenses", { method: "POST", body: JSON.stringify(dto) }),
   },
 };

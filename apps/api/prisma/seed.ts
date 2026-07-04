@@ -5,6 +5,7 @@ import {
   Unit,
   StockMovementType,
   ProductionBatchStatus,
+  ExpenseCategory,
 } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
 
@@ -428,6 +429,41 @@ async function main() {
         },
       },
     });
+  }
+
+  const existingExpenses = await prisma.expense.count({ where: { organizationId: org.id } });
+  if (existingExpenses === 0) {
+    const expenses: {
+      locationId: string | null;
+      category: ExpenseCategory;
+      amount: number;
+      description: string;
+      daysAgo: number;
+    }[] = [
+      { locationId: LOC_STORE_1, category: ExpenseCategory.RENT, amount: 350000, description: "Аренда за месяц", daysAgo: 3 },
+      { locationId: LOC_STORE_2, category: ExpenseCategory.RENT, amount: 280000, description: "Аренда за месяц", daysAgo: 3 },
+      { locationId: LOC_PRODUCTION, category: ExpenseCategory.UTILITIES, amount: 95000, description: "Электричество и вода", daysAgo: 2 },
+      { locationId: null, category: ExpenseCategory.SALARY, amount: 1800000, description: "Зарплата за месяц", daysAgo: 1 },
+      { locationId: null, category: ExpenseCategory.MARKETING, amount: 60000, description: "Реклама в соцсетях", daysAgo: 5 },
+      { locationId: LOC_WAREHOUSE, category: ExpenseCategory.LOGISTICS, amount: 45000, description: "Топливо для доставки", daysAgo: 1 },
+    ];
+
+    for (const e of expenses) {
+      const incurredOn = new Date();
+      incurredOn.setDate(incurredOn.getDate() - e.daysAgo);
+
+      await prisma.expense.create({
+        data: {
+          organizationId: org.id,
+          locationId: e.locationId,
+          category: e.category,
+          amount: e.amount,
+          description: e.description,
+          incurredOn,
+          createdById: owner.id,
+        },
+      });
+    }
   }
 
   console.log("Seed complete. Demo login: owner@bakery.demo / password123");

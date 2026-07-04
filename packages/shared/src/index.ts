@@ -6,4 +6,5 @@ export * from "./sales";
 export * from "./production";
 export * from "./procurement";
 export * from "./logistics";
+export * from "./finance";
 export * from "./dto";

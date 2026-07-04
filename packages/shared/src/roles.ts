@@ -70,3 +70,9 @@ export const PURCHASE_ORDER_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role
 export const LOGISTICS_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.WAREHOUSE_STAFF];
 
 export const ROUTE_EXECUTE_ROLES: Role[] = [...LOGISTICS_MANAGE_ROLES, Role.DRIVER];
+
+// Financial data (margins, P&L, expenses) is restricted to the same roles
+// that already see the whole network rather than a single location.
+export const FINANCE_VIEW_ROLES: Role[] = ORG_WIDE_ROLES;
+
+export const EXPENSE_MANAGE_ROLES: Role[] = ORG_WIDE_ROLES;

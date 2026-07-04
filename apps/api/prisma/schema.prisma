@@ -81,6 +81,15 @@ enum RouteStopStatus {
   DELIVERED
 }
 
+enum ExpenseCategory {
+  RENT
+  UTILITIES
+  SALARY
+  MARKETING
+  LOGISTICS
+  OTHER
+}
+
 // A tenant of the platform — one bakery network / company.
 model Organization {
   id        String   @id @default(cuid())
@@ -137,6 +146,7 @@ model Location {
   purchaseOrders    PurchaseOrder[]
   originRoutes      DeliveryRoute[]   @relation("RouteOrigin")
   destinationStops  RouteStop[]       @relation("RouteDestination")
+  expenses          Expense[]
 
   @@index([organizationId])
   @@index([regionId])
@@ -169,6 +179,7 @@ model User {
   purchaseOrders    PurchaseOrder[]
   createdRoutes     DeliveryRoute[]   @relation("RouteCreatedBy")
   drivenRoutes      DeliveryRoute[]   @relation("RouteDriver")
+  expenses          Expense[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -448,4 +459,23 @@ model RouteStopItem {
   quantity    Decimal   @db.Decimal(12, 3)
 
   @@map("route_stop_items")
+}
+
+// A manually logged operating expense (rent, utilities, salaries, ...).
+// Location is optional — network-wide overhead (e.g. marketing) has none.
+model Expense {
+  id             String          @id @default(cuid())
+  organizationId String
+  locationId     String?
+  location       Location?       @relation(fields: [locationId], references: [id])
+  category       ExpenseCategory
+  amount         Decimal         @db.Decimal(12, 2)
+  description    String?
+  incurredOn     DateTime        @default(now())
+  createdById    String
+  createdBy      User            @relation(fields: [createdById], references: [id])
+  createdAt      DateTime        @default(now())
+
+  @@index([organizationId, incurredOn])
+  @@map("expenses")
 }
