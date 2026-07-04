@@ -169,6 +169,19 @@ async function main() {
     },
   });
 
+  const driver = await prisma.user.upsert({
+    where: { organizationId_email: { organizationId: org.id, email: "driver@bakery.demo" } },
+    update: {},
+    create: {
+      organizationId: org.id,
+      email: "driver@bakery.demo",
+      fullName: "Бекзат Нурланов",
+      passwordHash,
+      role: Role.DRIVER,
+      regionId: region.id,
+    },
+  });
+
   const products: {
     id: string;
     name: string;
@@ -371,6 +384,48 @@ async function main() {
         totalCost,
         createdById: owner.id,
         items: { create: items },
+      },
+    });
+  }
+
+  const vehicle = await prisma.vehicle.upsert({
+    where: { id: "vehicle-gazelle-1" },
+    update: {},
+    create: {
+      id: "vehicle-gazelle-1",
+      organizationId: org.id,
+      name: "Газель",
+      plateNumber: "A123 БВ 05",
+    },
+  });
+
+  const existingRoutes = await prisma.deliveryRoute.count({ where: { organizationId: org.id } });
+  if (existingRoutes === 0) {
+    await prisma.deliveryRoute.create({
+      data: {
+        organizationId: org.id,
+        originLocationId: LOC_PRODUCTION,
+        vehicleId: vehicle.id,
+        driverId: driver.id,
+        createdById: owner.id,
+        stops: {
+          create: [
+            {
+              destinationLocationId: LOC_STORE_1,
+              sequence: 1,
+              items: {
+                create: [{ productId: "prod-croissant", quantity: 10 }],
+              },
+            },
+            {
+              destinationLocationId: LOC_STORE_2,
+              sequence: 2,
+              items: {
+                create: [{ productId: "prod-baguette", quantity: 5 }],
+              },
+            },
+          ],
+        },
       },
     });
   }

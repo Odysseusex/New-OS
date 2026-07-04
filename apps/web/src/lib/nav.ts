@@ -74,14 +74,14 @@ export const primaryNav: NavItem[] = [
     href: "/logistics",
     label: "Логистика",
     icon: Truck,
-    status: "soon",
+    status: "live",
     description: "Маршруты доставки, транспорт, статусы",
   },
   {
     href: "/map",
     label: "Карта",
     icon: Map,
-    status: "soon",
+    status: "live",
     description: "Точки, склады, маршруты и тепловые карты по городу",
   },
   {

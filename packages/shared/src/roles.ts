@@ -64,3 +64,9 @@ export const PRODUCTION_MANAGE_ROLES: Role[] = [
 export const SUPPLIER_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.WAREHOUSE_STAFF];
 
 export const PURCHASE_ORDER_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.WAREHOUSE_STAFF];
+
+// Roles that can create/cancel vehicles and delivery routes. Drivers don't
+// plan routes, but they do execute their assigned ones (see LogisticsService).
+export const LOGISTICS_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.WAREHOUSE_STAFF];
+
+export const ROUTE_EXECUTE_ROLES: Role[] = [...LOGISTICS_MANAGE_ROLES, Role.DRIVER];

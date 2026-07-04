@@ -13,6 +13,8 @@ import { RecipesModule } from "./recipes/recipes.module";
 import { ProductionModule } from "./production/production.module";
 import { SuppliersModule } from "./suppliers/suppliers.module";
 import { ProcurementModule } from "./procurement/procurement.module";
+import { VehiclesModule } from "./vehicles/vehicles.module";
+import { LogisticsModule } from "./logistics/logistics.module";
 
 @Module({
   imports: [
@@ -29,6 +31,8 @@ import { ProcurementModule } from "./procurement/procurement.module";
     ProductionModule,
     SuppliersModule,
     ProcurementModule,
+    VehiclesModule,
+    LogisticsModule,
   ],
   controllers: [AppController],
 })

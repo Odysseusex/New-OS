@@ -1,5 +1,6 @@
 import type {
   CompleteProductionBatchRequestDto,
+  CreateDeliveryRouteRequestDto,
   CreateProductionBatchRequestDto,
   CreateProductRequestDto,
   CreatePurchaseOrderRequestDto,
@@ -7,8 +8,12 @@ import type {
   CreateSaleRequestDto,
   CreateStockMovementRequestDto,
   CreateSupplierRequestDto,
+  CreateVehicleRequestDto,
   DashboardSummaryDto,
+  DeliveryRouteDto,
+  DriverDto,
   LocationDto,
+  LocationOverviewDto,
   LoginResponseDto,
   ProductDto,
   ProductionBatchDto,
@@ -20,6 +25,7 @@ import type {
   StockLevelDto,
   StockMovementDto,
   SupplierDto,
+  VehicleDto,
 } from "@bakery-os/shared";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
@@ -64,6 +70,7 @@ export const api = {
   dashboardSummary: () => request<DashboardSummaryDto>("/dashboard/summary"),
   locations: {
     list: () => request<LocationDto[]>("/locations"),
+    overview: () => request<LocationOverviewDto[]>("/locations/overview"),
   },
 
   products: {
@@ -138,5 +145,24 @@ export const api = {
       request<PurchaseOrderDto>(`/procurement/orders/${id}/receive`, { method: "POST" }),
     cancelOrder: (id: string) =>
       request<PurchaseOrderDto>(`/procurement/orders/${id}/cancel`, { method: "POST" }),
+  },
+
+  vehicles: {
+    list: () => request<VehicleDto[]>("/vehicles"),
+    create: (dto: CreateVehicleRequestDto) =>
+      request<VehicleDto>("/vehicles", { method: "POST", body: JSON.stringify(dto) }),
+  },
+
+  logistics: {
+    routes: () => request<DeliveryRouteDto[]>("/logistics/routes"),
+    drivers: () => request<DriverDto[]>("/logistics/drivers"),
+    createRoute: (dto: CreateDeliveryRouteRequestDto) =>
+      request<DeliveryRouteDto>("/logistics/routes", { method: "POST", body: JSON.stringify(dto) }),
+    deliverStop: (routeId: string, stopId: string) =>
+      request<DeliveryRouteDto>(`/logistics/routes/${routeId}/stops/${stopId}/deliver`, {
+        method: "POST",
+      }),
+    cancelRoute: (routeId: string) =>
+      request<DeliveryRouteDto>(`/logistics/routes/${routeId}/cancel`, { method: "POST" }),
   },
 };

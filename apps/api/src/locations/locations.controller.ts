@@ -13,4 +13,9 @@ export class LocationsController {
   findAll(@CurrentUser() user: AuthenticatedUser) {
     return this.locationsService.findAllForOrganization(user.organizationId);
   }
+
+  @Get("overview")
+  findOverview(@CurrentUser() user: AuthenticatedUser) {
+    return this.locationsService.findOverview(user);
+  }
 }

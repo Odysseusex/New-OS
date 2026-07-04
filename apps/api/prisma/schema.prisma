@@ -47,6 +47,8 @@ enum StockMovementType {
   ADJUSTMENT
   PRODUCTION_CONSUMPTION
   PRODUCTION_OUTPUT
+  TRANSFER_OUT
+  TRANSFER_IN
 }
 
 enum ProductionBatchStatus {
@@ -59,6 +61,24 @@ enum PurchaseOrderStatus {
   PLACED
   RECEIVED
   CANCELLED
+}
+
+enum VehicleStatus {
+  AVAILABLE
+  ON_ROUTE
+  MAINTENANCE
+}
+
+enum DeliveryRouteStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum RouteStopStatus {
+  PENDING
+  DELIVERED
 }
 
 // A tenant of the platform — one bakery network / company.
@@ -115,6 +135,8 @@ model Location {
   sales             Sale[]
   productionBatches ProductionBatch[]
   purchaseOrders    PurchaseOrder[]
+  originRoutes      DeliveryRoute[]   @relation("RouteOrigin")
+  destinationStops  RouteStop[]       @relation("RouteDestination")
 
   @@index([organizationId])
   @@index([regionId])
@@ -145,6 +167,8 @@ model User {
   sales             Sale[]
   productionBatches ProductionBatch[]
   purchaseOrders    PurchaseOrder[]
+  createdRoutes     DeliveryRoute[]   @relation("RouteCreatedBy")
+  drivenRoutes      DeliveryRoute[]   @relation("RouteDriver")
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -170,6 +194,7 @@ model Product {
   recipe             Recipe?             @relation("RecipeOutput")
   usedInRecipeItems  RecipeItem[]        @relation("RecipeIngredient")
   purchaseOrderItems PurchaseOrderItem[]
+  routeStopItems     RouteStopItem[]
 
   @@unique([organizationId, sku])
   @@index([organizationId])
@@ -210,6 +235,8 @@ model StockMovement {
   batch           ProductionBatch?  @relation(fields: [batchId], references: [id])
   purchaseOrderId String?
   purchaseOrder   PurchaseOrder?    @relation(fields: [purchaseOrderId], references: [id])
+  routeStopId     String?
+  routeStop       RouteStop?        @relation(fields: [routeStopId], references: [id])
   createdById     String
   createdBy       User              @relation(fields: [createdById], references: [id])
   createdAt       DateTime          @default(now())
@@ -355,4 +382,70 @@ model PurchaseOrderItem {
   subtotal        Decimal       @db.Decimal(12, 2)
 
   @@map("purchase_order_items")
+}
+
+model Vehicle {
+  id             String        @id @default(cuid())
+  organizationId String
+  name           String
+  plateNumber    String
+  status         VehicleStatus @default(AVAILABLE)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  routes DeliveryRoute[]
+
+  @@index([organizationId])
+  @@map("vehicles")
+}
+
+// A delivery run: goods leave one location (production/warehouse) and are
+// dropped off at one or more stops (usually stores). Delivering a stop is
+// the event that transfers stock from the origin to that destination.
+model DeliveryRoute {
+  id               String              @id @default(cuid())
+  organizationId   String
+  originLocationId String
+  originLocation   Location            @relation("RouteOrigin", fields: [originLocationId], references: [id], onDelete: Cascade)
+  vehicleId        String?
+  vehicle          Vehicle?            @relation(fields: [vehicleId], references: [id])
+  driverId         String?
+  driver           User?               @relation("RouteDriver", fields: [driverId], references: [id])
+  status           DeliveryRouteStatus @default(PLANNED)
+  scheduledFor     DateTime            @default(now())
+  createdById      String
+  createdBy        User                @relation("RouteCreatedBy", fields: [createdById], references: [id])
+  createdAt        DateTime            @default(now())
+
+  stops RouteStop[]
+
+  @@index([organizationId])
+  @@map("delivery_routes")
+}
+
+model RouteStop {
+  id                    String          @id @default(cuid())
+  routeId               String
+  route                 DeliveryRoute   @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  destinationLocationId String
+  destinationLocation   Location        @relation("RouteDestination", fields: [destinationLocationId], references: [id], onDelete: Cascade)
+  sequence              Int
+  status                RouteStopStatus @default(PENDING)
+  deliveredAt           DateTime?
+
+  items          RouteStopItem[]
+  stockMovements StockMovement[]
+
+  @@map("route_stops")
+}
+
+model RouteStopItem {
+  id          String    @id @default(cuid())
+  routeStopId String
+  routeStop   RouteStop @relation(fields: [routeStopId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id])
+  quantity    Decimal   @db.Decimal(12, 3)
+
+  @@map("route_stop_items")
 }

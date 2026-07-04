@@ -12,6 +12,11 @@ export interface LocationDto {
   lng: number | null;
 }
 
+export interface LocationOverviewDto extends LocationDto {
+  todayRevenue: number | null;
+  lowStockCount: number | null;
+}
+
 export interface RegionDto {
   id: string;
   name: string;
