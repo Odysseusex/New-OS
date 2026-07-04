@@ -48,4 +48,7 @@ export interface DashboardSummaryDto {
   regionsCount: number;
   usersCount: number;
   locations: LocationDto[];
+  todayRevenue: number;
+  last7DaysRevenue: number;
+  lowStockCount: number;
 }

@@ -55,6 +55,12 @@ enum ProductionBatchStatus {
   CANCELLED
 }
 
+enum PurchaseOrderStatus {
+  PLACED
+  RECEIVED
+  CANCELLED
+}
+
 // A tenant of the platform — one bakery network / company.
 model Organization {
   id        String   @id @default(cuid())
@@ -108,6 +114,7 @@ model Location {
   stockMovements    StockMovement[]
   sales             Sale[]
   productionBatches ProductionBatch[]
+  purchaseOrders    PurchaseOrder[]
 
   @@index([organizationId])
   @@index([regionId])
@@ -137,6 +144,7 @@ model User {
   stockMovements    StockMovement[]
   sales             Sale[]
   productionBatches ProductionBatch[]
+  purchaseOrders    PurchaseOrder[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -156,11 +164,12 @@ model Product {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  stockLevels       StockLevel[]
-  stockMovements    StockMovement[]
-  saleItems         SaleItem[]
-  recipe            Recipe?         @relation("RecipeOutput")
-  usedInRecipeItems RecipeItem[]    @relation("RecipeIngredient")
+  stockLevels        StockLevel[]
+  stockMovements     StockMovement[]
+  saleItems          SaleItem[]
+  recipe             Recipe?             @relation("RecipeOutput")
+  usedInRecipeItems  RecipeItem[]        @relation("RecipeIngredient")
+  purchaseOrderItems PurchaseOrderItem[]
 
   @@unique([organizationId, sku])
   @@index([organizationId])
@@ -186,22 +195,24 @@ model StockLevel {
 
 // Append-only ledger of every stock change — the audit trail behind StockLevel.
 model StockMovement {
-  id             String            @id @default(cuid())
-  organizationId String
-  locationId     String
-  location       Location          @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  productId      String
-  product        Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
-  type           StockMovementType
-  quantity       Decimal           @db.Decimal(12, 3)
-  reason         String?
-  saleId         String?
-  sale           Sale?             @relation(fields: [saleId], references: [id])
-  batchId        String?
-  batch          ProductionBatch?  @relation(fields: [batchId], references: [id])
-  createdById    String
-  createdBy      User              @relation(fields: [createdById], references: [id])
-  createdAt      DateTime          @default(now())
+  id              String            @id @default(cuid())
+  organizationId  String
+  locationId      String
+  location        Location          @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  type            StockMovementType
+  quantity        Decimal           @db.Decimal(12, 3)
+  reason          String?
+  saleId          String?
+  sale            Sale?             @relation(fields: [saleId], references: [id])
+  batchId         String?
+  batch           ProductionBatch?  @relation(fields: [batchId], references: [id])
+  purchaseOrderId String?
+  purchaseOrder   PurchaseOrder?    @relation(fields: [purchaseOrderId], references: [id])
+  createdById     String
+  createdBy       User              @relation(fields: [createdById], references: [id])
+  createdAt       DateTime          @default(now())
 
   @@index([organizationId, locationId])
   @@map("stock_movements")
@@ -290,4 +301,58 @@ model ProductionBatch {
 
   @@index([organizationId, locationId])
   @@map("production_batches")
+}
+
+model Supplier {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  phone          String?
+  email          String?
+  notes          String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  purchaseOrders PurchaseOrder[]
+
+  @@index([organizationId])
+  @@map("suppliers")
+}
+
+// An order placed with a supplier to replenish stock at one location.
+// Receiving it is the event that turns the order into actual StockLevel/
+// StockMovement entries — mirroring how ProductionBatch.complete() works.
+model PurchaseOrder {
+  id             String              @id @default(cuid())
+  organizationId String
+  supplierId     String
+  supplier       Supplier            @relation(fields: [supplierId], references: [id])
+  locationId     String
+  location       Location            @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  status         PurchaseOrderStatus @default(PLACED)
+  totalCost      Decimal             @db.Decimal(12, 2)
+  orderedAt      DateTime            @default(now())
+  receivedAt     DateTime?
+  createdById    String
+  createdBy      User                @relation(fields: [createdById], references: [id])
+
+  items          PurchaseOrderItem[]
+  stockMovements StockMovement[]
+
+  @@index([organizationId, locationId])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product       @relation(fields: [productId], references: [id])
+  quantity        Decimal       @db.Decimal(12, 3)
+  unitCost        Decimal       @db.Decimal(12, 2)
+  subtotal        Decimal       @db.Decimal(12, 2)
+
+  @@map("purchase_order_items")
 }

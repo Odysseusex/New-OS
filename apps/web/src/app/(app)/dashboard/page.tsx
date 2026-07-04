@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Building2, MapPin, Sparkles, Users } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, Building2, MapPin, Sparkles, TrendingUp, Users, Wallet } from "lucide-react";
 import type { DashboardSummaryDto } from "@bakery-os/shared";
 import { LOCATION_TYPE_LABELS_RU } from "@bakery-os/shared";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { formatMoney } from "@/lib/format";
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -32,12 +34,25 @@ export default function DashboardPage() {
         <div className="mb-6 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
 
-      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatCard icon={Wallet} label="Выручка сегодня" value={formatMoney(summary?.todayRevenue ?? 0)} />
         <StatCard
-          icon={Building2}
-          label="Точек в сети"
-          value={summary?.locationsCount ?? "—"}
+          icon={TrendingUp}
+          label="Выручка за 7 дней"
+          value={formatMoney(summary?.last7DaysRevenue ?? 0)}
         />
+        <Link href="/inventory">
+          <StatCard
+            icon={AlertTriangle}
+            label="Товаров с низким остатком"
+            value={summary?.lowStockCount ?? "—"}
+            tone={summary && summary.lowStockCount > 0 ? "warning" : "default"}
+          />
+        </Link>
+      </div>
+
+      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatCard icon={Building2} label="Точек в сети" value={summary?.locationsCount ?? "—"} />
         <StatCard icon={MapPin} label="Регионов" value={summary?.regionsCount ?? "—"} />
         <StatCard icon={Users} label="Сотрудников в системе" value={summary?.usersCount ?? "—"} />
       </div>
@@ -48,8 +63,9 @@ export default function DashboardPage() {
           <h2 className="text-sm font-semibold text-foreground">AI-центр скоро здесь</h2>
         </div>
         <p className="text-sm text-muted">
-          По мере подключения продаж, склада и производства здесь появятся рекомендации:
-          прогноз спроса, обнаружение аномалий и еженедельные сводки для владельца.
+          По мере накопления истории продаж, склада и производства здесь появятся
+          рекомендации: прогноз спроса, обнаружение аномалий и еженедельные сводки для
+          владельца.
         </p>
       </div>
 
@@ -84,14 +100,20 @@ function StatCard({
   icon: Icon,
   label,
   value,
+  tone = "default",
 }: {
   icon: typeof Building2;
   label: string;
   value: string | number;
+  tone?: "default" | "warning";
 }) {
   return (
-    <div className="rounded-2xl border border-border bg-surface p-5 shadow-card">
-      <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-surface-muted text-accent">
+    <div className="h-full rounded-2xl border border-border bg-surface p-5 shadow-card transition hover:border-accent/40">
+      <div
+        className={`mb-3 flex h-9 w-9 items-center justify-center rounded-xl ${
+          tone === "warning" ? "bg-amber-50 text-amber-600" : "bg-surface-muted text-accent"
+        }`}
+      >
         <Icon className="h-4 w-4" strokeWidth={1.75} />
       </div>
       <p className="text-2xl font-semibold text-foreground">{value}</p>

@@ -67,7 +67,7 @@ export const primaryNav: NavItem[] = [
     href: "/procurement",
     label: "Закупки",
     icon: ShoppingCart,
-    status: "soon",
+    status: "live",
     description: "Поставщики, заказы сырья, анализ цен",
   },
   {

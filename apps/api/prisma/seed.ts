@@ -1,4 +1,11 @@
-import { PrismaClient, Role, LocationType, Unit, StockMovementType, ProductionBatchStatus } from "@prisma/client";
+import {
+  PrismaClient,
+  Role,
+  LocationType,
+  Unit,
+  StockMovementType,
+  ProductionBatchStatus,
+} from "@prisma/client";
 import * as bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -333,6 +340,39 @@ async function main() {
         },
       });
     }
+  }
+
+  const supplier = await prisma.supplier.upsert({
+    where: { id: "supplier-mill" },
+    update: {},
+    create: {
+      id: "supplier-mill",
+      organizationId: org.id,
+      name: "ТОО «Алматинский мукомольный завод»",
+      phone: "+7 727 123 4567",
+      email: "sales@almaty-mill.kz",
+      notes: "Основной поставщик муки и сахара",
+    },
+  });
+
+  const existingOrders = await prisma.purchaseOrder.count({ where: { organizationId: org.id } });
+  if (existingOrders === 0) {
+    const items = [
+      { productId: "prod-flour", quantity: 200, unitCost: 300, subtotal: 200 * 300 },
+      { productId: "prod-butter", quantity: 30, unitCost: 2300, subtotal: 30 * 2300 },
+    ];
+    const totalCost = items.reduce((sum, i) => sum + i.subtotal, 0);
+
+    await prisma.purchaseOrder.create({
+      data: {
+        organizationId: org.id,
+        supplierId: supplier.id,
+        locationId: LOC_WAREHOUSE,
+        totalCost,
+        createdById: owner.id,
+        items: { create: items },
+      },
+    });
   }
 
   console.log("Seed complete. Demo login: owner@bakery.demo / password123");

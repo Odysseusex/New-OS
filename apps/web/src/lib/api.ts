@@ -2,20 +2,24 @@ import type {
   CompleteProductionBatchRequestDto,
   CreateProductionBatchRequestDto,
   CreateProductRequestDto,
+  CreatePurchaseOrderRequestDto,
   CreateRecipeRequestDto,
   CreateSaleRequestDto,
   CreateStockMovementRequestDto,
+  CreateSupplierRequestDto,
   DashboardSummaryDto,
   LocationDto,
   LoginResponseDto,
   ProductDto,
   ProductionBatchDto,
+  PurchaseOrderDto,
   RecipeDto,
   SaleDetailDto,
   SaleDto,
   SalesSummaryDto,
   StockLevelDto,
   StockMovementDto,
+  SupplierDto,
 } from "@bakery-os/shared";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
@@ -114,5 +118,25 @@ export const api = {
       }),
     cancelBatch: (id: string) =>
       request<ProductionBatchDto>(`/production/batches/${id}/cancel`, { method: "POST" }),
+  },
+
+  suppliers: {
+    list: () => request<SupplierDto[]>("/suppliers"),
+    create: (dto: CreateSupplierRequestDto) =>
+      request<SupplierDto>("/suppliers", { method: "POST", body: JSON.stringify(dto) }),
+  },
+
+  procurement: {
+    orders: (locationId?: string) =>
+      request<PurchaseOrderDto[]>(withQuery("/procurement/orders", { locationId })),
+    createOrder: (dto: CreatePurchaseOrderRequestDto) =>
+      request<PurchaseOrderDto>("/procurement/orders", {
+        method: "POST",
+        body: JSON.stringify(dto),
+      }),
+    receiveOrder: (id: string) =>
+      request<PurchaseOrderDto>(`/procurement/orders/${id}/receive`, { method: "POST" }),
+    cancelOrder: (id: string) =>
+      request<PurchaseOrderDto>(`/procurement/orders/${id}/cancel`, { method: "POST" }),
   },
 };

@@ -60,3 +60,7 @@ export const PRODUCTION_MANAGE_ROLES: Role[] = [
   Role.PRODUCTION_MANAGER,
   Role.PRODUCTION_STAFF,
 ];
+
+export const SUPPLIER_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.WAREHOUSE_STAFF];
+
+export const PURCHASE_ORDER_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.WAREHOUSE_STAFF];
