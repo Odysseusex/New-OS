@@ -1,0 +1,30 @@
+{
+  "name": "@bakery-os/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@bakery-os/shared": "workspace:*",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.446.0",
+    "next": "14.2.35",
+    "react": "^18",
+    "react-dom": "^18",
+    "recharts": "^2.12.7"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.1",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.35"
+  }
+}

@@ -1,0 +1,114 @@
+// Bakery OS — canonical data model.
+// This schema is the internal "source of truth" that every external system
+// (UMAG, iiko, 1C, CSV, webhooks) gets translated into via the integrations layer.
+// Business modules (Sales, Inventory, Production, ...) all read/write this model,
+// never the external systems directly.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  REGIONAL_MANAGER
+  STORE_MANAGER
+  PRODUCTION_MANAGER
+  PRODUCTION_STAFF
+  WAREHOUSE_STAFF
+  DRIVER
+  CASHIER
+  ACCOUNTANT
+  HR_MANAGER
+  ADMIN
+}
+
+enum LocationType {
+  BAKERY_PRODUCTION
+  STORE
+  WAREHOUSE
+}
+
+// A tenant of the platform — one bakery network / company.
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  regions   Region[]
+  locations Location[]
+  users     User[]
+
+  @@map("organizations")
+}
+
+// Optional grouping of locations used for regional roll-up reporting.
+model Region {
+  id             String   @id @default(cuid())
+  name           String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+
+  locations Location[]
+  users     User[]
+
+  @@index([organizationId])
+  @@map("regions")
+}
+
+// A physical place: a bakery/production site, a retail store, or a warehouse.
+// This is also the anchor entity for the interactive city map module.
+model Location {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  regionId       String?
+  region         Region?      @relation(fields: [regionId], references: [id])
+
+  name    String
+  type    LocationType
+  city    String
+  address String
+  lat     Float?
+  lng     Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users User[]
+
+  @@index([organizationId])
+  @@index([regionId])
+  @@map("locations")
+}
+
+// A platform user. Access scope is derived from role + organization + optional
+// region/location assignment (enforced in the RBAC guard, not in the DB).
+model User {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  regionId       String?
+  region         Region?      @relation(fields: [regionId], references: [id])
+  locationId     String?
+  location       Location?    @relation(fields: [locationId], references: [id])
+
+  fullName     String
+  email        String
+  passwordHash String
+  role         Role
+  isActive     Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, email])
+  @@index([organizationId])
+  @@map("users")
+}
