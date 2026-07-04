@@ -95,7 +95,7 @@ export const primaryNav: NavItem[] = [
     href: "/hr",
     label: "Персонал",
     icon: Users,
-    status: "soon",
+    status: "live",
     description: "Смены, учёт времени, KPI сотрудников",
   },
   {

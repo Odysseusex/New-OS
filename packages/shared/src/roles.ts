@@ -28,11 +28,14 @@ export const ROLE_LABELS_RU: Record<Role, string> = {
 
 // Roles that see data across the whole organization instead of being pinned
 // to a single location. Everyone else is scoped to their assigned location.
+// HR_MANAGER is here because a bakery network typically has one company-wide
+// HR function rather than a separate HR person per store.
 export const ORG_WIDE_ROLES: Role[] = [
   Role.OWNER,
   Role.ADMIN,
   Role.REGIONAL_MANAGER,
   Role.ACCOUNTANT,
+  Role.HR_MANAGER,
 ];
 
 export const SALE_CREATE_ROLES: Role[] = [
@@ -76,3 +79,14 @@ export const ROUTE_EXECUTE_ROLES: Role[] = [...LOGISTICS_MANAGE_ROLES, Role.DRIV
 export const FINANCE_VIEW_ROLES: Role[] = ORG_WIDE_ROLES;
 
 export const EXPENSE_MANAGE_ROLES: Role[] = ORG_WIDE_ROLES;
+
+// Roles that can schedule shifts and view attendance/KPI for their team.
+// Store/production managers manage their own location; HR-wide roles see all.
+export const HR_MANAGE_ROLES: Role[] = [
+  Role.OWNER,
+  Role.ADMIN,
+  Role.REGIONAL_MANAGER,
+  Role.HR_MANAGER,
+  Role.STORE_MANAGER,
+  Role.PRODUCTION_MANAGER,
+];

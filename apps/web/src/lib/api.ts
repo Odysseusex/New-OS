@@ -10,10 +10,14 @@ import type {
   CreateSupplierRequestDto,
   CreateVehicleRequestDto,
   CreateExpenseRequestDto,
+  CreateShiftRequestDto,
+  ClockInRequestDto,
   DashboardSummaryDto,
   DeliveryRouteDto,
   DriverDto,
+  EmployeeDto,
   ExpenseDto,
+  HrKpiResponseDto,
   LocationDto,
   LocationOverviewDto,
   LoginResponseDto,
@@ -25,9 +29,11 @@ import type {
   SaleDetailDto,
   SaleDto,
   SalesSummaryDto,
+  ShiftDto,
   StockLevelDto,
   StockMovementDto,
   SupplierDto,
+  TimeEntryDto,
   VehicleDto,
 } from "@bakery-os/shared";
 
@@ -176,5 +182,23 @@ export const api = {
       request<ExpenseDto[]>(withQuery("/finance/expenses", { locationId })),
     createExpense: (dto: CreateExpenseRequestDto) =>
       request<ExpenseDto>("/finance/expenses", { method: "POST", body: JSON.stringify(dto) }),
+  },
+
+  hr: {
+    employees: (locationId?: string) =>
+      request<EmployeeDto[]>(withQuery("/hr/employees", { locationId })),
+    shifts: (locationId?: string) => request<ShiftDto[]>(withQuery("/hr/shifts", { locationId })),
+    myShifts: () => request<ShiftDto[]>("/hr/shifts/me"),
+    createShift: (dto: CreateShiftRequestDto) =>
+      request<ShiftDto>("/hr/shifts", { method: "POST", body: JSON.stringify(dto) }),
+    cancelShift: (id: string) => request<ShiftDto>(`/hr/shifts/${id}/cancel`, { method: "POST" }),
+    timeEntries: (locationId?: string) =>
+      request<TimeEntryDto[]>(withQuery("/hr/time-entries", { locationId })),
+    myTimeEntries: () => request<TimeEntryDto[]>("/hr/time-entries/me"),
+    clockIn: (dto: ClockInRequestDto) =>
+      request<TimeEntryDto>("/hr/time-entries/clock-in", { method: "POST", body: JSON.stringify(dto) }),
+    clockOut: () => request<TimeEntryDto>("/hr/time-entries/clock-out", { method: "POST" }),
+    kpi: (from: string, to: string, locationId?: string) =>
+      request<HrKpiResponseDto>(withQuery("/hr/kpi", { from, to, locationId })),
   },
 };

@@ -90,6 +90,11 @@ enum ExpenseCategory {
   OTHER
 }
 
+enum ShiftStatus {
+  SCHEDULED
+  CANCELLED
+}
+
 // A tenant of the platform — one bakery network / company.
 model Organization {
   id        String   @id @default(cuid())
@@ -147,6 +152,8 @@ model Location {
   originRoutes      DeliveryRoute[]   @relation("RouteOrigin")
   destinationStops  RouteStop[]       @relation("RouteDestination")
   expenses          Expense[]
+  shifts            Shift[]
+  timeEntries       TimeEntry[]
 
   @@index([organizationId])
   @@index([regionId])
@@ -180,6 +187,9 @@ model User {
   createdRoutes     DeliveryRoute[]   @relation("RouteCreatedBy")
   drivenRoutes      DeliveryRoute[]   @relation("RouteDriver")
   expenses          Expense[]
+  shiftsAsEmployee  Shift[]           @relation("ShiftEmployee")
+  shiftsCreated     Shift[]           @relation("ShiftCreatedBy")
+  timeEntries       TimeEntry[]       @relation("TimeEntryEmployee")
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -478,4 +488,40 @@ model Expense {
 
   @@index([organizationId, incurredOn])
   @@map("expenses")
+}
+
+// A planned work shift for an employee at a location.
+model Shift {
+  id             String      @id @default(cuid())
+  organizationId String
+  locationId     String
+  location       Location    @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User        @relation("ShiftEmployee", fields: [userId], references: [id])
+  startsAt       DateTime
+  endsAt         DateTime
+  status         ShiftStatus @default(SCHEDULED)
+  createdById    String
+  createdBy      User        @relation("ShiftCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime    @default(now())
+
+  @@index([organizationId, locationId])
+  @@map("shifts")
+}
+
+// Actual attendance — clock in/out. Independent of Shift so employees can
+// clock in even without a pre-planned schedule.
+model TimeEntry {
+  id             String    @id @default(cuid())
+  organizationId String
+  locationId     String
+  location       Location  @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User      @relation("TimeEntryEmployee", fields: [userId], references: [id])
+  clockInAt      DateTime  @default(now())
+  clockOutAt     DateTime?
+
+  @@index([organizationId, locationId])
+  @@index([userId])
+  @@map("time_entries")
 }

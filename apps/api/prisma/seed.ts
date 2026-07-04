@@ -183,6 +183,19 @@ async function main() {
     },
   });
 
+  await prisma.user.upsert({
+    where: { organizationId_email: { organizationId: org.id, email: "hr@bakery.demo" } },
+    update: {},
+    create: {
+      organizationId: org.id,
+      email: "hr@bakery.demo",
+      fullName: "Мадина Ахметова",
+      passwordHash,
+      role: Role.HR_MANAGER,
+      regionId: region.id,
+    },
+  });
+
   const products: {
     id: string;
     name: string;
@@ -464,6 +477,49 @@ async function main() {
         },
       });
     }
+  }
+
+  const cashier = await prisma.user.findUnique({
+    where: { organizationId_email: { organizationId: org.id, email: "cashier@bakery.demo" } },
+  });
+  const manager = await prisma.user.findUnique({
+    where: { organizationId_email: { organizationId: org.id, email: "manager@bakery.demo" } },
+  });
+
+  const existingShifts = await prisma.shift.count({ where: { organizationId: org.id } });
+  if (existingShifts === 0 && cashier && manager) {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(9, 0, 0, 0);
+    const tomorrowEnd = new Date(tomorrow);
+    tomorrowEnd.setHours(18, 0, 0, 0);
+
+    await prisma.shift.create({
+      data: {
+        organizationId: org.id,
+        locationId: LOC_STORE_1,
+        userId: cashier.id,
+        startsAt: tomorrow,
+        endsAt: tomorrowEnd,
+        createdById: manager.id,
+      },
+    });
+
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    yesterday.setHours(9, 0, 0, 0);
+    const yesterdayEnd = new Date(yesterday);
+    yesterdayEnd.setHours(17, 30, 0, 0);
+
+    await prisma.timeEntry.create({
+      data: {
+        organizationId: org.id,
+        locationId: LOC_STORE_1,
+        userId: cashier.id,
+        clockInAt: yesterday,
+        clockOutAt: yesterdayEnd,
+      },
+    });
   }
 
   console.log("Seed complete. Demo login: owner@bakery.demo / password123");

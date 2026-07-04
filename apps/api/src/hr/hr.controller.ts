@@ -1,0 +1,73 @@
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { HR_MANAGE_ROLES } from "@bakery-os/shared";
+import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { RolesGuard } from "../common/guards/roles.guard";
+import { Roles } from "../common/decorators/roles.decorator";
+import { CurrentUser } from "../common/decorators/current-user.decorator";
+import { AuthenticatedUser } from "../auth/auth.types";
+import { HrService } from "./hr.service";
+import { CreateShiftDto } from "./dto/create-shift.dto";
+import { ClockInDto } from "./dto/clock-in.dto";
+import { GetKpiQueryDto } from "./dto/get-kpi-query.dto";
+
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Controller("hr")
+export class HrController {
+  constructor(private hrService: HrService) {}
+
+  @Get("employees")
+  @Roles(...HR_MANAGE_ROLES)
+  listEmployees(@CurrentUser() user: AuthenticatedUser, @Query("locationId") locationId?: string) {
+    return this.hrService.listEmployees(user, locationId);
+  }
+
+  @Get("shifts")
+  @Roles(...HR_MANAGE_ROLES)
+  listShifts(@CurrentUser() user: AuthenticatedUser, @Query("locationId") locationId?: string) {
+    return this.hrService.listShifts(user, locationId);
+  }
+
+  @Get("shifts/me")
+  listMyShifts(@CurrentUser() user: AuthenticatedUser) {
+    return this.hrService.listMyShifts(user);
+  }
+
+  @Post("shifts")
+  @Roles(...HR_MANAGE_ROLES)
+  createShift(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateShiftDto) {
+    return this.hrService.createShift(user, dto);
+  }
+
+  @Post("shifts/:id/cancel")
+  @Roles(...HR_MANAGE_ROLES)
+  cancelShift(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
+    return this.hrService.cancelShift(user, id);
+  }
+
+  @Get("time-entries")
+  @Roles(...HR_MANAGE_ROLES)
+  listTimeEntries(@CurrentUser() user: AuthenticatedUser, @Query("locationId") locationId?: string) {
+    return this.hrService.listTimeEntries(user, locationId);
+  }
+
+  @Get("time-entries/me")
+  listMyTimeEntries(@CurrentUser() user: AuthenticatedUser) {
+    return this.hrService.listMyTimeEntries(user);
+  }
+
+  @Post("time-entries/clock-in")
+  clockIn(@CurrentUser() user: AuthenticatedUser, @Body() dto: ClockInDto) {
+    return this.hrService.clockIn(user, dto);
+  }
+
+  @Post("time-entries/clock-out")
+  clockOut(@CurrentUser() user: AuthenticatedUser) {
+    return this.hrService.clockOut(user);
+  }
+
+  @Get("kpi")
+  @Roles(...HR_MANAGE_ROLES)
+  getKpi(@CurrentUser() user: AuthenticatedUser, @Query() query: GetKpiQueryDto) {
+    return this.hrService.getKpi(user, new Date(query.from), new Date(query.to), query.locationId);
+  }
+}
