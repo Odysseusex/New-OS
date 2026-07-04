@@ -13,6 +13,7 @@ import type {
   CreateStockMovementRequestDto,
   CreateSupplierRequestDto,
   CreateVehicleRequestDto,
+  CreateLocationRequestDto,
   CustomerDetailDto,
   CustomerDto,
   DashboardSummaryDto,
@@ -21,6 +22,7 @@ import type {
   EmployeeDto,
   ExpenseDto,
   HrKpiResponseDto,
+  LocationComparisonDto,
   LocationDto,
   LocationOverviewDto,
   LoginResponseDto,
@@ -30,6 +32,7 @@ import type {
   PurchaseOrderDto,
   RecipeDto,
   RecordPaymentRequestDto,
+  RegionDto,
   SaleDetailDto,
   SaleDto,
   SalesSummaryDto,
@@ -84,6 +87,11 @@ export const api = {
   locations: {
     list: () => request<LocationDto[]>("/locations"),
     overview: () => request<LocationOverviewDto[]>("/locations/overview"),
+    regions: () => request<RegionDto[]>("/locations/regions"),
+    comparison: (from: string, to: string) =>
+      request<LocationComparisonDto[]>(withQuery("/locations/comparison", { from, to })),
+    create: (dto: CreateLocationRequestDto) =>
+      request<LocationDto>("/locations", { method: "POST", body: JSON.stringify(dto) }),
   },
 
   products: {

@@ -116,7 +116,7 @@ export const primaryNav: NavItem[] = [
     href: "/network",
     label: "Сеть точек",
     icon: Store,
-    status: "soon",
+    status: "live",
     description: "Реестр точек, франшиза, сравнение локаций",
   },
   {

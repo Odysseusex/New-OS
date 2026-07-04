@@ -33,6 +33,11 @@ enum LocationType {
   WAREHOUSE
 }
 
+enum LocationOwnership {
+  OWNED
+  FRANCHISE
+}
+
 enum Unit {
   PCS
   KG
@@ -133,12 +138,13 @@ model Location {
   regionId       String?
   region         Region?      @relation(fields: [regionId], references: [id])
 
-  name    String
-  type    LocationType
-  city    String
-  address String
-  lat     Float?
-  lng     Float?
+  name      String
+  type      LocationType
+  ownership LocationOwnership @default(OWNED)
+  city      String
+  address   String
+  lat       Float?
+  lng       Float?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -2,6 +2,7 @@ import {
   PrismaClient,
   Role,
   LocationType,
+  LocationOwnership,
   Unit,
   StockMovementType,
   ProductionBatchStatus,
@@ -35,6 +36,7 @@ async function main() {
     id: string;
     name: string;
     type: LocationType;
+    ownership: LocationOwnership;
     city: string;
     address: string;
     lat: number;
@@ -44,6 +46,7 @@ async function main() {
       id: LOC_PRODUCTION,
       name: "Производство №1",
       type: LocationType.BAKERY_PRODUCTION,
+      ownership: LocationOwnership.OWNED,
       city: "Алматы",
       address: "ул. Толе би, 15",
       lat: 43.2551,
@@ -53,6 +56,7 @@ async function main() {
       id: LOC_STORE_1,
       name: "Магазин «Абай»",
       type: LocationType.STORE,
+      ownership: LocationOwnership.OWNED,
       city: "Алматы",
       address: "пр. Абая, 44",
       lat: 43.2389,
@@ -62,6 +66,7 @@ async function main() {
       id: LOC_STORE_2,
       name: "Магазин «Достык»",
       type: LocationType.STORE,
+      ownership: LocationOwnership.FRANCHISE,
       city: "Алматы",
       address: "пр. Достык, 91",
       lat: 43.2295,
@@ -71,6 +76,7 @@ async function main() {
       id: LOC_WAREHOUSE,
       name: "Центральный склад",
       type: LocationType.WAREHOUSE,
+      ownership: LocationOwnership.OWNED,
       city: "Алматы",
       address: "ул. Раймбека, 212",
       lat: 43.2417,
@@ -81,7 +87,7 @@ async function main() {
   for (const loc of locations) {
     await prisma.location.upsert({
       where: { id: loc.id },
-      update: {},
+      update: { ownership: loc.ownership },
       create: { ...loc, organizationId: org.id, regionId: region.id },
     });
   }

@@ -104,3 +104,14 @@ export const CUSTOMER_MANAGE_ROLES: Role[] = [
 ];
 
 export const PAYMENT_RECORD_ROLES: Role[] = CUSTOMER_VIEW_ROLES;
+
+// Adding/editing locations and comparing performance across the whole
+// network is an organization-structure decision, so it follows the same
+// roles as finance/HR network-wide oversight rather than per-store roles.
+export const LOCATION_MANAGE_ROLES: Role[] = [
+  Role.OWNER,
+  Role.ADMIN,
+  Role.REGIONAL_MANAGER,
+];
+
+export const NETWORK_VIEW_ROLES: Role[] = ORG_WIDE_ROLES;

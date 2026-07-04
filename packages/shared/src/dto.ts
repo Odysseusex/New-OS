@@ -1,10 +1,11 @@
 import { Role } from "./roles";
-import { LocationType } from "./location";
+import { LocationOwnership, LocationType } from "./location";
 
 export interface LocationDto {
   id: string;
   name: string;
   type: LocationType;
+  ownership: LocationOwnership;
   regionId: string | null;
   city: string;
   address: string;
@@ -15,6 +16,26 @@ export interface LocationDto {
 export interface LocationOverviewDto extends LocationDto {
   todayRevenue: number | null;
   lowStockCount: number | null;
+}
+
+export interface CreateLocationRequestDto {
+  name: string;
+  type: LocationType;
+  ownership?: LocationOwnership;
+  regionId?: string;
+  city: string;
+  address: string;
+  lat?: number;
+  lng?: number;
+}
+
+export interface LocationComparisonDto extends LocationDto {
+  revenue: number;
+  salesCount: number;
+  averageTicket: number;
+  lowStockCount: number;
+  activeStaffCount: number;
+  expenses: number;
 }
 
 export interface RegionDto {
