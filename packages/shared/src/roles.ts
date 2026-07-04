@@ -90,3 +90,17 @@ export const HR_MANAGE_ROLES: Role[] = [
   Role.STORE_MANAGER,
   Role.PRODUCTION_MANAGER,
 ];
+
+// Customer directory is organization-wide (a wholesale client isn't tied to
+// one location), so viewing/using it follows the same people who record
+// sales, plus accounting for reconciliation.
+export const CUSTOMER_VIEW_ROLES: Role[] = [...SALE_CREATE_ROLES, Role.ACCOUNTANT];
+
+export const CUSTOMER_MANAGE_ROLES: Role[] = [
+  Role.OWNER,
+  Role.ADMIN,
+  Role.STORE_MANAGER,
+  Role.ACCOUNTANT,
+];
+
+export const PAYMENT_RECORD_ROLES: Role[] = CUSTOMER_VIEW_ROLES;

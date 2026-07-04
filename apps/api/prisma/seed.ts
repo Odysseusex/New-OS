@@ -522,6 +522,42 @@ async function main() {
     });
   }
 
+  const customer = await prisma.customer.upsert({
+    where: { id: "customer-cafe-vostok" },
+    update: {},
+    create: {
+      id: "customer-cafe-vostok",
+      organizationId: org.id,
+      name: "Кафе «Восток»",
+      phone: "+7 701 555 1212",
+      email: "zakup@cafe-vostok.kz",
+      address: "Алматы, ул. Гоголя, 30",
+      notes: "Оптовый клиент, заказывает багеты и круассаны 2 раза в неделю",
+      creditLimit: 200000,
+    },
+  });
+
+  const existingCustomerSales = await prisma.sale.count({ where: { organizationId: org.id, customerId: customer.id } });
+  if (existingCustomerSales === 0) {
+    const items = [
+      { productId: "prod-baguette", quantity: 20, unitPrice: 650, subtotal: 20 * 650 },
+      { productId: "prod-croissant", quantity: 30, unitPrice: 450, subtotal: 30 * 450 },
+    ];
+    const totalAmount = items.reduce((sum, i) => sum + i.subtotal, 0);
+
+    await prisma.sale.create({
+      data: {
+        organizationId: org.id,
+        locationId: LOC_STORE_1,
+        customerId: customer.id,
+        totalAmount,
+        amountPaid: 10000,
+        createdById: manager?.id ?? owner.id,
+        items: { create: items },
+      },
+    });
+  }
+
   console.log("Seed complete. Demo login: owner@bakery.demo / password123");
 }
 

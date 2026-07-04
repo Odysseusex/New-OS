@@ -1,10 +1,19 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { SaleDetailDto, SaleDto, SalesSummaryDto } from "@bakery-os/shared";
+import { PaymentStatus, SaleDetailDto, SaleDto, SalesSummaryDto } from "@bakery-os/shared";
 import { StockMovementType } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
 import { CreateSaleDto } from "./dto/create-sale.dto";
+import { RecordPaymentDto } from "./dto/record-payment.dto";
+
+const SALE_INCLUDE = { location: true, customer: true, createdBy: true, items: true };
+const SALE_DETAIL_INCLUDE = {
+  location: true,
+  customer: true,
+  createdBy: true,
+  items: { include: { product: true } },
+};
 
 @Injectable()
 export class SalesService {
@@ -18,7 +27,7 @@ export class SalesService {
         organizationId: user.organizationId,
         ...(locationId ? { locationId } : {}),
       },
-      include: { location: true, createdBy: true, items: true },
+      include: SALE_INCLUDE,
       orderBy: { soldAt: "desc" },
       take: limit,
     });
@@ -59,6 +68,15 @@ export class SalesService {
   async create(user: AuthenticatedUser, dto: CreateSaleDto): Promise<SaleDetailDto> {
     const locationId = requireLocationScope(user, dto.locationId);
 
+    if (dto.customerId) {
+      const customer = await this.prisma.customer.findFirst({
+        where: { id: dto.customerId, organizationId: user.organizationId },
+      });
+      if (!customer) {
+        throw new NotFoundException("Клиент не найден");
+      }
+    }
+
     const productIds = dto.items.map((i) => i.productId);
     const items = dto.items.map((item) => ({
       productId: item.productId,
@@ -67,6 +85,10 @@ export class SalesService {
       subtotal: item.quantity * item.unitPrice,
     }));
     const totalAmount = items.reduce((sum, i) => sum + i.subtotal, 0);
+
+    // Walk-in retail sales are always settled immediately. Only a sale tied
+    // to a customer account can be placed on credit (partially or fully).
+    const amountPaid = dto.customerId ? Math.min(dto.amountPaid ?? 0, totalAmount) : totalAmount;
 
     return this.prisma.$transaction(async (tx) => {
       const products = await tx.product.findMany({
@@ -95,11 +117,13 @@ export class SalesService {
         data: {
           organizationId: user.organizationId,
           locationId,
+          customerId: dto.customerId,
           totalAmount,
+          amountPaid,
           createdById: user.id,
           items: { create: items },
         },
-        include: { location: true, createdBy: true, items: { include: { product: true } } },
+        include: SALE_DETAIL_INCLUDE,
       });
 
       for (const item of items) {
@@ -126,30 +150,71 @@ export class SalesService {
     });
   }
 
+  async recordPayment(user: AuthenticatedUser, saleId: string, dto: RecordPaymentDto): Promise<SaleDetailDto> {
+    const sale = await this.prisma.sale.findFirst({
+      where: { id: saleId, organizationId: user.organizationId },
+    });
+    if (!sale) {
+      throw new NotFoundException("Продажа не найдена");
+    }
+    resolveLocationScope(user, sale.locationId);
+
+    const balanceDue = sale.totalAmount.toNumber() - sale.amountPaid.toNumber();
+    if (dto.amount > balanceDue) {
+      throw new BadRequestException("Сумма оплаты превышает остаток задолженности");
+    }
+
+    const updated = await this.prisma.sale.update({
+      where: { id: saleId },
+      data: { amountPaid: { increment: dto.amount } },
+      include: SALE_DETAIL_INCLUDE,
+    });
+
+    return this.toSaleDetailDto(updated);
+  }
+
   private toSaleDto = (sale: {
     id: string;
     locationId: string;
     location: { name: string };
+    customerId: string | null;
+    customer: { name: string } | null;
     soldAt: Date;
     totalAmount: { toNumber: () => number };
+    amountPaid: { toNumber: () => number };
     createdBy: { fullName: string };
     items: unknown[];
-  }): SaleDto => ({
-    id: sale.id,
-    locationId: sale.locationId,
-    locationName: sale.location.name,
-    soldAt: sale.soldAt.toISOString(),
-    totalAmount: sale.totalAmount.toNumber(),
-    itemsCount: sale.items.length,
-    createdByName: sale.createdBy.fullName,
-  });
+  }): SaleDto => {
+    const totalAmount = sale.totalAmount.toNumber();
+    const amountPaid = sale.amountPaid.toNumber();
+    const balanceDue = totalAmount - amountPaid;
+
+    return {
+      id: sale.id,
+      locationId: sale.locationId,
+      locationName: sale.location.name,
+      customerId: sale.customerId,
+      customerName: sale.customer?.name ?? null,
+      soldAt: sale.soldAt.toISOString(),
+      totalAmount,
+      amountPaid,
+      balanceDue,
+      paymentStatus:
+        balanceDue <= 0 ? PaymentStatus.PAID : amountPaid > 0 ? PaymentStatus.PARTIALLY_PAID : PaymentStatus.UNPAID,
+      itemsCount: sale.items.length,
+      createdByName: sale.createdBy.fullName,
+    };
+  };
 
   private toSaleDetailDto = (sale: {
     id: string;
     locationId: string;
     location: { name: string };
+    customerId: string | null;
+    customer: { name: string } | null;
     soldAt: Date;
     totalAmount: { toNumber: () => number };
+    amountPaid: { toNumber: () => number };
     createdBy: { fullName: string };
     items: {
       id: string;

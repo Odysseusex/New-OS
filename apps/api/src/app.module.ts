@@ -17,6 +17,7 @@ import { VehiclesModule } from "./vehicles/vehicles.module";
 import { LogisticsModule } from "./logistics/logistics.module";
 import { FinanceModule } from "./finance/finance.module";
 import { HrModule } from "./hr/hr.module";
+import { CustomersModule } from "./customers/customers.module";
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { HrModule } from "./hr/hr.module";
     LogisticsModule,
     FinanceModule,
     HrModule,
+    CustomersModule,
   ],
   controllers: [AppController],
 })

@@ -2,6 +2,7 @@ export * from "./roles";
 export * from "./location";
 export * from "./catalog";
 export * from "./inventory";
+export * from "./customers";
 export * from "./sales";
 export * from "./production";
 export * from "./procurement";

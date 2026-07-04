@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import type { LocationDto, ProductDto } from "@bakery-os/shared";
+import type { CustomerDto, LocationDto, ProductDto } from "@bakery-os/shared";
 import { UNIT_LABELS_RU } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
@@ -17,12 +17,14 @@ interface Row {
 export function NewSaleModal({
   locations,
   products,
+  customers,
   fixedLocationId,
   onClose,
   onCreated,
 }: {
   locations: LocationDto[];
   products: ProductDto[];
+  customers: CustomerDto[];
   fixedLocationId: string | null;
   onClose: () => void;
   onCreated: () => void;
@@ -30,6 +32,8 @@ export function NewSaleModal({
   const stores = locations.filter((l) => l.type === "STORE");
   const [locationId, setLocationId] = useState(fixedLocationId ?? stores[0]?.id ?? "");
   const [rows, setRows] = useState<Row[]>([{ productId: products[0]?.id ?? "", quantity: "1", unitPrice: String(products[0]?.price ?? "") }]);
+  const [customerId, setCustomerId] = useState("");
+  const [amountPaid, setAmountPaid] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -59,6 +63,8 @@ export function NewSaleModal({
     try {
       await api.sales.create({
         locationId: fixedLocationId ?? locationId,
+        customerId: customerId || undefined,
+        amountPaid: customerId ? Number(amountPaid) || 0 : undefined,
         items: rows.map((r) => ({
           productId: r.productId,
           quantity: Number(r.quantity),
@@ -144,6 +150,45 @@ export function NewSaleModal({
           <Plus className="h-4 w-4" strokeWidth={1.75} />
           Добавить товар
         </button>
+
+        <div className="mb-4">
+          <label className="mb-1.5 block text-sm font-medium text-foreground">
+            Клиент <span className="text-muted">(необязательно — для оптовой продажи в долг)</span>
+          </label>
+          <select
+            value={customerId}
+            onChange={(e) => {
+              setCustomerId(e.target.value);
+              if (!e.target.value) setAmountPaid("");
+            }}
+            className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+          >
+            <option value="">Розничная продажа (без клиента)</option>
+            {customers.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {customerId && (
+          <div className="mb-4">
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
+              Оплачено сейчас <span className="text-muted">(остальное — в долг)</span>
+            </label>
+            <input
+              type="number"
+              min="0"
+              max={total}
+              step="any"
+              value={amountPaid}
+              onChange={(e) => setAmountPaid(e.target.value)}
+              placeholder="0"
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+          </div>
+        )}
 
         <div className="mb-5 flex items-center justify-between rounded-xl bg-surface-muted px-4 py-3">
           <span className="text-sm text-muted">Итого</span>

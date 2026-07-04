@@ -1,13 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import clsx from "clsx";
 import { Plus, Receipt, TrendingUp, Wallet } from "lucide-react";
-import type { LocationDto, ProductDto, SaleDto, SalesSummaryDto } from "@bakery-os/shared";
-import { ORG_WIDE_ROLES, SALE_CREATE_ROLES } from "@bakery-os/shared";
+import type { CustomerDto, LocationDto, ProductDto, SaleDto, SalesSummaryDto } from "@bakery-os/shared";
+import { ORG_WIDE_ROLES, PAYMENT_STATUS_LABELS_RU, PaymentStatus, SALE_CREATE_ROLES } from "@bakery-os/shared";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { NewSaleModal } from "@/components/new-sale-modal";
+
+const STATUS_STYLES: Record<PaymentStatus, string> = {
+  [PaymentStatus.PAID]: "bg-emerald-50 text-emerald-700",
+  [PaymentStatus.PARTIALLY_PAID]: "bg-amber-50 text-amber-700",
+  [PaymentStatus.UNPAID]: "bg-red-50 text-red-700",
+};
 
 export default function SalesPage() {
   const { user } = useAuth();
@@ -16,6 +23,7 @@ export default function SalesPage() {
 
   const [locations, setLocations] = useState<LocationDto[]>([]);
   const [products, setProducts] = useState<ProductDto[]>([]);
+  const [customers, setCustomers] = useState<CustomerDto[]>([]);
   const [summary, setSummary] = useState<SalesSummaryDto | null>(null);
   const [sales, setSales] = useState<SaleDto[]>([]);
   const [locationFilter, setLocationFilter] = useState<string>("");
@@ -34,7 +42,10 @@ export default function SalesPage() {
   useEffect(() => {
     api.locations.list().then(setLocations).catch(() => {});
     api.products.list().then(setProducts).catch(() => {});
-  }, []);
+    if (canCreateSale) {
+      api.customers.list().then(setCustomers).catch(() => {});
+    }
+  }, [canCreateSale]);
 
   useEffect(() => {
     load();
@@ -95,9 +106,11 @@ export default function SalesPage() {
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
               <th className="px-5 py-3 font-medium">Время</th>
               {isOrgWide && <th className="px-5 py-3 font-medium">Точка</th>}
+              <th className="px-5 py-3 font-medium">Клиент</th>
               <th className="px-5 py-3 font-medium">Товаров</th>
               <th className="px-5 py-3 font-medium">Кассир</th>
               <th className="px-5 py-3 text-right font-medium">Сумма</th>
+              <th className="px-5 py-3 font-medium">Оплата</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -105,16 +118,22 @@ export default function SalesPage() {
               <tr key={sale.id}>
                 <td className="px-5 py-3 text-foreground">{formatDateTime(sale.soldAt)}</td>
                 {isOrgWide && <td className="px-5 py-3 text-muted">{sale.locationName}</td>}
+                <td className="px-5 py-3 text-muted">{sale.customerName ?? "Розница"}</td>
                 <td className="px-5 py-3 text-muted">{sale.itemsCount}</td>
                 <td className="px-5 py-3 text-muted">{sale.createdByName}</td>
                 <td className="px-5 py-3 text-right font-medium text-foreground">
                   {formatMoney(sale.totalAmount)}
                 </td>
+                <td className="px-5 py-3">
+                  <span className={clsx("rounded-full px-2.5 py-1 text-xs font-medium", STATUS_STYLES[sale.paymentStatus])}>
+                    {PAYMENT_STATUS_LABELS_RU[sale.paymentStatus]}
+                  </span>
+                </td>
               </tr>
             ))}
             {sales.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-5 py-8 text-center text-sm text-muted">
+                <td colSpan={7} className="px-5 py-8 text-center text-sm text-muted">
                   Продаж пока нет
                 </td>
               </tr>
@@ -127,6 +146,7 @@ export default function SalesPage() {
         <NewSaleModal
           locations={locations}
           products={products}
+          customers={customers}
           fixedLocationId={isOrgWide ? null : (user?.locationId ?? null)}
           onClose={() => setIsModalOpen(false)}
           onCreated={() => {

@@ -19,6 +19,15 @@ export class CreateSaleDto {
   @IsString()
   locationId?: string;
 
+  @IsOptional()
+  @IsString()
+  customerId?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  amountPaid?: number;
+
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })

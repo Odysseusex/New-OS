@@ -1,17 +1,20 @@
 import type {
+  ClockInRequestDto,
   CompleteProductionBatchRequestDto,
+  CreateCustomerRequestDto,
   CreateDeliveryRouteRequestDto,
+  CreateExpenseRequestDto,
   CreateProductionBatchRequestDto,
   CreateProductRequestDto,
   CreatePurchaseOrderRequestDto,
   CreateRecipeRequestDto,
   CreateSaleRequestDto,
+  CreateShiftRequestDto,
   CreateStockMovementRequestDto,
   CreateSupplierRequestDto,
   CreateVehicleRequestDto,
-  CreateExpenseRequestDto,
-  CreateShiftRequestDto,
-  ClockInRequestDto,
+  CustomerDetailDto,
+  CustomerDto,
   DashboardSummaryDto,
   DeliveryRouteDto,
   DriverDto,
@@ -26,6 +29,7 @@ import type {
   ProfitAndLossDto,
   PurchaseOrderDto,
   RecipeDto,
+  RecordPaymentRequestDto,
   SaleDetailDto,
   SaleDto,
   SalesSummaryDto,
@@ -111,6 +115,18 @@ export const api = {
       request<SalesSummaryDto>(withQuery("/sales/summary", { locationId })),
     create: (dto: CreateSaleRequestDto) =>
       request<SaleDetailDto>("/sales", { method: "POST", body: JSON.stringify(dto) }),
+    recordPayment: (id: string, dto: RecordPaymentRequestDto) =>
+      request<SaleDetailDto>(`/sales/${id}/record-payment`, {
+        method: "POST",
+        body: JSON.stringify(dto),
+      }),
+  },
+
+  customers: {
+    list: () => request<CustomerDto[]>("/customers"),
+    findOne: (id: string) => request<CustomerDetailDto>(`/customers/${id}`),
+    create: (dto: CreateCustomerRequestDto) =>
+      request<CustomerDto>("/customers", { method: "POST", body: JSON.stringify(dto) }),
   },
 
   recipes: {

@@ -109,7 +109,7 @@ export const primaryNav: NavItem[] = [
     href: "/customers",
     label: "Клиенты",
     icon: Handshake,
-    status: "soon",
+    status: "live",
     description: "Оптовые клиенты, лояльность, задолженности",
   },
   {
