@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
@@ -17,6 +17,15 @@ const geistMono = localFont({
 export const metadata: Metadata = {
   title: "Bakery OS — Платформа управления пекарней",
   description: "Единая платформа управления сетью пекарен",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Bakery OS",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#b6702f",
 };
 
 export default function RootLayout({
