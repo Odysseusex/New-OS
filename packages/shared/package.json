@@ -7,5 +7,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "echo \"no-op\""
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
   }
 }
