@@ -5,7 +5,6 @@ services:
     plan: free
     region: frankfurt
     buildCommand: >-
-      corepack enable &&
       pnpm install --prod=false &&
       pnpm --filter @bakery-os/shared build &&
       pnpm --filter @bakery-os/api exec prisma generate &&
