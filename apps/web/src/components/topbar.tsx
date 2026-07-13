@@ -1,7 +1,7 @@
 "use client";
 
 import { LogOut } from "lucide-react";
-import { ROLE_LABELS_RU } from "@bakery-os/shared";
+import { ROLE_LABELS_RU, Role } from "@bakery-os/shared";
 import { useAuth } from "@/lib/auth-context";
 
 export function Topbar() {
@@ -18,7 +18,9 @@ export function Topbar() {
       <div className="flex items-center gap-3">
         <div className="text-right">
           <p className="text-sm font-medium leading-tight text-foreground">{user.fullName}</p>
-          <p className="text-xs leading-tight text-muted">{ROLE_LABELS_RU[user.role]}</p>
+          <p className="text-xs leading-tight text-muted">
+            {user.role === Role.OWNER ? "App Owner" : ROLE_LABELS_RU[user.role]}
+          </p>
         </div>
         <div className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-muted text-sm font-medium text-foreground">
           {user.fullName.charAt(0)}
