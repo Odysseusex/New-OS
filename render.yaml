@@ -9,8 +9,7 @@ services:
       pnpm --filter @bakery-os/shared build &&
       pnpm --filter @bakery-os/api exec prisma generate &&
       pnpm --filter @bakery-os/api build &&
-      pnpm --filter @bakery-os/api exec prisma migrate deploy &&
-      pnpm --filter @bakery-os/api exec prisma db seed
+      pnpm --filter @bakery-os/api exec prisma migrate deploy
     startCommand: node apps/api/dist/src/main.js
     healthCheckPath: /api/health
     envVars:
