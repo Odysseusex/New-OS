@@ -15,12 +15,12 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Bakery OS — Платформа управления пекарней",
-  description: "Единая платформа управления сетью пекарен",
+  title: "ArAmir OS — Платформа управления пекарней",
+  description: "Единая платформа управления пекарней Ar-Amir",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Bakery OS",
+    title: "ArAmir OS",
   },
 };
 

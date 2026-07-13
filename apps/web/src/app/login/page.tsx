@@ -5,8 +5,8 @@ import { useAuth, ApiError } from "@/lib/auth-context";
 
 export default function LoginPage() {
   const { login } = useAuth();
-  const [email, setEmail] = useState("owner@bakery.demo");
-  const [password, setPassword] = useState("password123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -27,11 +27,14 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-accent text-xl font-semibold text-accent-foreground">
-            Б
-          </div>
-          <h1 className="text-xl font-semibold text-foreground">Bakery OS</h1>
-          <p className="mt-1 text-sm text-muted">Платформа управления сетью пекарен</p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo.png"
+            alt="ArAmir OS"
+            className="mx-auto mb-4 h-12 w-12 rounded-2xl object-cover"
+          />
+          <h1 className="text-xl font-semibold text-foreground">ArAmir OS</h1>
+          <p className="mt-1 text-sm text-muted">Платформа управления пекарней Ar-Amir</p>
         </div>
 
         <form
@@ -85,10 +88,6 @@ export default function LoginPage() {
             {isSubmitting ? "Вход…" : "Войти"}
           </button>
         </form>
-
-        <p className="mt-4 text-center text-xs text-muted">
-          Демо-доступ: owner@bakery.demo / password123
-        </p>
       </div>
     </main>
   );
