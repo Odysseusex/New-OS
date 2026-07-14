@@ -6,6 +6,7 @@ import type {
   CreateCustomerRequestDto,
   CreateDeliveryRouteRequestDto,
   CreateExpenseRequestDto,
+  CreateInvoiceRequestDto,
   CreateProductionBatchRequestDto,
   CreateProductRequestDto,
   CreatePurchaseOrderRequestDto,
@@ -25,6 +26,7 @@ import type {
   EmployeeDto,
   ExpenseDto,
   HrKpiResponseDto,
+  InvoiceDto,
   LocationComparisonDto,
   LocationDto,
   LocationOverviewDto,
@@ -232,6 +234,14 @@ export const api = {
       request<PurchaseOrderDto>(`/procurement/orders/${id}/receive`, { method: "POST" }),
     cancelOrder: (id: string) =>
       request<PurchaseOrderDto>(`/procurement/orders/${id}/cancel`, { method: "POST" }),
+  },
+
+  invoices: {
+    list: (locationId?: string) => request<InvoiceDto[]>(withQuery("/invoices", { locationId })),
+    create: (dto: CreateInvoiceRequestDto) =>
+      request<InvoiceDto>("/invoices", { method: "POST", body: JSON.stringify(dto) }),
+    confirm: (id: string) => request<InvoiceDto>(`/invoices/${id}/confirm`, { method: "POST" }),
+    cancel: (id: string) => request<InvoiceDto>(`/invoices/${id}/cancel`, { method: "POST" }),
   },
 
   vehicles: {

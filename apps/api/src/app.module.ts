@@ -20,6 +20,7 @@ import { FinanceModule } from "./finance/finance.module";
 import { HrModule } from "./hr/hr.module";
 import { CustomersModule } from "./customers/customers.module";
 import { UsersModule } from "./users/users.module";
+import { InvoicesModule } from "./invoices/invoices.module";
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { UsersModule } from "./users/users.module";
     HrModule,
     CustomersModule,
     UsersModule,
+    InvoicesModule,
   ],
   controllers: [AppController],
 })

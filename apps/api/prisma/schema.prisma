@@ -73,6 +73,21 @@ enum PurchaseOrderStatus {
   CANCELLED
 }
 
+enum InvoiceStatus {
+  DRAFT
+  CONFIRMED
+  CANCELLED
+}
+
+// Where an invoice's data originated. MANUAL is the only path today —
+// AI_SCAN and API_SYNC are placeholders so a future paper-photo OCR flow or
+// a UMAG/1С sync can populate invoices without another schema migration.
+enum InvoiceSource {
+  MANUAL
+  AI_SCAN
+  API_SYNC
+}
+
 enum VehicleStatus {
   AVAILABLE
   ON_ROUTE
@@ -115,6 +130,7 @@ model Organization {
   regions   Region[]
   locations Location[]
   users     User[]
+  invoices  Invoice[]
 
   @@map("organizations")
 }
@@ -161,6 +177,7 @@ model Location {
   sales             Sale[]
   productionBatches ProductionBatch[]
   purchaseOrders    PurchaseOrder[]
+  invoices          Invoice[]
   originRoutes      DeliveryRoute[]   @relation("RouteOrigin")
   destinationStops  RouteStop[]       @relation("RouteDestination")
   expenses          Expense[]
@@ -203,6 +220,7 @@ model User {
   shiftsCreated     Shift[]           @relation("ShiftCreatedBy")
   timeEntries       TimeEntry[]       @relation("TimeEntryEmployee")
   recipeRevisions   RecipeRevision[]
+  invoices          Invoice[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -248,6 +266,7 @@ model Product {
   recipe             Recipe?             @relation("RecipeOutput")
   usedInRecipeItems  RecipeItem[]        @relation("RecipeIngredient")
   purchaseOrderItems PurchaseOrderItem[]
+  invoiceItems       InvoiceItem[]
   routeStopItems     RouteStopItem[]
 
   @@unique([organizationId, sku])
@@ -292,6 +311,8 @@ model StockMovement {
   purchaseOrder   PurchaseOrder?    @relation(fields: [purchaseOrderId], references: [id])
   routeStopId     String?
   routeStop       RouteStop?        @relation(fields: [routeStopId], references: [id])
+  invoiceId       String?
+  invoice         Invoice?          @relation(fields: [invoiceId], references: [id])
   createdById     String
   createdBy       User              @relation(fields: [createdById], references: [id])
   createdAt       DateTime          @default(now())
@@ -444,6 +465,7 @@ model Supplier {
   updatedAt      DateTime @updatedAt
 
   purchaseOrders PurchaseOrder[]
+  invoices       Invoice[]
 
   @@index([organizationId])
   @@map("suppliers")
@@ -484,6 +506,53 @@ model PurchaseOrderItem {
   subtotal        Decimal       @db.Decimal(12, 2)
 
   @@map("purchase_order_items")
+}
+
+// A documented delivery note — what a supplier physically hands over with
+// goods, transcribed into the system (today by hand; AI_SCAN/API_SYNC are
+// future sources for the same shape of record). Confirming one is the
+// formal, paper-trailed way to receive stock, independent of whether a
+// PurchaseOrder was placed first.
+model Invoice {
+  id             String        @id @default(cuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  locationId     String
+  location       Location      @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  supplierId     String
+  supplier       Supplier      @relation(fields: [supplierId], references: [id])
+  number         String
+  issuedAt       DateTime      @default(now())
+  status         InvoiceStatus @default(DRAFT)
+  source         InvoiceSource @default(MANUAL)
+  photoUrl       String?
+  externalSyncId String?
+  notes          String?
+  totalCost      Decimal       @db.Decimal(12, 2)
+  createdById    String
+  createdBy      User          @relation(fields: [createdById], references: [id])
+  confirmedAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  items          InvoiceItem[]
+  stockMovements StockMovement[]
+
+  @@index([organizationId, locationId])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id        String  @id @default(cuid())
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Decimal @db.Decimal(12, 3)
+  unitCost  Decimal @db.Decimal(12, 2)
+  subtotal  Decimal @db.Decimal(12, 2)
+
+  @@map("invoice_items")
 }
 
 model Vehicle {

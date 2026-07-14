@@ -3,9 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
 import { CheckCircle2, Plus, XCircle } from "lucide-react";
-import type { LocationDto, ProductDto, PurchaseOrderDto, SupplierDto } from "@bakery-os/shared";
+import type { InvoiceDto, LocationDto, ProductDto, PurchaseOrderDto, SupplierDto } from "@bakery-os/shared";
 import {
   HARD_DELETE_ROLES,
+  INVOICE_MANAGE_ROLES,
+  INVOICE_STATUS_LABELS_RU,
+  InvoiceStatus,
   ORG_WIDE_ROLES,
   PURCHASE_ORDER_MANAGE_ROLES,
   PURCHASE_ORDER_STATUS_LABELS_RU,
@@ -16,15 +19,17 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { NewPurchaseOrderModal } from "@/components/new-purchase-order-modal";
+import { NewInvoiceModal } from "@/components/new-invoice-modal";
 import { NewSupplierModal } from "@/components/new-supplier-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 
-type Tab = "orders" | "suppliers";
+type Tab = "orders" | "invoices" | "suppliers";
 
 export default function ProcurementPage() {
   const { user } = useAuth();
   const isOrgWide = user ? ORG_WIDE_ROLES.includes(user.role) : false;
   const canManageOrders = user ? PURCHASE_ORDER_MANAGE_ROLES.includes(user.role) : false;
+  const canManageInvoices = user ? INVOICE_MANAGE_ROLES.includes(user.role) : false;
   const canManageSuppliers = user ? SUPPLIER_MANAGE_ROLES.includes(user.role) : false;
   const canDelete = user ? HARD_DELETE_ROLES.includes(user.role) : false;
 
@@ -33,9 +38,10 @@ export default function ProcurementPage() {
   const [products, setProducts] = useState<ProductDto[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierDto[]>([]);
   const [orders, setOrders] = useState<PurchaseOrderDto[]>([]);
+  const [invoices, setInvoices] = useState<InvoiceDto[]>([]);
   const [locationFilter, setLocationFilter] = useState("");
   const [showArchivedSuppliers, setShowArchivedSuppliers] = useState(false);
-  const [modal, setModal] = useState<"order" | "supplier" | null>(null);
+  const [modal, setModal] = useState<"order" | "invoice" | "supplier" | null>(null);
   const [editingSupplier, setEditingSupplier] = useState<SupplierDto | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,6 +50,13 @@ export default function ProcurementPage() {
       .orders(locationFilter || undefined)
       .then(setOrders)
       .catch(() => setError("Не удалось загрузить заказы"));
+  }, [locationFilter]);
+
+  const loadInvoices = useCallback(() => {
+    api.invoices
+      .list(locationFilter || undefined)
+      .then(setInvoices)
+      .catch(() => setError("Не удалось загрузить накладные"));
   }, [locationFilter]);
 
   const loadSuppliers = useCallback(() => {
@@ -63,6 +76,10 @@ export default function ProcurementPage() {
     loadOrders();
   }, [loadOrders]);
 
+  useEffect(() => {
+    loadInvoices();
+  }, [loadInvoices]);
+
   const fixedLocationId = isOrgWide ? null : (user?.locationId ?? null);
 
   async function handleReceive(order: PurchaseOrderDto) {
@@ -80,6 +97,24 @@ export default function ProcurementPage() {
       loadOrders();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось отменить заказ");
+    }
+  }
+
+  async function handleConfirmInvoice(invoice: InvoiceDto) {
+    try {
+      await api.invoices.confirm(invoice.id);
+      loadInvoices();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось провести накладную");
+    }
+  }
+
+  async function handleCancelInvoice(invoice: InvoiceDto) {
+    try {
+      await api.invoices.cancel(invoice.id);
+      loadInvoices();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось отменить накладную");
     }
   }
 
@@ -129,13 +164,16 @@ export default function ProcurementPage() {
           <TabButton active={tab === "orders"} onClick={() => setTab("orders")}>
             Заказы
           </TabButton>
+          <TabButton active={tab === "invoices"} onClick={() => setTab("invoices")}>
+            Накладные
+          </TabButton>
           <TabButton active={tab === "suppliers"} onClick={() => setTab("suppliers")}>
             Поставщики
           </TabButton>
         </div>
 
         <div className="flex items-center gap-3">
-          {tab === "orders" && isOrgWide && (
+          {(tab === "orders" || tab === "invoices") && isOrgWide && (
             <select
               value={locationFilter}
               onChange={(e) => setLocationFilter(e.target.value)}
@@ -157,6 +195,16 @@ export default function ProcurementPage() {
             >
               <Plus className="h-4 w-4" strokeWidth={1.75} />
               Новый заказ
+            </button>
+          )}
+
+          {tab === "invoices" && canManageInvoices && (
+            <button
+              onClick={() => setModal("invoice")}
+              className="flex items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
+            >
+              <Plus className="h-4 w-4" strokeWidth={1.75} />
+              Новая накладная
             </button>
           )}
 
@@ -240,6 +288,67 @@ export default function ProcurementPage() {
         </div>
       )}
 
+      {tab === "invoices" && (
+        <div className="rounded-2xl border border-border bg-surface shadow-card">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+                <th className="px-5 py-3 font-medium">Номер</th>
+                <th className="px-5 py-3 font-medium">Поставщик</th>
+                {isOrgWide && <th className="px-5 py-3 font-medium">Точка</th>}
+                <th className="px-5 py-3 text-right font-medium">Сумма</th>
+                <th className="px-5 py-3 font-medium">Статус</th>
+                <th className="px-5 py-3 font-medium">Дата</th>
+                {canManageInvoices && <th className="px-5 py-3 font-medium">Действия</th>}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {invoices.map((invoice) => (
+                <tr key={invoice.id}>
+                  <td className="px-5 py-3 font-medium text-foreground">№{invoice.number}</td>
+                  <td className="px-5 py-3 text-muted">{invoice.supplierName}</td>
+                  {isOrgWide && <td className="px-5 py-3 text-muted">{invoice.locationName}</td>}
+                  <td className="px-5 py-3 text-right text-foreground">{formatMoney(invoice.totalCost)}</td>
+                  <td className="px-5 py-3">
+                    <InvoiceStatusBadge status={invoice.status} />
+                  </td>
+                  <td className="px-5 py-3 text-muted">{formatDateTime(invoice.issuedAt)}</td>
+                  {canManageInvoices && (
+                    <td className="px-5 py-3">
+                      {invoice.status === InvoiceStatus.DRAFT && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleConfirmInvoice(invoice)}
+                            title="Провести"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-green-600"
+                          >
+                            <CheckCircle2 className="h-4 w-4" strokeWidth={1.75} />
+                          </button>
+                          <button
+                            onClick={() => handleCancelInvoice(invoice)}
+                            title="Отменить"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-red-600"
+                          >
+                            <XCircle className="h-4 w-4" strokeWidth={1.75} />
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              ))}
+              {invoices.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-5 py-8 text-center text-sm text-muted">
+                    Накладных пока нет
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {tab === "suppliers" && (
         <div className="rounded-2xl border border-border bg-surface shadow-card">
           <table className="w-full text-sm">
@@ -306,6 +415,20 @@ export default function ProcurementPage() {
         />
       )}
 
+      {modal === "invoice" && (
+        <NewInvoiceModal
+          suppliers={suppliers.filter((s) => s.isActive)}
+          locations={locations}
+          products={products}
+          fixedLocationId={fixedLocationId}
+          onClose={() => setModal(null)}
+          onCreated={() => {
+            setModal(null);
+            loadInvoices();
+          }}
+        />
+      )}
+
       {modal === "supplier" && (
         <NewSupplierModal
           supplier={editingSupplier}
@@ -329,6 +452,19 @@ function StatusBadge({ status }: { status: PurchaseOrderStatus }) {
   return (
     <span className={clsx("rounded-full px-2.5 py-1 text-xs font-medium", styles[status])}>
       {PURCHASE_ORDER_STATUS_LABELS_RU[status]}
+    </span>
+  );
+}
+
+function InvoiceStatusBadge({ status }: { status: InvoiceStatus }) {
+  const styles: Record<InvoiceStatus, string> = {
+    [InvoiceStatus.DRAFT]: "bg-amber-50 text-amber-700",
+    [InvoiceStatus.CONFIRMED]: "bg-green-50 text-green-700",
+    [InvoiceStatus.CANCELLED]: "bg-surface-muted text-muted",
+  };
+  return (
+    <span className={clsx("rounded-full px-2.5 py-1 text-xs font-medium", styles[status])}>
+      {INVOICE_STATUS_LABELS_RU[status]}
     </span>
   );
 }
