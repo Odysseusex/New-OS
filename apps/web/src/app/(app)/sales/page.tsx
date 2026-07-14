@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { NewSaleModal } from "@/components/new-sale-modal";
+import { SaleDetailModal } from "@/components/sale-detail-modal";
 
 const STATUS_STYLES: Record<PaymentStatus, string> = {
   [PaymentStatus.PAID]: "bg-emerald-50 text-emerald-700",
@@ -28,6 +29,7 @@ export default function SalesPage() {
   const [sales, setSales] = useState<SaleDto[]>([]);
   const [locationFilter, setLocationFilter] = useState<string>("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -66,13 +68,11 @@ export default function SalesPage() {
               className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
             >
               <option value="">Вся сеть</option>
-              {locations
-                .filter((l) => l.type === "STORE")
-                .map((loc) => (
-                  <option key={loc.id} value={loc.id}>
-                    {loc.name}
-                  </option>
-                ))}
+              {locations.map((loc) => (
+                <option key={loc.id} value={loc.id}>
+                  {loc.name}
+                </option>
+              ))}
             </select>
           )}
           {canCreateSale && (
@@ -115,7 +115,11 @@ export default function SalesPage() {
           </thead>
           <tbody className="divide-y divide-border">
             {sales.map((sale) => (
-              <tr key={sale.id}>
+              <tr
+                key={sale.id}
+                onClick={() => setSelectedSaleId(sale.id)}
+                className="cursor-pointer transition hover:bg-surface-muted"
+              >
                 <td className="px-5 py-3 text-foreground">{formatDateTime(sale.soldAt)}</td>
                 {isOrgWide && <td className="px-5 py-3 text-muted">{sale.locationName}</td>}
                 <td className="px-5 py-3 text-muted">{sale.customerName ?? "Розница"}</td>
@@ -154,6 +158,10 @@ export default function SalesPage() {
             load();
           }}
         />
+      )}
+
+      {selectedSaleId && (
+        <SaleDetailModal saleId={selectedSaleId} onClose={() => setSelectedSaleId(null)} />
       )}
     </div>
   );

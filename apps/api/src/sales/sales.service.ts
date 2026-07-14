@@ -65,6 +65,18 @@ export class SalesService {
     };
   }
 
+  async findOne(user: AuthenticatedUser, saleId: string): Promise<SaleDetailDto> {
+    const sale = await this.prisma.sale.findFirst({
+      where: { id: saleId, organizationId: user.organizationId },
+      include: SALE_DETAIL_INCLUDE,
+    });
+    if (!sale) {
+      throw new NotFoundException("Продажа не найдена");
+    }
+    resolveLocationScope(user, sale.locationId);
+    return this.toSaleDetailDto(sale);
+  }
+
   async create(user: AuthenticatedUser, dto: CreateSaleDto): Promise<SaleDetailDto> {
     const locationId = requireLocationScope(user, dto.locationId);
 

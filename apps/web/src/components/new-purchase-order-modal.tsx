@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import type { LocationDto, ProductDto, SupplierDto } from "@bakery-os/shared";
 import { UNIT_LABELS_RU } from "@bakery-os/shared";
@@ -31,9 +31,27 @@ export function NewPurchaseOrderModal({
 }) {
   const [supplierId, setSupplierId] = useState(suppliers[0]?.id ?? "");
   const [locationId, setLocationId] = useState(fixedLocationId ?? locations[0]?.id ?? "");
-  const [rows, setRows] = useState<Row[]>([{ productId: products[0]?.id ?? "", quantity: "1", unitCost: "0" }]);
+  const [rows, setRows] = useState<Row[]>([{ productId: "", quantity: "1", unitCost: "0" }]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // suppliers/locations/products can still be loading when this modal opens,
+  // so the first render may have nothing to default to. Backfill once the
+  // lists arrive, without touching a row the user already edited.
+  useEffect(() => {
+    if (!supplierId && suppliers.length > 0) setSupplierId(suppliers[0].id);
+  }, [suppliers, supplierId]);
+
+  useEffect(() => {
+    if (!locationId && locations.length > 0) {
+      setLocationId(fixedLocationId ?? locations[0].id);
+    }
+  }, [locations, locationId, fixedLocationId]);
+
+  useEffect(() => {
+    if (products.length === 0) return;
+    setRows((prev) => prev.map((r) => (r.productId ? r : { ...r, productId: products[0].id })));
+  }, [products]);
 
   const total = rows.reduce((sum, r) => sum + (Number(r.quantity) || 0) * (Number(r.unitCost) || 0), 0);
 

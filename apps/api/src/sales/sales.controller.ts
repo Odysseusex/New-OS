@@ -24,6 +24,11 @@ export class SalesController {
     return this.salesService.summary(user, locationId);
   }
 
+  @Get(":id")
+  findOne(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
+    return this.salesService.findOne(user, id);
+  }
+
   @Post()
   @Roles(...SALE_CREATE_ROLES)
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateSaleDto) {

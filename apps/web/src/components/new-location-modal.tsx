@@ -30,6 +30,8 @@ export function NewLocationModal({
   const [regionId, setRegionId] = useState(location?.regionId ?? regions[0]?.id ?? "");
   const [city, setCity] = useState(location?.city ?? "");
   const [address, setAddress] = useState(location?.address ?? "");
+  const [lat, setLat] = useState(location?.lat !== null && location?.lat !== undefined ? String(location.lat) : "");
+  const [lng, setLng] = useState(location?.lng !== null && location?.lng !== undefined ? String(location.lng) : "");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -38,7 +40,16 @@ export function NewLocationModal({
     setError(null);
     setIsSubmitting(true);
     try {
-      const dto = { name, type, ownership, regionId: regionId || undefined, city, address };
+      const dto = {
+        name,
+        type,
+        ownership,
+        regionId: regionId || undefined,
+        city,
+        address,
+        lat: lat ? Number(lat) : undefined,
+        lng: lng ? Number(lng) : undefined,
+      };
       if (location) {
         await api.locations.update(location.id, dto);
       } else {
@@ -138,14 +149,42 @@ export function NewLocationModal({
           </div>
         </div>
 
+        <div className="mb-2">
+          <label className="mb-1.5 block text-sm font-medium text-foreground">
+            Координаты <span className="text-muted">(необязательно, для карты)</span>
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <input
+              type="number"
+              step="any"
+              placeholder="Широта, напр. 43.2389"
+              value={lat}
+              onChange={(e) => setLat(e.target.value)}
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+            <input
+              type="number"
+              step="any"
+              placeholder="Долгота, напр. 76.9454"
+              value={lng}
+              onChange={(e) => setLng(e.target.value)}
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+          </div>
+          <p className="mt-1.5 text-xs text-muted">
+            Найдите точку в 2ГИС или Google Картах, нажмите правой кнопкой на неё — координаты
+            появятся в меню, скопируйте и вставьте сюда.
+          </p>
+        </div>
+
         {error && (
-          <div className="mb-4 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+          <div className="mb-4 mt-4 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
         )}
 
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-60"
+          className="mt-4 w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-60"
         >
           {isSubmitting ? "Сохранение…" : location ? "Сохранить" : "Добавить точку"}
         </button>

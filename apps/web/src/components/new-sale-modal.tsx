@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import type { CustomerDto, LocationDto, ProductDto } from "@bakery-os/shared";
 import { UNIT_LABELS_RU } from "@bakery-os/shared";
@@ -29,13 +29,29 @@ export function NewSaleModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const stores = locations.filter((l) => l.type === "STORE");
-  const [locationId, setLocationId] = useState(fixedLocationId ?? stores[0]?.id ?? "");
-  const [rows, setRows] = useState<Row[]>([{ productId: products[0]?.id ?? "", quantity: "1", unitPrice: String(products[0]?.price ?? "") }]);
+  const [locationId, setLocationId] = useState(fixedLocationId ?? locations[0]?.id ?? "");
+  const [rows, setRows] = useState<Row[]>([{ productId: "", quantity: "1", unitPrice: "" }]);
   const [customerId, setCustomerId] = useState("");
   const [amountPaid, setAmountPaid] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // locations/products can still be loading when this modal is opened (e.g. a
+  // quick click right after the page mounts), so the very first render may
+  // have nothing to default to. Backfill once the lists actually arrive,
+  // without touching a row the user has already interacted with.
+  useEffect(() => {
+    if (!locationId && locations.length > 0) {
+      setLocationId(fixedLocationId ?? locations[0].id);
+    }
+  }, [locations, locationId, fixedLocationId]);
+
+  useEffect(() => {
+    if (products.length === 0) return;
+    setRows((prev) =>
+      prev.map((r) => (r.productId ? r : { ...r, productId: products[0].id, unitPrice: String(products[0].price) })),
+    );
+  }, [products]);
 
   const total = rows.reduce((sum, r) => sum + (Number(r.quantity) || 0) * (Number(r.unitPrice) || 0), 0);
 
@@ -84,13 +100,15 @@ export function NewSaleModal({
       <form onSubmit={handleSubmit}>
         {!fixedLocationId && (
           <div className="mb-4">
-            <label className="mb-1.5 block text-sm font-medium text-foreground">Точка</label>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
+              Источник <span className="text-muted">(откуда уходит товар)</span>
+            </label>
             <select
               value={locationId}
               onChange={(e) => setLocationId(e.target.value)}
               className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
             >
-              {stores.map((loc) => (
+              {locations.map((loc) => (
                 <option key={loc.id} value={loc.id}>
                   {loc.name}
                 </option>
@@ -153,7 +171,7 @@ export function NewSaleModal({
 
         <div className="mb-4">
           <label className="mb-1.5 block text-sm font-medium text-foreground">
-            Клиент <span className="text-muted">(необязательно — для оптовой продажи в долг)</span>
+            Получатель <span className="text-muted">(необязательно — клиент для оптовой продажи в долг)</span>
           </label>
           <select
             value={customerId}

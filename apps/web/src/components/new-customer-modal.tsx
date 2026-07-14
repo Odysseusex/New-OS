@@ -22,6 +22,8 @@ export function NewCustomerModal({
   const [creditLimit, setCreditLimit] = useState(
     customer?.creditLimit !== null && customer?.creditLimit !== undefined ? String(customer.creditLimit) : "",
   );
+  const [lat, setLat] = useState(customer?.lat !== null && customer?.lat !== undefined ? String(customer.lat) : "");
+  const [lng, setLng] = useState(customer?.lng !== null && customer?.lng !== undefined ? String(customer.lng) : "");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -37,6 +39,8 @@ export function NewCustomerModal({
         address: address || undefined,
         notes: notes || undefined,
         creditLimit: creditLimit ? Number(creditLimit) : undefined,
+        lat: lat ? Number(lat) : undefined,
+        lng: lng ? Number(lng) : undefined,
       };
       if (customer) {
         await api.customers.update(customer.id, dto);
@@ -112,7 +116,7 @@ export function NewCustomerModal({
           />
         </div>
 
-        <div className="mb-5">
+        <div className="mb-4">
           <label className="mb-1.5 block text-sm font-medium text-foreground">
             Заметки <span className="text-muted">(необязательно)</span>
           </label>
@@ -122,6 +126,34 @@ export function NewCustomerModal({
             onChange={(e) => setNotes(e.target.value)}
             className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
           />
+        </div>
+
+        <div className="mb-5">
+          <label className="mb-1.5 block text-sm font-medium text-foreground">
+            Координаты <span className="text-muted">(необязательно, для карты)</span>
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <input
+              type="number"
+              step="any"
+              placeholder="Широта, напр. 43.2389"
+              value={lat}
+              onChange={(e) => setLat(e.target.value)}
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+            <input
+              type="number"
+              step="any"
+              placeholder="Долгота, напр. 76.9454"
+              value={lng}
+              onChange={(e) => setLng(e.target.value)}
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+          </div>
+          <p className="mt-1.5 text-xs text-muted">
+            Найдите точку в 2ГИС или Google Картах, нажмите правой кнопкой на неё — координаты
+            появятся в меню, скопируйте и вставьте сюда.
+          </p>
         </div>
 
         {error && (

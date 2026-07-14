@@ -159,6 +159,7 @@ export const api = {
     list: (locationId?: string) => request<SaleDto[]>(withQuery("/sales", { locationId })),
     summary: (locationId?: string) =>
       request<SalesSummaryDto>(withQuery("/sales/summary", { locationId })),
+    findOne: (id: string) => request<SaleDetailDto>(`/sales/${id}`),
     create: (dto: CreateSaleRequestDto) =>
       request<SaleDetailDto>("/sales", { method: "POST", body: JSON.stringify(dto) }),
     recordPayment: (id: string, dto: RecordPaymentRequestDto) =>
