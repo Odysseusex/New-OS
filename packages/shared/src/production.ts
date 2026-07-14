@@ -20,6 +20,26 @@ export interface RecipeItemDto {
   quantity: number;
 }
 
+export interface RecipeStepDto {
+  id: string;
+  sequence: number;
+  instruction: string;
+  durationMinutes: number | null;
+}
+
+export interface RecipeStepInputDto {
+  sequence: number;
+  instruction: string;
+  durationMinutes?: number;
+}
+
+export interface RecipeRevisionDto {
+  id: string;
+  changedAt: string;
+  changedByName: string;
+  summary: string;
+}
+
 export interface RecipeDto {
   id: string;
   productId: string;
@@ -28,6 +48,15 @@ export interface RecipeDto {
   productPrice: number;
   yieldQuantity: number;
   items: RecipeItemDto[];
+  steps: RecipeStepDto[];
+  revisions: RecipeRevisionDto[];
+  generalNotes: string | null;
+  bakingTempC: number | null;
+  bakingTimeMinutes: number | null;
+  fermentationMinutes: number | null;
+  proofingMinutes: number | null;
+  lossPercent: number | null;
+  shelfLifeDays: number | null;
   unitCost: number;
   marginPercent: number | null;
   isActive: boolean;
@@ -38,10 +67,26 @@ export interface CreateRecipeItemRequestDto {
   quantity: number;
 }
 
-export interface CreateRecipeRequestDto {
+export interface RecipeTechCardFieldsDto {
+  generalNotes?: string;
+  bakingTempC?: number;
+  bakingTimeMinutes?: number;
+  fermentationMinutes?: number;
+  proofingMinutes?: number;
+  lossPercent?: number;
+  shelfLifeDays?: number;
+  steps?: RecipeStepInputDto[];
+}
+
+export interface CreateRecipeRequestDto extends RecipeTechCardFieldsDto {
   productId: string;
   yieldQuantity: number;
   items: CreateRecipeItemRequestDto[];
+}
+
+export interface UpdateRecipeRequestDto extends RecipeTechCardFieldsDto {
+  yieldQuantity?: number;
+  items?: CreateRecipeItemRequestDto[];
 }
 
 export interface ProductionBatchDto {

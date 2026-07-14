@@ -38,6 +38,7 @@ export default function ProductionPage() {
   const [locationFilter, setLocationFilter] = useState("");
   const [showArchivedRecipes, setShowArchivedRecipes] = useState(false);
   const [modal, setModal] = useState<"batch" | "recipe" | null>(null);
+  const [editingRecipe, setEditingRecipe] = useState<RecipeDto | undefined>(undefined);
   const [completingBatch, setCompletingBatch] = useState<ProductionBatchDto | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -161,7 +162,10 @@ export default function ProductionPage() {
 
           {tab === "recipes" && canManageRecipes && (
             <button
-              onClick={() => setModal("recipe")}
+              onClick={() => {
+                setEditingRecipe(undefined);
+                setModal("recipe");
+              }}
               className="flex items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
             >
               <Plus className="h-4 w-4" strokeWidth={1.75} />
@@ -259,6 +263,10 @@ export default function ProductionPage() {
                   {canManageRecipes && (
                     <RowActions
                       isActive={recipe.isActive}
+                      onEdit={() => {
+                        setEditingRecipe(recipe);
+                        setModal("recipe");
+                      }}
                       onArchive={() => handleRecipeArchive(recipe)}
                       onRestore={() => handleRecipeRestore(recipe)}
                       onDelete={canDelete ? () => handleRecipeDelete(recipe) : undefined}
@@ -266,6 +274,14 @@ export default function ProductionPage() {
                   )}
                 </div>
               </div>
+
+              {(recipe.bakingTempC !== null || recipe.bakingTimeMinutes !== null || recipe.shelfLifeDays !== null) && (
+                <div className="mb-3 flex flex-wrap gap-2 text-xs text-muted">
+                  {recipe.bakingTempC !== null && <span>Выпечка: {recipe.bakingTempC}°C</span>}
+                  {recipe.bakingTimeMinutes !== null && <span>· {recipe.bakingTimeMinutes} мин</span>}
+                  {recipe.shelfLifeDays !== null && <span>· Срок годности: {recipe.shelfLifeDays} дн.</span>}
+                </div>
+              )}
 
               <ul className="mb-4 space-y-1">
                 {recipe.items.map((item) => (
@@ -316,8 +332,9 @@ export default function ProductionPage() {
         <NewRecipeModal
           products={products.filter((p) => p.isActive)}
           existingRecipeProductIds={recipes.map((r) => r.productId)}
+          recipe={editingRecipe}
           onClose={() => setModal(null)}
-          onCreated={() => {
+          onSaved={() => {
             setModal(null);
             loadRecipes();
           }}

@@ -202,6 +202,7 @@ model User {
   shiftsAsEmployee  Shift[]           @relation("ShiftEmployee")
   shiftsCreated     Shift[]           @relation("ShiftCreatedBy")
   timeEntries       TimeEntry[]       @relation("TimeEntryEmployee")
+  recipeRevisions   RecipeRevision[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -345,11 +346,24 @@ model Recipe {
   product        Product  @relation("RecipeOutput", fields: [productId], references: [id], onDelete: Cascade)
   yieldQuantity  Decimal  @db.Decimal(12, 3)
   isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
 
-  items   RecipeItem[]
-  batches ProductionBatch[]
+  // Technological card fields, all optional so an old-style recipe still
+  // works — a manager can fill these in progressively.
+  generalNotes        String?
+  bakingTempC         Decimal? @db.Decimal(6, 2)
+  bakingTimeMinutes   Int?
+  fermentationMinutes Int?
+  proofingMinutes     Int?
+  lossPercent         Decimal? @db.Decimal(5, 2)
+  shelfLifeDays        Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items     RecipeItem[]
+  steps     RecipeStep[]
+  revisions RecipeRevision[]
+  batches   ProductionBatch[]
 
   @@index([organizationId])
   @@map("recipes")
@@ -364,6 +378,34 @@ model RecipeItem {
   quantity            Decimal @db.Decimal(12, 3)
 
   @@map("recipe_items")
+}
+
+// Ordered step-by-step technology instructions for a recipe's techcard.
+model RecipeStep {
+  id              String  @id @default(cuid())
+  recipeId        String
+  recipe          Recipe  @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  sequence        Int
+  instruction     String
+  durationMinutes Int?
+
+  @@index([recipeId])
+  @@map("recipe_steps")
+}
+
+// A lightweight audit trail: one row per edit, recording who changed the
+// techcard and a human-readable summary of what changed (not a full diff).
+model RecipeRevision {
+  id          String   @id @default(cuid())
+  recipeId    String
+  recipe      Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  changedById String
+  changedBy   User     @relation(fields: [changedById], references: [id])
+  changedAt   DateTime @default(now())
+  summary     String
+
+  @@index([recipeId])
+  @@map("recipe_revisions")
 }
 
 // A planned/completed run of a recipe at a production location. Completing a

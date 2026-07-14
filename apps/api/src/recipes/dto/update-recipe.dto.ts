@@ -1,40 +1,29 @@
 import { Type } from "class-transformer";
 import {
-  ArrayMinSize,
   IsArray,
   IsInt,
   IsNumber,
   IsOptional,
   IsPositive,
-  IsString,
   Max,
   Min,
+  IsString,
   ValidateNested,
 } from "class-validator";
+import { CreateRecipeItemDto } from "./create-recipe.dto";
 import { RecipeStepDto } from "./recipe-step.dto";
 
-export class CreateRecipeItemDto {
-  @IsString()
-  ingredientProductId!: string;
-
+export class UpdateRecipeDto {
+  @IsOptional()
   @IsNumber()
   @IsPositive()
-  quantity!: number;
-}
+  yieldQuantity?: number;
 
-export class CreateRecipeDto {
-  @IsString()
-  productId!: string;
-
-  @IsNumber()
-  @IsPositive()
-  yieldQuantity!: number;
-
+  @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => CreateRecipeItemDto)
-  items!: CreateRecipeItemDto[];
+  items?: CreateRecipeItemDto[];
 
   @IsOptional()
   @IsString()

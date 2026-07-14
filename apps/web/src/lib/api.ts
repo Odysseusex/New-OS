@@ -48,6 +48,7 @@ import type {
   UpdateCustomerRequestDto,
   UpdateLocationRequestDto,
   UpdateProductRequestDto,
+  UpdateRecipeRequestDto,
   UpdateSupplierRequestDto,
   UpdateUserAccountRequestDto,
   UpdateVehicleRequestDto,
@@ -183,6 +184,8 @@ export const api = {
       request<RecipeDto[]>(withQuery("/recipes", { includeArchived: includeArchived ? "true" : undefined })),
     create: (dto: CreateRecipeRequestDto) =>
       request<RecipeDto>("/recipes", { method: "POST", body: JSON.stringify(dto) }),
+    update: (id: string, dto: UpdateRecipeRequestDto) =>
+      request<RecipeDto>(`/recipes/${id}`, { method: "PATCH", body: JSON.stringify(dto) }),
     archive: (id: string) => request<RecipeDto>(`/recipes/${id}/archive`, { method: "POST" }),
     restore: (id: string) => request<RecipeDto>(`/recipes/${id}/restore`, { method: "POST" }),
     remove: (id: string) => request<{ deleted: true }>(`/recipes/${id}`, { method: "DELETE" }),
