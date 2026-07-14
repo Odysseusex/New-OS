@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { StockLevelDto, StockMovementDto, StockMovementType, Unit } from "@bakery-os/shared";
+import { StockLevelDto, StockMovementDto, StockMovementType, Unit, WriteOffReason } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
 import { ReceiveStockDto } from "./dto/receive-stock.dto";
@@ -65,6 +65,7 @@ export class InventoryService {
       type: m.type as StockMovementType,
       quantity: m.quantity.toNumber(),
       reason: m.reason,
+      writeOffReason: m.writeOffReason as WriteOffReason | null,
       createdByName: m.createdBy.fullName,
       createdAt: m.createdAt.toISOString(),
     }));
@@ -97,6 +98,7 @@ export class InventoryService {
       productId: dto.productId,
       quantity: dto.quantity,
       reason: dto.reason,
+      writeOffReason: dto.writeOffReason,
       type: PrismaStockMovementType.WRITE_OFF,
       delta: -dto.quantity,
     });
@@ -108,7 +110,8 @@ export class InventoryService {
       locationId: string;
       productId: string;
       quantity: number;
-      reason: string;
+      reason?: string;
+      writeOffReason?: WriteOffReason;
       type: PrismaStockMovementType;
       delta: number;
     },
@@ -129,6 +132,7 @@ export class InventoryService {
           type: params.type,
           quantity: params.quantity,
           reason: params.reason,
+          writeOffReason: params.writeOffReason,
           createdById: user.id,
         },
         include: { location: true, product: true, createdBy: true },
@@ -157,6 +161,7 @@ export class InventoryService {
       type: movement.type as StockMovementType,
       quantity: movement.quantity.toNumber(),
       reason: movement.reason,
+      writeOffReason: movement.writeOffReason as WriteOffReason | null,
       createdByName: movement.createdBy.fullName,
       createdAt: movement.createdAt.toISOString(),
     };

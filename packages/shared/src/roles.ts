@@ -120,6 +120,18 @@ export const LOCATION_MANAGE_ROLES: Role[] = [
 
 export const NETWORK_VIEW_ROLES: Role[] = ORG_WIDE_ROLES;
 
+// Quality/write-off reporting is visible to the same roles that already
+// manage a location's day-to-day operations and to org-wide oversight
+// roles. Actually recording a write-off still goes through
+// INVENTORY_MANAGE_ROLES.
+export const QUALITY_VIEW_ROLES: Role[] = [
+  Role.OWNER,
+  Role.ADMIN,
+  Role.REGIONAL_MANAGER,
+  Role.STORE_MANAGER,
+  Role.PRODUCTION_MANAGER,
+];
+
 // Deleting a record is permanent (unlike archiving, which can always be
 // undone), so it's reserved for Owner/Admin even for roles that can
 // otherwise create/edit/archive the same entity type.

@@ -35,6 +35,7 @@ import type {
   ProductionBatchDto,
   ProfitAndLossDto,
   PurchaseOrderDto,
+  QualitySummaryDto,
   RecipeDto,
   RecordPaymentRequestDto,
   RegionDto,
@@ -153,6 +154,13 @@ export const api = {
         method: "POST",
         body: JSON.stringify(dto),
       }),
+  },
+
+  quality: {
+    writeOffs: (locationId?: string, from?: string, to?: string) =>
+      request<StockMovementDto[]>(withQuery("/quality/write-offs", { locationId, from, to })),
+    summary: (from: string, to: string, locationId?: string) =>
+      request<QualitySummaryDto>(withQuery("/quality/summary", { from, to, locationId })),
   },
 
   sales: {

@@ -61,6 +61,17 @@ enum StockMovementType {
   TRANSFER_IN
 }
 
+// Categorizes a WRITE_OFF movement so losses can be tracked and reported by
+// cause, not just as an undifferentiated "списание". Only meaningful when
+// StockMovement.type is WRITE_OFF.
+enum WriteOffReason {
+  EXPIRED
+  DAMAGED
+  PRODUCTION_DEFECT
+  QUALITY_ISSUE
+  OTHER
+}
+
 enum ProductionBatchStatus {
   PLANNED
   COMPLETED
@@ -303,6 +314,7 @@ model StockMovement {
   type            StockMovementType
   quantity        Decimal           @db.Decimal(12, 3)
   reason          String?
+  writeOffReason  WriteOffReason?
   saleId          String?
   sale            Sale?             @relation(fields: [saleId], references: [id])
   batchId         String?

@@ -102,8 +102,8 @@ export const primaryNav: NavItem[] = [
     href: "/quality",
     label: "Качество и списания",
     icon: AlertTriangle,
-    status: "soon",
-    description: "Брак, потери, контроль соблюдения рецептур",
+    status: "live",
+    description: "Учёт брака и списаний по причинам",
   },
   {
     href: "/customers",

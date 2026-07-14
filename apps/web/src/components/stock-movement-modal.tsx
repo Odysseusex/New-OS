@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { LocationDto, ProductDto } from "@bakery-os/shared";
-import { UNIT_LABELS_RU } from "@bakery-os/shared";
+import { UNIT_LABELS_RU, WRITE_OFF_REASON_LABELS_RU, WriteOffReason } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
 
@@ -22,13 +22,26 @@ export function StockMovementModal({
   onCreated: () => void;
 }) {
   const [locationId, setLocationId] = useState(fixedLocationId ?? locations[0]?.id ?? "");
-  const [productId, setProductId] = useState(products[0]?.id ?? "");
+  const [productId, setProductId] = useState("");
   const [quantity, setQuantity] = useState("1");
-  const [reason, setReason] = useState(mode === "write-off" ? "Брак" : "");
+  const [writeOffReason, setWriteOffReason] = useState<WriteOffReason>(WriteOffReason.OTHER);
+  const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isReceive = mode === "receive";
+
+  // locations/products can still be loading when this modal opens, so the
+  // first render may have nothing to default to. Backfill once they arrive.
+  useEffect(() => {
+    if (!locationId && locations.length > 0) {
+      setLocationId(fixedLocationId ?? locations[0].id);
+    }
+  }, [locations, locationId, fixedLocationId]);
+
+  useEffect(() => {
+    if (!productId && products.length > 0) setProductId(products[0].id);
+  }, [products, productId]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -44,7 +57,7 @@ export function StockMovementModal({
       if (isReceive) {
         await api.inventory.receive(dto);
       } else {
-        await api.inventory.writeOff({ ...dto, reason: reason || "Списание" });
+        await api.inventory.writeOff({ ...dto, writeOffReason });
       }
       onCreated();
     } catch (err) {
@@ -102,16 +115,32 @@ export function StockMovementModal({
           />
         </div>
 
+        {!isReceive && (
+          <div className="mb-4">
+            <label className="mb-1.5 block text-sm font-medium text-foreground">Причина списания</label>
+            <select
+              value={writeOffReason}
+              onChange={(e) => setWriteOffReason(e.target.value as WriteOffReason)}
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            >
+              {Object.values(WriteOffReason).map((r) => (
+                <option key={r} value={r}>
+                  {WRITE_OFF_REASON_LABELS_RU[r]}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div className="mb-5">
           <label className="mb-1.5 block text-sm font-medium text-foreground">
-            Причина {isReceive && <span className="text-muted">(необязательно)</span>}
+            {isReceive ? "Комментарий" : "Комментарий"} <span className="text-muted">(необязательно)</span>
           </label>
           <input
             type="text"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder={isReceive ? "Поступление от поставщика" : "Брак, порча, просрочка…"}
-            required={!isReceive}
+            placeholder={isReceive ? "Поступление от поставщика" : "Подробности, номер акта…"}
             className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
           />
         </div>
