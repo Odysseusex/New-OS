@@ -5,6 +5,7 @@ import clsx from "clsx";
 import { Plus } from "lucide-react";
 import type { LocationComparisonDto, LocationDto, RegionDto } from "@bakery-os/shared";
 import {
+  HARD_DELETE_ROLES,
   LOCATION_MANAGE_ROLES,
   LOCATION_OWNERSHIP_LABELS_RU,
   LOCATION_TYPE_LABELS_RU,
@@ -44,6 +45,7 @@ const OWNERSHIP_STYLES: Record<LocationOwnership, string> = {
 export default function NetworkPage() {
   const { user } = useAuth();
   const canManage = user ? LOCATION_MANAGE_ROLES.includes(user.role) : false;
+  const canDelete = user ? HARD_DELETE_ROLES.includes(user.role) : false;
   const canViewComparison = user ? NETWORK_VIEW_ROLES.includes(user.role) : false;
 
   const [tab, setTab] = useState<Tab>("registry");
@@ -207,7 +209,7 @@ export default function NetworkPage() {
                         }}
                         onArchive={() => handleArchive(loc)}
                         onRestore={() => handleRestore(loc)}
-                        onDelete={() => handleDelete(loc)}
+                        onDelete={canDelete ? () => handleDelete(loc) : undefined}
                       />
                     </td>
                   )}

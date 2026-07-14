@@ -5,6 +5,7 @@ import clsx from "clsx";
 import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, Plus } from "lucide-react";
 import type { CategoryDto, LocationDto, ProductDto, StockLevelDto, StockMovementDto } from "@bakery-os/shared";
 import {
+  HARD_DELETE_ROLES,
   INVENTORY_MANAGE_ROLES,
   ORG_WIDE_ROLES,
   PRODUCT_MANAGE_ROLES,
@@ -27,6 +28,7 @@ export default function InventoryPage() {
   const isOrgWide = user ? ORG_WIDE_ROLES.includes(user.role) : false;
   const canManageInventory = user ? INVENTORY_MANAGE_ROLES.includes(user.role) : false;
   const canManageProducts = user ? PRODUCT_MANAGE_ROLES.includes(user.role) : false;
+  const canDelete = user ? HARD_DELETE_ROLES.includes(user.role) : false;
 
   const [tab, setTab] = useState<Tab>("stock");
   const [locations, setLocations] = useState<LocationDto[]>([]);
@@ -368,7 +370,7 @@ export default function InventoryPage() {
                         }}
                         onArchive={() => handleProductArchive(p)}
                         onRestore={() => handleProductRestore(p)}
-                        onDelete={() => handleProductDelete(p)}
+                        onDelete={canDelete ? () => handleProductDelete(p) : undefined}
                       />
                     </td>
                   )}
@@ -416,7 +418,7 @@ export default function InventoryPage() {
                         }}
                         onArchive={() => handleCategoryArchive(c)}
                         onRestore={() => handleCategoryRestore(c)}
-                        onDelete={() => handleCategoryDelete(c)}
+                        onDelete={canDelete ? () => handleCategoryDelete(c) : undefined}
                       />
                     </td>
                   )}

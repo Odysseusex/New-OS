@@ -5,6 +5,7 @@ import clsx from "clsx";
 import { CheckCircle2, Plus, XCircle } from "lucide-react";
 import type { LocationDto, ProductDto, ProductionBatchDto, RecipeDto } from "@bakery-os/shared";
 import {
+  HARD_DELETE_ROLES,
   ORG_WIDE_ROLES,
   PRODUCTION_BATCH_STATUS_LABELS_RU,
   PRODUCTION_MANAGE_ROLES,
@@ -27,6 +28,7 @@ export default function ProductionPage() {
   const isOrgWide = user ? ORG_WIDE_ROLES.includes(user.role) : false;
   const canManageProduction = user ? PRODUCTION_MANAGE_ROLES.includes(user.role) : false;
   const canManageRecipes = user ? RECIPE_MANAGE_ROLES.includes(user.role) : false;
+  const canDelete = user ? HARD_DELETE_ROLES.includes(user.role) : false;
 
   const [tab, setTab] = useState<Tab>("batches");
   const [locations, setLocations] = useState<LocationDto[]>([]);
@@ -259,7 +261,7 @@ export default function ProductionPage() {
                       isActive={recipe.isActive}
                       onArchive={() => handleRecipeArchive(recipe)}
                       onRestore={() => handleRecipeRestore(recipe)}
-                      onDelete={() => handleRecipeDelete(recipe)}
+                      onDelete={canDelete ? () => handleRecipeDelete(recipe) : undefined}
                     />
                   )}
                 </div>

@@ -13,7 +13,7 @@ export function RowActions({
   onEdit?: () => void;
   onArchive: () => void;
   onRestore: () => void;
-  onDelete: () => void;
+  onDelete?: () => void;
 }) {
   return (
     <div className="flex items-center gap-1">
@@ -43,13 +43,15 @@ export function RowActions({
           <RotateCcw className="h-4 w-4" strokeWidth={1.75} />
         </button>
       )}
-      <button
-        onClick={onDelete}
-        title="Удалить"
-        className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-red-600"
-      >
-        <Trash2 className="h-4 w-4" strokeWidth={1.75} />
-      </button>
+      {onDelete && (
+        <button
+          onClick={onDelete}
+          title="Удалить"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-red-600"
+        >
+          <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+        </button>
+      )}
     </div>
   );
 }

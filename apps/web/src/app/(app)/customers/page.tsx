@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
 import { Plus, Wallet } from "lucide-react";
 import type { CustomerDto } from "@bakery-os/shared";
-import { CUSTOMER_MANAGE_ROLES, PAYMENT_RECORD_ROLES } from "@bakery-os/shared";
+import { CUSTOMER_MANAGE_ROLES, HARD_DELETE_ROLES, PAYMENT_RECORD_ROLES } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatMoney } from "@/lib/format";
@@ -15,6 +15,7 @@ import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-acti
 export default function CustomersPage() {
   const { user } = useAuth();
   const canManage = user ? CUSTOMER_MANAGE_ROLES.includes(user.role) : false;
+  const canDelete = user ? HARD_DELETE_ROLES.includes(user.role) : false;
   const canRecordPayment = user ? PAYMENT_RECORD_ROLES.includes(user.role) : false;
 
   const [customers, setCustomers] = useState<CustomerDto[]>([]);
@@ -158,7 +159,7 @@ export default function CustomersPage() {
                       }}
                       onArchive={() => handleArchive(c)}
                       onRestore={() => handleRestore(c)}
-                      onDelete={() => handleDelete(c)}
+                      onDelete={canDelete ? () => handleDelete(c) : undefined}
                     />
                   </td>
                 )}

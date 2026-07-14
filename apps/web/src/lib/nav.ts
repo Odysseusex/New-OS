@@ -147,8 +147,8 @@ export const secondaryNav: NavItem[] = [
     href: "/settings",
     label: "Настройки",
     icon: Settings,
-    status: "soon",
-    description: "Пользователи, роли, организация, аудит",
+    status: "live",
+    description: "Сотрудники, роли и доступ к платформе",
   },
 ];
 

@@ -7,6 +7,7 @@ import type { DeliveryRouteDto, DriverDto, LocationDto, ProductDto, VehicleDto }
 import {
   DELIVERY_ROUTE_STATUS_LABELS_RU,
   DeliveryRouteStatus,
+  HARD_DELETE_ROLES,
   LOGISTICS_MANAGE_ROLES,
   ORG_WIDE_ROLES,
   ROUTE_EXECUTE_ROLES,
@@ -28,6 +29,7 @@ export default function LogisticsPage() {
   const { user } = useAuth();
   const canView = user ? ROUTE_EXECUTE_ROLES.includes(user.role) : false;
   const canManage = user ? LOGISTICS_MANAGE_ROLES.includes(user.role) : false;
+  const canDelete = user ? HARD_DELETE_ROLES.includes(user.role) : false;
 
   const [tab, setTab] = useState<Tab>("routes");
   const [locations, setLocations] = useState<LocationDto[]>([]);
@@ -282,7 +284,7 @@ export default function LogisticsPage() {
                         }}
                         onArchive={() => handleVehicleArchive(v)}
                         onRestore={() => handleVehicleRestore(v)}
-                        onDelete={() => handleVehicleDelete(v)}
+                        onDelete={canDelete ? () => handleVehicleDelete(v) : undefined}
                       />
                     </td>
                   )}

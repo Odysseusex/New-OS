@@ -14,6 +14,7 @@ import type {
   CreateShiftRequestDto,
   CreateStockMovementRequestDto,
   CreateSupplierRequestDto,
+  CreateUserAccountRequestDto,
   CreateVehicleRequestDto,
   CreateLocationRequestDto,
   CustomerDetailDto,
@@ -48,7 +49,9 @@ import type {
   UpdateLocationRequestDto,
   UpdateProductRequestDto,
   UpdateSupplierRequestDto,
+  UpdateUserAccountRequestDto,
   UpdateVehicleRequestDto,
+  UserAccountDto,
   VehicleDto,
 } from "@bakery-os/shared";
 
@@ -251,6 +254,17 @@ export const api = {
       }),
     cancelRoute: (routeId: string) =>
       request<DeliveryRouteDto>(`/logistics/routes/${routeId}/cancel`, { method: "POST" }),
+  },
+
+  users: {
+    list: (includeArchived?: boolean) =>
+      request<UserAccountDto[]>(withQuery("/users", { includeArchived: includeArchived ? "true" : undefined })),
+    create: (dto: CreateUserAccountRequestDto) =>
+      request<UserAccountDto>("/users", { method: "POST", body: JSON.stringify(dto) }),
+    update: (id: string, dto: UpdateUserAccountRequestDto) =>
+      request<UserAccountDto>(`/users/${id}`, { method: "PATCH", body: JSON.stringify(dto) }),
+    archive: (id: string) => request<UserAccountDto>(`/users/${id}/archive`, { method: "POST" }),
+    restore: (id: string) => request<UserAccountDto>(`/users/${id}/restore`, { method: "POST" }),
   },
 
   finance: {

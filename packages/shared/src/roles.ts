@@ -115,3 +115,13 @@ export const LOCATION_MANAGE_ROLES: Role[] = [
 ];
 
 export const NETWORK_VIEW_ROLES: Role[] = ORG_WIDE_ROLES;
+
+// Deleting a record is permanent (unlike archiving, which can always be
+// undone), so it's reserved for Owner/Admin even for roles that can
+// otherwise create/edit/archive the same entity type.
+export const HARD_DELETE_ROLES: Role[] = [Role.OWNER, Role.ADMIN];
+
+// Managing employee accounts (creating logins, assigning roles) is an
+// access-control decision, so it's restricted the same way as location
+// management rather than opened up to operational roles.
+export const USER_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN];

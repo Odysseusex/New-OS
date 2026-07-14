@@ -5,6 +5,7 @@ import clsx from "clsx";
 import { CheckCircle2, Plus, XCircle } from "lucide-react";
 import type { LocationDto, ProductDto, PurchaseOrderDto, SupplierDto } from "@bakery-os/shared";
 import {
+  HARD_DELETE_ROLES,
   ORG_WIDE_ROLES,
   PURCHASE_ORDER_MANAGE_ROLES,
   PURCHASE_ORDER_STATUS_LABELS_RU,
@@ -25,6 +26,7 @@ export default function ProcurementPage() {
   const isOrgWide = user ? ORG_WIDE_ROLES.includes(user.role) : false;
   const canManageOrders = user ? PURCHASE_ORDER_MANAGE_ROLES.includes(user.role) : false;
   const canManageSuppliers = user ? SUPPLIER_MANAGE_ROLES.includes(user.role) : false;
+  const canDelete = user ? HARD_DELETE_ROLES.includes(user.role) : false;
 
   const [tab, setTab] = useState<Tab>("orders");
   const [locations, setLocations] = useState<LocationDto[]>([]);
@@ -272,7 +274,7 @@ export default function ProcurementPage() {
                         }}
                         onArchive={() => handleSupplierArchive(s)}
                         onRestore={() => handleSupplierRestore(s)}
-                        onDelete={() => handleSupplierDelete(s)}
+                        onDelete={canDelete ? () => handleSupplierDelete(s) : undefined}
                       />
                     </td>
                   )}

@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
-import { RECIPE_MANAGE_ROLES } from "@bakery-os/shared";
+import { HARD_DELETE_ROLES, RECIPE_MANAGE_ROLES } from "@bakery-os/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
 import { Roles } from "../common/decorators/roles.decorator";
@@ -37,7 +37,7 @@ export class RecipesController {
   }
 
   @Delete(":id")
-  @Roles(...RECIPE_MANAGE_ROLES)
+  @Roles(...HARD_DELETE_ROLES)
   remove(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
     return this.recipesService.remove(user.organizationId, id);
   }

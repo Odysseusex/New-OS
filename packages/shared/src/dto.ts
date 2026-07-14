@@ -80,6 +80,32 @@ export interface LoginResponseDto {
   user: CurrentUserDto;
 }
 
+export interface UserAccountDto {
+  id: string;
+  fullName: string;
+  email: string;
+  role: Role;
+  locationId: string | null;
+  locationName: string | null;
+  isActive: boolean;
+}
+
+export interface CreateUserAccountRequestDto {
+  fullName: string;
+  email: string;
+  password: string;
+  role: Role;
+  locationId?: string;
+}
+
+export interface UpdateUserAccountRequestDto {
+  fullName?: string;
+  email?: string;
+  role?: Role;
+  locationId?: string | null;
+  password?: string;
+}
+
 export interface DashboardSummaryDto {
   organizationName: string;
   locationsCount: number;

@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { CUSTOMER_MANAGE_ROLES, CUSTOMER_VIEW_ROLES } from "@bakery-os/shared";
+import { CUSTOMER_MANAGE_ROLES, CUSTOMER_VIEW_ROLES, HARD_DELETE_ROLES } from "@bakery-os/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
 import { Roles } from "../common/decorators/roles.decorator";
@@ -50,7 +50,7 @@ export class CustomersController {
   }
 
   @Delete(":id")
-  @Roles(...CUSTOMER_MANAGE_ROLES)
+  @Roles(...HARD_DELETE_ROLES)
   remove(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
     return this.customersService.remove(user.organizationId, id);
   }
