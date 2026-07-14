@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import type { ProductDto } from "@bakery-os/shared";
-import { UNIT_LABELS_RU } from "@bakery-os/shared";
+import { ProductType, UNIT_LABELS_RU } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
 
@@ -23,10 +23,15 @@ export function NewRecipeModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const outputOptions = products.filter((p) => !existingRecipeProductIds.includes(p.id));
+  const outputOptions = products.filter(
+    (p) => p.type === ProductType.FINISHED_GOOD && !existingRecipeProductIds.includes(p.id),
+  );
+  const ingredientOptions = products.filter((p) => p.type === ProductType.RAW_MATERIAL);
   const [productId, setProductId] = useState(outputOptions[0]?.id ?? "");
   const [yieldQuantity, setYieldQuantity] = useState("1");
-  const [rows, setRows] = useState<Row[]>([{ ingredientProductId: products[0]?.id ?? "", quantity: "1" }]);
+  const [rows, setRows] = useState<Row[]>([
+    { ingredientProductId: ingredientOptions[0]?.id ?? "", quantity: "1" },
+  ]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -35,7 +40,7 @@ export function NewRecipeModal({
   }
 
   function addRow() {
-    setRows((prev) => [...prev, { ingredientProductId: products[0]?.id ?? "", quantity: "1" }]);
+    setRows((prev) => [...prev, { ingredientProductId: ingredientOptions[0]?.id ?? "", quantity: "1" }]);
   }
 
   function removeRow(index: number) {
@@ -67,8 +72,19 @@ export function NewRecipeModal({
     return (
       <Modal title="Новая рецептура" onClose={onClose}>
         <p className="text-sm text-muted">
-          У всех товаров уже есть рецептура. Добавьте новый товар в номенклатуре на странице
-          «Склад», чтобы создать для него рецептуру.
+          У всех товаров типа «Готовая продукция» уже есть рецептура. Добавьте новый товар в
+          номенклатуре на странице «Склад», чтобы создать для него рецептуру.
+        </p>
+      </Modal>
+    );
+  }
+
+  if (ingredientOptions.length === 0) {
+    return (
+      <Modal title="Новая рецептура" onClose={onClose}>
+        <p className="text-sm text-muted">
+          В номенклатуре нет товаров типа «Сырьё». Добавьте сырьё на странице «Склад», чтобы
+          использовать его в рецептуре.
         </p>
       </Modal>
     );
@@ -119,7 +135,7 @@ export function NewRecipeModal({
                 onChange={(e) => updateRow(index, { ingredientProductId: e.target.value })}
                 className="flex-1 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
               >
-                {products.map((p) => (
+                {ingredientOptions.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} ({UNIT_LABELS_RU[p.unit]})
                   </option>

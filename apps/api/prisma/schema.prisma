@@ -45,6 +45,11 @@ enum Unit {
   L
 }
 
+enum ProductType {
+  RAW_MATERIAL
+  FINISHED_GOOD
+}
+
 enum StockMovementType {
   RECEIPT
   SALE
@@ -145,6 +150,7 @@ model Location {
   address   String
   lat       Float?
   lng       Float?
+  isActive  Boolean           @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -202,18 +208,38 @@ model User {
   @@map("users")
 }
 
+// A user-managed grouping for the product catalog (e.g. "Мука", "Хлеб",
+// "Упаковка"). Purely organizational — does not affect recipe logic, unlike
+// ProductType below.
+model Category {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  products Product[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("categories")
+}
+
 // Product/ingredient catalog — shared by Sales, Inventory and (later) Production.
 model Product {
-  id             String   @id @default(cuid())
+  id             String      @id @default(cuid())
   organizationId String
   name           String
   sku            String
   unit           Unit
-  category       String
-  price          Decimal  @db.Decimal(12, 2)
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  type           ProductType @default(FINISHED_GOOD)
+  categoryId     String?
+  categoryRef    Category?   @relation(fields: [categoryId], references: [id])
+  price          Decimal     @db.Decimal(12, 2)
+  isActive       Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
   stockLevels        StockLevel[]
   stockMovements     StockMovement[]
@@ -225,6 +251,7 @@ model Product {
 
   @@unique([organizationId, sku])
   @@index([organizationId])
+  @@index([categoryId])
   @@map("products")
 }
 
@@ -423,6 +450,7 @@ model Vehicle {
   name           String
   plateNumber    String
   status         VehicleStatus @default(AVAILABLE)
+  isActive       Boolean       @default(true)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -548,6 +576,8 @@ model Customer {
   phone          String?
   email          String?
   address        String?
+  lat            Float?
+  lng            Float?
   notes          String?
   creditLimit    Decimal? @db.Decimal(12, 2)
   isActive       Boolean  @default(true)

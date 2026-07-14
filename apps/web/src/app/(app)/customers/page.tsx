@@ -1,14 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import clsx from "clsx";
 import { Plus, Wallet } from "lucide-react";
 import type { CustomerDto } from "@bakery-os/shared";
 import { CUSTOMER_MANAGE_ROLES, PAYMENT_RECORD_ROLES } from "@bakery-os/shared";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatMoney } from "@/lib/format";
 import { NewCustomerModal } from "@/components/new-customer-modal";
 import { CustomerDetailModal } from "@/components/customer-detail-modal";
+import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 
 export default function CustomersPage() {
   const { user } = useAuth();
@@ -17,18 +19,51 @@ export default function CustomersPage() {
 
   const [customers, setCustomers] = useState<CustomerDto[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<CustomerDto | undefined>(undefined);
+  const [showArchived, setShowArchived] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    api.customers.list().then(setCustomers).catch(() => setError("Не удалось загрузить клиентов"));
-  }, []);
+    api.customers
+      .list(showArchived)
+      .then(setCustomers)
+      .catch(() => setError("Не удалось загрузить клиентов"));
+  }, [showArchived]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   const totalOutstanding = customers.reduce((sum, c) => sum + c.outstandingBalance, 0);
+
+  async function handleArchive(c: CustomerDto) {
+    try {
+      await api.customers.archive(c.id);
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось заархивировать клиента");
+    }
+  }
+
+  async function handleRestore(c: CustomerDto) {
+    try {
+      await api.customers.restore(c.id);
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось восстановить клиента");
+    }
+  }
+
+  async function handleDelete(c: CustomerDto) {
+    if (!confirm(`Удалить клиента «${c.name}»? Это действие нельзя отменить.`)) return;
+    try {
+      await api.customers.remove(c.id);
+      load();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "Не удалось удалить клиента");
+    }
+  }
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -39,7 +74,10 @@ export default function CustomersPage() {
         </div>
         {canManage && (
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => {
+              setEditingCustomer(undefined);
+              setIsModalOpen(true);
+            }}
             className="flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
           >
             <Plus className="h-4 w-4" strokeWidth={1.75} />
@@ -50,6 +88,12 @@ export default function CustomersPage() {
 
       {error && (
         <div className="mb-6 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+      )}
+
+      {canManage && (
+        <div className="mb-4 flex justify-end">
+          <ArchivedToggle checked={showArchived} onChange={setShowArchived} />
+        </div>
       )}
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -77,6 +121,7 @@ export default function CustomersPage() {
               <th className="px-5 py-3 font-medium">Телефон</th>
               <th className="px-5 py-3 font-medium">Кредитный лимит</th>
               <th className="px-5 py-3 text-right font-medium">Задолженность</th>
+              {canManage && <th className="px-5 py-3 font-medium">Действия</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -84,9 +129,14 @@ export default function CustomersPage() {
               <tr
                 key={c.id}
                 onClick={() => setSelectedId(c.id)}
-                className="cursor-pointer transition hover:bg-surface-muted"
+                className={clsx("cursor-pointer transition hover:bg-surface-muted", !c.isActive && "opacity-60")}
               >
-                <td className="px-5 py-3 font-medium text-foreground">{c.name}</td>
+                <td className="px-5 py-3 font-medium text-foreground">
+                  <div className="flex items-center gap-2">
+                    {c.name}
+                    {!c.isActive && <ArchivedBadge />}
+                  </div>
+                </td>
                 <td className="px-5 py-3 text-muted">{c.phone ?? "—"}</td>
                 <td className="px-5 py-3 text-muted">
                   {c.creditLimit !== null ? formatMoney(c.creditLimit) : "—"}
@@ -98,11 +148,25 @@ export default function CustomersPage() {
                 >
                   {formatMoney(c.outstandingBalance)}
                 </td>
+                {canManage && (
+                  <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
+                    <RowActions
+                      isActive={c.isActive}
+                      onEdit={() => {
+                        setEditingCustomer(c);
+                        setIsModalOpen(true);
+                      }}
+                      onArchive={() => handleArchive(c)}
+                      onRestore={() => handleRestore(c)}
+                      onDelete={() => handleDelete(c)}
+                    />
+                  </td>
+                )}
               </tr>
             ))}
             {customers.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-5 py-8 text-center text-sm text-muted">
+                <td colSpan={5} className="px-5 py-8 text-center text-sm text-muted">
                   Клиентов пока нет
                 </td>
               </tr>
@@ -113,8 +177,9 @@ export default function CustomersPage() {
 
       {isModalOpen && (
         <NewCustomerModal
+          customer={editingCustomer}
           onClose={() => setIsModalOpen(false)}
-          onCreated={() => {
+          onSaved={() => {
             setIsModalOpen(false);
             load();
           }}

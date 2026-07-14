@@ -5,47 +5,47 @@ import { RolesGuard } from "../common/guards/roles.guard";
 import { Roles } from "../common/decorators/roles.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { AuthenticatedUser } from "../auth/auth.types";
-import { ProductsService } from "./products.service";
-import { CreateProductDto } from "./dto/create-product.dto";
-import { UpdateProductDto } from "./dto/update-product.dto";
+import { CategoriesService } from "./categories.service";
+import { CreateCategoryDto } from "./dto/create-category.dto";
+import { UpdateCategoryDto } from "./dto/update-category.dto";
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Controller("products")
-export class ProductsController {
-  constructor(private productsService: ProductsService) {}
+@Controller("categories")
+export class CategoriesController {
+  constructor(private categoriesService: CategoriesService) {}
 
   @Get()
   findAll(@CurrentUser() user: AuthenticatedUser, @Query("includeArchived") includeArchived?: string) {
-    return this.productsService.findAllForOrganization(user.organizationId, includeArchived === "true");
+    return this.categoriesService.findAllForOrganization(user.organizationId, includeArchived === "true");
   }
 
   @Post()
   @Roles(...PRODUCT_MANAGE_ROLES)
-  create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateProductDto) {
-    return this.productsService.create(user.organizationId, dto);
+  create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateCategoryDto) {
+    return this.categoriesService.create(user.organizationId, dto);
   }
 
   @Patch(":id")
   @Roles(...PRODUCT_MANAGE_ROLES)
-  update(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: UpdateProductDto) {
-    return this.productsService.update(user.organizationId, id, dto);
+  update(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: UpdateCategoryDto) {
+    return this.categoriesService.update(user.organizationId, id, dto);
   }
 
   @Post(":id/archive")
   @Roles(...PRODUCT_MANAGE_ROLES)
   archive(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.productsService.archive(user.organizationId, id);
+    return this.categoriesService.archive(user.organizationId, id);
   }
 
   @Post(":id/restore")
   @Roles(...PRODUCT_MANAGE_ROLES)
   restore(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.productsService.restore(user.organizationId, id);
+    return this.categoriesService.restore(user.organizationId, id);
   }
 
   @Delete(":id")
   @Roles(...PRODUCT_MANAGE_ROLES)
   remove(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.productsService.remove(user.organizationId, id);
+    return this.categoriesService.remove(user.organizationId, id);
   }
 }

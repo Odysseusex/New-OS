@@ -30,6 +30,7 @@ export interface RecipeDto {
   items: RecipeItemDto[];
   unitCost: number;
   marginPercent: number | null;
+  isActive: boolean;
 }
 
 export interface CreateRecipeItemRequestDto {

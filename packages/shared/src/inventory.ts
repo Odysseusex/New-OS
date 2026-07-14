@@ -26,7 +26,7 @@ export interface StockLevelDto {
   productName: string;
   sku: string;
   unit: Unit;
-  category: string;
+  categoryName: string | null;
   quantity: number;
   minQuantity: number;
   isLow: boolean;

@@ -1,6 +1,8 @@
 import type {
+  CategoryDto,
   ClockInRequestDto,
   CompleteProductionBatchRequestDto,
+  CreateCategoryRequestDto,
   CreateCustomerRequestDto,
   CreateDeliveryRouteRequestDto,
   CreateExpenseRequestDto,
@@ -41,6 +43,12 @@ import type {
   StockMovementDto,
   SupplierDto,
   TimeEntryDto,
+  UpdateCategoryRequestDto,
+  UpdateCustomerRequestDto,
+  UpdateLocationRequestDto,
+  UpdateProductRequestDto,
+  UpdateSupplierRequestDto,
+  UpdateVehicleRequestDto,
   VehicleDto,
 } from "@bakery-os/shared";
 
@@ -85,19 +93,43 @@ export const api = {
   me: () => request<LoginResponseDto["user"]>("/auth/me"),
   dashboardSummary: () => request<DashboardSummaryDto>("/dashboard/summary"),
   locations: {
-    list: () => request<LocationDto[]>("/locations"),
+    list: (includeArchived?: boolean) =>
+      request<LocationDto[]>(withQuery("/locations", { includeArchived: includeArchived ? "true" : undefined })),
     overview: () => request<LocationOverviewDto[]>("/locations/overview"),
     regions: () => request<RegionDto[]>("/locations/regions"),
     comparison: (from: string, to: string) =>
       request<LocationComparisonDto[]>(withQuery("/locations/comparison", { from, to })),
     create: (dto: CreateLocationRequestDto) =>
       request<LocationDto>("/locations", { method: "POST", body: JSON.stringify(dto) }),
+    update: (id: string, dto: UpdateLocationRequestDto) =>
+      request<LocationDto>(`/locations/${id}`, { method: "PATCH", body: JSON.stringify(dto) }),
+    archive: (id: string) => request<LocationDto>(`/locations/${id}/archive`, { method: "POST" }),
+    restore: (id: string) => request<LocationDto>(`/locations/${id}/restore`, { method: "POST" }),
+    remove: (id: string) => request<{ deleted: true }>(`/locations/${id}`, { method: "DELETE" }),
   },
 
   products: {
-    list: () => request<ProductDto[]>("/products"),
+    list: (includeArchived?: boolean) =>
+      request<ProductDto[]>(withQuery("/products", { includeArchived: includeArchived ? "true" : undefined })),
     create: (dto: CreateProductRequestDto) =>
       request<ProductDto>("/products", { method: "POST", body: JSON.stringify(dto) }),
+    update: (id: string, dto: UpdateProductRequestDto) =>
+      request<ProductDto>(`/products/${id}`, { method: "PATCH", body: JSON.stringify(dto) }),
+    archive: (id: string) => request<ProductDto>(`/products/${id}/archive`, { method: "POST" }),
+    restore: (id: string) => request<ProductDto>(`/products/${id}/restore`, { method: "POST" }),
+    remove: (id: string) => request<{ deleted: true }>(`/products/${id}`, { method: "DELETE" }),
+  },
+
+  categories: {
+    list: (includeArchived?: boolean) =>
+      request<CategoryDto[]>(withQuery("/categories", { includeArchived: includeArchived ? "true" : undefined })),
+    create: (dto: CreateCategoryRequestDto) =>
+      request<CategoryDto>("/categories", { method: "POST", body: JSON.stringify(dto) }),
+    update: (id: string, dto: UpdateCategoryRequestDto) =>
+      request<CategoryDto>(`/categories/${id}`, { method: "PATCH", body: JSON.stringify(dto) }),
+    archive: (id: string) => request<CategoryDto>(`/categories/${id}/archive`, { method: "POST" }),
+    restore: (id: string) => request<CategoryDto>(`/categories/${id}/restore`, { method: "POST" }),
+    remove: (id: string) => request<{ deleted: true }>(`/categories/${id}`, { method: "DELETE" }),
   },
 
   inventory: {
@@ -131,16 +163,26 @@ export const api = {
   },
 
   customers: {
-    list: () => request<CustomerDto[]>("/customers"),
+    list: (includeArchived?: boolean) =>
+      request<CustomerDto[]>(withQuery("/customers", { includeArchived: includeArchived ? "true" : undefined })),
     findOne: (id: string) => request<CustomerDetailDto>(`/customers/${id}`),
     create: (dto: CreateCustomerRequestDto) =>
       request<CustomerDto>("/customers", { method: "POST", body: JSON.stringify(dto) }),
+    update: (id: string, dto: UpdateCustomerRequestDto) =>
+      request<CustomerDto>(`/customers/${id}`, { method: "PATCH", body: JSON.stringify(dto) }),
+    archive: (id: string) => request<CustomerDto>(`/customers/${id}/archive`, { method: "POST" }),
+    restore: (id: string) => request<CustomerDto>(`/customers/${id}/restore`, { method: "POST" }),
+    remove: (id: string) => request<{ deleted: true }>(`/customers/${id}`, { method: "DELETE" }),
   },
 
   recipes: {
-    list: () => request<RecipeDto[]>("/recipes"),
+    list: (includeArchived?: boolean) =>
+      request<RecipeDto[]>(withQuery("/recipes", { includeArchived: includeArchived ? "true" : undefined })),
     create: (dto: CreateRecipeRequestDto) =>
       request<RecipeDto>("/recipes", { method: "POST", body: JSON.stringify(dto) }),
+    archive: (id: string) => request<RecipeDto>(`/recipes/${id}/archive`, { method: "POST" }),
+    restore: (id: string) => request<RecipeDto>(`/recipes/${id}/restore`, { method: "POST" }),
+    remove: (id: string) => request<{ deleted: true }>(`/recipes/${id}`, { method: "DELETE" }),
   },
 
   production: {
@@ -161,9 +203,15 @@ export const api = {
   },
 
   suppliers: {
-    list: () => request<SupplierDto[]>("/suppliers"),
+    list: (includeArchived?: boolean) =>
+      request<SupplierDto[]>(withQuery("/suppliers", { includeArchived: includeArchived ? "true" : undefined })),
     create: (dto: CreateSupplierRequestDto) =>
       request<SupplierDto>("/suppliers", { method: "POST", body: JSON.stringify(dto) }),
+    update: (id: string, dto: UpdateSupplierRequestDto) =>
+      request<SupplierDto>(`/suppliers/${id}`, { method: "PATCH", body: JSON.stringify(dto) }),
+    archive: (id: string) => request<SupplierDto>(`/suppliers/${id}/archive`, { method: "POST" }),
+    restore: (id: string) => request<SupplierDto>(`/suppliers/${id}/restore`, { method: "POST" }),
+    remove: (id: string) => request<{ deleted: true }>(`/suppliers/${id}`, { method: "DELETE" }),
   },
 
   procurement: {
@@ -181,9 +229,15 @@ export const api = {
   },
 
   vehicles: {
-    list: () => request<VehicleDto[]>("/vehicles"),
+    list: (includeArchived?: boolean) =>
+      request<VehicleDto[]>(withQuery("/vehicles", { includeArchived: includeArchived ? "true" : undefined })),
     create: (dto: CreateVehicleRequestDto) =>
       request<VehicleDto>("/vehicles", { method: "POST", body: JSON.stringify(dto) }),
+    update: (id: string, dto: UpdateVehicleRequestDto) =>
+      request<VehicleDto>(`/vehicles/${id}`, { method: "PATCH", body: JSON.stringify(dto) }),
+    archive: (id: string) => request<VehicleDto>(`/vehicles/${id}/archive`, { method: "POST" }),
+    restore: (id: string) => request<VehicleDto>(`/vehicles/${id}/restore`, { method: "POST" }),
+    remove: (id: string) => request<{ deleted: true }>(`/vehicles/${id}`, { method: "DELETE" }),
   },
 
   logistics: {

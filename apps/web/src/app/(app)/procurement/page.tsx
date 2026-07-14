@@ -16,6 +16,7 @@ import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { NewPurchaseOrderModal } from "@/components/new-purchase-order-modal";
 import { NewSupplierModal } from "@/components/new-supplier-modal";
+import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 
 type Tab = "orders" | "suppliers";
 
@@ -31,7 +32,9 @@ export default function ProcurementPage() {
   const [suppliers, setSuppliers] = useState<SupplierDto[]>([]);
   const [orders, setOrders] = useState<PurchaseOrderDto[]>([]);
   const [locationFilter, setLocationFilter] = useState("");
+  const [showArchivedSuppliers, setShowArchivedSuppliers] = useState(false);
   const [modal, setModal] = useState<"order" | "supplier" | null>(null);
+  const [editingSupplier, setEditingSupplier] = useState<SupplierDto | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
 
   const loadOrders = useCallback(() => {
@@ -42,8 +45,11 @@ export default function ProcurementPage() {
   }, [locationFilter]);
 
   const loadSuppliers = useCallback(() => {
-    api.suppliers.list().then(setSuppliers).catch(() => setError("Не удалось загрузить поставщиков"));
-  }, []);
+    api.suppliers
+      .list(showArchivedSuppliers)
+      .then(setSuppliers)
+      .catch(() => setError("Не удалось загрузить поставщиков"));
+  }, [showArchivedSuppliers]);
 
   useEffect(() => {
     api.locations.list().then(setLocations).catch(() => {});
@@ -72,6 +78,34 @@ export default function ProcurementPage() {
       loadOrders();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось отменить заказ");
+    }
+  }
+
+  async function handleSupplierArchive(s: SupplierDto) {
+    try {
+      await api.suppliers.archive(s.id);
+      loadSuppliers();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось заархивировать поставщика");
+    }
+  }
+
+  async function handleSupplierRestore(s: SupplierDto) {
+    try {
+      await api.suppliers.restore(s.id);
+      loadSuppliers();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось восстановить поставщика");
+    }
+  }
+
+  async function handleSupplierDelete(s: SupplierDto) {
+    if (!confirm(`Удалить поставщика «${s.name}»? Это действие нельзя отменить.`)) return;
+    try {
+      await api.suppliers.remove(s.id);
+      loadSuppliers();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "Не удалось удалить поставщика");
     }
   }
 
@@ -125,8 +159,15 @@ export default function ProcurementPage() {
           )}
 
           {tab === "suppliers" && canManageSuppliers && (
+            <ArchivedToggle checked={showArchivedSuppliers} onChange={setShowArchivedSuppliers} />
+          )}
+
+          {tab === "suppliers" && canManageSuppliers && (
             <button
-              onClick={() => setModal("supplier")}
+              onClick={() => {
+                setEditingSupplier(undefined);
+                setModal("supplier");
+              }}
               className="flex items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
             >
               <Plus className="h-4 w-4" strokeWidth={1.75} />
@@ -206,20 +247,40 @@ export default function ProcurementPage() {
                 <th className="px-5 py-3 font-medium">Телефон</th>
                 <th className="px-5 py-3 font-medium">Email</th>
                 <th className="px-5 py-3 font-medium">Заметки</th>
+                {canManageSuppliers && <th className="px-5 py-3 font-medium">Действия</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {suppliers.map((s) => (
-                <tr key={s.id}>
-                  <td className="px-5 py-3 font-medium text-foreground">{s.name}</td>
+                <tr key={s.id} className={clsx(!s.isActive && "opacity-60")}>
+                  <td className="px-5 py-3 font-medium text-foreground">
+                    <div className="flex items-center gap-2">
+                      {s.name}
+                      {!s.isActive && <ArchivedBadge />}
+                    </div>
+                  </td>
                   <td className="px-5 py-3 text-muted">{s.phone ?? "—"}</td>
                   <td className="px-5 py-3 text-muted">{s.email ?? "—"}</td>
                   <td className="px-5 py-3 text-muted">{s.notes ?? "—"}</td>
+                  {canManageSuppliers && (
+                    <td className="px-5 py-3">
+                      <RowActions
+                        isActive={s.isActive}
+                        onEdit={() => {
+                          setEditingSupplier(s);
+                          setModal("supplier");
+                        }}
+                        onArchive={() => handleSupplierArchive(s)}
+                        onRestore={() => handleSupplierRestore(s)}
+                        onDelete={() => handleSupplierDelete(s)}
+                      />
+                    </td>
+                  )}
                 </tr>
               ))}
               {suppliers.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-5 py-8 text-center text-sm text-muted">
+                  <td colSpan={5} className="px-5 py-8 text-center text-sm text-muted">
                     Поставщиков пока нет
                   </td>
                 </tr>
@@ -231,7 +292,7 @@ export default function ProcurementPage() {
 
       {modal === "order" && (
         <NewPurchaseOrderModal
-          suppliers={suppliers}
+          suppliers={suppliers.filter((s) => s.isActive)}
           locations={locations}
           products={products}
           fixedLocationId={fixedLocationId}
@@ -245,8 +306,9 @@ export default function ProcurementPage() {
 
       {modal === "supplier" && (
         <NewSupplierModal
+          supplier={editingSupplier}
           onClose={() => setModal(null)}
-          onCreated={() => {
+          onSaved={() => {
             setModal(null);
             loadSuppliers();
           }}

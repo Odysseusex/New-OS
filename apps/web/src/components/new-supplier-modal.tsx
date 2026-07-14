@@ -1,20 +1,23 @@
 "use client";
 
 import { useState } from "react";
+import type { SupplierDto } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
 
 export function NewSupplierModal({
+  supplier,
   onClose,
-  onCreated,
+  onSaved,
 }: {
+  supplier?: SupplierDto;
   onClose: () => void;
-  onCreated: () => void;
+  onSaved: () => void;
 }) {
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [notes, setNotes] = useState("");
+  const [name, setName] = useState(supplier?.name ?? "");
+  const [phone, setPhone] = useState(supplier?.phone ?? "");
+  const [email, setEmail] = useState(supplier?.email ?? "");
+  const [notes, setNotes] = useState(supplier?.notes ?? "");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -23,22 +26,27 @@ export function NewSupplierModal({
     setError(null);
     setIsSubmitting(true);
     try {
-      await api.suppliers.create({
+      const dto = {
         name,
         phone: phone || undefined,
         email: email || undefined,
         notes: notes || undefined,
-      });
-      onCreated();
+      };
+      if (supplier) {
+        await api.suppliers.update(supplier.id, dto);
+      } else {
+        await api.suppliers.create(dto);
+      }
+      onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Не удалось добавить поставщика");
+      setError(err instanceof ApiError ? err.message : "Не удалось сохранить поставщика");
     } finally {
       setIsSubmitting(false);
     }
   }
 
   return (
-    <Modal title="Новый поставщик" onClose={onClose}>
+    <Modal title={supplier ? "Редактировать поставщика" : "Новый поставщик"} onClose={onClose}>
       <form onSubmit={handleSubmit}>
         <div className="mb-4">
           <label className="mb-1.5 block text-sm font-medium text-foreground">Название</label>
@@ -93,7 +101,7 @@ export function NewSupplierModal({
           disabled={isSubmitting}
           className="w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-60"
         >
-          {isSubmitting ? "Сохранение…" : "Добавить поставщика"}
+          {isSubmitting ? "Сохранение…" : supplier ? "Сохранить" : "Добавить поставщика"}
         </button>
       </form>
     </Modal>

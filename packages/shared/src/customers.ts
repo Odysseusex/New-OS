@@ -16,9 +16,12 @@ export interface CustomerDto {
   phone: string | null;
   email: string | null;
   address: string | null;
+  lat: number | null;
+  lng: number | null;
   notes: string | null;
   creditLimit: number | null;
   outstandingBalance: number;
+  isActive: boolean;
 }
 
 export interface CreateCustomerRequestDto {
@@ -26,8 +29,21 @@ export interface CreateCustomerRequestDto {
   phone?: string;
   email?: string;
   address?: string;
+  lat?: number;
+  lng?: number;
   notes?: string;
   creditLimit?: number;
+}
+
+export interface UpdateCustomerRequestDto {
+  name?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  lat?: number | null;
+  lng?: number | null;
+  notes?: string;
+  creditLimit?: number | null;
 }
 
 export interface CustomerOrderDto {

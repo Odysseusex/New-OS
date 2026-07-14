@@ -20,6 +20,7 @@ import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatQuantity } from "@/lib/format";
 import { NewRouteModal } from "@/components/new-route-modal";
 import { NewVehicleModal } from "@/components/new-vehicle-modal";
+import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 
 type Tab = "routes" | "vehicles";
 
@@ -34,7 +35,9 @@ export default function LogisticsPage() {
   const [vehicles, setVehicles] = useState<VehicleDto[]>([]);
   const [drivers, setDrivers] = useState<DriverDto[]>([]);
   const [routes, setRoutes] = useState<DeliveryRouteDto[]>([]);
+  const [showArchivedVehicles, setShowArchivedVehicles] = useState(false);
   const [modal, setModal] = useState<"route" | "vehicle" | null>(null);
+  const [editingVehicle, setEditingVehicle] = useState<VehicleDto | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
 
   const loadRoutes = useCallback(() => {
@@ -42,8 +45,11 @@ export default function LogisticsPage() {
   }, []);
 
   const loadVehicles = useCallback(() => {
-    api.vehicles.list().then(setVehicles).catch(() => setError("Не удалось загрузить транспорт"));
-  }, []);
+    api.vehicles
+      .list(showArchivedVehicles)
+      .then(setVehicles)
+      .catch(() => setError("Не удалось загрузить транспорт"));
+  }, [showArchivedVehicles]);
 
   useEffect(() => {
     if (!canView) return;
@@ -96,6 +102,34 @@ export default function LogisticsPage() {
     }
   }
 
+  async function handleVehicleArchive(v: VehicleDto) {
+    try {
+      await api.vehicles.archive(v.id);
+      loadVehicles();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось заархивировать транспорт");
+    }
+  }
+
+  async function handleVehicleRestore(v: VehicleDto) {
+    try {
+      await api.vehicles.restore(v.id);
+      loadVehicles();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось восстановить транспорт");
+    }
+  }
+
+  async function handleVehicleDelete(v: VehicleDto) {
+    if (!confirm(`Удалить транспорт «${v.name}»? Это действие нельзя отменить.`)) return;
+    try {
+      await api.vehicles.remove(v.id);
+      loadVehicles();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "Не удалось удалить транспорт");
+    }
+  }
+
   return (
     <div className="mx-auto max-w-6xl">
       <div className="mb-6 flex items-start justify-between">
@@ -130,13 +164,19 @@ export default function LogisticsPage() {
         )}
 
         {tab === "vehicles" && canManage && (
-          <button
-            onClick={() => setModal("vehicle")}
-            className="flex items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
-          >
-            <Plus className="h-4 w-4" strokeWidth={1.75} />
-            Новый транспорт
-          </button>
+          <div className="flex items-center gap-3">
+            <ArchivedToggle checked={showArchivedVehicles} onChange={setShowArchivedVehicles} />
+            <button
+              onClick={() => {
+                setEditingVehicle(undefined);
+                setModal("vehicle");
+              }}
+              className="flex items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
+            >
+              <Plus className="h-4 w-4" strokeWidth={1.75} />
+              Новый транспорт
+            </button>
+          </div>
         )}
       </div>
 
@@ -218,19 +258,39 @@ export default function LogisticsPage() {
                 <th className="px-5 py-3 font-medium">Название</th>
                 <th className="px-5 py-3 font-medium">Гос. номер</th>
                 <th className="px-5 py-3 font-medium">Статус</th>
+                {canManage && <th className="px-5 py-3 font-medium">Действия</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {vehicles.map((v) => (
-                <tr key={v.id}>
-                  <td className="px-5 py-3 font-medium text-foreground">{v.name}</td>
+                <tr key={v.id} className={clsx(!v.isActive && "opacity-60")}>
+                  <td className="px-5 py-3 font-medium text-foreground">
+                    <div className="flex items-center gap-2">
+                      {v.name}
+                      {!v.isActive && <ArchivedBadge />}
+                    </div>
+                  </td>
                   <td className="px-5 py-3 text-muted">{v.plateNumber}</td>
                   <td className="px-5 py-3 text-muted">{VEHICLE_STATUS_LABELS_RU[v.status]}</td>
+                  {canManage && (
+                    <td className="px-5 py-3">
+                      <RowActions
+                        isActive={v.isActive}
+                        onEdit={() => {
+                          setEditingVehicle(v);
+                          setModal("vehicle");
+                        }}
+                        onArchive={() => handleVehicleArchive(v)}
+                        onRestore={() => handleVehicleRestore(v)}
+                        onDelete={() => handleVehicleDelete(v)}
+                      />
+                    </td>
+                  )}
                 </tr>
               ))}
               {vehicles.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="px-5 py-8 text-center text-sm text-muted">
+                  <td colSpan={4} className="px-5 py-8 text-center text-sm text-muted">
                     Транспорта пока нет
                   </td>
                 </tr>
@@ -244,7 +304,7 @@ export default function LogisticsPage() {
         <NewRouteModal
           originLocations={originLocations}
           destinationLocations={destinationLocations}
-          vehicles={vehicles}
+          vehicles={vehicles.filter((v) => v.isActive)}
           drivers={drivers}
           products={products}
           fixedOriginLocationId={fixedOriginLocationId}
@@ -258,8 +318,9 @@ export default function LogisticsPage() {
 
       {modal === "vehicle" && (
         <NewVehicleModal
+          vehicle={editingVehicle}
           onClose={() => setModal(null)}
-          onCreated={() => {
+          onSaved={() => {
             setModal(null);
             loadVehicles();
           }}

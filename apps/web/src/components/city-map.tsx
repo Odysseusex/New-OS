@@ -2,30 +2,30 @@
 
 import { useMemo } from "react";
 import clsx from "clsx";
-import { Factory, Package, Store, type LucideIcon } from "lucide-react";
-import type { LocationOverviewDto } from "@bakery-os/shared";
-import { LocationType } from "@bakery-os/shared";
+import { Factory, Package, Store, Users, type LucideIcon } from "lucide-react";
+import type { MapEntity, MapEntityKind } from "@/lib/map-entities";
 import { projectToPercent } from "@/lib/geo";
 
-const TYPE_STYLES: Record<LocationType, { color: string; icon: LucideIcon }> = {
-  [LocationType.BAKERY_PRODUCTION]: { color: "#b6702f", icon: Factory },
-  [LocationType.STORE]: { color: "#2563eb", icon: Store },
-  [LocationType.WAREHOUSE]: { color: "#0d9488", icon: Package },
+const KIND_STYLES: Record<MapEntityKind, { color: string; icon: LucideIcon }> = {
+  PRODUCTION: { color: "#b6702f", icon: Factory },
+  STORE: { color: "#2563eb", icon: Store },
+  WAREHOUSE: { color: "#0d9488", icon: Package },
+  CUSTOMER: { color: "#7c3aed", icon: Users },
 };
 
+// Consumes only provider-agnostic MapEntity points + a selection callback.
+// A future 2GIS/Google Maps renderer can implement this exact same props
+// contract and be swapped in at the call site without touching data loading.
 export function CityMap({
-  locations,
+  entities,
   selectedId,
   onSelect,
 }: {
-  locations: LocationOverviewDto[];
+  entities: MapEntity[];
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
-  const withCoords = locations.filter(
-    (l): l is LocationOverviewDto & { lat: number; lng: number } => l.lat != null && l.lng != null,
-  );
-  const points = useMemo(() => projectToPercent(withCoords), [withCoords]);
+  const points = useMemo(() => projectToPercent(entities), [entities]);
 
   return (
     <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl border border-border bg-surface">
@@ -44,7 +44,7 @@ export function CityMap({
       </svg>
 
       {points.map((p) => {
-        const style = TYPE_STYLES[p.type];
+        const style = KIND_STYLES[p.kind];
         const Icon = style.icon;
         const isSelected = p.id === selectedId;
         const isLow = (p.lowStockCount ?? 0) > 0;

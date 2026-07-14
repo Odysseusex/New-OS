@@ -1,22 +1,27 @@
 "use client";
 
 import { useState } from "react";
+import type { CustomerDto } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
 
 export function NewCustomerModal({
+  customer,
   onClose,
-  onCreated,
+  onSaved,
 }: {
+  customer?: CustomerDto;
   onClose: () => void;
-  onCreated: () => void;
+  onSaved: () => void;
 }) {
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [address, setAddress] = useState("");
-  const [notes, setNotes] = useState("");
-  const [creditLimit, setCreditLimit] = useState("");
+  const [name, setName] = useState(customer?.name ?? "");
+  const [phone, setPhone] = useState(customer?.phone ?? "");
+  const [email, setEmail] = useState(customer?.email ?? "");
+  const [address, setAddress] = useState(customer?.address ?? "");
+  const [notes, setNotes] = useState(customer?.notes ?? "");
+  const [creditLimit, setCreditLimit] = useState(
+    customer?.creditLimit !== null && customer?.creditLimit !== undefined ? String(customer.creditLimit) : "",
+  );
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -25,24 +30,29 @@ export function NewCustomerModal({
     setError(null);
     setIsSubmitting(true);
     try {
-      await api.customers.create({
+      const dto = {
         name,
         phone: phone || undefined,
         email: email || undefined,
         address: address || undefined,
         notes: notes || undefined,
         creditLimit: creditLimit ? Number(creditLimit) : undefined,
-      });
-      onCreated();
+      };
+      if (customer) {
+        await api.customers.update(customer.id, dto);
+      } else {
+        await api.customers.create(dto);
+      }
+      onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Не удалось добавить клиента");
+      setError(err instanceof ApiError ? err.message : "Не удалось сохранить клиента");
     } finally {
       setIsSubmitting(false);
     }
   }
 
   return (
-    <Modal title="Новый клиент" onClose={onClose}>
+    <Modal title={customer ? "Редактировать клиента" : "Новый клиент"} onClose={onClose}>
       <form onSubmit={handleSubmit}>
         <div className="mb-4">
           <label className="mb-1.5 block text-sm font-medium text-foreground">Название / ФИО</label>
@@ -123,7 +133,7 @@ export function NewCustomerModal({
           disabled={isSubmitting}
           className="w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-60"
         >
-          {isSubmitting ? "Сохранение…" : "Добавить клиента"}
+          {isSubmitting ? "Сохранение…" : customer ? "Сохранить" : "Добавить клиента"}
         </button>
       </form>
     </Modal>

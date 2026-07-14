@@ -19,7 +19,7 @@ export class InventoryService {
         organizationId: user.organizationId,
         ...(locationId ? { locationId } : {}),
       },
-      include: { location: true, product: true },
+      include: { location: true, product: { include: { categoryRef: true } } },
       orderBy: [{ location: { name: "asc" } }, { product: { name: "asc" } }],
     });
 
@@ -31,7 +31,7 @@ export class InventoryService {
       productName: level.product.name,
       sku: level.product.sku,
       unit: level.product.unit as Unit,
-      category: level.product.category,
+      categoryName: level.product.categoryRef?.name ?? null,
       quantity: level.quantity.toNumber(),
       minQuantity: level.minQuantity.toNumber(),
       isLow: level.quantity.toNumber() <= level.minQuantity.toNumber(),

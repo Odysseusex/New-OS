@@ -11,6 +11,7 @@ export interface LocationDto {
   address: string;
   lat: number | null;
   lng: number | null;
+  isActive: boolean;
 }
 
 export interface LocationOverviewDto extends LocationDto {
@@ -27,6 +28,17 @@ export interface CreateLocationRequestDto {
   address: string;
   lat?: number;
   lng?: number;
+}
+
+export interface UpdateLocationRequestDto {
+  name?: string;
+  type?: LocationType;
+  ownership?: LocationOwnership;
+  regionId?: string | null;
+  city?: string;
+  address?: string;
+  lat?: number | null;
+  lng?: number | null;
 }
 
 export interface LocationComparisonDto extends LocationDto {

@@ -41,11 +41,18 @@ export interface VehicleDto {
   name: string;
   plateNumber: string;
   status: VehicleStatus;
+  isActive: boolean;
 }
 
 export interface CreateVehicleRequestDto {
   name: string;
   plateNumber: string;
+}
+
+export interface UpdateVehicleRequestDto {
+  name?: string;
+  plateNumber?: string;
+  status?: VehicleStatus;
 }
 
 export interface DriverDto {

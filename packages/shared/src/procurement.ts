@@ -18,10 +18,18 @@ export interface SupplierDto {
   phone: string | null;
   email: string | null;
   notes: string | null;
+  isActive: boolean;
 }
 
 export interface CreateSupplierRequestDto {
   name: string;
+  phone?: string;
+  email?: string;
+  notes?: string;
+}
+
+export interface UpdateSupplierRequestDto {
+  name?: string;
   phone?: string;
   email?: string;
   notes?: string;

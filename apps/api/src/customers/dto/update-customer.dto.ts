@@ -1,9 +1,10 @@
 import { IsEmail, IsNumber, IsOptional, IsString, Min, MinLength } from "class-validator";
 
-export class CreateCustomerDto {
+export class UpdateCustomerDto {
+  @IsOptional()
   @IsString()
   @MinLength(2)
-  name!: string;
+  name?: string;
 
   @IsOptional()
   @IsString()

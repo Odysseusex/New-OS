@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   CreateLocationRequestDto,
@@ -9,14 +9,15 @@ import {
   RegionDto,
 } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
+import { UpdateLocationDto } from "./dto/update-location.dto";
 
 @Injectable()
 export class LocationsService {
   constructor(private prisma: PrismaService) {}
 
-  async findAllForOrganization(organizationId: string): Promise<LocationDto[]> {
+  async findAllForOrganization(organizationId: string, includeArchived = false): Promise<LocationDto[]> {
     const locations = await this.prisma.location.findMany({
-      where: { organizationId },
+      where: { organizationId, ...(includeArchived ? {} : { isActive: true }) },
       orderBy: { name: "asc" },
     });
 
@@ -48,13 +49,67 @@ export class LocationsService {
     return this.toDto(location);
   }
 
+  async update(organizationId: string, locationId: string, dto: UpdateLocationDto): Promise<LocationDto> {
+    const location = await this.prisma.location.findFirst({ where: { id: locationId, organizationId } });
+    if (!location) {
+      throw new NotFoundException("Точка не найдена");
+    }
+    const updated = await this.prisma.location.update({ where: { id: locationId }, data: dto });
+    return this.toDto(updated);
+  }
+
+  async archive(organizationId: string, locationId: string): Promise<LocationDto> {
+    return this.setActive(organizationId, locationId, false);
+  }
+
+  async restore(organizationId: string, locationId: string): Promise<LocationDto> {
+    return this.setActive(organizationId, locationId, true);
+  }
+
+  async remove(organizationId: string, locationId: string): Promise<{ deleted: true }> {
+    const location = await this.prisma.location.findFirst({ where: { id: locationId, organizationId } });
+    if (!location) {
+      throw new NotFoundException("Точка не найдена");
+    }
+
+    const [users, movements, sales, batches, orders, routes, stops, expenses, shifts] = await Promise.all([
+      this.prisma.user.count({ where: { locationId } }),
+      this.prisma.stockMovement.count({ where: { locationId } }),
+      this.prisma.sale.count({ where: { locationId } }),
+      this.prisma.productionBatch.count({ where: { locationId } }),
+      this.prisma.purchaseOrder.count({ where: { locationId } }),
+      this.prisma.deliveryRoute.count({ where: { originLocationId: locationId } }),
+      this.prisma.routeStop.count({ where: { destinationLocationId: locationId } }),
+      this.prisma.expense.count({ where: { locationId } }),
+      this.prisma.shift.count({ where: { locationId } }),
+    ]);
+    const usageCount = users + movements + sales + batches + orders + routes + stops + expenses + shifts;
+    if (usageCount > 0) {
+      throw new BadRequestException(
+        "Нельзя удалить точку — с ней уже связаны данные (сотрудники, документы или остатки). Заархивируйте её вместо удаления.",
+      );
+    }
+
+    await this.prisma.location.delete({ where: { id: locationId } });
+    return { deleted: true };
+  }
+
+  private async setActive(organizationId: string, locationId: string, isActive: boolean): Promise<LocationDto> {
+    const location = await this.prisma.location.findFirst({ where: { id: locationId, organizationId } });
+    if (!location) {
+      throw new NotFoundException("Точка не найдена");
+    }
+    const updated = await this.prisma.location.update({ where: { id: locationId }, data: { isActive } });
+    return this.toDto(updated);
+  }
+
   async findComparison(
     organizationId: string,
     from: Date,
     to: Date,
   ): Promise<LocationComparisonDto[]> {
     const [locations, sales, stockLevels, activeStaff, expenses] = await Promise.all([
-      this.prisma.location.findMany({ where: { organizationId }, orderBy: { name: "asc" } }),
+      this.prisma.location.findMany({ where: { organizationId, isActive: true }, orderBy: { name: "asc" } }),
       this.prisma.sale.findMany({
         where: { organizationId, soldAt: { gte: from, lte: to } },
       }),
@@ -121,7 +176,7 @@ export class LocationsService {
 
     const [locations, todaySales, stockLevels] = await Promise.all([
       this.prisma.location.findMany({
-        where: { organizationId: user.organizationId },
+        where: { organizationId: user.organizationId, isActive: true },
         orderBy: { name: "asc" },
       }),
       this.prisma.sale.findMany({
@@ -165,6 +220,7 @@ export class LocationsService {
     address: string;
     lat: number | null;
     lng: number | null;
+    isActive: boolean;
   }): LocationDto {
     return {
       id: loc.id,
@@ -176,6 +232,7 @@ export class LocationsService {
       address: loc.address,
       lat: loc.lat,
       lng: loc.lng,
+      isActive: loc.isActive,
     };
   }
 }

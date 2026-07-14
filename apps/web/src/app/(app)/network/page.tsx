@@ -11,10 +11,11 @@ import {
   LocationOwnership,
   NETWORK_VIEW_ROLES,
 } from "@bakery-os/shared";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatMoney } from "@/lib/format";
 import { NewLocationModal } from "@/components/new-location-modal";
+import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 
 type Tab = "registry" | "comparison";
 type Period = "7d" | "30d" | "month";
@@ -51,11 +52,16 @@ export default function NetworkPage() {
   const [regions, setRegions] = useState<RegionDto[]>([]);
   const [comparison, setComparison] = useState<LocationComparisonDto[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingLocation, setEditingLocation] = useState<LocationDto | undefined>(undefined);
+  const [showArchived, setShowArchived] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadRegistry = useCallback(() => {
-    api.locations.list().then(setLocations).catch(() => setError("Не удалось загрузить точки"));
-  }, []);
+    api.locations
+      .list(showArchived)
+      .then(setLocations)
+      .catch(() => setError("Не удалось загрузить точки"));
+  }, [showArchived]);
 
   const loadComparison = useCallback(() => {
     const { from, to } = periodRange(period);
@@ -76,6 +82,34 @@ export default function NetworkPage() {
 
   const regionName = (regionId: string | null) => regions.find((r) => r.id === regionId)?.name ?? "—";
 
+  async function handleArchive(loc: LocationDto) {
+    try {
+      await api.locations.archive(loc.id);
+      loadRegistry();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось заархивировать точку");
+    }
+  }
+
+  async function handleRestore(loc: LocationDto) {
+    try {
+      await api.locations.restore(loc.id);
+      loadRegistry();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось восстановить точку");
+    }
+  }
+
+  async function handleDelete(loc: LocationDto) {
+    if (!confirm(`Удалить точку «${loc.name}»? Это действие нельзя отменить.`)) return;
+    try {
+      await api.locations.remove(loc.id);
+      loadRegistry();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "Не удалось удалить точку");
+    }
+  }
+
   return (
     <div className="mx-auto max-w-6xl">
       <div className="mb-6 flex items-start justify-between">
@@ -85,7 +119,10 @@ export default function NetworkPage() {
         </div>
         {canManage && tab === "registry" && (
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => {
+              setEditingLocation(undefined);
+              setIsModalOpen(true);
+            }}
             className="flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
           >
             <Plus className="h-4 w-4" strokeWidth={1.75} />
@@ -98,8 +135,8 @@ export default function NetworkPage() {
         <div className="mb-6 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
 
-      {canViewComparison && (
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        {canViewComparison ? (
           <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
             <TabButton active={tab === "registry"} onClick={() => setTab("registry")}>
               Реестр
@@ -108,8 +145,15 @@ export default function NetworkPage() {
               Сравнение
             </TabButton>
           </div>
+        ) : (
+          <div />
+        )}
 
-          {tab === "comparison" && (
+        <div className="flex items-center gap-3">
+          {tab === "registry" && canManage && (
+            <ArchivedToggle checked={showArchived} onChange={setShowArchived} />
+          )}
+          {tab === "comparison" && canViewComparison && (
             <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
               {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
                 <TabButton key={p} active={period === p} onClick={() => setPeriod(p)}>
@@ -119,7 +163,7 @@ export default function NetworkPage() {
             </div>
           )}
         </div>
-      )}
+      </div>
 
       {tab === "registry" && (
         <div className="rounded-2xl border border-border bg-surface shadow-card">
@@ -131,12 +175,18 @@ export default function NetworkPage() {
                 <th className="px-5 py-3 font-medium">Форма</th>
                 <th className="px-5 py-3 font-medium">Регион</th>
                 <th className="px-5 py-3 font-medium">Адрес</th>
+                {canManage && <th className="px-5 py-3 font-medium">Действия</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {locations.map((loc) => (
-                <tr key={loc.id}>
-                  <td className="px-5 py-3 font-medium text-foreground">{loc.name}</td>
+                <tr key={loc.id} className={clsx(!loc.isActive && "opacity-60")}>
+                  <td className="px-5 py-3 font-medium text-foreground">
+                    <div className="flex items-center gap-2">
+                      {loc.name}
+                      {!loc.isActive && <ArchivedBadge />}
+                    </div>
+                  </td>
                   <td className="px-5 py-3 text-muted">{LOCATION_TYPE_LABELS_RU[loc.type]}</td>
                   <td className="px-5 py-3">
                     <span className={clsx("rounded-full px-2.5 py-1 text-xs font-medium", OWNERSHIP_STYLES[loc.ownership])}>
@@ -147,11 +197,25 @@ export default function NetworkPage() {
                   <td className="px-5 py-3 text-muted">
                     {loc.city}, {loc.address}
                   </td>
+                  {canManage && (
+                    <td className="px-5 py-3">
+                      <RowActions
+                        isActive={loc.isActive}
+                        onEdit={() => {
+                          setEditingLocation(loc);
+                          setIsModalOpen(true);
+                        }}
+                        onArchive={() => handleArchive(loc)}
+                        onRestore={() => handleRestore(loc)}
+                        onDelete={() => handleDelete(loc)}
+                      />
+                    </td>
+                  )}
                 </tr>
               ))}
               {locations.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-5 py-8 text-center text-sm text-muted">
+                  <td colSpan={6} className="px-5 py-8 text-center text-sm text-muted">
                     Точек пока нет
                   </td>
                 </tr>
@@ -213,8 +277,9 @@ export default function NetworkPage() {
       {isModalOpen && (
         <NewLocationModal
           regions={regions}
+          location={editingLocation}
           onClose={() => setIsModalOpen(false)}
-          onCreated={() => {
+          onSaved={() => {
             setIsModalOpen(false);
             loadRegistry();
           }}

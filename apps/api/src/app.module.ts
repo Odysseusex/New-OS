@@ -7,6 +7,7 @@ import { OrganizationsModule } from "./organizations/organizations.module";
 import { LocationsModule } from "./locations/locations.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { ProductsModule } from "./products/products.module";
+import { CategoriesModule } from "./categories/categories.module";
 import { InventoryModule } from "./inventory/inventory.module";
 import { SalesModule } from "./sales/sales.module";
 import { RecipesModule } from "./recipes/recipes.module";
@@ -28,6 +29,7 @@ import { CustomersModule } from "./customers/customers.module";
     LocationsModule,
     DashboardModule,
     ProductsModule,
+    CategoriesModule,
     InventoryModule,
     SalesModule,
     RecipesModule,

@@ -18,6 +18,7 @@ import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
 import { NewBatchModal } from "@/components/new-batch-modal";
 import { CompleteBatchModal } from "@/components/complete-batch-modal";
 import { NewRecipeModal } from "@/components/new-recipe-modal";
+import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 
 type Tab = "batches" | "recipes";
 
@@ -33,6 +34,7 @@ export default function ProductionPage() {
   const [recipes, setRecipes] = useState<RecipeDto[]>([]);
   const [batches, setBatches] = useState<ProductionBatchDto[]>([]);
   const [locationFilter, setLocationFilter] = useState("");
+  const [showArchivedRecipes, setShowArchivedRecipes] = useState(false);
   const [modal, setModal] = useState<"batch" | "recipe" | null>(null);
   const [completingBatch, setCompletingBatch] = useState<ProductionBatchDto | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -45,8 +47,11 @@ export default function ProductionPage() {
   }, [locationFilter]);
 
   const loadRecipes = useCallback(() => {
-    api.recipes.list().then(setRecipes).catch(() => setError("Не удалось загрузить рецептуры"));
-  }, []);
+    api.recipes
+      .list(showArchivedRecipes)
+      .then(setRecipes)
+      .catch(() => setError("Не удалось загрузить рецептуры"));
+  }, [showArchivedRecipes]);
 
   useEffect(() => {
     api.locations.list().then(setLocations).catch(() => {});
@@ -66,6 +71,34 @@ export default function ProductionPage() {
       loadBatches();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось отменить задание");
+    }
+  }
+
+  async function handleRecipeArchive(recipe: RecipeDto) {
+    try {
+      await api.recipes.archive(recipe.id);
+      loadRecipes();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось заархивировать рецептуру");
+    }
+  }
+
+  async function handleRecipeRestore(recipe: RecipeDto) {
+    try {
+      await api.recipes.restore(recipe.id);
+      loadRecipes();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось восстановить рецептуру");
+    }
+  }
+
+  async function handleRecipeDelete(recipe: RecipeDto) {
+    if (!confirm(`Удалить рецептуру «${recipe.productName}»? Это действие нельзя отменить.`)) return;
+    try {
+      await api.recipes.remove(recipe.id);
+      loadRecipes();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "Не удалось удалить рецептуру");
     }
   }
 
@@ -118,6 +151,10 @@ export default function ProductionPage() {
               <Plus className="h-4 w-4" strokeWidth={1.75} />
               Новое задание
             </button>
+          )}
+
+          {tab === "recipes" && canManageRecipes && (
+            <ArchivedToggle checked={showArchivedRecipes} onChange={setShowArchivedRecipes} />
           )}
 
           {tab === "recipes" && canManageRecipes && (
@@ -205,14 +242,27 @@ export default function ProductionPage() {
             <div key={recipe.id} className="rounded-2xl border border-border bg-surface p-5 shadow-card">
               <div className="mb-3 flex items-start justify-between">
                 <div>
-                  <p className="font-medium text-foreground">{recipe.productName}</p>
+                  <p className="flex items-center gap-2 font-medium text-foreground">
+                    {recipe.productName}
+                    {!recipe.isActive && <ArchivedBadge />}
+                  </p>
                   <p className="text-xs text-muted">
                     Выход: {recipe.yieldQuantity} {UNIT_LABELS_RU[recipe.productUnit]}
                   </p>
                 </div>
-                <span className="rounded-full bg-surface-muted px-2.5 py-1 text-xs font-medium text-muted">
-                  {formatMoney(recipe.productPrice)}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-surface-muted px-2.5 py-1 text-xs font-medium text-muted">
+                    {formatMoney(recipe.productPrice)}
+                  </span>
+                  {canManageRecipes && (
+                    <RowActions
+                      isActive={recipe.isActive}
+                      onArchive={() => handleRecipeArchive(recipe)}
+                      onRestore={() => handleRecipeRestore(recipe)}
+                      onDelete={() => handleRecipeDelete(recipe)}
+                    />
+                  )}
+                </div>
               </div>
 
               <ul className="mb-4 space-y-1">
@@ -250,7 +300,7 @@ export default function ProductionPage() {
       {modal === "batch" && (
         <NewBatchModal
           locations={locations}
-          recipes={recipes}
+          recipes={recipes.filter((r) => r.isActive)}
           fixedLocationId={fixedLocationId}
           onClose={() => setModal(null)}
           onCreated={() => {
@@ -262,7 +312,7 @@ export default function ProductionPage() {
 
       {modal === "recipe" && (
         <NewRecipeModal
-          products={products}
+          products={products.filter((p) => p.isActive)}
           existingRecipeProductIds={recipes.map((r) => r.productId)}
           onClose={() => setModal(null)}
           onCreated={() => {

@@ -1,26 +1,31 @@
 import { IsEnum, IsNumber, IsOptional, IsString, Min, MinLength } from "class-validator";
 import { ProductType, Unit } from "@bakery-os/shared";
 
-export class CreateProductDto {
+export class UpdateProductDto {
+  @IsOptional()
   @IsString()
   @MinLength(2)
-  name!: string;
-
-  @IsString()
-  @MinLength(2)
-  sku!: string;
-
-  @IsEnum(Unit)
-  unit!: Unit;
-
-  @IsEnum(ProductType)
-  type!: ProductType;
+  name?: string;
 
   @IsOptional()
   @IsString()
-  categoryId?: string;
+  @MinLength(2)
+  sku?: string;
 
+  @IsOptional()
+  @IsEnum(Unit)
+  unit?: Unit;
+
+  @IsOptional()
+  @IsEnum(ProductType)
+  type?: ProductType;
+
+  @IsOptional()
+  @IsString()
+  categoryId?: string | null;
+
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  price!: number;
+  price?: number;
 }

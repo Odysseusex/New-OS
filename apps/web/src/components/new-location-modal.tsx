@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { RegionDto } from "@bakery-os/shared";
+import type { LocationDto, RegionDto } from "@bakery-os/shared";
 import {
   LOCATION_OWNERSHIP_LABELS_RU,
   LOCATION_TYPE_LABELS_RU,
@@ -13,19 +13,23 @@ import { Modal } from "@/components/modal";
 
 export function NewLocationModal({
   regions,
+  location,
   onClose,
-  onCreated,
+  onSaved,
 }: {
   regions: RegionDto[];
+  location?: LocationDto;
   onClose: () => void;
-  onCreated: () => void;
+  onSaved: () => void;
 }) {
-  const [name, setName] = useState("");
-  const [type, setType] = useState<LocationType>(LocationType.STORE);
-  const [ownership, setOwnership] = useState<LocationOwnership>(LocationOwnership.OWNED);
-  const [regionId, setRegionId] = useState(regions[0]?.id ?? "");
-  const [city, setCity] = useState("");
-  const [address, setAddress] = useState("");
+  const [name, setName] = useState(location?.name ?? "");
+  const [type, setType] = useState<LocationType>(location?.type ?? LocationType.STORE);
+  const [ownership, setOwnership] = useState<LocationOwnership>(
+    location?.ownership ?? LocationOwnership.OWNED,
+  );
+  const [regionId, setRegionId] = useState(location?.regionId ?? regions[0]?.id ?? "");
+  const [city, setCity] = useState(location?.city ?? "");
+  const [address, setAddress] = useState(location?.address ?? "");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -34,24 +38,22 @@ export function NewLocationModal({
     setError(null);
     setIsSubmitting(true);
     try {
-      await api.locations.create({
-        name,
-        type,
-        ownership,
-        regionId: regionId || undefined,
-        city,
-        address,
-      });
-      onCreated();
+      const dto = { name, type, ownership, regionId: regionId || undefined, city, address };
+      if (location) {
+        await api.locations.update(location.id, dto);
+      } else {
+        await api.locations.create(dto);
+      }
+      onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Не удалось добавить точку");
+      setError(err instanceof ApiError ? err.message : "Не удалось сохранить точку");
     } finally {
       setIsSubmitting(false);
     }
   }
 
   return (
-    <Modal title="Новая точка" onClose={onClose}>
+    <Modal title={location ? "Редактировать точку" : "Новая точка"} onClose={onClose}>
       <form onSubmit={handleSubmit}>
         <div className="mb-4">
           <label className="mb-1.5 block text-sm font-medium text-foreground">Название</label>
@@ -145,7 +147,7 @@ export function NewLocationModal({
           disabled={isSubmitting}
           className="w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-60"
         >
-          {isSubmitting ? "Сохранение…" : "Добавить точку"}
+          {isSubmitting ? "Сохранение…" : location ? "Сохранить" : "Добавить точку"}
         </button>
       </form>
     </Modal>
