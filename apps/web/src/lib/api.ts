@@ -42,6 +42,7 @@ import type {
   RegionDto,
   SaleDetailDto,
   SaleDto,
+  SalesReportDto,
   SalesSummaryDto,
   ShiftDto,
   StockLevelDto,
@@ -175,6 +176,8 @@ export const api = {
     list: (locationId?: string) => request<SaleDto[]>(withQuery("/sales", { locationId })),
     summary: (locationId?: string) =>
       request<SalesSummaryDto>(withQuery("/sales/summary", { locationId })),
+    report: (from: string, to: string, locationId?: string) =>
+      request<SalesReportDto>(withQuery("/sales/report", { from, to, locationId })),
     findOne: (id: string) => request<SaleDetailDto>(`/sales/${id}`),
     create: (dto: CreateSaleRequestDto) =>
       request<SaleDetailDto>("/sales", { method: "POST", body: JSON.stringify(dto) }),

@@ -47,3 +47,26 @@ export interface SalesSummaryDto {
   last7DaysRevenue: number;
   averageTicket: number;
 }
+
+export interface SalesByLocationDto {
+  locationId: string;
+  locationName: string;
+  revenue: number;
+  count: number;
+}
+
+export interface SalesByProductDto {
+  productId: string;
+  productName: string;
+  quantity: number;
+  revenue: number;
+}
+
+export interface SalesReportDto {
+  from: string;
+  to: string;
+  totalRevenue: number;
+  totalCount: number;
+  byLocation: SalesByLocationDto[];
+  byProduct: SalesByProductDto[];
+}

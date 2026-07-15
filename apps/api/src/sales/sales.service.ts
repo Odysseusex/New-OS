@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { PaymentStatus, SaleDetailDto, SaleDto, SalesSummaryDto } from "@bakery-os/shared";
+import { PaymentStatus, SaleDetailDto, SaleDto, SalesReportDto, SalesSummaryDto } from "@bakery-os/shared";
 import { StockMovementType } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
@@ -62,6 +62,71 @@ export class SalesService {
       todaySalesCount: todaySales.length,
       last7DaysRevenue,
       averageTicket,
+    };
+  }
+
+  async report(
+    user: AuthenticatedUser,
+    from: Date,
+    to: Date,
+    requestedLocationId?: string,
+  ): Promise<SalesReportDto> {
+    const locationId = resolveLocationScope(user, requestedLocationId);
+
+    const sales = await this.prisma.sale.findMany({
+      where: {
+        organizationId: user.organizationId,
+        soldAt: { gte: from, lte: to },
+        ...(locationId ? { locationId } : {}),
+      },
+      include: { location: true, items: { include: { product: true } } },
+    });
+
+    const byLocationMap = new Map<string, { locationName: string; revenue: number; count: number }>();
+    const byProductMap = new Map<string, { productName: string; quantity: number; revenue: number }>();
+    let totalRevenue = 0;
+
+    for (const sale of sales) {
+      const revenue = sale.totalAmount.toNumber();
+      totalRevenue += revenue;
+
+      const locationEntry = byLocationMap.get(sale.locationId) ?? {
+        locationName: sale.location.name,
+        revenue: 0,
+        count: 0,
+      };
+      locationEntry.revenue += revenue;
+      locationEntry.count += 1;
+      byLocationMap.set(sale.locationId, locationEntry);
+
+      for (const item of sale.items) {
+        const productEntry = byProductMap.get(item.productId) ?? {
+          productName: item.product.name,
+          quantity: 0,
+          revenue: 0,
+        };
+        productEntry.quantity += item.quantity.toNumber();
+        productEntry.revenue += item.subtotal.toNumber();
+        byProductMap.set(item.productId, productEntry);
+      }
+    }
+
+    const byLocation = Array.from(byLocationMap.entries())
+      .map(([locationId, v]) => ({ locationId, locationName: v.locationName, revenue: v.revenue, count: v.count }))
+      .sort((a, b) => b.revenue - a.revenue);
+
+    const byProduct = Array.from(byProductMap.entries())
+      .map(([productId, v]) => ({ productId, productName: v.productName, quantity: v.quantity, revenue: v.revenue }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 20);
+
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      totalRevenue,
+      totalCount: sales.length,
+      byLocation,
+      byProduct,
     };
   }
 

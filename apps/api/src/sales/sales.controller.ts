@@ -24,6 +24,16 @@ export class SalesController {
     return this.salesService.summary(user, locationId);
   }
 
+  @Get("report")
+  report(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("from") from: string,
+    @Query("to") to: string,
+    @Query("locationId") locationId?: string,
+  ) {
+    return this.salesService.report(user, new Date(from), new Date(to), locationId);
+  }
+
   @Get(":id")
   findOne(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
     return this.salesService.findOne(user, id);

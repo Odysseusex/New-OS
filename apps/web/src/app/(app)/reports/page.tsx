@@ -1,17 +1,488 @@
-import { BarChart3 } from "lucide-react";
-import { ModulePlaceholder } from "@/components/module-placeholder";
-import { allNavItems } from "@/lib/nav";
-import { moduleUpcoming } from "@/lib/module-details";
+"use client";
 
-const item = allNavItems.find((i) => i.href === "/reports")!;
+import { useEffect, useState } from "react";
+import clsx from "clsx";
+import { Download, Printer } from "lucide-react";
+import type {
+  HrKpiResponseDto,
+  LocationDto,
+  ProfitAndLossDto,
+  QualitySummaryDto,
+  SalesReportDto,
+  StockLevelDto,
+} from "@bakery-os/shared";
+import {
+  FINANCE_VIEW_ROLES,
+  HR_MANAGE_ROLES,
+  ORG_WIDE_ROLES,
+  QUALITY_VIEW_ROLES,
+  WRITE_OFF_REASON_LABELS_RU,
+} from "@bakery-os/shared";
+import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { downloadCsv } from "@/lib/csv";
+import { formatMoney, formatQuantity } from "@/lib/format";
 
-export default function Page() {
+type ReportKey = "finance" | "sales" | "quality" | "hr" | "stock";
+type Period = "7d" | "30d" | "month";
+
+const PERIOD_LABELS: Record<Period, string> = {
+  "7d": "7 дней",
+  "30d": "30 дней",
+  month: "Этот месяц",
+};
+
+function periodRange(period: Period): { from: Date; to: Date } {
+  const to = new Date();
+  const from = new Date();
+  from.setHours(0, 0, 0, 0);
+  if (period === "7d") from.setDate(from.getDate() - 6);
+  if (period === "30d") from.setDate(from.getDate() - 29);
+  if (period === "month") from.setDate(1);
+  return { from, to };
+}
+
+export default function ReportsPage() {
+  const { user } = useAuth();
+  const isOrgWide = user ? ORG_WIDE_ROLES.includes(user.role) : false;
+
+  const availableReports: { key: ReportKey; label: string }[] = [
+    ...(user && FINANCE_VIEW_ROLES.includes(user.role) ? [{ key: "finance" as const, label: "Финансы (P&L)" }] : []),
+    { key: "sales" as const, label: "Продажи" },
+    ...(user && QUALITY_VIEW_ROLES.includes(user.role)
+      ? [{ key: "quality" as const, label: "Качество и списания" }]
+      : []),
+    ...(user && HR_MANAGE_ROLES.includes(user.role) ? [{ key: "hr" as const, label: "Персонал (KPI)" }] : []),
+    { key: "stock" as const, label: "Остатки склада" },
+  ];
+
+  const [activeReport, setActiveReport] = useState<ReportKey>(availableReports[0]?.key ?? "sales");
+  const [period, setPeriod] = useState<Period>("30d");
+  const [locationFilter, setLocationFilter] = useState("");
+  const [locations, setLocations] = useState<LocationDto[]>([]);
+
+  useEffect(() => {
+    api.locations.list().then(setLocations).catch(() => {});
+  }, []);
+
+  if (availableReports.length === 0) return null;
+
   return (
-    <ModulePlaceholder
-      icon={BarChart3}
-      title={item.label}
-      description={item.description}
-      upcoming={moduleUpcoming["/reports"]}
-    />
+    <div className="mx-auto max-w-6xl">
+      <div className="mb-6">
+        <h1 className="text-xl font-semibold text-foreground">Отчёты</h1>
+        <p className="mt-1 text-sm text-muted">Библиотека готовых отчётов по сети</p>
+      </div>
+
+      <div className="mb-6 flex flex-wrap items-center gap-1 rounded-xl bg-surface-muted p-1">
+        {availableReports.map((r) => (
+          <button
+            key={r.key}
+            onClick={() => setActiveReport(r.key)}
+            className={clsx(
+              "rounded-lg px-3.5 py-1.5 text-sm font-medium transition",
+              activeReport === r.key ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground",
+            )}
+          >
+            {r.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          {activeReport !== "stock" && (
+            <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
+              {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPeriod(p)}
+                  className={clsx(
+                    "rounded-lg px-3.5 py-1.5 text-sm font-medium transition",
+                    period === p ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground",
+                  )}
+                >
+                  {PERIOD_LABELS[p]}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {isOrgWide && (
+            <select
+              value={locationFilter}
+              onChange={(e) => setLocationFilter(e.target.value)}
+              className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            >
+              <option value="">Вся сеть</option>
+              {locations.map((loc) => (
+                <option key={loc.id} value={loc.id}>
+                  {loc.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        <button
+          onClick={() => window.print()}
+          className="flex items-center gap-1.5 rounded-xl border border-border px-3.5 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted print:hidden"
+        >
+          <Printer className="h-4 w-4" strokeWidth={1.75} />
+          Печать
+        </button>
+      </div>
+
+      <div className="printable-report">
+        {activeReport === "finance" && <FinanceReport period={period} locationId={locationFilter} />}
+        {activeReport === "sales" && (
+          <SalesReport period={period} locationId={locationFilter} isOrgWide={isOrgWide} />
+        )}
+        {activeReport === "quality" && <QualityReport period={period} locationId={locationFilter} />}
+        {activeReport === "hr" && <HrReport period={period} locationId={locationFilter} />}
+        {activeReport === "stock" && <StockReport locationId={locationFilter} isOrgWide={isOrgWide} />}
+      </div>
+
+      <style jsx global>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          .printable-report,
+          .printable-report * {
+            visibility: visible;
+          }
+          .printable-report {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+          }
+        }
+      `}</style>
+    </div>
   );
+}
+
+function ReportCard({
+  title,
+  onExport,
+  children,
+}: {
+  title: string;
+  onExport?: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-surface shadow-card">
+      <div className="flex items-center justify-between border-b border-border px-5 py-4">
+        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+        {onExport && (
+          <button
+            onClick={onExport}
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted transition hover:bg-surface-muted hover:text-foreground print:hidden"
+          >
+            <Download className="h-3.5 w-3.5" strokeWidth={1.75} />
+            CSV
+          </button>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function StatRow({ items }: { items: { label: string; value: string }[] }) {
+  return (
+    <div className="grid grid-cols-2 gap-4 border-b border-border p-5 sm:grid-cols-4">
+      {items.map((it) => (
+        <div key={it.label}>
+          <p className="text-lg font-semibold text-foreground">{it.value}</p>
+          <p className="mt-0.5 text-xs text-muted">{it.label}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FinanceReport({ period, locationId }: { period: Period; locationId: string }) {
+  const [pnl, setPnl] = useState<ProfitAndLossDto | null>(null);
+
+  useEffect(() => {
+    const { from, to } = periodRange(period);
+    api.finance.pnl(from.toISOString(), to.toISOString(), locationId || undefined).then(setPnl).catch(() => {});
+  }, [period, locationId]);
+
+  if (!pnl) return <EmptyState />;
+
+  return (
+    <ReportCard
+      title="Прибыли и убытки"
+      onExport={() =>
+        downloadCsv(
+          `pnl-${period}.csv`,
+          ["Товар", "Продано", "Выручка", "Себестоимость", "Валовая прибыль", "Маржа %"],
+          pnl.byProduct.map((p) => [
+            p.productName,
+            formatQuantity(p.quantitySold),
+            p.revenue.toFixed(2),
+            p.hasCostData ? p.cogs.toFixed(2) : "нет данных",
+            p.grossProfit.toFixed(2),
+            p.marginPercent !== null ? p.marginPercent.toFixed(1) : "—",
+          ]),
+        )
+      }
+    >
+      <StatRow
+        items={[
+          { label: "Выручка", value: formatMoney(pnl.revenue) },
+          { label: "Себестоимость", value: formatMoney(pnl.cogs) },
+          { label: "Валовая прибыль", value: formatMoney(pnl.grossProfit) },
+          { label: "Чистая прибыль", value: formatMoney(pnl.netProfit) },
+        ]}
+      />
+      <ReportTable
+        columns={["Товар", "Продано", "Выручка", "Себестоимость", "Прибыль", "Маржа"]}
+        rows={pnl.byProduct.map((p) => [
+          p.productName,
+          formatQuantity(p.quantitySold),
+          formatMoney(p.revenue),
+          p.hasCostData ? formatMoney(p.cogs) : "нет данных",
+          formatMoney(p.grossProfit),
+          p.marginPercent !== null ? `${p.marginPercent.toFixed(1)}%` : "—",
+        ])}
+      />
+    </ReportCard>
+  );
+}
+
+function SalesReport({
+  period,
+  locationId,
+  isOrgWide,
+}: {
+  period: Period;
+  locationId: string;
+  isOrgWide: boolean;
+}) {
+  const [report, setReport] = useState<SalesReportDto | null>(null);
+
+  useEffect(() => {
+    const { from, to } = periodRange(period);
+    api.sales.report(from.toISOString(), to.toISOString(), locationId || undefined).then(setReport).catch(() => {});
+  }, [period, locationId]);
+
+  if (!report) return <EmptyState />;
+
+  return (
+    <div className="space-y-5">
+      <ReportCard title="Продажи">
+        <StatRow
+          items={[
+            { label: "Выручка", value: formatMoney(report.totalRevenue) },
+            { label: "Продаж", value: String(report.totalCount) },
+            {
+              label: "Средний чек",
+              value: report.totalCount > 0 ? formatMoney(report.totalRevenue / report.totalCount) : "—",
+            },
+          ]}
+        />
+      </ReportCard>
+
+      {isOrgWide && (
+        <ReportCard
+          title="По точкам"
+          onExport={() =>
+            downloadCsv(
+              `sales-by-location-${period}.csv`,
+              ["Точка", "Выручка", "Продаж"],
+              report.byLocation.map((l) => [l.locationName, l.revenue.toFixed(2), l.count]),
+            )
+          }
+        >
+          <ReportTable
+            columns={["Точка", "Выручка", "Продаж"]}
+            rows={report.byLocation.map((l) => [l.locationName, formatMoney(l.revenue), String(l.count)])}
+          />
+        </ReportCard>
+      )}
+
+      <ReportCard
+        title="По товарам"
+        onExport={() =>
+          downloadCsv(
+            `sales-by-product-${period}.csv`,
+            ["Товар", "Продано", "Выручка"],
+            report.byProduct.map((p) => [p.productName, formatQuantity(p.quantity), p.revenue.toFixed(2)]),
+          )
+        }
+      >
+        <ReportTable
+          columns={["Товар", "Продано", "Выручка"]}
+          rows={report.byProduct.map((p) => [p.productName, formatQuantity(p.quantity), formatMoney(p.revenue)])}
+        />
+      </ReportCard>
+    </div>
+  );
+}
+
+function QualityReport({ period, locationId }: { period: Period; locationId: string }) {
+  const [summary, setSummary] = useState<QualitySummaryDto | null>(null);
+
+  useEffect(() => {
+    const { from, to } = periodRange(period);
+    api.quality.summary(from.toISOString(), to.toISOString(), locationId || undefined).then(setSummary).catch(() => {});
+  }, [period, locationId]);
+
+  if (!summary) return <EmptyState />;
+
+  return (
+    <ReportCard
+      title="Качество и списания"
+      onExport={() =>
+        downloadCsv(
+          `quality-${period}.csv`,
+          ["Причина", "Количество", "Сумма"],
+          summary.byReason.map((r) => [WRITE_OFF_REASON_LABELS_RU[r.reason], formatQuantity(r.quantity), r.value.toFixed(2)]),
+        )
+      }
+    >
+      <StatRow
+        items={[
+          { label: "Списано на сумму", value: formatMoney(summary.totalValue) },
+          { label: "Случаев списания", value: String(summary.totalMovements) },
+        ]}
+      />
+      <ReportTable
+        columns={["Причина", "Количество", "Сумма"]}
+        rows={summary.byReason.map((r) => [WRITE_OFF_REASON_LABELS_RU[r.reason], formatQuantity(r.quantity), formatMoney(r.value)])}
+      />
+    </ReportCard>
+  );
+}
+
+function HrReport({ period, locationId }: { period: Period; locationId: string }) {
+  const [kpi, setKpi] = useState<HrKpiResponseDto | null>(null);
+
+  useEffect(() => {
+    const { from, to } = periodRange(period);
+    api.hr.kpi(from.toISOString(), to.toISOString(), locationId || undefined).then(setKpi).catch(() => {});
+  }, [period, locationId]);
+
+  if (!kpi) return <EmptyState />;
+
+  return (
+    <ReportCard
+      title="KPI сотрудников"
+      onExport={() =>
+        downloadCsv(
+          `hr-kpi-${period}.csv`,
+          ["Сотрудник", "Продаж", "Выручка", "Партий", "Единиц произведено"],
+          kpi.employees.map((e) => [
+            e.userFullName,
+            e.salesCount,
+            e.salesRevenue.toFixed(2),
+            e.batchesCompleted,
+            formatQuantity(e.unitsProduced),
+          ]),
+        )
+      }
+    >
+      <ReportTable
+        columns={["Сотрудник", "Продаж", "Выручка", "Партий", "Единиц произведено"]}
+        rows={kpi.employees.map((e) => [
+          e.userFullName,
+          String(e.salesCount),
+          formatMoney(e.salesRevenue),
+          String(e.batchesCompleted),
+          formatQuantity(e.unitsProduced),
+        ])}
+      />
+    </ReportCard>
+  );
+}
+
+function StockReport({ locationId, isOrgWide }: { locationId: string; isOrgWide: boolean }) {
+  const [levels, setLevels] = useState<StockLevelDto[] | null>(null);
+
+  useEffect(() => {
+    api.inventory.stockLevels(locationId || undefined).then(setLevels).catch(() => {});
+  }, [locationId]);
+
+  if (!levels) return <EmptyState />;
+
+  return (
+    <ReportCard
+      title="Остатки склада"
+      onExport={() =>
+        downloadCsv(
+          "stock-levels.csv",
+          [...(isOrgWide ? ["Точка"] : []), "Товар", "Остаток", "Мин. остаток", "Низкий остаток"],
+          levels.map((l) => [
+            ...(isOrgWide ? [l.locationName] : []),
+            l.productName,
+            formatQuantity(l.quantity),
+            formatQuantity(l.minQuantity),
+            l.isLow ? "да" : "нет",
+          ]),
+        )
+      }
+    >
+      <ReportTable
+        columns={[...(isOrgWide ? ["Точка"] : []), "Товар", "Остаток", "Мин. остаток"]}
+        rows={levels.map((l) => [
+          ...(isOrgWide ? [l.locationName] : []),
+          l.productName,
+          formatQuantity(l.quantity),
+          formatQuantity(l.minQuantity),
+        ])}
+        highlightRow={(i) => levels[i].isLow}
+      />
+    </ReportCard>
+  );
+}
+
+function ReportTable({
+  columns,
+  rows,
+  highlightRow,
+}: {
+  columns: string[];
+  rows: (string | number)[][];
+  highlightRow?: (index: number) => boolean;
+}) {
+  if (rows.length === 0) {
+    return <p className="px-5 py-8 text-center text-sm text-muted">Нет данных за период</p>;
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+            {columns.map((c) => (
+              <th key={c} className="px-5 py-3 font-medium">
+                {c}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {rows.map((row, i) => (
+            <tr key={i} className={highlightRow?.(i) ? "bg-amber-50" : undefined}>
+              {row.map((cell, j) => (
+                <td key={j} className={clsx("px-5 py-3", j === 0 ? "font-medium text-foreground" : "text-muted")}>
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function EmptyState() {
+  return <div className="rounded-2xl border border-border bg-surface p-10 text-center text-sm text-muted shadow-card">Загрузка…</div>;
 }

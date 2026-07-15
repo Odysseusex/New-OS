@@ -123,8 +123,8 @@ export const primaryNav: NavItem[] = [
     href: "/reports",
     label: "Отчёты",
     icon: BarChart3,
-    status: "soon",
-    description: "Конструктор отчётов и готовые шаблоны",
+    status: "live",
+    description: "Библиотека готовых отчётов: финансы, продажи, качество, персонал, склад",
   },
 ];
 
