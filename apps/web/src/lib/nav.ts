@@ -140,8 +140,8 @@ export const secondaryNav: NavItem[] = [
     href: "/notifications",
     label: "Уведомления",
     icon: Bell,
-    status: "soon",
-    description: "Единая лента событий и алертов",
+    status: "live",
+    description: "Лента алертов: остатки, долги, просроченные документы",
   },
   {
     href: "/settings",

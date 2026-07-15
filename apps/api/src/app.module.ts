@@ -22,6 +22,7 @@ import { CustomersModule } from "./customers/customers.module";
 import { UsersModule } from "./users/users.module";
 import { InvoicesModule } from "./invoices/invoices.module";
 import { QualityModule } from "./quality/quality.module";
+import { NotificationsModule } from "./notifications/notifications.module";
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { QualityModule } from "./quality/quality.module";
     UsersModule,
     InvoicesModule,
     QualityModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
 })

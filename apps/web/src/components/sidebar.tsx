@@ -1,12 +1,37 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import { primaryNav, secondaryNav } from "@/lib/nav";
+import { api } from "@/lib/api";
+
+const NOTIFICATIONS_POLL_MS = 60_000;
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      api.notifications
+        .list()
+        .then((list) => {
+          if (!cancelled) setUnreadCount(list.length);
+        })
+        .catch(() => {});
+    };
+    load();
+    const interval = setInterval(load, NOTIFICATIONS_POLL_MS);
+    window.addEventListener("notifications-updated", load);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      window.removeEventListener("notifications-updated", load);
+    };
+  }, [pathname]);
 
   return (
     <aside className="flex h-screen w-64 shrink-0 flex-col border-r border-border bg-surface">
@@ -34,7 +59,12 @@ export function Sidebar() {
 
         <ul className="space-y-0.5">
           {secondaryNav.map((item) => (
-            <NavRow key={item.href} item={item} active={pathname === item.href} />
+            <NavRow
+              key={item.href}
+              item={item}
+              active={pathname === item.href}
+              badgeCount={item.href === "/notifications" ? unreadCount : 0}
+            />
           ))}
         </ul>
       </nav>
@@ -45,9 +75,11 @@ export function Sidebar() {
 function NavRow({
   item,
   active,
+  badgeCount = 0,
 }: {
   item: (typeof primaryNav)[number];
   active: boolean;
+  badgeCount?: number;
 }) {
   const Icon = item.icon;
   return (
@@ -66,6 +98,11 @@ function NavRow({
         {item.status === "soon" && (
           <span className="rounded-full bg-surface-muted px-1.5 py-0.5 text-[10px] font-medium text-muted group-hover:bg-background">
             скоро
+          </span>
+        )}
+        {badgeCount > 0 && (
+          <span className="rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-medium text-accent-foreground">
+            {badgeCount > 99 ? "99+" : badgeCount}
           </span>
         )}
       </Link>

@@ -232,6 +232,7 @@ model User {
   timeEntries       TimeEntry[]       @relation("TimeEntryEmployee")
   recipeRevisions   RecipeRevision[]
   invoices          Invoice[]
+  notificationDismissals NotificationDismissal[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -711,4 +712,22 @@ model Customer {
 
   @@index([organizationId])
   @@map("customers")
+}
+
+// Notifications are never stored themselves — they're computed live from the
+// canonical tables (stock levels, invoices, purchase orders, ...) so they can
+// never go stale. This table only tracks which computed alert "keys" a user
+// has already dismissed, so a dismissed alert stays hidden until the
+// underlying condition actually changes and produces a new key.
+model NotificationDismissal {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key            String
+  dismissedAt    DateTime @default(now())
+
+  @@unique([userId, key])
+  @@index([organizationId, userId])
+  @@map("notification_dismissals")
 }

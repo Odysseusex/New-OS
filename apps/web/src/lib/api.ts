@@ -31,6 +31,7 @@ import type {
   LocationDto,
   LocationOverviewDto,
   LoginResponseDto,
+  NotificationDto,
   ProductDto,
   ProductionBatchDto,
   ProfitAndLossDto,
@@ -161,6 +162,13 @@ export const api = {
       request<StockMovementDto[]>(withQuery("/quality/write-offs", { locationId, from, to })),
     summary: (from: string, to: string, locationId?: string) =>
       request<QualitySummaryDto>(withQuery("/quality/summary", { from, to, locationId })),
+  },
+
+  notifications: {
+    list: () => request<NotificationDto[]>("/notifications"),
+    dismiss: (key: string) =>
+      request<{ dismissed: true }>(`/notifications/${encodeURIComponent(key)}/dismiss`, { method: "POST" }),
+    dismissAll: () => request<{ dismissed: true }>("/notifications/dismiss-all", { method: "POST" }),
   },
 
   sales: {
