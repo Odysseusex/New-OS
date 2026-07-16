@@ -119,7 +119,9 @@ export function NewProductModal({
         </div>
 
         <div className="mb-5">
-          <label className="mb-1.5 block text-sm font-medium text-foreground">Цена, ₸</label>
+          <label className="mb-1.5 block text-sm font-medium text-foreground">
+            {type === ProductType.RAW_MATERIAL ? "Цена закупки, ₸ за ед." : "Цена продажи, ₸"}
+          </label>
           <input
             type="number"
             min="0"
@@ -129,6 +131,11 @@ export function NewProductModal({
             onChange={(e) => setPrice(e.target.value)}
             className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
           />
+          <p className="mt-1.5 text-xs text-muted">
+            {type === ProductType.RAW_MATERIAL
+              ? "Используется для автоматического расчёта себестоимости в рецептах — держите в актуальном состоянии по факту закупки"
+              : "Цена, по которой товар продаётся клиенту"}
+          </p>
         </div>
 
         {error && (
