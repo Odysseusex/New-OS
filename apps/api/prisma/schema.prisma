@@ -138,6 +138,11 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Atomically incremented to hand out unique auto-generated product SKUs
+  // (see ProductsService.generateSku) without a retry loop under concurrent
+  // creates — Prisma's `increment` compiles to a single atomic UPDATE.
+  productSkuSequence Int @default(0)
+
   regions   Region[]
   locations Location[]
   users     User[]

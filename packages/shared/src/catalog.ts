@@ -54,7 +54,7 @@ export interface ProductDto {
 
 export interface CreateProductRequestDto {
   name: string;
-  sku: string;
+  sku?: string;
   unit: Unit;
   type: ProductType;
   categoryId?: string;

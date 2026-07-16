@@ -1,14 +1,30 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { ProductDto } from "@bakery-os/shared";
+import { ProductDto, ProductType } from "@bakery-os/shared";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 
 const PRODUCT_INCLUDE = { categoryRef: true };
 
+const SKU_PREFIX_BY_TYPE: Record<ProductType, string> = {
+  [ProductType.RAW_MATERIAL]: "ING",
+  [ProductType.FINISHED_GOOD]: "PRD",
+};
+
 @Injectable()
 export class ProductsService {
   constructor(private prisma: PrismaService) {}
+
+  // Atomic per-organization counter (Prisma's `increment` is a single UPDATE
+  // under the hood), so concurrent product creation without a manual SKU can
+  // never collide — no retry loop needed.
+  private async generateSku(organizationId: string, type: ProductType): Promise<string> {
+    const org = await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { productSkuSequence: { increment: 1 } },
+    });
+    return `${SKU_PREFIX_BY_TYPE[type]}-${String(org.productSkuSequence).padStart(6, "0")}`;
+  }
 
   async findAllForOrganization(organizationId: string, includeArchived = false): Promise<ProductDto[]> {
     const products = await this.prisma.product.findMany({
@@ -21,11 +37,16 @@ export class ProductsService {
   }
 
   async create(organizationId: string, dto: CreateProductDto): Promise<ProductDto> {
-    const existing = await this.prisma.product.findUnique({
-      where: { organizationId_sku: { organizationId, sku: dto.sku } },
-    });
-    if (existing) {
-      throw new ConflictException("Товар с таким артикулом уже существует");
+    let sku = dto.sku?.trim();
+    if (sku) {
+      const existing = await this.prisma.product.findUnique({
+        where: { organizationId_sku: { organizationId, sku } },
+      });
+      if (existing) {
+        throw new ConflictException("Товар с таким артикулом уже существует");
+      }
+    } else {
+      sku = await this.generateSku(organizationId, dto.type);
     }
 
     if (dto.categoryId) {
@@ -33,7 +54,7 @@ export class ProductsService {
     }
 
     const product = await this.prisma.product.create({
-      data: { ...dto, organizationId },
+      data: { ...dto, sku, organizationId },
       include: PRODUCT_INCLUDE,
     });
 

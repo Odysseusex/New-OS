@@ -31,7 +31,14 @@ export function NewProductModal({
     setError(null);
     setIsSubmitting(true);
     try {
-      const dto = { name, sku, unit, type, categoryId: categoryId || undefined, price: Number(price) };
+      const dto = {
+        name,
+        sku: sku.trim() || undefined,
+        unit,
+        type,
+        categoryId: categoryId || undefined,
+        price: Number(price),
+      };
       if (product) {
         await api.products.update(product.id, dto);
       } else {
@@ -64,11 +71,14 @@ export function NewProductModal({
             <label className="mb-1.5 block text-sm font-medium text-foreground">Артикул</label>
             <input
               type="text"
-              required
               value={sku}
               onChange={(e) => setSku(e.target.value)}
+              placeholder="Сгенерируется автоматически"
               className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
             />
+            {!product && (
+              <p className="mt-1.5 text-xs text-muted">Оставьте пустым — система присвоит уникальный номер</p>
+            )}
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-foreground">Единица</label>

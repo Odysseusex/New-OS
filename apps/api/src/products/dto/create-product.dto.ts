@@ -6,9 +6,10 @@ export class CreateProductDto {
   @MinLength(2)
   name!: string;
 
+  @IsOptional()
   @IsString()
   @MinLength(2)
-  sku!: string;
+  sku?: string;
 
   @IsEnum(Unit)
   unit!: Unit;
