@@ -9,11 +9,13 @@ import { Modal } from "@/components/modal";
 export function NewProductModal({
   categories,
   product,
+  defaultCategoryId,
   onClose,
   onSaved,
 }: {
   categories: CategoryDto[];
   product?: ProductDto;
+  defaultCategoryId?: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -21,7 +23,7 @@ export function NewProductModal({
   const [sku, setSku] = useState(product?.sku ?? "");
   const [unit, setUnit] = useState<Unit>(product?.unit ?? Unit.PCS);
   const [type, setType] = useState<ProductType>(product?.type ?? ProductType.FINISHED_GOOD);
-  const [categoryId, setCategoryId] = useState(product?.categoryId ?? "");
+  const [categoryId, setCategoryId] = useState(product?.categoryId ?? defaultCategoryId ?? "");
   const [price, setPrice] = useState(product ? String(product.price) : "");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);

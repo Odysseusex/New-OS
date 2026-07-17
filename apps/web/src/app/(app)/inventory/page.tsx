@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
-import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, Plus } from "lucide-react";
+import { AlertTriangle, ArrowDownCircle, ArrowLeft, ArrowUpCircle, Plus } from "lucide-react";
 import type { CategoryDto, LocationDto, ProductDto, StockLevelDto, StockMovementDto } from "@bakery-os/shared";
 import {
   HARD_DELETE_ROLES,
@@ -42,7 +42,21 @@ export default function InventoryPage() {
   const [modal, setModal] = useState<"receive" | "write-off" | "product" | "category" | null>(null);
   const [editingProduct, setEditingProduct] = useState<ProductDto | undefined>(undefined);
   const [editingCategory, setEditingCategory] = useState<CategoryDto | undefined>(undefined);
+  const [newProductCategoryId, setNewProductCategoryId] = useState<string | undefined>(undefined);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const selectedCategory = selectedCategoryId
+    ? categories.find((c) => c.id === selectedCategoryId) ?? null
+    : null;
+  const categoryProducts = selectedCategoryId
+    ? products.filter((p) => p.categoryId === selectedCategoryId)
+    : [];
+
+  function openTab(nextTab: Tab) {
+    setTab(nextTab);
+    setSelectedCategoryId(null);
+  }
 
   const loadStock = useCallback(() => {
     Promise.all([
@@ -178,13 +192,13 @@ export default function InventoryPage() {
 
       <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
-          <TabButton active={tab === "stock"} onClick={() => setTab("stock")}>
+          <TabButton active={tab === "stock"} onClick={() => openTab("stock")}>
             Остатки
           </TabButton>
-          <TabButton active={tab === "catalog"} onClick={() => setTab("catalog")}>
+          <TabButton active={tab === "catalog"} onClick={() => openTab("catalog")}>
             Номенклатура
           </TabButton>
-          <TabButton active={tab === "categories"} onClick={() => setTab("categories")}>
+          <TabButton active={tab === "categories"} onClick={() => openTab("categories")}>
             Категории
           </TabButton>
         </div>
@@ -208,14 +222,18 @@ export default function InventoryPage() {
           {tab === "catalog" && canManageProducts && (
             <ArchivedToggle checked={showArchivedProducts} onChange={setShowArchivedProducts} />
           )}
-          {tab === "categories" && canManageProducts && (
+          {tab === "categories" && !selectedCategory && canManageProducts && (
             <ArchivedToggle checked={showArchivedCategories} onChange={setShowArchivedCategories} />
+          )}
+          {tab === "categories" && selectedCategory && canManageProducts && (
+            <ArchivedToggle checked={showArchivedProducts} onChange={setShowArchivedProducts} />
           )}
 
           {tab === "catalog" && canManageProducts && (
             <button
               onClick={() => {
                 setEditingProduct(undefined);
+                setNewProductCategoryId(undefined);
                 setModal("product");
               }}
               className="flex items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
@@ -224,7 +242,7 @@ export default function InventoryPage() {
               Новый товар
             </button>
           )}
-          {tab === "categories" && canManageProducts && (
+          {tab === "categories" && !selectedCategory && canManageProducts && (
             <button
               onClick={() => {
                 setEditingCategory(undefined);
@@ -234,6 +252,19 @@ export default function InventoryPage() {
             >
               <Plus className="h-4 w-4" strokeWidth={1.75} />
               Новая категория
+            </button>
+          )}
+          {tab === "categories" && selectedCategory && canManageProducts && (
+            <button
+              onClick={() => {
+                setEditingProduct(undefined);
+                setNewProductCategoryId(selectedCategory.id);
+                setModal("product");
+              }}
+              className="flex items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
+            >
+              <Plus className="h-4 w-4" strokeWidth={1.75} />
+              Новый товар в категории
             </button>
           )}
         </div>
@@ -388,7 +419,7 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {tab === "categories" && (
+      {tab === "categories" && !selectedCategory && (
         <div className="rounded-2xl border border-border bg-surface shadow-card">
           <table className="w-full text-sm">
             <thead>
@@ -400,7 +431,11 @@ export default function InventoryPage() {
             </thead>
             <tbody className="divide-y divide-border">
               {categories.map((c) => (
-                <tr key={c.id} className={clsx(!c.isActive && "opacity-60")}>
+                <tr
+                  key={c.id}
+                  onClick={() => setSelectedCategoryId(c.id)}
+                  className={clsx("cursor-pointer transition hover:bg-surface-muted", !c.isActive && "opacity-60")}
+                >
                   <td className="px-5 py-3 font-medium text-foreground">
                     <div className="flex items-center gap-2">
                       {c.name}
@@ -409,7 +444,7 @@ export default function InventoryPage() {
                   </td>
                   <td className="px-5 py-3 text-right text-muted">{c.productCount}</td>
                   {canManageProducts && (
-                    <td className="px-5 py-3">
+                    <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
                       <RowActions
                         isActive={c.isActive}
                         onEdit={() => {
@@ -436,6 +471,87 @@ export default function InventoryPage() {
         </div>
       )}
 
+      {tab === "categories" && selectedCategory && (
+        <div className="rounded-2xl border border-border bg-surface shadow-card">
+          <div className="flex items-center justify-between border-b border-border px-5 py-4">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setSelectedCategoryId(null)}
+                className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-muted transition hover:bg-surface-muted hover:text-foreground"
+              >
+                <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
+                Категории
+              </button>
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                {selectedCategory.name}
+                {!selectedCategory.isActive && <ArchivedBadge />}
+              </h2>
+            </div>
+            <span className="text-sm text-muted">
+              {categoryProducts.length} {categoryProducts.length === 1 ? "товар" : "товаров"}
+            </span>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+                <th className="px-5 py-3 font-medium">Название</th>
+                <th className="px-5 py-3 font-medium">Артикул</th>
+                <th className="px-5 py-3 font-medium">Тип</th>
+                <th className="px-5 py-3 font-medium">Единица</th>
+                <th className="px-5 py-3 text-right font-medium">Цена</th>
+                {canManageProducts && <th className="px-5 py-3 font-medium">Действия</th>}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {categoryProducts.map((p) => (
+                <tr
+                  key={p.id}
+                  onClick={() => {
+                    setEditingProduct(p);
+                    setModal("product");
+                  }}
+                  className={clsx("cursor-pointer transition hover:bg-surface-muted", !p.isActive && "opacity-60")}
+                >
+                  <td className="px-5 py-3 font-medium text-foreground">
+                    <div className="flex items-center gap-2">
+                      {p.name}
+                      {!p.isActive && <ArchivedBadge />}
+                    </div>
+                  </td>
+                  <td className="px-5 py-3 text-muted">{p.sku}</td>
+                  <td className="px-5 py-3 text-muted">{PRODUCT_TYPE_LABELS_RU[p.type]}</td>
+                  <td className="px-5 py-3 text-muted">{UNIT_LABELS_RU[p.unit]}</td>
+                  <td className="px-5 py-3 text-right font-medium text-foreground">
+                    {formatMoney(p.price)}
+                  </td>
+                  {canManageProducts && (
+                    <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
+                      <RowActions
+                        isActive={p.isActive}
+                        onEdit={() => {
+                          setEditingProduct(p);
+                          setModal("product");
+                        }}
+                        onArchive={() => handleProductArchive(p)}
+                        onRestore={() => handleProductRestore(p)}
+                        onDelete={canDelete ? () => handleProductDelete(p) : undefined}
+                      />
+                    </td>
+                  )}
+                </tr>
+              ))}
+              {categoryProducts.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-5 py-8 text-center text-sm text-muted">
+                    В этой категории пока нет товаров
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {(modal === "receive" || modal === "write-off") && (
         <StockMovementModal
           mode={modal}
@@ -454,9 +570,11 @@ export default function InventoryPage() {
         <NewProductModal
           categories={categories}
           product={editingProduct}
+          defaultCategoryId={newProductCategoryId}
           onClose={() => setModal(null)}
           onSaved={() => {
             setModal(null);
+            setNewProductCategoryId(undefined);
             loadProducts();
           }}
         />

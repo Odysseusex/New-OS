@@ -202,6 +202,17 @@ async function main() {
     },
   });
 
+  const categoryNames = ["Хлеб", "Выпечка", "Торты", "Сырьё"];
+  const categoriesByName = new Map<string, string>();
+  for (const name of categoryNames) {
+    const category = await prisma.category.upsert({
+      where: { organizationId_name: { organizationId: org.id, name } },
+      update: {},
+      create: { organizationId: org.id, name },
+    });
+    categoriesByName.set(name, category.id);
+  }
+
   const products: {
     id: string;
     name: string;
@@ -221,10 +232,11 @@ async function main() {
   ];
 
   for (const p of products) {
+    const { category, ...rest } = p;
     await prisma.product.upsert({
       where: { id: p.id },
       update: {},
-      create: { ...p, organizationId: org.id },
+      create: { ...rest, categoryId: categoriesByName.get(category), organizationId: org.id },
     });
   }
 
