@@ -19,6 +19,7 @@ const KG_CONVERSION_FACTOR: Partial<Record<Unit, number>> = {
   [Unit.KG]: 1,
   [Unit.G]: 0.001,
   [Unit.L]: 1, // approximation: 1L water ≈ 1kg, standard baker's shorthand
+  [Unit.ML]: 0.001,
 };
 
 @Injectable()

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import type { ProductDto, RecipeDto } from "@bakery-os/shared";
-import { ProductType, UNIT_LABELS_RU } from "@bakery-os/shared";
+import { ProductType, Unit, UNIT_LABELS_RU, convertUnitQuantity, getCompatibleUnits } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
 import { formatDateTime, formatMoney } from "@/lib/format";
@@ -11,6 +11,9 @@ import { formatDateTime, formatMoney } from "@/lib/format";
 interface IngredientRow {
   ingredientProductId: string;
   quantity: string;
+  // The unit this row's quantity is currently typed in — not necessarily
+  // the ingredient's base/storage unit. Converted to base unit on submit.
+  unit: Unit;
 }
 
 interface StepRow {
@@ -44,8 +47,14 @@ export function NewRecipeModal({
   const [generalNotes, setGeneralNotes] = useState(recipe?.generalNotes ?? "");
   const [rows, setRows] = useState<IngredientRow[]>(
     recipe && recipe.items.length > 0
-      ? recipe.items.map((i) => ({ ingredientProductId: i.ingredientProductId, quantity: String(i.quantity) }))
-      : [{ ingredientProductId: ingredientOptions[0]?.id ?? "", quantity: "" }],
+      ? recipe.items.map((i) => ({ ingredientProductId: i.ingredientProductId, quantity: String(i.quantity), unit: i.unit }))
+      : [
+          {
+            ingredientProductId: ingredientOptions[0]?.id ?? "",
+            quantity: "",
+            unit: ingredientOptions[0]?.unit ?? Unit.KG,
+          },
+        ],
   );
   const [steps, setSteps] = useState<StepRow[]>(
     recipe?.steps.map((s) => ({
@@ -99,8 +108,42 @@ export function NewRecipeModal({
     setRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
   }
 
+  // Switching ingredient keeps the typed quantity+unit as-is when the new
+  // ingredient's base unit is in the same family (e.g. flour -> sugar, both
+  // mass) — the number is still meaningful. Across families (e.g. -> eggs
+  // in pcs) the old unit no longer makes sense, so reset to the new
+  // ingredient's base unit and clear the quantity rather than leave a
+  // number that now silently means something else.
+  function updateRowIngredient(index: number, ingredientProductId: string) {
+    const newProduct = ingredientOptions.find((p) => p.id === ingredientProductId);
+    setRows((prev) =>
+      prev.map((r, i) => {
+        if (i !== index || !newProduct) return r;
+        const compatible = getCompatibleUnits(newProduct.unit).includes(r.unit);
+        return compatible
+          ? { ...r, ingredientProductId }
+          : { ...r, ingredientProductId, unit: newProduct.unit, quantity: "" };
+      }),
+    );
+  }
+
+  // Re-expresses the currently typed number in the new unit (4.75 кг -> 4750
+  // г) instead of silently relabeling it — the quantity keeps meaning the
+  // same real amount.
+  function updateRowUnit(index: number, unit: Unit) {
+    setRows((prev) =>
+      prev.map((r, i) => {
+        if (i !== index || r.unit === unit) return r;
+        const numeric = Number(r.quantity);
+        const converted = r.quantity && !Number.isNaN(numeric) ? String(convertUnitQuantity(numeric, r.unit, unit)) : r.quantity;
+        return { ...r, unit, quantity: converted };
+      }),
+    );
+  }
+
   function addRow() {
-    setRows((prev) => [...prev, { ingredientProductId: ingredientOptions[0]?.id ?? "", quantity: "" }]);
+    const first = ingredientOptions[0];
+    setRows((prev) => [...prev, { ingredientProductId: first?.id ?? "", quantity: "", unit: first?.unit ?? Unit.KG }]);
   }
 
   function removeRow(index: number) {
@@ -158,10 +201,13 @@ export function NewRecipeModal({
             durationMinutes: s.durationMinutes ? Number(s.durationMinutes) : undefined,
           })),
       };
-      const items = rows.map((r) => ({
-        ingredientProductId: r.ingredientProductId,
-        quantity: Number(r.quantity),
-      }));
+      const items = rows.map((r) => {
+        const baseUnit = ingredientOptions.find((p) => p.id === r.ingredientProductId)?.unit ?? r.unit;
+        return {
+          ingredientProductId: r.ingredientProductId,
+          quantity: convertUnitQuantity(Number(r.quantity), r.unit, baseUnit),
+        };
+      });
 
       if (recipe) {
         await api.recipes.update(recipe.id, {
@@ -281,11 +327,12 @@ export function NewRecipeModal({
         <div className="mb-3 space-y-2">
           {rows.map((row, index) => {
             const ingredientUnit = ingredientOptions.find((p) => p.id === row.ingredientProductId)?.unit;
+            const compatibleUnits = ingredientUnit ? getCompatibleUnits(ingredientUnit) : [];
             return (
               <div key={index} className="flex items-center gap-2">
                 <select
                   value={row.ingredientProductId}
-                  onChange={(e) => updateRow(index, { ingredientProductId: e.target.value })}
+                  onChange={(e) => updateRowIngredient(index, e.target.value)}
                   className="flex-1 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
                 >
                   {ingredientOptions.map((p) => (
@@ -294,23 +341,33 @@ export function NewRecipeModal({
                     </option>
                   ))}
                 </select>
-                <div className="relative w-28 shrink-0">
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    required
-                    value={row.quantity}
-                    onChange={(e) => updateRow(index, { quantity: e.target.value })}
-                    className="w-full rounded-xl border border-border bg-surface px-2 py-2 pr-9 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-                    placeholder="Кол-во"
-                  />
-                  {ingredientUnit && (
-                    <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted">
-                      {UNIT_LABELS_RU[ingredientUnit]}
-                    </span>
-                  )}
-                </div>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  required
+                  value={row.quantity}
+                  onChange={(e) => updateRow(index, { quantity: e.target.value })}
+                  className="w-24 shrink-0 rounded-xl border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                  placeholder="Кол-во"
+                />
+                {compatibleUnits.length > 1 ? (
+                  <select
+                    value={row.unit}
+                    onChange={(e) => updateRowUnit(index, e.target.value as Unit)}
+                    className="w-20 shrink-0 rounded-xl border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                  >
+                    {compatibleUnits.map((u) => (
+                      <option key={u} value={u}>
+                        {UNIT_LABELS_RU[u]}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  ingredientUnit && (
+                    <span className="w-20 shrink-0 text-center text-xs text-muted">{UNIT_LABELS_RU[ingredientUnit]}</span>
+                  )
+                )}
                 <button
                   type="button"
                   onClick={() => removeRow(index)}
