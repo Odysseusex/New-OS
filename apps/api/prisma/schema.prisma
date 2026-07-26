@@ -389,8 +389,16 @@ model Recipe {
   // Technological card fields, all optional so an old-style recipe still
   // works — a manager can fill these in progressively.
   generalNotes        String?
+  pieceWeightG        Decimal? @db.Decimal(8, 2)
+  mixingTimeSlowMinutes Int?
+  mixingTimeFastMinutes Int?
+  doughTempC          Decimal? @db.Decimal(5, 2)
+  shapingWeightG      Decimal? @db.Decimal(8, 2)
+  proofingTempC       Decimal? @db.Decimal(5, 2)
+  proofingHumidityPercent Decimal? @db.Decimal(5, 2)
   bakingTempC         Decimal? @db.Decimal(6, 2)
   bakingTimeMinutes   Int?
+  steamSeconds        Int?
   fermentationMinutes Int?
   proofingMinutes     Int?
   lossPercent         Decimal? @db.Decimal(5, 2)

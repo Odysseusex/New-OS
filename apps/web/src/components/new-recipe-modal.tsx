@@ -37,12 +37,15 @@ export function NewRecipeModal({
   const ingredientOptions = products.filter((p) => p.type === ProductType.RAW_MATERIAL);
 
   const [productId, setProductId] = useState(recipe?.productId ?? outputOptions[0]?.id ?? "");
-  const [yieldQuantity, setYieldQuantity] = useState(recipe ? String(recipe.yieldQuantity) : "1");
+  const [yieldQuantity, setYieldQuantity] = useState(recipe ? String(recipe.yieldQuantity) : "");
+  const [pieceWeightG, setPieceWeightG] = useState(
+    recipe?.pieceWeightG !== null && recipe?.pieceWeightG !== undefined ? String(recipe.pieceWeightG) : "",
+  );
   const [generalNotes, setGeneralNotes] = useState(recipe?.generalNotes ?? "");
   const [rows, setRows] = useState<IngredientRow[]>(
     recipe && recipe.items.length > 0
       ? recipe.items.map((i) => ({ ingredientProductId: i.ingredientProductId, quantity: String(i.quantity) }))
-      : [{ ingredientProductId: ingredientOptions[0]?.id ?? "", quantity: "1" }],
+      : [{ ingredientProductId: ingredientOptions[0]?.id ?? "", quantity: "" }],
   );
   const [steps, setSteps] = useState<StepRow[]>(
     recipe?.steps.map((s) => ({
@@ -50,9 +53,32 @@ export function NewRecipeModal({
       durationMinutes: s.durationMinutes !== null ? String(s.durationMinutes) : "",
     })) ?? [],
   );
+  const [mixingTimeSlowMinutes, setMixingTimeSlowMinutes] = useState(
+    recipe?.mixingTimeSlowMinutes !== null && recipe?.mixingTimeSlowMinutes !== undefined ? String(recipe.mixingTimeSlowMinutes) : "",
+  );
+  const [mixingTimeFastMinutes, setMixingTimeFastMinutes] = useState(
+    recipe?.mixingTimeFastMinutes !== null && recipe?.mixingTimeFastMinutes !== undefined ? String(recipe.mixingTimeFastMinutes) : "",
+  );
+  const [doughTempC, setDoughTempC] = useState(
+    recipe?.doughTempC !== null && recipe?.doughTempC !== undefined ? String(recipe.doughTempC) : "",
+  );
+  const [shapingWeightG, setShapingWeightG] = useState(
+    recipe?.shapingWeightG !== null && recipe?.shapingWeightG !== undefined ? String(recipe.shapingWeightG) : "",
+  );
+  const [proofingTempC, setProofingTempC] = useState(
+    recipe?.proofingTempC !== null && recipe?.proofingTempC !== undefined ? String(recipe.proofingTempC) : "",
+  );
+  const [proofingHumidityPercent, setProofingHumidityPercent] = useState(
+    recipe?.proofingHumidityPercent !== null && recipe?.proofingHumidityPercent !== undefined
+      ? String(recipe.proofingHumidityPercent)
+      : "",
+  );
   const [bakingTempC, setBakingTempC] = useState(recipe?.bakingTempC !== null && recipe?.bakingTempC !== undefined ? String(recipe.bakingTempC) : "");
   const [bakingTimeMinutes, setBakingTimeMinutes] = useState(
     recipe?.bakingTimeMinutes !== null && recipe?.bakingTimeMinutes !== undefined ? String(recipe.bakingTimeMinutes) : "",
+  );
+  const [steamSeconds, setSteamSeconds] = useState(
+    recipe?.steamSeconds !== null && recipe?.steamSeconds !== undefined ? String(recipe.steamSeconds) : "",
   );
   const [fermentationMinutes, setFermentationMinutes] = useState(
     recipe?.fermentationMinutes !== null && recipe?.fermentationMinutes !== undefined ? String(recipe.fermentationMinutes) : "",
@@ -74,7 +100,7 @@ export function NewRecipeModal({
   }
 
   function addRow() {
-    setRows((prev) => [...prev, { ingredientProductId: ingredientOptions[0]?.id ?? "", quantity: "1" }]);
+    setRows((prev) => [...prev, { ingredientProductId: ingredientOptions[0]?.id ?? "", quantity: "" }]);
   }
 
   function removeRow(index: number) {
@@ -110,8 +136,16 @@ export function NewRecipeModal({
     try {
       const techCardFields = {
         generalNotes: generalNotes || undefined,
+        pieceWeightG: pieceWeightG ? Number(pieceWeightG) : undefined,
+        mixingTimeSlowMinutes: mixingTimeSlowMinutes ? Number(mixingTimeSlowMinutes) : undefined,
+        mixingTimeFastMinutes: mixingTimeFastMinutes ? Number(mixingTimeFastMinutes) : undefined,
+        doughTempC: doughTempC ? Number(doughTempC) : undefined,
+        shapingWeightG: shapingWeightG ? Number(shapingWeightG) : undefined,
+        proofingTempC: proofingTempC ? Number(proofingTempC) : undefined,
+        proofingHumidityPercent: proofingHumidityPercent ? Number(proofingHumidityPercent) : undefined,
         bakingTempC: bakingTempC ? Number(bakingTempC) : undefined,
         bakingTimeMinutes: bakingTimeMinutes ? Number(bakingTimeMinutes) : undefined,
+        steamSeconds: steamSeconds ? Number(steamSeconds) : undefined,
         fermentationMinutes: fermentationMinutes ? Number(fermentationMinutes) : undefined,
         proofingMinutes: proofingMinutes ? Number(proofingMinutes) : undefined,
         lossPercent: lossPercent ? Number(lossPercent) : undefined,
@@ -177,7 +211,7 @@ export function NewRecipeModal({
     <Modal title={recipe ? `Техкарта: ${recipe.productName}` : "Новая рецептура"} onClose={onClose} width="max-w-3xl">
       <form onSubmit={handleSubmit}>
         <SectionTitle>Общая информация</SectionTitle>
-        <div className="mb-4 grid grid-cols-2 gap-3">
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
             <label className="mb-1.5 block text-sm font-medium text-foreground">Готовый товар</label>
             {recipe ? (
@@ -199,12 +233,27 @@ export function NewRecipeModal({
             )}
           </div>
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-foreground">Выход с одного замеса</label>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
+              Вес одного готового изделия, г <span className="text-muted">(необязательно)</span>
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="any"
+              placeholder="напр. 150"
+              value={pieceWeightG}
+              onChange={(e) => setPieceWeightG(e.target.value)}
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">Выход с одного замеса, шт</label>
             <input
               type="number"
               min="0"
               step="any"
               required
+              placeholder="Сколько штук получается"
               value={yieldQuantity}
               onChange={(e) => setYieldQuantity(e.target.value)}
               className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
@@ -225,39 +274,65 @@ export function NewRecipeModal({
         </div>
 
         <SectionTitle>Ингредиенты</SectionTitle>
+        <p className="mb-2 text-xs text-muted">
+          Количество указывается на весь замес целиком — тот самый, что даёт «Выход с одного замеса» готовых
+          изделий выше, а не на одно изделие.
+        </p>
         <div className="mb-3 space-y-2">
-          {rows.map((row, index) => (
-            <div key={index} className="flex items-center gap-2">
-              <select
-                value={row.ingredientProductId}
-                onChange={(e) => updateRow(index, { ingredientProductId: e.target.value })}
-                className="flex-1 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-              >
-                {ingredientOptions.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({UNIT_LABELS_RU[p.unit]})
-                  </option>
-                ))}
-              </select>
-              <input
-                type="number"
-                min="0"
-                step="any"
-                value={row.quantity}
-                onChange={(e) => updateRow(index, { quantity: e.target.value })}
-                className="w-24 rounded-xl border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-                placeholder="Кол-во"
-              />
-              <button
-                type="button"
-                onClick={() => removeRow(index)}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted transition hover:bg-surface-muted hover:text-red-600"
-              >
-                <Trash2 className="h-4 w-4" strokeWidth={1.75} />
-              </button>
-            </div>
-          ))}
+          {rows.map((row, index) => {
+            const ingredientUnit = ingredientOptions.find((p) => p.id === row.ingredientProductId)?.unit;
+            return (
+              <div key={index} className="flex items-center gap-2">
+                <select
+                  value={row.ingredientProductId}
+                  onChange={(e) => updateRow(index, { ingredientProductId: e.target.value })}
+                  className="flex-1 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                >
+                  {ingredientOptions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({UNIT_LABELS_RU[p.unit]})
+                    </option>
+                  ))}
+                </select>
+                <div className="relative w-28 shrink-0">
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    required
+                    value={row.quantity}
+                    onChange={(e) => updateRow(index, { quantity: e.target.value })}
+                    className="w-full rounded-xl border border-border bg-surface px-2 py-2 pr-9 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                    placeholder="Кол-во"
+                  />
+                  {ingredientUnit && (
+                    <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted">
+                      {UNIT_LABELS_RU[ingredientUnit]}
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeRow(index)}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted transition hover:bg-surface-muted hover:text-red-600"
+                >
+                  <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+              </div>
+            );
+          })}
         </div>
+        {recipe && (recipe.doughWeightKg !== null || recipe.doughWeightExcludedIngredients.length > 0) && (
+          <p className="mb-3 text-xs text-muted">
+            Вес теста на замес:{" "}
+            <span className="font-medium text-foreground">
+              {recipe.doughWeightKg !== null ? `≈ ${recipe.doughWeightKg.toFixed(2)} кг` : "не рассчитан"}
+            </span>
+            {recipe.doughWeightExcludedIngredients.length > 0 && (
+              <> (без учёта: {recipe.doughWeightExcludedIngredients.join(", ")} — в штуках, вес неизвестен)</>
+            )}
+          </p>
+        )}
         <button
           type="button"
           onClick={addRow}
@@ -326,16 +401,46 @@ export function NewRecipeModal({
         </button>
 
         <SectionTitle>Параметры производства</SectionTitle>
-        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+
+        <StageTitle>Замес</StageTitle>
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <NumberField label="Время замеса (медленно), мин" value={mixingTimeSlowMinutes} onChange={setMixingTimeSlowMinutes} />
+          <NumberField label="Время замеса (быстро), мин" value={mixingTimeFastMinutes} onChange={setMixingTimeFastMinutes} />
+          <NumberField label="Темп. теста после замеса, °C" value={doughTempC} onChange={setDoughTempC} />
+        </div>
+
+        <StageTitle>Брожение</StageTitle>
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <NumberField label="Брожение, мин" value={fermentationMinutes} onChange={setFermentationMinutes} />
+        </div>
+
+        <StageTitle>Формовка</StageTitle>
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <NumberField label="Вес заготовки, г" value={shapingWeightG} onChange={setShapingWeightG} />
+        </div>
+
+        <StageTitle>Расстойка</StageTitle>
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <NumberField label="Расстойка, мин" value={proofingMinutes} onChange={setProofingMinutes} />
+          <NumberField label="Температура расстойки, °C" value={proofingTempC} onChange={setProofingTempC} />
+          <NumberField label="Влажность расстойки, %" value={proofingHumidityPercent} onChange={setProofingHumidityPercent} max="100" />
+        </div>
+
+        <StageTitle>Выпечка</StageTitle>
+        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
           <NumberField label="Темп. выпечки, °C" value={bakingTempC} onChange={setBakingTempC} />
           <NumberField label="Время выпечки, мин" value={bakingTimeMinutes} onChange={setBakingTimeMinutes} />
-          <NumberField label="Брожение, мин" value={fermentationMinutes} onChange={setFermentationMinutes} />
-          <NumberField label="Расстойка, мин" value={proofingMinutes} onChange={setProofingMinutes} />
+          <NumberField label="Пар при посадке, сек" value={steamSeconds} onChange={setSteamSeconds} />
         </div>
 
         <SectionTitle>Потери и срок годности</SectionTitle>
         <div className="mb-5 grid grid-cols-2 gap-3">
-          <NumberField label="Производственные потери, %" value={lossPercent} onChange={setLossPercent} max="100" />
+          <div>
+            <NumberField label="Производственные потери, %" value={lossPercent} onChange={setLossPercent} max="100" />
+            <p className="mt-1.5 text-xs text-muted">
+              Применяется к количеству готовых изделий при расчёте себестоимости — не к весу теста.
+            </p>
+          </div>
           <NumberField label="Срок годности, дней" value={shelfLifeDays} onChange={setShelfLifeDays} />
         </div>
 
@@ -357,6 +462,14 @@ export function NewRecipeModal({
                   {recipe.marginPercent !== null ? `${recipe.marginPercent.toFixed(0)}%` : "—"}
                 </p>
               </div>
+              {recipe.suggestedYieldQuantity !== null && (
+                <div className="col-span-3 border-t border-border pt-3 text-xs text-muted">
+                  Подсказка: при весе теста {recipe.doughWeightKg?.toFixed(2)} кг, изделии {recipe.pieceWeightG} г и
+                  потерях {recipe.lossPercent ?? 0}% примерный выход — {recipe.suggestedYieldQuantity} шт. Указанный
+                  выше «Выход с одного замеса» ({recipe.yieldQuantity} шт) при необходимости стоит скорректировать
+                  под факт.
+                </div>
+              )}
             </div>
 
             {recipe.revisions.length > 0 && (
@@ -394,6 +507,10 @@ export function NewRecipeModal({
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return <p className="mb-2 text-sm font-semibold text-foreground">{children}</p>;
+}
+
+function StageTitle({ children }: { children: React.ReactNode }) {
+  return <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted">{children}</p>;
 }
 
 function NumberField({

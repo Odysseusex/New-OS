@@ -12,6 +12,15 @@ const RECIPE_INCLUDE = {
   revisions: { orderBy: { changedAt: "desc" as const }, include: { changedBy: true } },
 };
 
+// Ingredient units that can be summed into a dough weight. PCS can't be
+// converted without knowing an average piece weight, so items in PCS are
+// excluded from the sum rather than guessed at.
+const KG_CONVERSION_FACTOR: Partial<Record<Unit, number>> = {
+  [Unit.KG]: 1,
+  [Unit.G]: 0.001,
+  [Unit.L]: 1, // approximation: 1L water ≈ 1kg, standard baker's shorthand
+};
+
 @Injectable()
 export class RecipesService {
   constructor(private prisma: PrismaService) {}
@@ -92,8 +101,16 @@ export class RecipesService {
         productId: dto.productId,
         yieldQuantity: dto.yieldQuantity,
         generalNotes: dto.generalNotes,
+        pieceWeightG: dto.pieceWeightG,
+        mixingTimeSlowMinutes: dto.mixingTimeSlowMinutes,
+        mixingTimeFastMinutes: dto.mixingTimeFastMinutes,
+        doughTempC: dto.doughTempC,
+        shapingWeightG: dto.shapingWeightG,
+        proofingTempC: dto.proofingTempC,
+        proofingHumidityPercent: dto.proofingHumidityPercent,
         bakingTempC: dto.bakingTempC,
         bakingTimeMinutes: dto.bakingTimeMinutes,
+        steamSeconds: dto.steamSeconds,
         fermentationMinutes: dto.fermentationMinutes,
         proofingMinutes: dto.proofingMinutes,
         lossPercent: dto.lossPercent,
@@ -149,8 +166,16 @@ export class RecipesService {
         data: {
           yieldQuantity: dto.yieldQuantity,
           generalNotes: dto.generalNotes,
+          pieceWeightG: dto.pieceWeightG,
+          mixingTimeSlowMinutes: dto.mixingTimeSlowMinutes,
+          mixingTimeFastMinutes: dto.mixingTimeFastMinutes,
+          doughTempC: dto.doughTempC,
+          shapingWeightG: dto.shapingWeightG,
+          proofingTempC: dto.proofingTempC,
+          proofingHumidityPercent: dto.proofingHumidityPercent,
           bakingTempC: dto.bakingTempC,
           bakingTimeMinutes: dto.bakingTimeMinutes,
+          steamSeconds: dto.steamSeconds,
           fermentationMinutes: dto.fermentationMinutes,
           proofingMinutes: dto.proofingMinutes,
           lossPercent: dto.lossPercent,
@@ -180,8 +205,16 @@ export class RecipesService {
     current: {
       yieldQuantity: { toNumber: () => number };
       generalNotes: string | null;
+      pieceWeightG: { toNumber: () => number } | null;
+      mixingTimeSlowMinutes: number | null;
+      mixingTimeFastMinutes: number | null;
+      doughTempC: { toNumber: () => number } | null;
+      shapingWeightG: { toNumber: () => number } | null;
+      proofingTempC: { toNumber: () => number } | null;
+      proofingHumidityPercent: { toNumber: () => number } | null;
       bakingTempC: { toNumber: () => number } | null;
       bakingTimeMinutes: number | null;
+      steamSeconds: number | null;
       fermentationMinutes: number | null;
       proofingMinutes: number | null;
       lossPercent: { toNumber: () => number } | null;
@@ -205,16 +238,26 @@ export class RecipesService {
       parts.push("технология приготовления");
     }
 
-    const currentBakingTempC = current.bakingTempC ? current.bakingTempC.toNumber() : undefined;
-    const currentLossPercent = current.lossPercent ? current.lossPercent.toNumber() : undefined;
+    const num = (v: { toNumber: () => number } | null) => (v ? v.toNumber() : undefined);
+    if (dto.pieceWeightG !== undefined && dto.pieceWeightG !== num(current.pieceWeightG)) {
+      parts.push("вес изделия");
+    }
+
     const productionParamsChanged =
-      (dto.bakingTempC !== undefined && dto.bakingTempC !== currentBakingTempC) ||
+      (dto.mixingTimeSlowMinutes !== undefined && dto.mixingTimeSlowMinutes !== (current.mixingTimeSlowMinutes ?? undefined)) ||
+      (dto.mixingTimeFastMinutes !== undefined && dto.mixingTimeFastMinutes !== (current.mixingTimeFastMinutes ?? undefined)) ||
+      (dto.doughTempC !== undefined && dto.doughTempC !== num(current.doughTempC)) ||
+      (dto.shapingWeightG !== undefined && dto.shapingWeightG !== num(current.shapingWeightG)) ||
+      (dto.proofingTempC !== undefined && dto.proofingTempC !== num(current.proofingTempC)) ||
+      (dto.proofingHumidityPercent !== undefined && dto.proofingHumidityPercent !== num(current.proofingHumidityPercent)) ||
+      (dto.bakingTempC !== undefined && dto.bakingTempC !== num(current.bakingTempC)) ||
       (dto.bakingTimeMinutes !== undefined && dto.bakingTimeMinutes !== (current.bakingTimeMinutes ?? undefined)) ||
+      (dto.steamSeconds !== undefined && dto.steamSeconds !== (current.steamSeconds ?? undefined)) ||
       (dto.fermentationMinutes !== undefined && dto.fermentationMinutes !== (current.fermentationMinutes ?? undefined)) ||
       (dto.proofingMinutes !== undefined && dto.proofingMinutes !== (current.proofingMinutes ?? undefined));
     if (productionParamsChanged) parts.push("параметры производства");
 
-    if (dto.lossPercent !== undefined && dto.lossPercent !== currentLossPercent) {
+    if (dto.lossPercent !== undefined && dto.lossPercent !== num(current.lossPercent)) {
       parts.push("производственные потери");
     }
     if (dto.shelfLifeDays !== undefined && dto.shelfLifeDays !== (current.shelfLifeDays ?? undefined)) {
@@ -280,8 +323,16 @@ export class RecipesService {
     yieldQuantity: { toNumber: () => number };
     isActive: boolean;
     generalNotes: string | null;
+    pieceWeightG: { toNumber: () => number } | null;
+    mixingTimeSlowMinutes: number | null;
+    mixingTimeFastMinutes: number | null;
+    doughTempC: { toNumber: () => number } | null;
+    shapingWeightG: { toNumber: () => number } | null;
+    proofingTempC: { toNumber: () => number } | null;
+    proofingHumidityPercent: { toNumber: () => number } | null;
     bakingTempC: { toNumber: () => number } | null;
     bakingTimeMinutes: number | null;
+    steamSeconds: number | null;
     fermentationMinutes: number | null;
     proofingMinutes: number | null;
     lossPercent: { toNumber: () => number } | null;
@@ -316,6 +367,27 @@ export class RecipesService {
     const productPrice = recipe.product.price.toNumber();
     const marginPercent = productPrice > 0 ? ((productPrice - unitCost) / productPrice) * 100 : null;
 
+    const doughWeightExcludedIngredients: string[] = [];
+    let doughWeightKg = 0;
+    let hasWeighableIngredient = false;
+    for (const item of recipe.items) {
+      const factor = KG_CONVERSION_FACTOR[item.ingredientProduct.unit as Unit];
+      if (factor === undefined) {
+        doughWeightExcludedIngredients.push(item.ingredientProduct.name);
+        continue;
+      }
+      hasWeighableIngredient = true;
+      doughWeightKg += item.quantity.toNumber() * factor;
+    }
+    const resolvedDoughWeightKg = hasWeighableIngredient ? doughWeightKg : null;
+
+    const pieceWeightG = recipe.pieceWeightG ? recipe.pieceWeightG.toNumber() : null;
+    let suggestedYieldQuantity: number | null = null;
+    if (resolvedDoughWeightKg !== null && pieceWeightG) {
+      const bakedWeightG = resolvedDoughWeightKg * 1000 * (1 - (lossPercent ?? 0) / 100);
+      suggestedYieldQuantity = Math.max(0, Math.floor(bakedWeightG / pieceWeightG));
+    }
+
     return {
       id: recipe.id,
       productId: recipe.productId,
@@ -343,8 +415,16 @@ export class RecipesService {
         summary: rev.summary,
       })),
       generalNotes: recipe.generalNotes,
+      pieceWeightG,
+      mixingTimeSlowMinutes: recipe.mixingTimeSlowMinutes,
+      mixingTimeFastMinutes: recipe.mixingTimeFastMinutes,
+      doughTempC: recipe.doughTempC ? recipe.doughTempC.toNumber() : null,
+      shapingWeightG: recipe.shapingWeightG ? recipe.shapingWeightG.toNumber() : null,
+      proofingTempC: recipe.proofingTempC ? recipe.proofingTempC.toNumber() : null,
+      proofingHumidityPercent: recipe.proofingHumidityPercent ? recipe.proofingHumidityPercent.toNumber() : null,
       bakingTempC: recipe.bakingTempC ? recipe.bakingTempC.toNumber() : null,
       bakingTimeMinutes: recipe.bakingTimeMinutes,
+      steamSeconds: recipe.steamSeconds,
       fermentationMinutes: recipe.fermentationMinutes,
       proofingMinutes: recipe.proofingMinutes,
       lossPercent,
@@ -352,6 +432,9 @@ export class RecipesService {
       unitCost,
       marginPercent,
       isActive: recipe.isActive,
+      doughWeightKg: resolvedDoughWeightKg,
+      doughWeightExcludedIngredients,
+      suggestedYieldQuantity,
     };
   };
 }

@@ -4,6 +4,7 @@ import {
   LocationType,
   LocationOwnership,
   Unit,
+  ProductType,
   StockMovementType,
   ProductionBatchStatus,
   ExpenseCategory,
@@ -218,17 +219,18 @@ async function main() {
     name: string;
     sku: string;
     unit: Unit;
+    type: ProductType;
     category: string;
     price: number;
   }[] = [
-    { id: "prod-baguette", name: "Багет французский", sku: "BAG-001", unit: Unit.PCS, category: "Хлеб", price: 650 },
-    { id: "prod-borodinsky", name: "Хлеб бородинский", sku: "BAG-002", unit: Unit.PCS, category: "Хлеб", price: 590 },
-    { id: "prod-croissant", name: "Круассан классический", sku: "CRO-001", unit: Unit.PCS, category: "Выпечка", price: 450 },
-    { id: "prod-croissant-choco", name: "Круассан шоколадный", sku: "CRO-002", unit: Unit.PCS, category: "Выпечка", price: 490 },
-    { id: "prod-cake-honey", name: "Торт «Медовик»", sku: "CAKE-001", unit: Unit.PCS, category: "Торты", price: 8900 },
-    { id: "prod-muffin-banana", name: "Кекс банановый", sku: "CAKE-002", unit: Unit.PCS, category: "Выпечка", price: 780 },
-    { id: "prod-flour", name: "Мука пшеничная в/с", sku: "ING-001", unit: Unit.KG, category: "Сырьё", price: 320 },
-    { id: "prod-butter", name: "Масло сливочное", sku: "ING-002", unit: Unit.KG, category: "Сырьё", price: 2400 },
+    { id: "prod-baguette", name: "Багет французский", sku: "BAG-001", unit: Unit.PCS, type: ProductType.FINISHED_GOOD, category: "Хлеб", price: 650 },
+    { id: "prod-borodinsky", name: "Хлеб бородинский", sku: "BAG-002", unit: Unit.PCS, type: ProductType.FINISHED_GOOD, category: "Хлеб", price: 590 },
+    { id: "prod-croissant", name: "Круассан классический", sku: "CRO-001", unit: Unit.PCS, type: ProductType.FINISHED_GOOD, category: "Выпечка", price: 450 },
+    { id: "prod-croissant-choco", name: "Круассан шоколадный", sku: "CRO-002", unit: Unit.PCS, type: ProductType.FINISHED_GOOD, category: "Выпечка", price: 490 },
+    { id: "prod-cake-honey", name: "Торт «Медовик»", sku: "CAKE-001", unit: Unit.PCS, type: ProductType.FINISHED_GOOD, category: "Торты", price: 8900 },
+    { id: "prod-muffin-banana", name: "Кекс банановый", sku: "CAKE-002", unit: Unit.PCS, type: ProductType.FINISHED_GOOD, category: "Выпечка", price: 780 },
+    { id: "prod-flour", name: "Мука пшеничная в/с", sku: "ING-001", unit: Unit.KG, type: ProductType.RAW_MATERIAL, category: "Сырьё", price: 320 },
+    { id: "prod-butter", name: "Масло сливочное", sku: "ING-002", unit: Unit.KG, type: ProductType.RAW_MATERIAL, category: "Сырьё", price: 2400 },
   ];
 
   for (const p of products) {

@@ -42,12 +42,51 @@ export class CreateRecipeDto {
 
   @IsOptional()
   @IsNumber()
+  @IsPositive()
+  pieceWeightG?: number;
+
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  mixingTimeSlowMinutes?: number;
+
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  mixingTimeFastMinutes?: number;
+
+  @IsOptional()
+  @IsNumber()
+  doughTempC?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  shapingWeightG?: number;
+
+  @IsOptional()
+  @IsNumber()
+  proofingTempC?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  proofingHumidityPercent?: number;
+
+  @IsOptional()
+  @IsNumber()
   bakingTempC?: number;
 
   @IsOptional()
   @IsInt()
   @IsPositive()
   bakingTimeMinutes?: number;
+
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  steamSeconds?: number;
 
   @IsOptional()
   @IsInt()

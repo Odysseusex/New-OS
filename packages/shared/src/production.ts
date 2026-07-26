@@ -51,8 +51,16 @@ export interface RecipeDto {
   steps: RecipeStepDto[];
   revisions: RecipeRevisionDto[];
   generalNotes: string | null;
+  pieceWeightG: number | null;
+  mixingTimeSlowMinutes: number | null;
+  mixingTimeFastMinutes: number | null;
+  doughTempC: number | null;
+  shapingWeightG: number | null;
+  proofingTempC: number | null;
+  proofingHumidityPercent: number | null;
   bakingTempC: number | null;
   bakingTimeMinutes: number | null;
+  steamSeconds: number | null;
   fermentationMinutes: number | null;
   proofingMinutes: number | null;
   lossPercent: number | null;
@@ -60,6 +68,18 @@ export interface RecipeDto {
   unitCost: number;
   marginPercent: number | null;
   isActive: boolean;
+  // Derived, not stored: sum of ingredient quantities that are in
+  // weight-compatible units (KG/G/L, treating 1L water as ~1kg). Null if no
+  // ingredient is weight-compatible.
+  doughWeightKg: number | null;
+  // Names of ingredients excluded from doughWeightKg because their unit
+  // (e.g. PCS) can't be converted to weight — shown so the number isn't
+  // silently misleading.
+  doughWeightExcludedIngredients: string[];
+  // Derived suggestion for yieldQuantity, computed from doughWeightKg,
+  // lossPercent and pieceWeightG when all three are available. A hint for
+  // the technologist to review, never auto-applied.
+  suggestedYieldQuantity: number | null;
 }
 
 export interface CreateRecipeItemRequestDto {
@@ -69,8 +89,16 @@ export interface CreateRecipeItemRequestDto {
 
 export interface RecipeTechCardFieldsDto {
   generalNotes?: string;
+  pieceWeightG?: number;
+  mixingTimeSlowMinutes?: number;
+  mixingTimeFastMinutes?: number;
+  doughTempC?: number;
+  shapingWeightG?: number;
+  proofingTempC?: number;
+  proofingHumidityPercent?: number;
   bakingTempC?: number;
   bakingTimeMinutes?: number;
+  steamSeconds?: number;
   fermentationMinutes?: number;
   proofingMinutes?: number;
   lossPercent?: number;
