@@ -445,6 +445,7 @@ export class RecipesService {
       pieceWeightG,
       lossPercent,
       shelfLifeDays: recipe.shelfLifeDays,
+      totalIngredientCost,
       unitCost,
       marginPercent,
       isActive: recipe.isActive,

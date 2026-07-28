@@ -116,6 +116,13 @@ export interface RecipeDto {
   pieceWeightG: number | null;
   lossPercent: number | null;
   shelfLifeDays: number | null;
+  // Cost of all ingredients for one whole batch (yieldQuantity's worth),
+  // before dividing by loss-adjusted yield — i.e. what the batch's
+  // ingredients actually cost, regardless of how many good units it yields.
+  totalIngredientCost: number;
+  // Cost per finished unit: totalIngredientCost / (yieldQuantity adjusted
+  // for lossPercent). This is what marginPercent is computed against, not
+  // totalIngredientCost.
   unitCost: number;
   marginPercent: number | null;
   isActive: boolean;

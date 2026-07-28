@@ -15,7 +15,7 @@ import {
 } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
-import { formatDateTime, formatMoney } from "@/lib/format";
+import { formatDateTime, formatMoney, formatMoneyPrecise } from "@/lib/format";
 
 interface IngredientRow {
   ingredientProductId: string;
@@ -166,6 +166,22 @@ export function NewRecipeModal({
   const liveDoughWeightKg = rowWeightsKg.some((w) => w !== null)
     ? rowWeightsKg.reduce((sum: number, w) => sum + (w ?? 0), 0)
     : null;
+
+  // Economics recomputed live from the form's current state (not the last
+  // saved values) — so editing ingredients, yield or losses updates cost and
+  // margin immediately instead of only after saving and reopening.
+  const liveTotalIngredientCost = rows.reduce((sum, row) => {
+    const product = ingredientOptions.find((p) => p.id === row.ingredientProductId);
+    const qty = Number(row.quantity);
+    if (!product || Number.isNaN(qty)) return sum;
+    return sum + convertUnitQuantity(qty, row.unit, product.unit) * product.price;
+  }, 0);
+  const liveYieldQuantity = Number(yieldQuantity) || 0;
+  const liveLossPercent = Number(lossPercent) || 0;
+  const liveEffectiveYield = liveYieldQuantity * (1 - liveLossPercent / 100);
+  const liveUnitCost = liveEffectiveYield > 0 ? liveTotalIngredientCost / liveEffectiveYield : 0;
+  const liveProductPrice = products.find((p) => p.id === productId)?.price ?? 0;
+  const liveMarginPercent = liveProductPrice > 0 ? ((liveProductPrice - liveUnitCost) / liveProductPrice) * 100 : null;
 
   function addStage() {
     setStages((prev) => [...prev, { stageTypeId: stageTypes[0]?.id ?? "", note: "", parameters: [] }]);
@@ -638,48 +654,51 @@ export function NewRecipeModal({
           <NumberField label="Срок годности, дней" value={shelfLifeDays} onChange={setShelfLifeDays} />
         </div>
 
-        {recipe && (
-          <>
-            <SectionTitle>Экономика</SectionTitle>
-            <div className="mb-5 grid grid-cols-3 gap-3 rounded-xl bg-surface-muted p-3 text-sm">
-              <div>
-                <p className="text-xs text-muted">Себестоимость</p>
-                <p className="font-medium text-foreground">{formatMoney(recipe.unitCost)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted">Цена продажи</p>
-                <p className="font-medium text-foreground">{formatMoney(recipe.productPrice)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted">Маржа</p>
-                <p className="font-medium text-foreground">
-                  {recipe.marginPercent !== null ? `${recipe.marginPercent.toFixed(0)}%` : "—"}
-                </p>
-              </div>
-              {recipe.suggestedYieldQuantity != null && (
-                <div className="col-span-3 border-t border-border pt-3 text-xs text-muted">
-                  Подсказка: при весе теста {recipe.doughWeightKg?.toFixed(2)} кг, изделии {recipe.pieceWeightG} г и
-                  потерях {recipe.lossPercent ?? 0}% примерный выход — {recipe.suggestedYieldQuantity} шт. Указанный
-                  выше «Выход с одного замеса» ({recipe.yieldQuantity} шт) при необходимости стоит скорректировать
-                  под факт.
-                </div>
-              )}
+        <SectionTitle>Экономика</SectionTitle>
+        <p className="mb-2 text-xs text-muted">
+          Пересчитывается сразу при изменении ингредиентов, выхода или потерь — ещё до сохранения.
+        </p>
+        <div className="mb-5 grid grid-cols-2 gap-3 rounded-xl bg-surface-muted p-3 text-sm sm:grid-cols-4">
+          <div>
+            <p className="text-xs text-muted">Себестоимость замеса</p>
+            <p className="font-medium text-foreground">{formatMoney(liveTotalIngredientCost)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted">Себестоимость одного изделия</p>
+            <p className="font-medium text-foreground">{formatMoneyPrecise(liveUnitCost)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted">Цена продажи одного изделия</p>
+            <p className="font-medium text-foreground">{formatMoney(liveProductPrice)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted">Маржа</p>
+            <p className="font-medium text-foreground">
+              {liveMarginPercent !== null ? `${liveMarginPercent.toFixed(0)}%` : "—"}
+            </p>
+          </div>
+          {recipe && recipe.suggestedYieldQuantity != null && (
+            <div className="col-span-2 border-t border-border pt-3 text-xs text-muted sm:col-span-4">
+              Подсказка: при весе теста {recipe.doughWeightKg?.toFixed(2)} кг, изделии {recipe.pieceWeightG} г и
+              потерях {recipe.lossPercent ?? 0}% примерный выход — {recipe.suggestedYieldQuantity} шт. Указанный
+              выше «Выход с одного замеса» ({recipe.yieldQuantity} шт) при необходимости стоит скорректировать
+              под факт.
             </div>
+          )}
+        </div>
 
-            {recipe.revisions.length > 0 && (
-              <>
-                <SectionTitle>История изменений</SectionTitle>
-                <ul className="mb-5 max-h-40 space-y-1.5 overflow-y-auto rounded-xl bg-surface-muted p-3">
-                  {recipe.revisions.map((rev) => (
-                    <li key={rev.id} className="text-sm">
-                      <span className="text-muted">{formatDateTime(rev.changedAt)}</span>{" "}
-                      <span className="text-foreground">{rev.summary}</span>{" "}
-                      <span className="text-muted">— {rev.changedByName}</span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
+        {recipe && recipe.revisions.length > 0 && (
+          <>
+            <SectionTitle>История изменений</SectionTitle>
+            <ul className="mb-5 max-h-40 space-y-1.5 overflow-y-auto rounded-xl bg-surface-muted p-3">
+              {recipe.revisions.map((rev) => (
+                <li key={rev.id} className="text-sm">
+                  <span className="text-muted">{formatDateTime(rev.changedAt)}</span>{" "}
+                  <span className="text-foreground">{rev.summary}</span>{" "}
+                  <span className="text-muted">— {rev.changedByName}</span>
+                </li>
+              ))}
+            </ul>
           </>
         )}
 
