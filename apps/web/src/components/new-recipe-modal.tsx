@@ -44,7 +44,7 @@ interface StageRow {
 const NEW_STAGE_TYPE_VALUE = "__new__";
 
 function stagesFromRecipe(recipe: RecipeDto): StageRow[] {
-  return recipe.stages.map((s) => ({
+  return (recipe.stages ?? []).map((s) => ({
     stageTypeId: s.stageTypeId,
     note: s.note ?? "",
     parameters: s.parameters.map((p) => ({ kind: p.kind, label: p.label ?? "", value: String(p.value) })),
@@ -656,7 +656,7 @@ export function NewRecipeModal({
                   {recipe.marginPercent !== null ? `${recipe.marginPercent.toFixed(0)}%` : "—"}
                 </p>
               </div>
-              {recipe.suggestedYieldQuantity !== null && (
+              {recipe.suggestedYieldQuantity != null && (
                 <div className="col-span-3 border-t border-border pt-3 text-xs text-muted">
                   Подсказка: при весе теста {recipe.doughWeightKg?.toFixed(2)} кг, изделии {recipe.pieceWeightG} г и
                   потерях {recipe.lossPercent ?? 0}% примерный выход — {recipe.suggestedYieldQuantity} шт. Указанный

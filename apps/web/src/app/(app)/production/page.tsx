@@ -308,11 +308,11 @@ export default function ProductionPage() {
                 </div>
               </div>
 
-              {(recipe.stages.length > 0 || recipe.shelfLifeDays !== null) && (
+              {((recipe.stages ?? []).length > 0 || recipe.shelfLifeDays !== null) && (
                 <div className="mb-3 flex flex-wrap gap-2 text-xs text-muted">
-                  {recipe.stages.length > 0 && (
+                  {(recipe.stages ?? []).length > 0 && (
                     <span>
-                      Технология: {recipe.stages.map((s) => s.stageTypeName).join(" → ")}
+                      Технология: {(recipe.stages ?? []).map((s) => s.stageTypeName).join(" → ")}
                     </span>
                   )}
                   {recipe.shelfLifeDays !== null && <span>· Срок годности: {recipe.shelfLifeDays} дн.</span>}
