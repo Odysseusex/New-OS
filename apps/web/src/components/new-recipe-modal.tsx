@@ -1,9 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
-import type { ProductDto, RecipeDto } from "@bakery-os/shared";
-import { ProductType, Unit, UNIT_LABELS_RU, convertUnitQuantity, getCompatibleUnits } from "@bakery-os/shared";
+import type { RecipeDto, RecipeStageTypeDto, ProductDto } from "@bakery-os/shared";
+import {
+  ProductType,
+  RECIPE_PARAMETER_KIND_LABELS_RU,
+  RECIPE_PARAMETER_KIND_UNIT_RU,
+  RecipeParameterKind,
+  Unit,
+  UNIT_LABELS_RU,
+  convertUnitQuantity,
+  getCompatibleUnits,
+} from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
 import { formatDateTime, formatMoney } from "@/lib/format";
@@ -16,38 +25,67 @@ interface IngredientRow {
   unit: Unit;
 }
 
-interface StepRow {
-  instruction: string;
-  durationMinutes: string;
+interface ParameterRow {
+  kind: RecipeParameterKind;
+  label: string;
+  value: string;
+}
+
+interface StageRow {
+  stageTypeId: string;
+  note: string;
+  parameters: ParameterRow[];
+}
+
+const NEW_STAGE_TYPE_VALUE = "__new__";
+
+function stagesFromRecipe(recipe: RecipeDto): StageRow[] {
+  return recipe.stages.map((s) => ({
+    stageTypeId: s.stageTypeId,
+    note: s.note ?? "",
+    parameters: s.parameters.map((p) => ({ kind: p.kind, label: p.label ?? "", value: String(p.value) })),
+  }));
 }
 
 export function NewRecipeModal({
   products,
   existingRecipeProductIds,
   recipe,
+  duplicateFrom,
   onClose,
   onSaved,
 }: {
   products: ProductDto[];
   existingRecipeProductIds: string[];
   recipe?: RecipeDto;
+  // Pre-fills the form from an existing recipe as a starting point for a
+  // new one (a different product) — a plain create under the hood, only
+  // the initial state differs.
+  duplicateFrom?: RecipeDto;
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const source = recipe ?? duplicateFrom;
   const outputOptions = products.filter(
     (p) => p.type === ProductType.FINISHED_GOOD && !existingRecipeProductIds.includes(p.id),
   );
   const ingredientOptions = products.filter((p) => p.type === ProductType.RAW_MATERIAL);
 
+  const [stageTypes, setStageTypes] = useState<RecipeStageTypeDto[]>([]);
+
+  useEffect(() => {
+    api.recipeStageTypes.list().then(setStageTypes).catch(() => {});
+  }, []);
+
   const [productId, setProductId] = useState(recipe?.productId ?? outputOptions[0]?.id ?? "");
   const [yieldQuantity, setYieldQuantity] = useState(recipe ? String(recipe.yieldQuantity) : "");
   const [pieceWeightG, setPieceWeightG] = useState(
-    recipe?.pieceWeightG !== null && recipe?.pieceWeightG !== undefined ? String(recipe.pieceWeightG) : "",
+    source?.pieceWeightG !== null && source?.pieceWeightG !== undefined ? String(source.pieceWeightG) : "",
   );
-  const [generalNotes, setGeneralNotes] = useState(recipe?.generalNotes ?? "");
+  const [generalNotes, setGeneralNotes] = useState(source?.generalNotes ?? "");
   const [rows, setRows] = useState<IngredientRow[]>(
-    recipe && recipe.items.length > 0
-      ? recipe.items.map((i) => ({ ingredientProductId: i.ingredientProductId, quantity: String(i.quantity), unit: i.unit }))
+    source && source.items.length > 0
+      ? source.items.map((i) => ({ ingredientProductId: i.ingredientProductId, quantity: String(i.quantity), unit: i.unit }))
       : [
           {
             ingredientProductId: ingredientOptions[0]?.id ?? "",
@@ -56,50 +94,12 @@ export function NewRecipeModal({
           },
         ],
   );
-  const [steps, setSteps] = useState<StepRow[]>(
-    recipe?.steps.map((s) => ({
-      instruction: s.instruction,
-      durationMinutes: s.durationMinutes !== null ? String(s.durationMinutes) : "",
-    })) ?? [],
-  );
-  const [mixingTimeSlowMinutes, setMixingTimeSlowMinutes] = useState(
-    recipe?.mixingTimeSlowMinutes !== null && recipe?.mixingTimeSlowMinutes !== undefined ? String(recipe.mixingTimeSlowMinutes) : "",
-  );
-  const [mixingTimeFastMinutes, setMixingTimeFastMinutes] = useState(
-    recipe?.mixingTimeFastMinutes !== null && recipe?.mixingTimeFastMinutes !== undefined ? String(recipe.mixingTimeFastMinutes) : "",
-  );
-  const [doughTempC, setDoughTempC] = useState(
-    recipe?.doughTempC !== null && recipe?.doughTempC !== undefined ? String(recipe.doughTempC) : "",
-  );
-  const [shapingWeightG, setShapingWeightG] = useState(
-    recipe?.shapingWeightG !== null && recipe?.shapingWeightG !== undefined ? String(recipe.shapingWeightG) : "",
-  );
-  const [proofingTempC, setProofingTempC] = useState(
-    recipe?.proofingTempC !== null && recipe?.proofingTempC !== undefined ? String(recipe.proofingTempC) : "",
-  );
-  const [proofingHumidityPercent, setProofingHumidityPercent] = useState(
-    recipe?.proofingHumidityPercent !== null && recipe?.proofingHumidityPercent !== undefined
-      ? String(recipe.proofingHumidityPercent)
-      : "",
-  );
-  const [bakingTempC, setBakingTempC] = useState(recipe?.bakingTempC !== null && recipe?.bakingTempC !== undefined ? String(recipe.bakingTempC) : "");
-  const [bakingTimeMinutes, setBakingTimeMinutes] = useState(
-    recipe?.bakingTimeMinutes !== null && recipe?.bakingTimeMinutes !== undefined ? String(recipe.bakingTimeMinutes) : "",
-  );
-  const [steamSeconds, setSteamSeconds] = useState(
-    recipe?.steamSeconds !== null && recipe?.steamSeconds !== undefined ? String(recipe.steamSeconds) : "",
-  );
-  const [fermentationMinutes, setFermentationMinutes] = useState(
-    recipe?.fermentationMinutes !== null && recipe?.fermentationMinutes !== undefined ? String(recipe.fermentationMinutes) : "",
-  );
-  const [proofingMinutes, setProofingMinutes] = useState(
-    recipe?.proofingMinutes !== null && recipe?.proofingMinutes !== undefined ? String(recipe.proofingMinutes) : "",
-  );
+  const [stages, setStages] = useState<StageRow[]>(source ? stagesFromRecipe(source) : []);
   const [lossPercent, setLossPercent] = useState(
-    recipe?.lossPercent !== null && recipe?.lossPercent !== undefined ? String(recipe.lossPercent) : "",
+    source?.lossPercent !== null && source?.lossPercent !== undefined ? String(source.lossPercent) : "",
   );
   const [shelfLifeDays, setShelfLifeDays] = useState(
-    recipe?.shelfLifeDays !== null && recipe?.shelfLifeDays !== undefined ? String(recipe.shelfLifeDays) : "",
+    source?.shelfLifeDays !== null && source?.shelfLifeDays !== undefined ? String(source.shelfLifeDays) : "",
   );
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -150,20 +150,29 @@ export function NewRecipeModal({
     setRows((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
   }
 
-  function addStep() {
-    setSteps((prev) => [...prev, { instruction: "", durationMinutes: "" }]);
+  // Dough weight computed the same way the server does, from the currently
+  // typed ingredient rows — used for the live % hint per ingredient. Only
+  // rows in a weight-compatible unit contribute (matches server logic).
+  const KG_FACTOR: Partial<Record<Unit, number>> = { [Unit.KG]: 1, [Unit.G]: 0.001, [Unit.L]: 1, [Unit.ML]: 0.001 };
+  const rowWeightsKg = rows.map((r) => {
+    const factor = KG_FACTOR[r.unit];
+    const n = Number(r.quantity);
+    return factor !== undefined && !Number.isNaN(n) ? n * factor : null;
+  });
+  const liveDoughWeightKg = rowWeightsKg.some((w) => w !== null)
+    ? rowWeightsKg.reduce((sum: number, w) => sum + (w ?? 0), 0)
+    : null;
+
+  function addStage() {
+    setStages((prev) => [...prev, { stageTypeId: stageTypes[0]?.id ?? "", note: "", parameters: [] }]);
   }
 
-  function updateStep(index: number, patch: Partial<StepRow>) {
-    setSteps((prev) => prev.map((s, i) => (i === index ? { ...s, ...patch } : s)));
+  function removeStage(index: number) {
+    setStages((prev) => prev.filter((_, i) => i !== index));
   }
 
-  function removeStep(index: number) {
-    setSteps((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  function moveStep(index: number, direction: -1 | 1) {
-    setSteps((prev) => {
+  function moveStage(index: number, direction: -1 | 1) {
+    setStages((prev) => {
       const target = index + direction;
       if (target < 0 || target >= prev.length) return prev;
       const next = [...prev];
@@ -172,35 +181,57 @@ export function NewRecipeModal({
     });
   }
 
+  function updateStage(index: number, patch: Partial<StageRow>) {
+    setStages((prev) => prev.map((s, i) => (i === index ? { ...s, ...patch } : s)));
+  }
+
+  async function handleStageTypeSelect(index: number, value: string) {
+    if (value !== NEW_STAGE_TYPE_VALUE) {
+      updateStage(index, { stageTypeId: value });
+      return;
+    }
+    const name = prompt("Название новой стадии (например, «Ламинирование»)");
+    if (!name || !name.trim()) return;
+    try {
+      const created = await api.recipeStageTypes.create({ name: name.trim() });
+      setStageTypes((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+      updateStage(index, { stageTypeId: created.id });
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "Не удалось создать стадию");
+    }
+  }
+
+  function addParameter(stageIndex: number) {
+    setStages((prev) =>
+      prev.map((s, i) =>
+        i === stageIndex
+          ? { ...s, parameters: [...s.parameters, { kind: RecipeParameterKind.DURATION_MINUTES, label: "", value: "" }] }
+          : s,
+      ),
+    );
+  }
+
+  function updateParameter(stageIndex: number, paramIndex: number, patch: Partial<ParameterRow>) {
+    setStages((prev) =>
+      prev.map((s, i) =>
+        i === stageIndex
+          ? { ...s, parameters: s.parameters.map((p, pi) => (pi === paramIndex ? { ...p, ...patch } : p)) }
+          : s,
+      ),
+    );
+  }
+
+  function removeParameter(stageIndex: number, paramIndex: number) {
+    setStages((prev) =>
+      prev.map((s, i) => (i === stageIndex ? { ...s, parameters: s.parameters.filter((_, pi) => pi !== paramIndex) } : s)),
+    );
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setIsSubmitting(true);
     try {
-      const techCardFields = {
-        generalNotes: generalNotes || undefined,
-        pieceWeightG: pieceWeightG ? Number(pieceWeightG) : undefined,
-        mixingTimeSlowMinutes: mixingTimeSlowMinutes ? Number(mixingTimeSlowMinutes) : undefined,
-        mixingTimeFastMinutes: mixingTimeFastMinutes ? Number(mixingTimeFastMinutes) : undefined,
-        doughTempC: doughTempC ? Number(doughTempC) : undefined,
-        shapingWeightG: shapingWeightG ? Number(shapingWeightG) : undefined,
-        proofingTempC: proofingTempC ? Number(proofingTempC) : undefined,
-        proofingHumidityPercent: proofingHumidityPercent ? Number(proofingHumidityPercent) : undefined,
-        bakingTempC: bakingTempC ? Number(bakingTempC) : undefined,
-        bakingTimeMinutes: bakingTimeMinutes ? Number(bakingTimeMinutes) : undefined,
-        steamSeconds: steamSeconds ? Number(steamSeconds) : undefined,
-        fermentationMinutes: fermentationMinutes ? Number(fermentationMinutes) : undefined,
-        proofingMinutes: proofingMinutes ? Number(proofingMinutes) : undefined,
-        lossPercent: lossPercent ? Number(lossPercent) : undefined,
-        shelfLifeDays: shelfLifeDays ? Number(shelfLifeDays) : undefined,
-        steps: steps
-          .filter((s) => s.instruction.trim().length > 0)
-          .map((s, index) => ({
-            sequence: index + 1,
-            instruction: s.instruction,
-            durationMinutes: s.durationMinutes ? Number(s.durationMinutes) : undefined,
-          })),
-      };
       const items = rows.map((r) => {
         const baseUnit = ingredientOptions.find((p) => p.id === r.ingredientProductId)?.unit ?? r.unit;
         return {
@@ -208,6 +239,25 @@ export function NewRecipeModal({
           quantity: convertUnitQuantity(Number(r.quantity), r.unit, baseUnit),
         };
       });
+
+      const stagesPayload = stages
+        .filter((s) => s.note.trim().length > 0 || s.parameters.some((p) => p.value !== ""))
+        .map((s, index) => ({
+          stageTypeId: s.stageTypeId,
+          sequence: index + 1,
+          note: s.note.trim() || undefined,
+          parameters: s.parameters
+            .filter((p) => p.value !== "")
+            .map((p) => ({ kind: p.kind, label: p.label.trim() || undefined, value: Number(p.value) })),
+        }));
+
+      const techCardFields = {
+        generalNotes: generalNotes || undefined,
+        pieceWeightG: pieceWeightG ? Number(pieceWeightG) : undefined,
+        lossPercent: lossPercent ? Number(lossPercent) : undefined,
+        shelfLifeDays: shelfLifeDays ? Number(shelfLifeDays) : undefined,
+        stages: stagesPayload,
+      };
 
       if (recipe) {
         await api.recipes.update(recipe.id, {
@@ -253,8 +303,15 @@ export function NewRecipeModal({
     );
   }
 
+  const preBakeWeightG = recipe?.preBakeWeightG ?? null;
+  const bakeLossG = preBakeWeightG !== null && pieceWeightG ? preBakeWeightG - Number(pieceWeightG) : null;
+
   return (
-    <Modal title={recipe ? `Техкарта: ${recipe.productName}` : "Новая рецептура"} onClose={onClose} width="max-w-3xl">
+    <Modal
+      title={recipe ? `Техкарта: ${recipe.productName}` : duplicateFrom ? `Копия рецептуры: ${duplicateFrom.productName}` : "Новая рецептура"}
+      onClose={onClose}
+      width="max-w-3xl"
+    >
       <form onSubmit={handleSubmit}>
         <SectionTitle>Общая информация</SectionTitle>
         <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -291,6 +348,12 @@ export function NewRecipeModal({
               onChange={(e) => setPieceWeightG(e.target.value)}
               className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
             />
+            {bakeLossG !== null && (
+              <p className="mt-1.5 text-xs text-muted">
+                Заготовка {preBakeWeightG} г → изделие {pieceWeightG} г: потери{" "}
+                {bakeLossG >= 0 ? `${bakeLossG.toFixed(0)} г (${((bakeLossG / preBakeWeightG!) * 100).toFixed(0)}%)` : "—"}
+              </p>
+            )}
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-foreground">Выход с одного замеса, шт</label>
@@ -328,6 +391,8 @@ export function NewRecipeModal({
           {rows.map((row, index) => {
             const ingredientUnit = ingredientOptions.find((p) => p.id === row.ingredientProductId)?.unit;
             const compatibleUnits = ingredientUnit ? getCompatibleUnits(ingredientUnit) : [];
+            const weightKg = rowWeightsKg[index];
+            const percent = liveDoughWeightKg && weightKg !== null ? (weightKg / liveDoughWeightKg) * 100 : null;
             return (
               <div key={index} className="flex items-center gap-2">
                 <select
@@ -368,6 +433,9 @@ export function NewRecipeModal({
                     <span className="w-20 shrink-0 text-center text-xs text-muted">{UNIT_LABELS_RU[ingredientUnit]}</span>
                   )
                 )}
+                <span className="w-12 shrink-0 text-right text-xs text-muted">
+                  {percent !== null ? `${percent.toFixed(0)}%` : ""}
+                </span>
                 <button
                   type="button"
                   onClick={() => removeRow(index)}
@@ -379,15 +447,12 @@ export function NewRecipeModal({
             );
           })}
         </div>
-        {recipe && (recipe.doughWeightKg !== null || recipe.doughWeightExcludedIngredients.length > 0) && (
+        {(liveDoughWeightKg !== null || rows.length > 0) && (
           <p className="mb-3 text-xs text-muted">
             Вес теста на замес:{" "}
             <span className="font-medium text-foreground">
-              {recipe.doughWeightKg !== null ? `≈ ${recipe.doughWeightKg.toFixed(2)} кг` : "не рассчитан"}
+              {liveDoughWeightKg !== null ? `≈ ${liveDoughWeightKg.toFixed(2)} кг` : "не рассчитан"}
             </span>
-            {recipe.doughWeightExcludedIngredients.length > 0 && (
-              <> (без учёта: {recipe.doughWeightExcludedIngredients.join(", ")} — в штуках, вес неизвестен)</>
-            )}
           </p>
         )}
         <button
@@ -399,96 +464,122 @@ export function NewRecipeModal({
           Добавить ингредиент
         </button>
 
-        <SectionTitle>Технология приготовления</SectionTitle>
-        <div className="mb-3 space-y-2">
-          {steps.map((step, index) => (
-            <div key={index} className="flex items-start gap-2">
-              <span className="mt-2.5 w-5 shrink-0 text-sm font-medium text-muted">{index + 1}.</span>
-              <input
-                type="text"
-                value={step.instruction}
-                onChange={(e) => updateStep(index, { instruction: e.target.value })}
-                placeholder="Что нужно сделать на этом шаге"
-                className="flex-1 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+        <SectionTitle>Технологический процесс</SectionTitle>
+        <p className="mb-2 text-xs text-muted">
+          Стадии идут в том порядке, в котором вы их добавляете — как в бумажной техкарте. У каждой стадии
+          можно указать структурные параметры (температура, время и т.д.) и/или свободную заметку.
+        </p>
+        <div className="mb-3 space-y-3">
+          {stages.map((stage, stageIndex) => (
+            <div key={stageIndex} className="rounded-xl border border-border p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <select
+                  value={stage.stageTypeId}
+                  onChange={(e) => handleStageTypeSelect(stageIndex, e.target.value)}
+                  className="flex-1 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                >
+                  {stageTypes.map((st) => (
+                    <option key={st.id} value={st.id}>
+                      {st.name}
+                    </option>
+                  ))}
+                  <option value={NEW_STAGE_TYPE_VALUE}>+ Новая стадия…</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => moveStage(stageIndex, -1)}
+                  disabled={stageIndex === 0}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted transition hover:bg-surface-muted disabled:opacity-30"
+                >
+                  <ArrowUp className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveStage(stageIndex, 1)}
+                  disabled={stageIndex === stages.length - 1}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted transition hover:bg-surface-muted disabled:opacity-30"
+                >
+                  <ArrowDown className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeStage(stageIndex)}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted transition hover:bg-surface-muted hover:text-red-600"
+                >
+                  <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+              </div>
+
+              {stage.parameters.length > 0 && (
+                <div className="mb-2 space-y-1.5">
+                  {stage.parameters.map((param, paramIndex) => (
+                    <div key={paramIndex} className="flex items-center gap-2">
+                      <select
+                        value={param.kind}
+                        onChange={(e) => updateParameter(stageIndex, paramIndex, { kind: e.target.value as RecipeParameterKind })}
+                        className="w-40 shrink-0 rounded-xl border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                      >
+                        {Object.values(RecipeParameterKind).map((k) => (
+                          <option key={k} value={k}>
+                            {RECIPE_PARAMETER_KIND_LABELS_RU[k]}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        value={param.label}
+                        onChange={(e) => updateParameter(stageIndex, paramIndex, { label: e.target.value })}
+                        placeholder="Уточнение (необязательно)"
+                        className="flex-1 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                      />
+                      <input
+                        type="number"
+                        step="any"
+                        value={param.value}
+                        onChange={(e) => updateParameter(stageIndex, paramIndex, { value: e.target.value })}
+                        className="w-24 shrink-0 rounded-xl border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                        placeholder={RECIPE_PARAMETER_KIND_UNIT_RU[param.kind]}
+                      />
+                      <span className="w-8 shrink-0 text-xs text-muted">{RECIPE_PARAMETER_KIND_UNIT_RU[param.kind]}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeParameter(stageIndex, paramIndex)}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted transition hover:bg-surface-muted hover:text-red-600"
+                      >
+                        <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => addParameter(stageIndex)}
+                className="mb-2 flex items-center gap-1.5 text-xs font-medium text-accent hover:opacity-80"
+              >
+                <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
+                Добавить параметр
+              </button>
+
+              <textarea
+                value={stage.note}
+                onChange={(e) => updateStage(stageIndex, { note: e.target.value })}
+                rows={2}
+                placeholder="Заметка к этой стадии (необязательно)"
+                className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
               />
-              <input
-                type="number"
-                min="0"
-                value={step.durationMinutes}
-                onChange={(e) => updateStep(index, { durationMinutes: e.target.value })}
-                placeholder="Мин."
-                className="w-20 rounded-xl border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-              />
-              <button
-                type="button"
-                onClick={() => moveStep(index, -1)}
-                disabled={index === 0}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted transition hover:bg-surface-muted disabled:opacity-30"
-              >
-                <ArrowUp className="h-4 w-4" strokeWidth={1.75} />
-              </button>
-              <button
-                type="button"
-                onClick={() => moveStep(index, 1)}
-                disabled={index === steps.length - 1}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted transition hover:bg-surface-muted disabled:opacity-30"
-              >
-                <ArrowDown className="h-4 w-4" strokeWidth={1.75} />
-              </button>
-              <button
-                type="button"
-                onClick={() => removeStep(index)}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted transition hover:bg-surface-muted hover:text-red-600"
-              >
-                <Trash2 className="h-4 w-4" strokeWidth={1.75} />
-              </button>
             </div>
           ))}
-          {steps.length === 0 && (
-            <p className="text-sm text-muted">Шагов пока нет — можно добавить позже.</p>
-          )}
+          {stages.length === 0 && <p className="text-sm text-muted">Стадий пока нет — можно добавить позже.</p>}
         </div>
         <button
           type="button"
-          onClick={addStep}
+          onClick={addStage}
           className="mb-5 flex items-center gap-1.5 text-sm font-medium text-accent hover:opacity-80"
         >
           <Plus className="h-4 w-4" strokeWidth={1.75} />
-          Добавить шаг
+          Добавить стадию
         </button>
-
-        <SectionTitle>Параметры производства</SectionTitle>
-
-        <StageTitle>Замес</StageTitle>
-        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <NumberField label="Время замеса (медленно), мин" value={mixingTimeSlowMinutes} onChange={setMixingTimeSlowMinutes} />
-          <NumberField label="Время замеса (быстро), мин" value={mixingTimeFastMinutes} onChange={setMixingTimeFastMinutes} />
-          <NumberField label="Темп. теста после замеса, °C" value={doughTempC} onChange={setDoughTempC} />
-        </div>
-
-        <StageTitle>Брожение</StageTitle>
-        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <NumberField label="Брожение, мин" value={fermentationMinutes} onChange={setFermentationMinutes} />
-        </div>
-
-        <StageTitle>Формовка</StageTitle>
-        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <NumberField label="Вес заготовки, г" value={shapingWeightG} onChange={setShapingWeightG} />
-        </div>
-
-        <StageTitle>Расстойка</StageTitle>
-        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <NumberField label="Расстойка, мин" value={proofingMinutes} onChange={setProofingMinutes} />
-          <NumberField label="Температура расстойки, °C" value={proofingTempC} onChange={setProofingTempC} />
-          <NumberField label="Влажность расстойки, %" value={proofingHumidityPercent} onChange={setProofingHumidityPercent} max="100" />
-        </div>
-
-        <StageTitle>Выпечка</StageTitle>
-        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <NumberField label="Темп. выпечки, °C" value={bakingTempC} onChange={setBakingTempC} />
-          <NumberField label="Время выпечки, мин" value={bakingTimeMinutes} onChange={setBakingTimeMinutes} />
-          <NumberField label="Пар при посадке, сек" value={steamSeconds} onChange={setSteamSeconds} />
-        </div>
 
         <SectionTitle>Потери и срок годности</SectionTitle>
         <div className="mb-5 grid grid-cols-2 gap-3">
@@ -564,10 +655,6 @@ export function NewRecipeModal({
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return <p className="mb-2 text-sm font-semibold text-foreground">{children}</p>;
-}
-
-function StageTitle({ children }: { children: React.ReactNode }) {
-  return <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted">{children}</p>;
 }
 
 function NumberField({

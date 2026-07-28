@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
-import { CheckCircle2, Plus, XCircle } from "lucide-react";
+import { CheckCircle2, Copy, Plus, Search, XCircle } from "lucide-react";
 import type { LocationDto, ProductDto, ProductionBatchDto, RecipeDto } from "@bakery-os/shared";
 import {
   HARD_DELETE_ROLES,
@@ -37,8 +37,10 @@ export default function ProductionPage() {
   const [batches, setBatches] = useState<ProductionBatchDto[]>([]);
   const [locationFilter, setLocationFilter] = useState("");
   const [showArchivedRecipes, setShowArchivedRecipes] = useState(false);
+  const [recipeSearch, setRecipeSearch] = useState("");
   const [modal, setModal] = useState<"batch" | "recipe" | null>(null);
   const [editingRecipe, setEditingRecipe] = useState<RecipeDto | undefined>(undefined);
+  const [duplicateFromRecipe, setDuplicateFromRecipe] = useState<RecipeDto | undefined>(undefined);
   const [completingBatch, setCompletingBatch] = useState<ProductionBatchDto | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -105,6 +107,10 @@ export default function ProductionPage() {
     }
   }
 
+  const visibleRecipes = recipes.filter((r) =>
+    r.productName.toLowerCase().includes(recipeSearch.trim().toLowerCase()),
+  );
+
   return (
     <div className="mx-auto max-w-6xl">
       <div className="mb-6 flex items-start justify-between">
@@ -154,6 +160,19 @@ export default function ProductionPage() {
               <Plus className="h-4 w-4" strokeWidth={1.75} />
               Новое задание
             </button>
+          )}
+
+          {tab === "recipes" && (
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" strokeWidth={1.75} />
+              <input
+                type="text"
+                value={recipeSearch}
+                onChange={(e) => setRecipeSearch(e.target.value)}
+                placeholder="Поиск по названию…"
+                className="w-56 rounded-xl border border-border bg-surface py-2 pl-9 pr-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+              />
+            </div>
           )}
 
           {tab === "recipes" && canManageRecipes && (
@@ -244,7 +263,7 @@ export default function ProductionPage() {
 
       {tab === "recipes" && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {recipes.map((recipe) => (
+          {visibleRecipes.map((recipe) => (
             <div key={recipe.id} className="rounded-2xl border border-border bg-surface p-5 shadow-card">
               <div className="mb-3 flex items-start justify-between">
                 <div>
@@ -261,10 +280,24 @@ export default function ProductionPage() {
                     {formatMoney(recipe.productPrice)}
                   </span>
                   {canManageRecipes && (
+                    <button
+                      onClick={() => {
+                        setDuplicateFromRecipe(recipe);
+                        setEditingRecipe(undefined);
+                        setModal("recipe");
+                      }}
+                      title="Дублировать"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-foreground"
+                    >
+                      <Copy className="h-4 w-4" strokeWidth={1.75} />
+                    </button>
+                  )}
+                  {canManageRecipes && (
                     <RowActions
                       isActive={recipe.isActive}
                       onEdit={() => {
                         setEditingRecipe(recipe);
+                        setDuplicateFromRecipe(undefined);
                         setModal("recipe");
                       }}
                       onArchive={() => handleRecipeArchive(recipe)}
@@ -275,10 +308,13 @@ export default function ProductionPage() {
                 </div>
               </div>
 
-              {(recipe.bakingTempC !== null || recipe.bakingTimeMinutes !== null || recipe.shelfLifeDays !== null) && (
+              {(recipe.stages.length > 0 || recipe.shelfLifeDays !== null) && (
                 <div className="mb-3 flex flex-wrap gap-2 text-xs text-muted">
-                  {recipe.bakingTempC !== null && <span>Выпечка: {recipe.bakingTempC}°C</span>}
-                  {recipe.bakingTimeMinutes !== null && <span>· {recipe.bakingTimeMinutes} мин</span>}
+                  {recipe.stages.length > 0 && (
+                    <span>
+                      Технология: {recipe.stages.map((s) => s.stageTypeName).join(" → ")}
+                    </span>
+                  )}
                   {recipe.shelfLifeDays !== null && <span>· Срок годности: {recipe.shelfLifeDays} дн.</span>}
                 </div>
               )}
@@ -309,8 +345,10 @@ export default function ProductionPage() {
               </div>
             </div>
           ))}
-          {recipes.length === 0 && (
-            <p className="col-span-2 py-8 text-center text-sm text-muted">Рецептур пока нет</p>
+          {visibleRecipes.length === 0 && (
+            <p className="col-span-2 py-8 text-center text-sm text-muted">
+              {recipes.length === 0 ? "Рецептур пока нет" : "Ничего не найдено"}
+            </p>
           )}
         </div>
       )}
@@ -333,9 +371,14 @@ export default function ProductionPage() {
           products={products.filter((p) => p.isActive)}
           existingRecipeProductIds={recipes.map((r) => r.productId)}
           recipe={editingRecipe}
-          onClose={() => setModal(null)}
+          duplicateFrom={duplicateFromRecipe}
+          onClose={() => {
+            setModal(null);
+            setDuplicateFromRecipe(undefined);
+          }}
           onSaved={() => {
             setModal(null);
+            setDuplicateFromRecipe(undefined);
             loadRecipes();
           }}
         />

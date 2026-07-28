@@ -18,19 +18,81 @@ export interface RecipeItemDto {
   ingredientProductName: string;
   unit: Unit;
   quantity: number;
+  // Share of this recipe's total dough weight (see RecipeDto.doughWeightKg),
+  // null when the ingredient's unit can't be converted to weight (e.g. PCS)
+  // or when the recipe has no computable dough weight at all.
+  percentOfDoughWeight: number | null;
 }
 
-export interface RecipeStepDto {
+// The fixed, closed set of measurement kinds a stage parameter can hold —
+// the actual physical dimensions a bakery process is measured in. This list
+// is not meant to grow every time a new stage type or product category
+// appears; new stages reuse the same handful of kinds.
+export enum RecipeParameterKind {
+  TEMPERATURE_C = "TEMPERATURE_C",
+  DURATION_MINUTES = "DURATION_MINUTES",
+  PERCENT = "PERCENT",
+  WEIGHT_G = "WEIGHT_G",
+  COUNT = "COUNT",
+}
+
+export const RECIPE_PARAMETER_KIND_LABELS_RU: Record<RecipeParameterKind, string> = {
+  [RecipeParameterKind.TEMPERATURE_C]: "Температура, °C",
+  [RecipeParameterKind.DURATION_MINUTES]: "Время, мин",
+  [RecipeParameterKind.PERCENT]: "Процент, %",
+  [RecipeParameterKind.WEIGHT_G]: "Вес, г",
+  [RecipeParameterKind.COUNT]: "Количество, шт",
+};
+
+export const RECIPE_PARAMETER_KIND_UNIT_RU: Record<RecipeParameterKind, string> = {
+  [RecipeParameterKind.TEMPERATURE_C]: "°C",
+  [RecipeParameterKind.DURATION_MINUTES]: "мин",
+  [RecipeParameterKind.PERCENT]: "%",
+  [RecipeParameterKind.WEIGHT_G]: "г",
+  [RecipeParameterKind.COUNT]: "шт",
+};
+
+export interface RecipeStageParameterDto {
   id: string;
-  sequence: number;
-  instruction: string;
-  durationMinutes: number | null;
+  kind: RecipeParameterKind;
+  label: string | null;
+  value: number;
 }
 
-export interface RecipeStepInputDto {
+export interface RecipeStageParameterInputDto {
+  kind: RecipeParameterKind;
+  label?: string;
+  value: number;
+}
+
+export interface RecipeStageDto {
+  id: string;
+  stageTypeId: string;
+  stageTypeName: string;
   sequence: number;
-  instruction: string;
-  durationMinutes?: number;
+  note: string | null;
+  parameters: RecipeStageParameterDto[];
+}
+
+export interface RecipeStageInputDto {
+  stageTypeId: string;
+  sequence: number;
+  note?: string;
+  parameters: RecipeStageParameterInputDto[];
+}
+
+// Organization-wide catalog of process stages (Замес, Брожение, Выпечка,
+// Сборка, ...) a recipe can pick from and order as it needs — bread,
+// viennoiserie and cakes each pick a different subset/order from the same
+// shared list rather than needing their own hardcoded set of stages.
+export interface RecipeStageTypeDto {
+  id: string;
+  name: string;
+  isActive: boolean;
+}
+
+export interface CreateRecipeStageTypeRequestDto {
+  name: string;
 }
 
 export interface RecipeRevisionDto {
@@ -48,21 +110,10 @@ export interface RecipeDto {
   productPrice: number;
   yieldQuantity: number;
   items: RecipeItemDto[];
-  steps: RecipeStepDto[];
+  stages: RecipeStageDto[];
   revisions: RecipeRevisionDto[];
   generalNotes: string | null;
   pieceWeightG: number | null;
-  mixingTimeSlowMinutes: number | null;
-  mixingTimeFastMinutes: number | null;
-  doughTempC: number | null;
-  shapingWeightG: number | null;
-  proofingTempC: number | null;
-  proofingHumidityPercent: number | null;
-  bakingTempC: number | null;
-  bakingTimeMinutes: number | null;
-  steamSeconds: number | null;
-  fermentationMinutes: number | null;
-  proofingMinutes: number | null;
   lossPercent: number | null;
   shelfLifeDays: number | null;
   unitCost: number;
@@ -80,6 +131,11 @@ export interface RecipeDto {
   // lossPercent and pieceWeightG when all three are available. A hint for
   // the technologist to review, never auto-applied.
   suggestedYieldQuantity: number | null;
+  // The single WEIGHT_G stage parameter across this recipe's process (e.g.
+  // dough-piece weight at shaping), if there's exactly one — used to show
+  // the implied bake loss against pieceWeightG. Null if there's none or
+  // more than one (ambiguous which stage it refers to).
+  preBakeWeightG: number | null;
 }
 
 export interface CreateRecipeItemRequestDto {
@@ -90,20 +146,9 @@ export interface CreateRecipeItemRequestDto {
 export interface RecipeTechCardFieldsDto {
   generalNotes?: string;
   pieceWeightG?: number;
-  mixingTimeSlowMinutes?: number;
-  mixingTimeFastMinutes?: number;
-  doughTempC?: number;
-  shapingWeightG?: number;
-  proofingTempC?: number;
-  proofingHumidityPercent?: number;
-  bakingTempC?: number;
-  bakingTimeMinutes?: number;
-  steamSeconds?: number;
-  fermentationMinutes?: number;
-  proofingMinutes?: number;
   lossPercent?: number;
   shelfLifeDays?: number;
-  steps?: RecipeStepInputDto[];
+  stages?: RecipeStageInputDto[];
 }
 
 export interface CreateRecipeRequestDto extends RecipeTechCardFieldsDto {

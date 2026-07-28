@@ -11,6 +11,7 @@ import type {
   CreateProductRequestDto,
   CreatePurchaseOrderRequestDto,
   CreateRecipeRequestDto,
+  CreateRecipeStageTypeRequestDto,
   CreateSaleRequestDto,
   CreateShiftRequestDto,
   CreateStockMovementRequestDto,
@@ -38,6 +39,7 @@ import type {
   PurchaseOrderDto,
   QualitySummaryDto,
   RecipeDto,
+  RecipeStageTypeDto,
   RecordPaymentRequestDto,
   RegionDto,
   SaleDetailDto,
@@ -211,6 +213,12 @@ export const api = {
     archive: (id: string) => request<RecipeDto>(`/recipes/${id}/archive`, { method: "POST" }),
     restore: (id: string) => request<RecipeDto>(`/recipes/${id}/restore`, { method: "POST" }),
     remove: (id: string) => request<{ deleted: true }>(`/recipes/${id}`, { method: "DELETE" }),
+  },
+
+  recipeStageTypes: {
+    list: () => request<RecipeStageTypeDto[]>("/recipe-stage-types"),
+    create: (dto: CreateRecipeStageTypeRequestDto) =>
+      request<RecipeStageTypeDto>("/recipe-stage-types", { method: "POST", body: JSON.stringify(dto) }),
   },
 
   production: {
