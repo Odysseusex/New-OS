@@ -35,6 +35,10 @@ interface StageRow {
   stageTypeId: string;
   note: string;
   parameters: ParameterRow[];
+  // UI-only: true while this row is showing the inline "new stage" text
+  // input instead of the dropdown, and what's currently typed into it.
+  isCreatingStageType?: boolean;
+  newStageTypeName?: string;
 }
 
 const NEW_STAGE_TYPE_VALUE = "__new__";
@@ -185,19 +189,27 @@ export function NewRecipeModal({
     setStages((prev) => prev.map((s, i) => (i === index ? { ...s, ...patch } : s)));
   }
 
-  async function handleStageTypeSelect(index: number, value: string) {
+  function handleStageTypeSelect(index: number, value: string) {
     if (value !== NEW_STAGE_TYPE_VALUE) {
       updateStage(index, { stageTypeId: value });
       return;
     }
-    const name = prompt("Название новой стадии (например, «Ламинирование»)");
-    if (!name || !name.trim()) return;
+    updateStage(index, { isCreatingStageType: true, newStageTypeName: "" });
+  }
+
+  function cancelNewStageType(index: number) {
+    updateStage(index, { isCreatingStageType: false, newStageTypeName: "" });
+  }
+
+  async function confirmNewStageType(index: number) {
+    const name = stages[index]?.newStageTypeName?.trim();
+    if (!name) return;
     try {
-      const created = await api.recipeStageTypes.create({ name: name.trim() });
+      const created = await api.recipeStageTypes.create({ name });
       setStageTypes((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
-      updateStage(index, { stageTypeId: created.id });
+      updateStage(index, { stageTypeId: created.id, isCreatingStageType: false, newStageTypeName: "" });
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "Не удалось создать стадию");
+      setError(err instanceof ApiError ? err.message : "Не удалось создать стадию");
     }
   }
 
@@ -473,18 +485,52 @@ export function NewRecipeModal({
           {stages.map((stage, stageIndex) => (
             <div key={stageIndex} className="rounded-xl border border-border p-3">
               <div className="mb-2 flex items-center gap-2">
-                <select
-                  value={stage.stageTypeId}
-                  onChange={(e) => handleStageTypeSelect(stageIndex, e.target.value)}
-                  className="flex-1 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-                >
-                  {stageTypes.map((st) => (
-                    <option key={st.id} value={st.id}>
-                      {st.name}
-                    </option>
-                  ))}
-                  <option value={NEW_STAGE_TYPE_VALUE}>+ Новая стадия…</option>
-                </select>
+                {stage.isCreatingStageType ? (
+                  <>
+                    <input
+                      type="text"
+                      autoFocus
+                      value={stage.newStageTypeName ?? ""}
+                      onChange={(e) => updateStage(stageIndex, { newStageTypeName: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          confirmNewStageType(stageIndex);
+                        }
+                      }}
+                      placeholder="Название новой стадии, например «Ламинирование»"
+                      className="flex-1 rounded-xl border border-accent bg-surface px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-accent/20"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => confirmNewStageType(stageIndex)}
+                      className="shrink-0 rounded-xl bg-accent px-3 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
+                    >
+                      Добавить
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => cancelNewStageType(stageIndex)}
+                      className="shrink-0 rounded-xl border border-border px-3 py-2 text-sm text-muted transition hover:bg-surface-muted"
+                    >
+                      Отмена
+                    </button>
+                  </>
+                ) : (
+                  <select
+                    value={stage.stageTypeId}
+                    onChange={(e) => handleStageTypeSelect(stageIndex, e.target.value)}
+                    className="flex-1 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                  >
+                    {stageTypes.length === 0 && <option value="">Стадий пока нет</option>}
+                    {stageTypes.map((st) => (
+                      <option key={st.id} value={st.id}>
+                        {st.name}
+                      </option>
+                    ))}
+                    <option value={NEW_STAGE_TYPE_VALUE}>+ Новая стадия…</option>
+                  </select>
+                )}
                 <button
                   type="button"
                   onClick={() => moveStage(stageIndex, -1)}
