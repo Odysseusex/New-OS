@@ -1,4 +1,5 @@
 import type {
+  AdjustStockRequestDto,
   CategoryDto,
   ClockInRequestDto,
   CompleteProductionBatchRequestDto,
@@ -155,6 +156,11 @@ export const api = {
       }),
     writeOff: (dto: CreateStockMovementRequestDto) =>
       request<StockMovementDto>("/inventory/write-offs", {
+        method: "POST",
+        body: JSON.stringify(dto),
+      }),
+    adjust: (dto: AdjustStockRequestDto) =>
+      request<StockMovementDto>("/inventory/adjustments", {
         method: "POST",
         body: JSON.stringify(dto),
       }),

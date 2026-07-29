@@ -89,6 +89,7 @@ export class ProductsService {
         ...(dto.type !== undefined ? { type: dto.type } : {}),
         ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
         ...(dto.price !== undefined ? { price: dto.price } : {}),
+        ...(dto.trackInventory !== undefined ? { trackInventory: dto.trackInventory } : {}),
       },
       include: PRODUCT_INCLUDE,
     });
@@ -159,6 +160,7 @@ export class ProductsService {
     categoryRef: { name: string } | null;
     price: { toNumber: () => number };
     isActive: boolean;
+    trackInventory: boolean;
   }): ProductDto {
     return {
       id: product.id,
@@ -170,6 +172,7 @@ export class ProductsService {
       categoryName: product.categoryRef?.name ?? null,
       price: product.price.toNumber(),
       isActive: product.isActive,
+      trackInventory: product.trackInventory,
     };
   }
 }

@@ -106,6 +106,9 @@ export interface ProductDto {
   categoryName: string | null;
   price: number;
   isActive: boolean;
+  // False for resources with no physical stock to track (e.g. tap water) —
+  // see inventory.ts / InventoryService for what this suppresses.
+  trackInventory: boolean;
 }
 
 export interface CreateProductRequestDto {
@@ -115,6 +118,7 @@ export interface CreateProductRequestDto {
   type: ProductType;
   categoryId?: string;
   price: number;
+  trackInventory?: boolean;
 }
 
 export interface UpdateProductRequestDto {
@@ -124,4 +128,5 @@ export interface UpdateProductRequestDto {
   type?: ProductType;
   categoryId?: string | null;
   price?: number;
+  trackInventory?: boolean;
 }

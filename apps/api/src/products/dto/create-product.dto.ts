@@ -1,4 +1,4 @@
-import { IsEnum, IsNumber, IsOptional, IsString, Min, MinLength } from "class-validator";
+import { IsBoolean, IsEnum, IsNumber, IsOptional, IsString, Min, MinLength } from "class-validator";
 import { ProductType, Unit } from "@bakery-os/shared";
 
 export class CreateProductDto {
@@ -24,4 +24,8 @@ export class CreateProductDto {
   @IsNumber()
   @Min(0)
   price!: number;
+
+  @IsOptional()
+  @IsBoolean()
+  trackInventory?: boolean;
 }

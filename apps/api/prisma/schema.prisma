@@ -274,6 +274,10 @@ model Product {
   categoryId     String?
   categoryRef    Category?   @relation(fields: [categoryId], references: [id])
   price          Decimal     @db.Decimal(12, 2)
+  // False for resources with no physical stock to track (e.g. tap water) —
+  // still usable in recipes and cost calculations, but excluded from stock
+  // levels, low-stock alerts, and receiving/write-off/adjustment operations.
+  trackInventory Boolean     @default(true)
   isActive       Boolean     @default(true)
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt

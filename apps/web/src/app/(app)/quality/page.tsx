@@ -225,7 +225,7 @@ export default function QualityPage() {
         <StockMovementModal
           mode="write-off"
           locations={locations}
-          products={products}
+          products={products.filter((p) => p.trackInventory)}
           fixedLocationId={fixedLocationId}
           onClose={() => setIsModalOpen(false)}
           onCreated={() => {

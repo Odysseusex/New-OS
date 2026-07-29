@@ -8,6 +8,7 @@ import { AuthenticatedUser } from "../auth/auth.types";
 import { InventoryService } from "./inventory.service";
 import { ReceiveStockDto } from "./dto/receive-stock.dto";
 import { WriteOffStockDto } from "./dto/write-off-stock.dto";
+import { AdjustStockDto } from "./dto/adjust-stock.dto";
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("inventory")
@@ -40,5 +41,11 @@ export class InventoryController {
   @Roles(...INVENTORY_MANAGE_ROLES)
   writeOff(@CurrentUser() user: AuthenticatedUser, @Body() dto: WriteOffStockDto) {
     return this.inventoryService.writeOff(user, dto);
+  }
+
+  @Post("adjustments")
+  @Roles(...INVENTORY_MANAGE_ROLES)
+  adjust(@CurrentUser() user: AuthenticatedUser, @Body() dto: AdjustStockDto) {
+    return this.inventoryService.adjust(user, dto);
   }
 }

@@ -5,6 +5,7 @@ import { AuthenticatedUser } from "../auth/auth.types";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
 import { ReceiveStockDto } from "./dto/receive-stock.dto";
 import { WriteOffStockDto } from "./dto/write-off-stock.dto";
+import { AdjustStockDto } from "./dto/adjust-stock.dto";
 import { StockMovementType as PrismaStockMovementType } from "@prisma/client";
 
 @Injectable()
@@ -18,6 +19,7 @@ export class InventoryService {
       where: {
         organizationId: user.organizationId,
         ...(locationId ? { locationId } : {}),
+        product: { trackInventory: true },
       },
       include: { location: true, product: { include: { categoryRef: true } } },
       orderBy: [{ location: { name: "asc" } }, { product: { name: "asc" } }],
@@ -73,6 +75,7 @@ export class InventoryService {
 
   async receive(user: AuthenticatedUser, dto: ReceiveStockDto): Promise<StockMovementDto> {
     const locationId = requireLocationScope(user, dto.locationId);
+    await this.assertTrackable(user.organizationId, dto.productId);
     return this.applyMovement(user, {
       locationId,
       productId: dto.productId,
@@ -85,6 +88,7 @@ export class InventoryService {
 
   async writeOff(user: AuthenticatedUser, dto: WriteOffStockDto): Promise<StockMovementDto> {
     const locationId = requireLocationScope(user, dto.locationId);
+    await this.assertTrackable(user.organizationId, dto.productId);
 
     const stockLevel = await this.prisma.stockLevel.findUnique({
       where: { locationId_productId: { locationId, productId: dto.productId } },
@@ -102,6 +106,44 @@ export class InventoryService {
       type: PrismaStockMovementType.WRITE_OFF,
       delta: -dto.quantity,
     });
+  }
+
+  // actualQuantity is the true, physically-counted quantity — not a delta —
+  // so a mistaken past receipt/write-off can be corrected by stating what's
+  // really on the shelf. The difference is recorded as a signed ADJUSTMENT
+  // movement rather than editing or deleting the movement that caused the
+  // mistake, keeping the ledger append-only.
+  async adjust(user: AuthenticatedUser, dto: AdjustStockDto): Promise<StockMovementDto> {
+    const locationId = requireLocationScope(user, dto.locationId);
+    await this.assertTrackable(user.organizationId, dto.productId);
+
+    const stockLevel = await this.prisma.stockLevel.findUnique({
+      where: { locationId_productId: { locationId, productId: dto.productId } },
+    });
+    const currentQuantity = stockLevel?.quantity.toNumber() ?? 0;
+    const delta = dto.actualQuantity - currentQuantity;
+    if (delta === 0) {
+      throw new BadRequestException("Фактический остаток совпадает с текущим — корректировка не требуется");
+    }
+
+    return this.applyMovement(user, {
+      locationId,
+      productId: dto.productId,
+      quantity: delta,
+      reason: dto.reason,
+      type: PrismaStockMovementType.ADJUSTMENT,
+      delta,
+    });
+  }
+
+  private async assertTrackable(organizationId: string, productId: string): Promise<void> {
+    const product = await this.prisma.product.findFirst({ where: { id: productId, organizationId } });
+    if (!product) {
+      throw new NotFoundException("Товар не найден");
+    }
+    if (!product.trackInventory) {
+      throw new BadRequestException("Этот товар не учитывается на складе — приход, списание и корректировка для него отключены");
+    }
   }
 
   private async applyMovement(

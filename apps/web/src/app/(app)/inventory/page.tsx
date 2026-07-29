@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
-import { AlertTriangle, ArrowDownCircle, ArrowLeft, ArrowUpCircle, Plus } from "lucide-react";
+import { AlertTriangle, ArrowDownCircle, ArrowLeft, ArrowUpCircle, Plus, Wrench } from "lucide-react";
 import type { CategoryDto, LocationDto, ProductDto, StockLevelDto, StockMovementDto } from "@bakery-os/shared";
 import {
   HARD_DELETE_ROLES,
@@ -11,6 +11,7 @@ import {
   PRODUCT_MANAGE_ROLES,
   PRODUCT_TYPE_LABELS_RU,
   STOCK_MOVEMENT_TYPE_LABELS_RU,
+  StockMovementType,
   UNIT_LABELS_RU,
 } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
@@ -39,7 +40,9 @@ export default function InventoryPage() {
   const [locationFilter, setLocationFilter] = useState("");
   const [showArchivedProducts, setShowArchivedProducts] = useState(false);
   const [showArchivedCategories, setShowArchivedCategories] = useState(false);
-  const [modal, setModal] = useState<"receive" | "write-off" | "product" | "category" | null>(null);
+  const [modal, setModal] = useState<"receive" | "write-off" | "adjustment" | "product" | "category" | null>(
+    null,
+  );
   const [editingProduct, setEditingProduct] = useState<ProductDto | undefined>(undefined);
   const [editingCategory, setEditingCategory] = useState<CategoryDto | undefined>(undefined);
   const [newProductCategoryId, setNewProductCategoryId] = useState<string | undefined>(undefined);
@@ -181,6 +184,13 @@ export default function InventoryPage() {
             >
               <ArrowUpCircle className="h-4 w-4" strokeWidth={1.75} />
               Списание
+            </button>
+            <button
+              onClick={() => setModal("adjustment")}
+              className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3.5 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+            >
+              <Wrench className="h-4 w-4" strokeWidth={1.75} />
+              Корректировка
             </button>
           </div>
         )}
@@ -343,7 +353,17 @@ export default function InventoryPage() {
                     {isOrgWide && <td className="px-5 py-3 text-muted">{m.locationName}</td>}
                     <td className="px-5 py-3 text-muted">{STOCK_MOVEMENT_TYPE_LABELS_RU[m.type]}</td>
                     <td className="px-5 py-3 text-muted">{m.reason ?? "—"}</td>
-                    <td className="px-5 py-3 text-right font-medium text-foreground">
+                    <td
+                      className={clsx(
+                        "px-5 py-3 text-right font-medium",
+                        m.type === StockMovementType.ADJUSTMENT && m.quantity > 0
+                          ? "text-green-600"
+                          : m.type === StockMovementType.ADJUSTMENT && m.quantity < 0
+                            ? "text-red-600"
+                            : "text-foreground",
+                      )}
+                    >
+                      {m.type === StockMovementType.ADJUSTMENT && m.quantity > 0 ? "+" : ""}
                       {formatQuantity(m.quantity)} {UNIT_LABELS_RU[m.unit]}
                     </td>
                   </tr>
@@ -382,6 +402,11 @@ export default function InventoryPage() {
                     <div className="flex items-center gap-2">
                       {p.name}
                       {!p.isActive && <ArchivedBadge />}
+                      {!p.trackInventory && (
+                        <span className="rounded-full bg-surface-muted px-2 py-0.5 text-xs font-medium text-muted">
+                          Без учёта склада
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="px-5 py-3 text-muted">{p.sku}</td>
@@ -516,6 +541,11 @@ export default function InventoryPage() {
                     <div className="flex items-center gap-2">
                       {p.name}
                       {!p.isActive && <ArchivedBadge />}
+                      {!p.trackInventory && (
+                        <span className="rounded-full bg-surface-muted px-2 py-0.5 text-xs font-medium text-muted">
+                          Без учёта склада
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="px-5 py-3 text-muted">{p.sku}</td>
@@ -552,11 +582,12 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {(modal === "receive" || modal === "write-off") && (
+      {(modal === "receive" || modal === "write-off" || modal === "adjustment") && (
         <StockMovementModal
           mode={modal}
           locations={locations}
-          products={products.filter((p) => p.isActive)}
+          products={products.filter((p) => p.isActive && p.trackInventory)}
+          stockLevels={stockLevels}
           fixedLocationId={fixedLocationId}
           onClose={() => setModal(null)}
           onCreated={() => {

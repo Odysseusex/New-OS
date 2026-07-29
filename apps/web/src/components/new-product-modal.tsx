@@ -25,6 +25,7 @@ export function NewProductModal({
   const [type, setType] = useState<ProductType>(product?.type ?? ProductType.FINISHED_GOOD);
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? defaultCategoryId ?? "");
   const [price, setPrice] = useState(product ? String(product.price) : "");
+  const [trackInventory, setTrackInventory] = useState(product?.trackInventory ?? true);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -40,6 +41,7 @@ export function NewProductModal({
         type,
         categoryId: categoryId || undefined,
         price: Number(price),
+        trackInventory,
       };
       if (product) {
         await api.products.update(product.id, dto);
@@ -148,6 +150,25 @@ export function NewProductModal({
               ? "Используется для автоматического расчёта себестоимости в рецептах — держите в актуальном состоянии по факту закупки"
               : "Цена, по которой товар продаётся клиенту"}
           </p>
+        </div>
+
+        <div className="mb-5">
+          <label className="flex items-start gap-2.5 text-sm text-foreground">
+            <input
+              type="checkbox"
+              checked={trackInventory}
+              onChange={(e) => setTrackInventory(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-border text-accent focus:ring-accent/20"
+            />
+            <span>
+              <span className="font-medium">Контролировать складской остаток</span>
+              <p className="mt-0.5 text-xs text-muted">
+                Выключите для ресурсов без физического прихода (например, вода из водопровода) — товар
+                останется доступен в рецептах и расчёте себестоимости, но исчезнет из остатков склада,
+                приёмки, списания и предупреждений о низком остатке
+              </p>
+            </span>
+          </label>
         </div>
 
         {error && (

@@ -68,7 +68,13 @@ export class ProductionService {
 
       const scale = dto.actualQuantity / batch.recipe.yieldQuantity.toNumber();
 
-      for (const item of batch.recipe.items) {
+      // Ingredients with trackInventory=false (e.g. tap water) aren't
+      // received or held as stock, so they're excluded from the
+      // insufficient-stock check and don't get a consumption movement —
+      // they still priced into the recipe's cost via recipes.service.ts.
+      const trackedItems = batch.recipe.items.filter((item) => item.ingredientProduct.trackInventory);
+
+      for (const item of trackedItems) {
         const requiredQuantity = item.quantity.toNumber() * scale;
         const stockLevel = await tx.stockLevel.findUnique({
           where: { locationId_productId: { locationId: batch.locationId, productId: item.ingredientProductId } },
@@ -80,7 +86,7 @@ export class ProductionService {
         }
       }
 
-      for (const item of batch.recipe.items) {
+      for (const item of trackedItems) {
         const requiredQuantity = item.quantity.toNumber() * scale;
         await tx.stockLevel.update({
           where: { locationId_productId: { locationId: batch.locationId, productId: item.ingredientProductId } },
@@ -88,18 +94,20 @@ export class ProductionService {
         });
       }
 
-      await tx.stockMovement.createMany({
-        data: batch.recipe.items.map((item) => ({
-          organizationId: user.organizationId,
-          locationId: batch.locationId,
-          productId: item.ingredientProductId,
-          type: StockMovementType.PRODUCTION_CONSUMPTION,
-          quantity: item.quantity.toNumber() * scale,
-          reason: "Расход на производственное задание",
-          batchId: batch.id,
-          createdById: user.id,
-        })),
-      });
+      if (trackedItems.length > 0) {
+        await tx.stockMovement.createMany({
+          data: trackedItems.map((item) => ({
+            organizationId: user.organizationId,
+            locationId: batch.locationId,
+            productId: item.ingredientProductId,
+            type: StockMovementType.PRODUCTION_CONSUMPTION,
+            quantity: item.quantity.toNumber() * scale,
+            reason: "Расход на производственное задание",
+            batchId: batch.id,
+            createdById: user.id,
+          })),
+        });
+      }
 
       await tx.stockLevel.upsert({
         where: { locationId_productId: { locationId: batch.locationId, productId: batch.recipe.productId } },

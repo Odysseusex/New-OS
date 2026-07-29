@@ -58,6 +58,9 @@ export interface StockMovementDto {
   productName: string;
   unit: Unit;
   type: StockMovementType;
+  // Always a positive magnitude, except for ADJUSTMENT where it's signed
+  // (positive = stock increased, negative = decreased) since the type alone
+  // doesn't imply a direction the way RECEIPT/WRITE_OFF do.
   quantity: number;
   reason: string | null;
   writeOffReason: WriteOffReason | null;
@@ -71,6 +74,18 @@ export interface CreateStockMovementRequestDto {
   quantity: number;
   reason?: string;
   writeOffReason?: WriteOffReason;
+}
+
+// Corrects a stock level to what it actually is on the shelf, after a
+// mistaken receipt/write-off — the caller states the true current quantity,
+// not a delta, and the service computes+records the signed difference as an
+// ADJUSTMENT movement so the ledger stays append-only (no edits/deletes of
+// past movements).
+export interface AdjustStockRequestDto {
+  locationId?: string;
+  productId: string;
+  actualQuantity: number;
+  reason: string;
 }
 
 export interface WriteOffReasonBreakdownDto {
