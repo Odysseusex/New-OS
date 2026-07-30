@@ -50,6 +50,18 @@ export interface StockLevelDto {
   isLow: boolean;
 }
 
+// The one definition of "low stock" — used by InventoryService (isLow on
+// each StockLevelDto), NotificationsService (via that same field) and
+// LocationsService's per-location low-stock counts, so all three can never
+// drift apart. minQuantity = 0 means "no threshold set" and must never
+// count as low, even once quantity itself reaches 0 — otherwise every
+// made-to-order finished good with no minimum set would falsely alert the
+// moment it sells out, which is normal for that kind of product, not a
+// problem to flag.
+export function isStockLow(quantity: number, minQuantity: number): boolean {
+  return minQuantity > 0 && quantity <= minQuantity;
+}
+
 export interface StockMovementDto {
   id: string;
   locationId: string;

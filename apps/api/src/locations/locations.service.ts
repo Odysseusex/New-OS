@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { PrismaService } from "../prisma/prisma.service";
 import {
   CreateLocationRequestDto,
+  isStockLow,
   LocationComparisonDto,
   LocationDto,
   LocationOverviewDto,
@@ -134,7 +135,7 @@ export class LocationsService {
 
     const lowStockByLocation = new Map<string, number>();
     for (const level of stockLevels) {
-      if (level.quantity.toNumber() <= level.minQuantity.toNumber()) {
+      if (isStockLow(level.quantity.toNumber(), level.minQuantity.toNumber())) {
         lowStockByLocation.set(level.locationId, (lowStockByLocation.get(level.locationId) ?? 0) + 1);
       }
     }
@@ -195,7 +196,7 @@ export class LocationsService {
 
     const lowStockByLocation = new Map<string, number>();
     for (const level of stockLevels) {
-      if (level.quantity.toNumber() <= level.minQuantity.toNumber()) {
+      if (isStockLow(level.quantity.toNumber(), level.minQuantity.toNumber())) {
         lowStockByLocation.set(level.locationId, (lowStockByLocation.get(level.locationId) ?? 0) + 1);
       }
     }

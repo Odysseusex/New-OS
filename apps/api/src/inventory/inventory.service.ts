@@ -1,6 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { StockLevelDto, StockMovementDto, StockMovementType, Unit, WriteOffReason } from "@bakery-os/shared";
+import {
+  isStockLow,
+  StockLevelDto,
+  StockMovementDto,
+  StockMovementType,
+  Unit,
+  WriteOffReason,
+} from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
 import { ReceiveStockDto } from "./dto/receive-stock.dto";
@@ -36,7 +43,7 @@ export class InventoryService {
       categoryName: level.product.categoryRef?.name ?? null,
       quantity: level.quantity.toNumber(),
       minQuantity: level.minQuantity.toNumber(),
-      isLow: level.quantity.toNumber() <= level.minQuantity.toNumber(),
+      isLow: isStockLow(level.quantity.toNumber(), level.minQuantity.toNumber()),
     }));
   }
 
