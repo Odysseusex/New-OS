@@ -101,6 +101,105 @@ atomically increments `Organization.productSkuSequence` (a single
 `UPDATE ... increment`, not a retry loop) and formats
 `{ING|PRD}-{seq:06d}`. Manual SKUs are still fully supported and preserved.
 
+**`Product.trackInventory`** (default `true`) opts a product out of the
+entire stock-level system — for resources with no physical
+receiving/counting (tap water, etc.). When `false`: excluded from
+`StockLevel` queries and low-stock alerts, receive/write-off/adjust are
+blocked (`InventoryService.assertTrackable`), and production-batch
+consumption skips it entirely (no stock check, no `StockMovement` row) —
+but it's still priced into recipe cost via its `price` column. Don't add
+a second flag for "opt out of alerts only"; that's what `minQuantity = 0`
+already means (see below).
+
+**Stock corrections are a new ledger entry, never an edit.** `StockMovement`
+is append-only (see Single ledger above) — so "I received the wrong
+product" or "I made a typo" is fixed via `InventoryService.adjust()`
+(type `ADJUSTMENT`), not by editing/deleting the mistaken row. The caller
+states the true counted quantity; the service computes and stores the
+signed difference. Same principle applies to `ProductionBatch.cancel()`
+when aborting an `IN_PROGRESS` batch — it records why (`cancelReason`),
+it doesn't rewrite what already happened.
+
+**`Product.minQuantity`** is a real, user-set low-stock threshold, not a
+derived value. `0` means "no threshold — never alert", which matters:
+`isStockLow()` in `packages/shared/src/inventory.ts` is `minQuantity > 0
+&& quantity <= minQuantity`, centralized there specifically because it
+used to be duplicated (and briefly inconsistent) across
+`InventoryService` and `LocationsService`. Editing a product's
+`minQuantity` cascades to every existing `StockLevel` row for that
+product (`ProductsService.update`) — it's one number per product even
+though the schema still tracks it per-location, and every code path that
+creates a new `StockLevel` row (manual receive/adjust, PO receipt,
+invoice confirm, production output, route delivery — five call sites)
+must seed it from the product, not leave it at the column default.
+
+**Recipe process steps are a universal stage/parameter model, not
+hardcoded bread fields.** Org-scoped `RecipeStageType` catalog (like
+Category) + ordered `RecipeStage` instances per recipe (free-text `note`)
++ a small fixed `RecipeParameterKind` enum (TEMPERATURE_C,
+DURATION_MINUTES, PERCENT, WEIGHT_G, COUNT) attachable to any stage with
+an optional disambiguating `label`. Deliberately flat — no ingredient
+grouping/sub-recipes/role tags; the real technical cards reviewed didn't
+justify that complexity. Don't add a 6th parameter kind or a new
+structural concept without a fresh, explicit request backed by real
+cards — this was already argued through in depth once.
+
+**Recipe ingredient quantities**: typed in whichever unit is convenient
+(g/ml), converted and stored in the product's base unit via
+`convertUnitQuantity()`/`getCompatibleUnits()` in
+`packages/shared/src/catalog.ts`. Recipe economics (`Экономика` section)
+recompute live from current form state as you type — not from the last
+saved `recipe` prop — so yield/loss/ingredient edits update cost and
+margin before saving. `totalIngredientCost` (whole batch) and `unitCost`
+(per finished unit, what margin is actually computed against) are
+surfaced as two distinct numbers; don't collapse them back into one
+"Себестоимость" — that's the exact confusion that prompted splitting
+them.
+
+**Production batches have a real lifecycle**, not just PLANNED →
+COMPLETED/CANCELLED. Statuses: PLANNED (editable: `scheduledFor` +
+`plannedQuantity`, cancellable, deletable) → IN_PROGRESS (via `start()`;
+locked from edit/delete) → COMPLETED or CANCELLED. `complete()` requires
+IN_PROGRESS (not PLANNED) — the UI must call `start()` first. Aborting an
+IN_PROGRESS batch reuses `cancel()` but requires a reason
+(`ProductionCancelReason`); cancelling a still-PLANNED one doesn't. The
+batch list defaults to an "Активные" filter (PLANNED ∪ IN_PROGRESS) so
+finished/cancelled batches don't clutter the working view — this was a
+deliberate refinement of what was asked, not scope creep.
+
+**Roles are additive array membership, not a permission engine.** Adding
+a role (e.g. `OPERATOR` — document work: purchase orders, supplier
+invoices, sales/накладные — without inventory correction, recipes, users,
+or settings) means adding the enum value plus inserting it into exactly
+the `*_MANAGE_ROLES`/`*_VIEW_ROLES` arrays it needs in
+`packages/shared/src/roles.ts`; **viewing is open to any authenticated
+role by default in this app** (most GET routes carry no `@Roles(...)` at
+all — `CustomersController` is a rare exception, class-level-gated) — so
+granting "view sales/stock/map/reports" usually means doing nothing,
+not adding a new `*_VIEW_ROLES` array. Don't build a granular
+per-permission ACL/checkbox system; this two-tier array model has covered
+every real request so far.
+
+**Per-user display `title`** (optional, on `User`) overrides the role
+label only in the topbar — permissions are still 100% determined by
+`role`, and the Settings employee table always shows the real role,
+deliberately, so access levels stay legible to whoever's looking. Don't
+rename a role's own `ROLE_LABELS_RU` entry to give one person a custom
+title; that changes it everywhere the role is displayed (Settings table,
+role dropdowns) for every user with that role, and reintroduces the exact
+non-Russian-UI bug this field was added to fix (a prior hardcoded
+`role === OWNER ? "App Owner" : ...` override in `topbar.tsx`).
+
+**Brand color is one CSS custom property.** `--accent` in
+`apps/web/src/app/globals.css` (consumed everywhere via Tailwind's
+`accent`/`accent-foreground` tokens — never hardcoded hex in components)
+plus the matching PWA `theme_color` in `manifest.ts` and
+`layout.tsx`'s `viewport.themeColor`, which should be changed together.
+`city-map.tsx`'s per-location-type marker colors are a separate
+categorical palette (STORE/PRODUCTION/WAREHOUSE/CUSTOMER) — don't touch
+those for a brand color change just because one of them happens to reuse
+the same old hex.
+
 ## Prisma migration workflow (this sandbox has no direct prod DB access)
 
 Shadow-database diff, not `prisma migrate dev` (which can hang/prompt):
@@ -137,12 +236,29 @@ deploying.
    `NODE_PATH=/opt/node22/lib/node_modules node script.js` since Playwright
    isn't in this repo's own `node_modules`). Screenshot and actually look
    at it — don't infer success from HTTP status alone.
-6. Commit, push to `claude/bakery-platform-design-khuzwz`, then
-   fast-forward `main` to match (Render/Vercel deploy from `main`):
+6. Commit, push to whatever branch this session was assigned, **then
+   fast-forward BOTH `main` and `claude/bakery-platform-design-khuzwz`
+   to match** — Vercel (frontend) deploys from `main`; Render (backend)
+   is Blueprint-managed and, as of this writing, tracks
+   `claude/bakery-platform-design-khuzwz` specifically, **not** `main`.
+   This was the root cause of a whole debugging session once (every fix
+   looked like it "didn't work" because the API was still serving an
+   ancient commit) — confirmed via the user's Render dashboard
+   screenshot. Skipping the second fast-forward silently means backend
+   changes never reach production even though `git push` succeeded and
+   `main` looks up to date. (Worth suggesting the user repoint Render to
+   `main` directly in their dashboard to collapse this to one step —
+   not done yet as of this writing; only they have dashboard access.)
    ```bash
+   git push -u origin <this-session's-branch>
    git fetch origin main && git checkout main && \
-   git merge --ff-only claude/bakery-platform-design-khuzwz && \
-   git push origin main && git checkout claude/bakery-platform-design-khuzwz
+   git merge --ff-only <this-session's-branch> && git push origin main
+   git fetch origin claude/bakery-platform-design-khuzwz && \
+   git merge-base --is-ancestor origin/claude/bakery-platform-design-khuzwz origin/main && \
+   git checkout -B claude/bakery-platform-design-khuzwz origin/claude/bakery-platform-design-khuzwz && \
+   git merge --ff-only origin/main && \
+   git push origin claude/bakery-platform-design-khuzwz && \
+   git checkout <this-session's-branch>
    ```
 
 ## Known bug classes worth checking for when touching similar code
@@ -161,6 +277,26 @@ deploying.
   return a small object (e.g. `{ dismissed: true }`) from otherwise-void
   endpoints, matching the existing `{ deleted: true }` convention for
   DELETE routes.
+- **`pkill -f "next start"` can miss the actual running process** — the
+  real process shows up in `ps aux` as `next-server (vX.Y.Z)`, not
+  `next start`, so a pattern that only matches the launch command can
+  leave the old server alive on the same port. If you then `rm -rf .next`
+  and rebuild while that old process is still serving requests, the
+  browser gets stale chunk hashes (`Loading chunk N failed`, minified
+  React error #423). Always confirm with a bare `ps aux | grep next` (and
+  `kill -9` the PID directly) before rebuilding, not just a pattern-based
+  `pkill`.
+- **Bare `npx next start` can silently resolve a different, newer Next.js
+  than the one in this repo's `node_modules`** (it printed "installing
+  next@16.2.12" once, versus the repo's pinned 14.2.35) if invoked from a
+  slightly wrong `cwd` or if the local binary lookup fails for any reason.
+  Prefer `./node_modules/.bin/next start` from inside `apps/web` to
+  guarantee the pinned version runs.
+- **Background `cmd1 && cmd2 &` runs `cmd1` (including any `cd`) in a
+  forked subshell**, so it does not change the calling shell's working
+  directory even though it looks like it should. Don't chain a `cd` into
+  a backgrounded command and then assume later commands in the same
+  session inherited that directory — check `pwd` if unsure.
 
 ## Module status
 
