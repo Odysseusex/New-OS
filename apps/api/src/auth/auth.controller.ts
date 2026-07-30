@@ -31,6 +31,7 @@ export class AuthController {
       fullName: user.fullName,
       email: user.email,
       role: user.role,
+      title: user.title,
       organizationId: user.organizationId,
       organization: { id: organization.id, name: organization.name },
       locationId: user.locationId,

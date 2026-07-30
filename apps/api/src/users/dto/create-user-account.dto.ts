@@ -18,5 +18,9 @@ export class CreateUserAccountDto {
 
   @IsOptional()
   @IsString()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
   locationId?: string;
 }

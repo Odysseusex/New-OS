@@ -17,6 +17,10 @@ export class UpdateUserAccountDto {
 
   @IsOptional()
   @IsString()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
   locationId?: string;
 
   @IsOptional()

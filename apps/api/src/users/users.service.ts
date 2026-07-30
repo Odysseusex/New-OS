@@ -43,6 +43,7 @@ export class UsersService {
         email: dto.email,
         passwordHash,
         role: dto.role,
+        title: dto.title || null,
         locationId,
       },
       include: { location: true },
@@ -89,6 +90,7 @@ export class UsersService {
         fullName: dto.fullName ?? undefined,
         email: dto.email ?? undefined,
         role: dto.role ?? undefined,
+        title: dto.title !== undefined ? dto.title || null : undefined,
         locationId: nextLocationId,
         passwordHash: dto.password ? await bcrypt.hash(dto.password, 10) : undefined,
       },
@@ -159,6 +161,7 @@ export class UsersService {
     fullName: string;
     email: string;
     role: string;
+    title: string | null;
     locationId: string | null;
     location: { name: string } | null;
     isActive: boolean;
@@ -167,6 +170,7 @@ export class UsersService {
     fullName: user.fullName,
     email: user.email,
     role: user.role as Role,
+    title: user.title,
     locationId: user.locationId,
     locationName: user.location?.name ?? null,
     isActive: user.isActive,

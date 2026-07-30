@@ -21,6 +21,7 @@ export function UserAccountModal({
   const [email, setEmail] = useState(account?.email ?? "");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<Role>(account?.role ?? Role.CASHIER);
+  const [title, setTitle] = useState(account?.title ?? "");
   const [locationId, setLocationId] = useState(account?.locationId ?? "");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -46,6 +47,7 @@ export function UserAccountModal({
           fullName,
           email,
           role,
+          title: title || null,
           locationId: needsLocation ? locationId : null,
           password: password || undefined,
         });
@@ -55,6 +57,7 @@ export function UserAccountModal({
           email,
           password,
           role,
+          title: title || undefined,
           locationId: needsLocation ? locationId : undefined,
         });
       }
@@ -141,6 +144,23 @@ export function UserAccountModal({
               </select>
             </div>
           )}
+        </div>
+
+        <div className="mb-5">
+          <label className="mb-1.5 block text-sm font-medium text-foreground">
+            Отображаемая должность <span className="text-muted">(необязательно)</span>
+          </label>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Например: Разработчик"
+            className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+          />
+          <p className="mt-1.5 text-xs text-muted">
+            Если указано, показывается вместо названия роли в правом верхнем углу — на права
+            доступа не влияет, их по-прежнему определяет роль
+          </p>
         </div>
 
         {error && (

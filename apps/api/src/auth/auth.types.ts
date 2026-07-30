@@ -5,6 +5,7 @@ export interface AuthenticatedUser {
   email: string;
   fullName: string;
   role: Role;
+  title: string | null;
   organizationId: string;
   regionId: string | null;
   locationId: string | null;

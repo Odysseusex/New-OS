@@ -45,6 +45,7 @@ export class AuthService {
       email: user.email,
       fullName: user.fullName,
       role: user.role as AuthenticatedUser["role"],
+      title: user.title,
       organizationId: user.organizationId,
       regionId: user.regionId,
       locationId: user.locationId,
@@ -56,6 +57,7 @@ export class AuthService {
     fullName: string;
     email: string;
     role: string;
+    title: string | null;
     organizationId: string;
     organization: { id: string; name: string };
     locationId: string | null;
@@ -65,6 +67,7 @@ export class AuthService {
       fullName: user.fullName,
       email: user.email,
       role: user.role as CurrentUserDto["role"],
+      title: user.title,
       organizationId: user.organizationId,
       organization: { id: user.organization.id, name: user.organization.name },
       locationId: user.locationId,

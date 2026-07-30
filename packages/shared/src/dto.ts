@@ -65,6 +65,9 @@ export interface CurrentUserDto {
   fullName: string;
   email: string;
   role: Role;
+  // Optional custom label shown instead of the role name in the topbar —
+  // purely cosmetic, never affects permissions (those come from role).
+  title: string | null;
   organizationId: string;
   organization: OrganizationDto;
   locationId: string | null;
@@ -85,6 +88,7 @@ export interface UserAccountDto {
   fullName: string;
   email: string;
   role: Role;
+  title: string | null;
   locationId: string | null;
   locationName: string | null;
   isActive: boolean;
@@ -95,6 +99,7 @@ export interface CreateUserAccountRequestDto {
   email: string;
   password: string;
   role: Role;
+  title?: string;
   locationId?: string;
 }
 
@@ -102,6 +107,7 @@ export interface UpdateUserAccountRequestDto {
   fullName?: string;
   email?: string;
   role?: Role;
+  title?: string | null;
   locationId?: string | null;
   password?: string;
 }

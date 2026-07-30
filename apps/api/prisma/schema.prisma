@@ -234,6 +234,11 @@ model User {
   email        String
   passwordHash String
   role         Role
+  // Optional custom display label shown instead of the role name in the
+  // topbar (e.g. "Разработчик" for someone who's technically OWNER-level
+  // but isn't "the bakery owner" in the everyday sense) — purely cosmetic,
+  // never affects permissions, which are still entirely driven by role.
+  title        String?
   isActive     Boolean @default(true)
 
   createdAt DateTime @default(now())
