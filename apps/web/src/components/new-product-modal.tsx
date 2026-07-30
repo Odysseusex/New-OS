@@ -26,6 +26,7 @@ export function NewProductModal({
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? defaultCategoryId ?? "");
   const [price, setPrice] = useState(product ? String(product.price) : "");
   const [trackInventory, setTrackInventory] = useState(product?.trackInventory ?? true);
+  const [minQuantity, setMinQuantity] = useState(String(product?.minQuantity ?? 0));
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -42,6 +43,7 @@ export function NewProductModal({
         categoryId: categoryId || undefined,
         price: Number(price),
         trackInventory,
+        minQuantity: Number(minQuantity),
       };
       if (product) {
         await api.products.update(product.id, dto);
@@ -170,6 +172,26 @@ export function NewProductModal({
             </span>
           </label>
         </div>
+
+        {trackInventory && (
+          <div className="mb-5">
+            <label className="mb-1.5 block text-sm font-medium text-foreground">Минимальный остаток</label>
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={minQuantity}
+              onChange={(e) => setMinQuantity(e.target.value)}
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+            <p className="mt-1.5 text-xs text-muted">
+              Уведомление «Низкий остаток» появится, когда фактический остаток станет меньше или равен
+              этому числу. Оставьте 0, если контроль не нужен — для готовой продукции это часто и есть
+              правильный выбор; для сырья обычно стоит указать реальный минимум, чтобы система заранее
+              предупреждала о закупке.
+            </p>
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>

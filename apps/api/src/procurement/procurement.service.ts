@@ -81,7 +81,7 @@ export class ProcurementService {
     return this.prisma.$transaction(async (tx) => {
       const order = await tx.purchaseOrder.findFirst({
         where: { id: orderId, organizationId: user.organizationId },
-        include: { items: true },
+        include: { items: { include: { product: true } } },
       });
       if (!order) {
         throw new NotFoundException("Заказ не найден");
@@ -100,6 +100,7 @@ export class ProcurementService {
             locationId: order.locationId,
             productId: item.productId,
             quantity: item.quantity.toNumber(),
+            minQuantity: item.product.minQuantity,
           },
         });
       }

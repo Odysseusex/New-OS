@@ -189,6 +189,7 @@ export class ProductionService {
           locationId: batch.locationId,
           productId: batch.recipe.productId,
           quantity: dto.actualQuantity,
+          minQuantity: batch.recipe.product.minQuantity,
         },
       });
 

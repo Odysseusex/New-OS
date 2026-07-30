@@ -28,4 +28,9 @@ export class CreateProductDto {
   @IsOptional()
   @IsBoolean()
   trackInventory?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  minQuantity?: number;
 }

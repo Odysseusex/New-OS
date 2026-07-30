@@ -189,6 +189,7 @@ export class InventoryService {
           locationId: params.locationId,
           productId: params.productId,
           quantity: params.delta,
+          minQuantity: product.minQuantity,
         },
       }),
     ]);

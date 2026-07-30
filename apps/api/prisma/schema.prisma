@@ -291,6 +291,13 @@ model Product {
   // still usable in recipes and cost calculations, but excluded from stock
   // levels, low-stock alerts, and receiving/write-off/adjustment operations.
   trackInventory Boolean     @default(true)
+  // The organization's chosen low-stock threshold for this product, copied
+  // onto each StockLevel row (see stockLevel.minQuantity) the first time
+  // that product is stocked at a given location, and re-propagated to all
+  // existing StockLevel rows whenever this value is edited — so it behaves
+  // as one number per product even though the underlying per-location field
+  // still exists for a future per-location override, if one is ever needed.
+  minQuantity    Decimal     @default(0) @db.Decimal(12, 3)
   isActive       Boolean     @default(true)
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt

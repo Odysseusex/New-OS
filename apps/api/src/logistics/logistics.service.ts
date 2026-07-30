@@ -166,6 +166,7 @@ export class LogisticsService {
             locationId: stop.destinationLocationId,
             productId: item.productId,
             quantity: item.quantity.toNumber(),
+            minQuantity: item.product.minQuantity,
           },
         });
       }

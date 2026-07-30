@@ -109,6 +109,11 @@ export interface ProductDto {
   // False for resources with no physical stock to track (e.g. tap water) —
   // see inventory.ts / InventoryService for what this suppresses.
   trackInventory: boolean;
+  // Low-stock threshold: StockLevelDto.isLow is true once quantity drops to
+  // or below this. 0 (the default) means "alert only when fully out" —
+  // fine for finished goods made to order, but raw materials usually want
+  // a real number so purchasing gets a heads-up before they run out.
+  minQuantity: number;
 }
 
 export interface CreateProductRequestDto {
@@ -119,6 +124,7 @@ export interface CreateProductRequestDto {
   categoryId?: string;
   price: number;
   trackInventory?: boolean;
+  minQuantity?: number;
 }
 
 export interface UpdateProductRequestDto {
@@ -129,4 +135,5 @@ export interface UpdateProductRequestDto {
   categoryId?: string | null;
   price?: number;
   trackInventory?: boolean;
+  minQuantity?: number;
 }

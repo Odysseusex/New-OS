@@ -90,9 +90,20 @@ export class ProductsService {
         ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
         ...(dto.price !== undefined ? { price: dto.price } : {}),
         ...(dto.trackInventory !== undefined ? { trackInventory: dto.trackInventory } : {}),
+        ...(dto.minQuantity !== undefined ? { minQuantity: dto.minQuantity } : {}),
       },
       include: PRODUCT_INCLUDE,
     });
+
+    // minQuantity is meant to behave as one number per product, not per
+    // location — propagate it to every location that already stocks this
+    // product so an existing threshold doesn't stay stuck at the old value.
+    if (dto.minQuantity !== undefined) {
+      await this.prisma.stockLevel.updateMany({
+        where: { productId },
+        data: { minQuantity: dto.minQuantity },
+      });
+    }
 
     return this.toDto(updated);
   }
@@ -161,6 +172,7 @@ export class ProductsService {
     price: { toNumber: () => number };
     isActive: boolean;
     trackInventory: boolean;
+    minQuantity: { toNumber: () => number };
   }): ProductDto {
     return {
       id: product.id,
@@ -173,6 +185,7 @@ export class ProductsService {
       price: product.price.toNumber(),
       isActive: product.isActive,
       trackInventory: product.trackInventory,
+      minQuantity: product.minQuantity.toNumber(),
     };
   }
 }

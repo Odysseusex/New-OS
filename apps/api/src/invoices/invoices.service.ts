@@ -82,7 +82,7 @@ export class InvoicesService {
     return this.prisma.$transaction(async (tx) => {
       const invoice = await tx.invoice.findFirst({
         where: { id: invoiceId, organizationId: user.organizationId },
-        include: { items: true },
+        include: { items: { include: { product: true } } },
       });
       if (!invoice) {
         throw new NotFoundException("Накладная не найдена");
@@ -101,6 +101,7 @@ export class InvoicesService {
             locationId: invoice.locationId,
             productId: item.productId,
             quantity: item.quantity.toNumber(),
+            minQuantity: item.product.minQuantity,
           },
         });
       }

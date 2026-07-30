@@ -392,6 +392,7 @@ export default function InventoryPage() {
                 <th className="px-5 py-3 font-medium">Категория</th>
                 <th className="px-5 py-3 font-medium">Единица</th>
                 <th className="px-5 py-3 text-right font-medium">Цена</th>
+                <th className="px-5 py-3 text-right font-medium">Мин. остаток</th>
                 {canManageProducts && <th className="px-5 py-3 font-medium">Действия</th>}
               </tr>
             </thead>
@@ -416,6 +417,9 @@ export default function InventoryPage() {
                   <td className="px-5 py-3 text-right font-medium text-foreground">
                     {formatMoney(p.price)}
                   </td>
+                  <td className="px-5 py-3 text-right text-muted">
+                    {p.trackInventory ? `${formatQuantity(p.minQuantity)} ${UNIT_LABELS_RU[p.unit]}` : "—"}
+                  </td>
                   {canManageProducts && (
                     <td className="px-5 py-3">
                       <RowActions
@@ -434,7 +438,7 @@ export default function InventoryPage() {
               ))}
               {products.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-5 py-8 text-center text-sm text-muted">
+                  <td colSpan={8} className="px-5 py-8 text-center text-sm text-muted">
                     Товаров пока нет
                   </td>
                 </tr>
@@ -524,6 +528,7 @@ export default function InventoryPage() {
                 <th className="px-5 py-3 font-medium">Тип</th>
                 <th className="px-5 py-3 font-medium">Единица</th>
                 <th className="px-5 py-3 text-right font-medium">Цена</th>
+                <th className="px-5 py-3 text-right font-medium">Мин. остаток</th>
                 {canManageProducts && <th className="px-5 py-3 font-medium">Действия</th>}
               </tr>
             </thead>
@@ -554,6 +559,9 @@ export default function InventoryPage() {
                   <td className="px-5 py-3 text-right font-medium text-foreground">
                     {formatMoney(p.price)}
                   </td>
+                  <td className="px-5 py-3 text-right text-muted">
+                    {p.trackInventory ? `${formatQuantity(p.minQuantity)} ${UNIT_LABELS_RU[p.unit]}` : "—"}
+                  </td>
                   {canManageProducts && (
                     <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
                       <RowActions
@@ -572,7 +580,7 @@ export default function InventoryPage() {
               ))}
               {categoryProducts.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-5 py-8 text-center text-sm text-muted">
+                  <td colSpan={7} className="px-5 py-8 text-center text-sm text-muted">
                     В этой категории пока нет товаров
                   </td>
                 </tr>
