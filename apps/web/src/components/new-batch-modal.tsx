@@ -5,6 +5,7 @@ import type { LocationDto, RecipeDto } from "@bakery-os/shared";
 import { UNIT_LABELS_RU } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
+import { toDatetimeLocalValue } from "@/lib/format";
 
 export function NewBatchModal({
   locations,
@@ -23,6 +24,7 @@ export function NewBatchModal({
   const [locationId, setLocationId] = useState(fixedLocationId ?? productionLocations[0]?.id ?? "");
   const [recipeId, setRecipeId] = useState(recipes[0]?.id ?? "");
   const [plannedQuantity, setPlannedQuantity] = useState(String(recipes[0]?.yieldQuantity ?? "1"));
+  const [scheduledFor, setScheduledFor] = useState(toDatetimeLocalValue(new Date()));
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -35,6 +37,7 @@ export function NewBatchModal({
         locationId: fixedLocationId ?? locationId,
         recipeId,
         plannedQuantity: Number(plannedQuantity),
+        scheduledFor: new Date(scheduledFor).toISOString(),
       });
       onCreated();
     } catch (err) {
@@ -79,19 +82,33 @@ export function NewBatchModal({
           </select>
         </div>
 
-        <div className="mb-5">
-          <label className="mb-1.5 block text-sm font-medium text-foreground">
-            Плановое количество
-          </label>
-          <input
-            type="number"
-            min="0"
-            step="any"
-            required
-            value={plannedQuantity}
-            onChange={(e) => setPlannedQuantity(e.target.value)}
-            className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-          />
+        <div className="mb-4 grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
+              Плановое количество
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="any"
+              required
+              value={plannedQuantity}
+              onChange={(e) => setPlannedQuantity(e.target.value)}
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
+              Дата и время начала
+            </label>
+            <input
+              type="datetime-local"
+              required
+              value={scheduledFor}
+              onChange={(e) => setScheduledFor(e.target.value)}
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+          </div>
         </div>
 
         {error && (

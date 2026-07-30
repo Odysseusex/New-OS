@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { PRODUCTION_MANAGE_ROLES } from "@bakery-os/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
@@ -7,6 +7,8 @@ import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { ProductionService } from "./production.service";
 import { CreateBatchDto } from "./dto/create-batch.dto";
+import { UpdateBatchDto } from "./dto/update-batch.dto";
+import { CancelBatchDto } from "./dto/cancel-batch.dto";
 import { CompleteBatchDto } from "./dto/complete-batch.dto";
 
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -25,6 +27,28 @@ export class ProductionController {
     return this.productionService.create(user, dto);
   }
 
+  @Patch(":id")
+  @Roles(...PRODUCTION_MANAGE_ROLES)
+  update(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() dto: UpdateBatchDto,
+  ) {
+    return this.productionService.update(user, id, dto);
+  }
+
+  @Delete(":id")
+  @Roles(...PRODUCTION_MANAGE_ROLES)
+  remove(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
+    return this.productionService.remove(user, id);
+  }
+
+  @Post(":id/start")
+  @Roles(...PRODUCTION_MANAGE_ROLES)
+  start(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
+    return this.productionService.start(user, id);
+  }
+
   @Post(":id/complete")
   @Roles(...PRODUCTION_MANAGE_ROLES)
   complete(
@@ -37,7 +61,11 @@ export class ProductionController {
 
   @Post(":id/cancel")
   @Roles(...PRODUCTION_MANAGE_ROLES)
-  cancel(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.productionService.cancel(user, id);
+  cancel(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() dto: CancelBatchDto,
+  ) {
+    return this.productionService.cancel(user, id, dto);
   }
 }

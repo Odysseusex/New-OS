@@ -2,14 +2,33 @@ import { Unit } from "./catalog";
 
 export enum ProductionBatchStatus {
   PLANNED = "PLANNED",
+  IN_PROGRESS = "IN_PROGRESS",
   COMPLETED = "COMPLETED",
   CANCELLED = "CANCELLED",
 }
 
 export const PRODUCTION_BATCH_STATUS_LABELS_RU: Record<ProductionBatchStatus, string> = {
   [ProductionBatchStatus.PLANNED]: "Запланировано",
+  [ProductionBatchStatus.IN_PROGRESS]: "В процессе",
   [ProductionBatchStatus.COMPLETED]: "Выполнено",
   [ProductionBatchStatus.CANCELLED]: "Отменено",
+};
+
+// Why a batch ended up CANCELLED — covers both "cancelled before production
+// started" (usually MISTAKE) and "aborted mid-process" (equipment/ingredient
+// problems), so reporting can tell the two apart without a separate status.
+export enum ProductionCancelReason {
+  EQUIPMENT_FAILURE = "EQUIPMENT_FAILURE",
+  NO_INGREDIENTS = "NO_INGREDIENTS",
+  MISTAKE = "MISTAKE",
+  OTHER = "OTHER",
+}
+
+export const PRODUCTION_CANCEL_REASON_LABELS_RU: Record<ProductionCancelReason, string> = {
+  [ProductionCancelReason.EQUIPMENT_FAILURE]: "Поломка оборудования",
+  [ProductionCancelReason.NO_INGREDIENTS]: "Нет сырья",
+  [ProductionCancelReason.MISTAKE]: "Ошибка при создании",
+  [ProductionCancelReason.OTHER]: "Другое",
 };
 
 export interface RecipeItemDto {
@@ -181,7 +200,10 @@ export interface ProductionBatchDto {
   plannedQuantity: number;
   actualQuantity: number | null;
   scheduledFor: string;
+  startedAt: string | null;
   completedAt: string | null;
+  cancelReason: ProductionCancelReason | null;
+  cancelNote: string | null;
   createdByName: string;
 }
 
@@ -192,6 +214,21 @@ export interface CreateProductionBatchRequestDto {
   scheduledFor?: string;
 }
 
+// Only allowed while the batch is still PLANNED — once IN_PROGRESS, the
+// schedule/quantity that got fixed at start time is history, not a plan.
+export interface UpdateProductionBatchRequestDto {
+  scheduledFor?: string;
+  plannedQuantity?: number;
+}
+
 export interface CompleteProductionBatchRequestDto {
   actualQuantity: number;
+}
+
+// note is a free-text detail, mirroring WriteOffStockDto's optional reason
+// alongside its enum. reason is required by the API only when cancelling an
+// IN_PROGRESS batch (aborting) — cancelling a still-PLANNED one can omit it.
+export interface CancelProductionBatchRequestDto {
+  reason?: ProductionCancelReason;
+  note?: string;
 }

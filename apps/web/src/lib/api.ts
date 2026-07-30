@@ -1,5 +1,6 @@
 import type {
   AdjustStockRequestDto,
+  CancelProductionBatchRequestDto,
   CategoryDto,
   ClockInRequestDto,
   CompleteProductionBatchRequestDto,
@@ -55,6 +56,7 @@ import type {
   UpdateCategoryRequestDto,
   UpdateCustomerRequestDto,
   UpdateLocationRequestDto,
+  UpdateProductionBatchRequestDto,
   UpdateProductRequestDto,
   UpdateRecipeRequestDto,
   UpdateSupplierRequestDto,
@@ -235,13 +237,25 @@ export const api = {
         method: "POST",
         body: JSON.stringify(dto),
       }),
+    updateBatch: (id: string, dto: UpdateProductionBatchRequestDto) =>
+      request<ProductionBatchDto>(`/production/batches/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(dto),
+      }),
+    deleteBatch: (id: string) =>
+      request<{ deleted: true }>(`/production/batches/${id}`, { method: "DELETE" }),
+    startBatch: (id: string) =>
+      request<ProductionBatchDto>(`/production/batches/${id}/start`, { method: "POST" }),
     completeBatch: (id: string, dto: CompleteProductionBatchRequestDto) =>
       request<ProductionBatchDto>(`/production/batches/${id}/complete`, {
         method: "POST",
         body: JSON.stringify(dto),
       }),
-    cancelBatch: (id: string) =>
-      request<ProductionBatchDto>(`/production/batches/${id}/cancel`, { method: "POST" }),
+    cancelBatch: (id: string, dto: CancelProductionBatchRequestDto = {}) =>
+      request<ProductionBatchDto>(`/production/batches/${id}/cancel`, {
+        method: "POST",
+        body: JSON.stringify(dto),
+      }),
   },
 
   suppliers: {

@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
-import { CheckCircle2, Copy, Plus, Search, XCircle } from "lucide-react";
+import { CheckCircle2, Copy, Pencil, Play, Plus, Search, Trash2, XCircle } from "lucide-react";
 import type { LocationDto, ProductDto, ProductionBatchDto, RecipeDto } from "@bakery-os/shared";
 import {
   HARD_DELETE_ROLES,
   ORG_WIDE_ROLES,
   PRODUCTION_BATCH_STATUS_LABELS_RU,
+  PRODUCTION_CANCEL_REASON_LABELS_RU,
   PRODUCTION_MANAGE_ROLES,
   ProductionBatchStatus,
   RECIPE_MANAGE_ROLES,
@@ -17,11 +18,22 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
 import { NewBatchModal } from "@/components/new-batch-modal";
+import { EditBatchModal } from "@/components/edit-batch-modal";
+import { AbortBatchModal } from "@/components/abort-batch-modal";
 import { CompleteBatchModal } from "@/components/complete-batch-modal";
 import { NewRecipeModal } from "@/components/new-recipe-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 
 type Tab = "batches" | "recipes";
+type BatchFilter = "ACTIVE" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "ALL";
+
+const BATCH_FILTER_LABELS_RU: Record<BatchFilter, string> = {
+  ACTIVE: "Активные",
+  IN_PROGRESS: "В процессе",
+  COMPLETED: "Завершённые",
+  CANCELLED: "Отменённые",
+  ALL: "Все",
+};
 
 export default function ProductionPage() {
   const { user } = useAuth();
@@ -36,12 +48,15 @@ export default function ProductionPage() {
   const [recipes, setRecipes] = useState<RecipeDto[]>([]);
   const [batches, setBatches] = useState<ProductionBatchDto[]>([]);
   const [locationFilter, setLocationFilter] = useState("");
+  const [batchFilter, setBatchFilter] = useState<BatchFilter>("ACTIVE");
   const [showArchivedRecipes, setShowArchivedRecipes] = useState(false);
   const [recipeSearch, setRecipeSearch] = useState("");
   const [modal, setModal] = useState<"batch" | "recipe" | null>(null);
   const [editingRecipe, setEditingRecipe] = useState<RecipeDto | undefined>(undefined);
   const [duplicateFromRecipe, setDuplicateFromRecipe] = useState<RecipeDto | undefined>(undefined);
+  const [editingBatch, setEditingBatch] = useState<ProductionBatchDto | null>(null);
   const [completingBatch, setCompletingBatch] = useState<ProductionBatchDto | null>(null);
+  const [abortingBatch, setAbortingBatch] = useState<ProductionBatchDto | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadBatches = useCallback(() => {
@@ -70,12 +85,32 @@ export default function ProductionPage() {
 
   const fixedLocationId = isOrgWide ? null : (user?.locationId ?? null);
 
+  async function handleStart(batch: ProductionBatchDto) {
+    try {
+      await api.production.startBatch(batch.id);
+      loadBatches();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось начать производство");
+    }
+  }
+
   async function handleCancel(batch: ProductionBatchDto) {
+    if (!confirm(`Отменить задание «${batch.productName}»?`)) return;
     try {
       await api.production.cancelBatch(batch.id);
       loadBatches();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось отменить задание");
+    }
+  }
+
+  async function handleDelete(batch: ProductionBatchDto) {
+    if (!confirm(`Удалить задание «${batch.productName}»? Это действие нельзя отменить.`)) return;
+    try {
+      await api.production.deleteBatch(batch.id);
+      loadBatches();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось удалить задание");
     }
   }
 
@@ -111,6 +146,21 @@ export default function ProductionPage() {
     r.productName.toLowerCase().includes(recipeSearch.trim().toLowerCase()),
   );
 
+  const visibleBatches = batches.filter((b) => {
+    switch (batchFilter) {
+      case "ACTIVE":
+        return b.status === ProductionBatchStatus.PLANNED || b.status === ProductionBatchStatus.IN_PROGRESS;
+      case "IN_PROGRESS":
+        return b.status === ProductionBatchStatus.IN_PROGRESS;
+      case "COMPLETED":
+        return b.status === ProductionBatchStatus.COMPLETED;
+      case "CANCELLED":
+        return b.status === ProductionBatchStatus.CANCELLED;
+      case "ALL":
+        return true;
+    }
+  });
+
   return (
     <div className="mx-auto max-w-6xl">
       <div className="mb-6 flex items-start justify-between">
@@ -135,6 +185,20 @@ export default function ProductionPage() {
         </div>
 
         <div className="flex items-center gap-3">
+          {tab === "batches" && (
+            <select
+              value={batchFilter}
+              onChange={(e) => setBatchFilter(e.target.value as BatchFilter)}
+              className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            >
+              {(Object.keys(BATCH_FILTER_LABELS_RU) as BatchFilter[]).map((f) => (
+                <option key={f} value={f}>
+                  {BATCH_FILTER_LABELS_RU[f]}
+                </option>
+              ))}
+            </select>
+          )}
+
           {tab === "batches" && isOrgWide && (
             <select
               value={locationFilter}
@@ -209,7 +273,7 @@ export default function ProductionPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {batches.map((batch) => (
+              {visibleBatches.map((batch) => (
                 <tr key={batch.id}>
                   <td className="px-5 py-3 font-medium text-foreground">{batch.productName}</td>
                   {isOrgWide && <td className="px-5 py-3 text-muted">{batch.locationName}</td>}
@@ -223,11 +287,49 @@ export default function ProductionPage() {
                   </td>
                   <td className="px-5 py-3">
                     <StatusBadge status={batch.status} />
+                    {batch.status === ProductionBatchStatus.CANCELLED && batch.cancelReason && (
+                      <p className="mt-1 text-xs text-muted">
+                        {PRODUCTION_CANCEL_REASON_LABELS_RU[batch.cancelReason]}
+                        {batch.cancelNote ? ` — ${batch.cancelNote}` : ""}
+                      </p>
+                    )}
                   </td>
                   <td className="px-5 py-3 text-muted">{formatDateTime(batch.scheduledFor)}</td>
                   {canManageProduction && (
                     <td className="px-5 py-3">
                       {batch.status === ProductionBatchStatus.PLANNED && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleStart(batch)}
+                            title="Начать производство"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-green-600"
+                          >
+                            <Play className="h-4 w-4" strokeWidth={1.75} />
+                          </button>
+                          <button
+                            onClick={() => setEditingBatch(batch)}
+                            title="Изменить"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-foreground"
+                          >
+                            <Pencil className="h-4 w-4" strokeWidth={1.75} />
+                          </button>
+                          <button
+                            onClick={() => handleCancel(batch)}
+                            title="Отменить"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-red-600"
+                          >
+                            <XCircle className="h-4 w-4" strokeWidth={1.75} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(batch)}
+                            title="Удалить"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+                          </button>
+                        </div>
+                      )}
+                      {batch.status === ProductionBatchStatus.IN_PROGRESS && (
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => setCompletingBatch(batch)}
@@ -237,8 +339,8 @@ export default function ProductionPage() {
                             <CheckCircle2 className="h-4 w-4" strokeWidth={1.75} />
                           </button>
                           <button
-                            onClick={() => handleCancel(batch)}
-                            title="Отменить"
+                            onClick={() => setAbortingBatch(batch)}
+                            title="Прервать производство"
                             className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-red-600"
                           >
                             <XCircle className="h-4 w-4" strokeWidth={1.75} />
@@ -249,10 +351,10 @@ export default function ProductionPage() {
                   )}
                 </tr>
               ))}
-              {batches.length === 0 && (
+              {visibleBatches.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-5 py-8 text-center text-sm text-muted">
-                    Заданий пока нет
+                    {batches.length === 0 ? "Заданий пока нет" : "Нет заданий с таким статусом"}
                   </td>
                 </tr>
               )}
@@ -384,12 +486,34 @@ export default function ProductionPage() {
         />
       )}
 
+      {editingBatch && (
+        <EditBatchModal
+          batch={editingBatch}
+          onClose={() => setEditingBatch(null)}
+          onSaved={() => {
+            setEditingBatch(null);
+            loadBatches();
+          }}
+        />
+      )}
+
       {completingBatch && (
         <CompleteBatchModal
           batch={completingBatch}
           onClose={() => setCompletingBatch(null)}
           onCompleted={() => {
             setCompletingBatch(null);
+            loadBatches();
+          }}
+        />
+      )}
+
+      {abortingBatch && (
+        <AbortBatchModal
+          batch={abortingBatch}
+          onClose={() => setAbortingBatch(null)}
+          onAborted={() => {
+            setAbortingBatch(null);
             loadBatches();
           }}
         />
@@ -401,6 +525,7 @@ export default function ProductionPage() {
 function StatusBadge({ status }: { status: ProductionBatchStatus }) {
   const styles: Record<ProductionBatchStatus, string> = {
     [ProductionBatchStatus.PLANNED]: "bg-amber-50 text-amber-700",
+    [ProductionBatchStatus.IN_PROGRESS]: "bg-blue-50 text-blue-700",
     [ProductionBatchStatus.COMPLETED]: "bg-green-50 text-green-700",
     [ProductionBatchStatus.CANCELLED]: "bg-surface-muted text-muted",
   };

@@ -1,10 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { ProductionBatchDto, ProductionBatchStatus, Unit } from "@bakery-os/shared";
+import { ProductionBatchDto, ProductionBatchStatus, ProductionCancelReason, Unit } from "@bakery-os/shared";
 import { ProductionBatchStatus as PrismaProductionBatchStatus, StockMovementType } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
 import { CreateBatchDto } from "./dto/create-batch.dto";
+import { UpdateBatchDto } from "./dto/update-batch.dto";
+import { CancelBatchDto } from "./dto/cancel-batch.dto";
 import { CompleteBatchDto } from "./dto/complete-batch.dto";
 
 @Injectable()
@@ -52,6 +54,73 @@ export class ProductionService {
     return this.toDto(batch);
   }
 
+  // Only while PLANNED — once production has started (IN_PROGRESS), the
+  // schedule/quantity that were fixed at start time are what actually
+  // happened, not a plan to be edited.
+  async update(user: AuthenticatedUser, batchId: string, dto: UpdateBatchDto): Promise<ProductionBatchDto> {
+    const batch = await this.prisma.productionBatch.findFirst({
+      where: { id: batchId, organizationId: user.organizationId },
+    });
+    if (!batch) {
+      throw new NotFoundException("Задание не найдено");
+    }
+    this.assertLocationAccess(user, batch.locationId);
+    if (batch.status !== PrismaProductionBatchStatus.PLANNED) {
+      throw new BadRequestException("Редактировать можно только запланированные задания");
+    }
+
+    const updated = await this.prisma.productionBatch.update({
+      where: { id: batchId },
+      data: {
+        ...(dto.scheduledFor !== undefined ? { scheduledFor: new Date(dto.scheduledFor) } : {}),
+        ...(dto.plannedQuantity !== undefined ? { plannedQuantity: dto.plannedQuantity } : {}),
+      },
+      include: { location: true, recipe: { include: { product: true } }, createdBy: true },
+    });
+
+    return this.toDto(updated);
+  }
+
+  // Deletion is only allowed before production has started — a PLANNED
+  // batch has no stock impact yet, so removing it is safe. Once IN_PROGRESS
+  // or later, use cancel/abort instead so the history is preserved.
+  async remove(user: AuthenticatedUser, batchId: string): Promise<{ deleted: true }> {
+    const batch = await this.prisma.productionBatch.findFirst({
+      where: { id: batchId, organizationId: user.organizationId },
+    });
+    if (!batch) {
+      throw new NotFoundException("Задание не найдено");
+    }
+    this.assertLocationAccess(user, batch.locationId);
+    if (batch.status !== PrismaProductionBatchStatus.PLANNED) {
+      throw new BadRequestException("Удалить можно только запланированное задание, которое ещё не запущено");
+    }
+
+    await this.prisma.productionBatch.delete({ where: { id: batchId } });
+    return { deleted: true };
+  }
+
+  async start(user: AuthenticatedUser, batchId: string): Promise<ProductionBatchDto> {
+    const batch = await this.prisma.productionBatch.findFirst({
+      where: { id: batchId, organizationId: user.organizationId },
+    });
+    if (!batch) {
+      throw new NotFoundException("Задание не найдено");
+    }
+    this.assertLocationAccess(user, batch.locationId);
+    if (batch.status !== PrismaProductionBatchStatus.PLANNED) {
+      throw new BadRequestException("Начать можно только запланированное задание");
+    }
+
+    const updated = await this.prisma.productionBatch.update({
+      where: { id: batchId },
+      data: { status: PrismaProductionBatchStatus.IN_PROGRESS, startedAt: new Date() },
+      include: { location: true, recipe: { include: { product: true } }, createdBy: true },
+    });
+
+    return this.toDto(updated);
+  }
+
   async complete(user: AuthenticatedUser, batchId: string, dto: CompleteBatchDto): Promise<ProductionBatchDto> {
     return this.prisma.$transaction(async (tx) => {
       const batch = await tx.productionBatch.findFirst({
@@ -62,7 +131,10 @@ export class ProductionService {
         throw new NotFoundException("Задание не найдено");
       }
       this.assertLocationAccess(user, batch.locationId);
-      if (batch.status !== PrismaProductionBatchStatus.PLANNED) {
+      if (batch.status === PrismaProductionBatchStatus.PLANNED) {
+        throw new BadRequestException("Сначала запустите задание («Начать производство»), затем завершите его");
+      }
+      if (batch.status !== PrismaProductionBatchStatus.IN_PROGRESS) {
         throw new BadRequestException("Задание уже обработано");
       }
 
@@ -147,7 +219,10 @@ export class ProductionService {
     });
   }
 
-  async cancel(user: AuthenticatedUser, batchId: string): Promise<ProductionBatchDto> {
+  // Covers both "cancel a batch that never started" and "abort one that
+  // did" — a reason is required for the latter (equipment/ingredient
+  // problems are worth reporting on), optional for the former.
+  async cancel(user: AuthenticatedUser, batchId: string, dto: CancelBatchDto): Promise<ProductionBatchDto> {
     const batch = await this.prisma.productionBatch.findFirst({
       where: { id: batchId, organizationId: user.organizationId },
     });
@@ -155,13 +230,23 @@ export class ProductionService {
       throw new NotFoundException("Задание не найдено");
     }
     this.assertLocationAccess(user, batch.locationId);
-    if (batch.status !== PrismaProductionBatchStatus.PLANNED) {
+    if (
+      batch.status !== PrismaProductionBatchStatus.PLANNED &&
+      batch.status !== PrismaProductionBatchStatus.IN_PROGRESS
+    ) {
       throw new BadRequestException("Задание уже обработано");
+    }
+    if (batch.status === PrismaProductionBatchStatus.IN_PROGRESS && !dto.reason) {
+      throw new BadRequestException("Укажите причину прерывания производства");
     }
 
     const updated = await this.prisma.productionBatch.update({
       where: { id: batchId },
-      data: { status: PrismaProductionBatchStatus.CANCELLED },
+      data: {
+        status: PrismaProductionBatchStatus.CANCELLED,
+        cancelReason: dto.reason,
+        cancelNote: dto.note,
+      },
       include: { location: true, recipe: { include: { product: true } }, createdBy: true },
     });
 
@@ -182,7 +267,10 @@ export class ProductionService {
     plannedQuantity: { toNumber: () => number };
     actualQuantity: { toNumber: () => number } | null;
     scheduledFor: Date;
+    startedAt: Date | null;
     completedAt: Date | null;
+    cancelReason: string | null;
+    cancelNote: string | null;
     createdBy: { fullName: string };
   }): ProductionBatchDto => ({
     id: batch.id,
@@ -196,7 +284,10 @@ export class ProductionService {
     plannedQuantity: batch.plannedQuantity.toNumber(),
     actualQuantity: batch.actualQuantity ? batch.actualQuantity.toNumber() : null,
     scheduledFor: batch.scheduledFor.toISOString(),
+    startedAt: batch.startedAt ? batch.startedAt.toISOString() : null,
     completedAt: batch.completedAt ? batch.completedAt.toISOString() : null,
+    cancelReason: batch.cancelReason as ProductionCancelReason | null,
+    cancelNote: batch.cancelNote,
     createdByName: batch.createdBy.fullName,
   });
 }
