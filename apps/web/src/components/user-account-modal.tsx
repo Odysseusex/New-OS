@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { LocationDto, UserAccountDto } from "@bakery-os/shared";
 import { ORG_WIDE_ROLES, ROLE_LABELS_RU, Role } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
@@ -21,11 +21,20 @@ export function UserAccountModal({
   const [email, setEmail] = useState(account?.email ?? "");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<Role>(account?.role ?? Role.CASHIER);
-  const [locationId, setLocationId] = useState(account?.locationId ?? locations[0]?.id ?? "");
+  const [locationId, setLocationId] = useState(account?.locationId ?? "");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const needsLocation = !ORG_WIDE_ROLES.includes(role);
+
+  // locations can still be loading when this modal opens, so the first
+  // render may have nothing to default to. Backfill once they arrive,
+  // without clobbering a value the user (or the edited account) already has.
+  useEffect(() => {
+    if (!locationId && locations.length > 0) {
+      setLocationId(locations[0].id);
+    }
+  }, [locations, locationId]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

@@ -10,6 +10,11 @@ export enum Role {
   ACCOUNTANT = "ACCOUNTANT",
   HR_MANAGER = "HR_MANAGER",
   ADMIN = "ADMIN",
+  // A single employee who handles documents (invoices, purchase orders)
+  // without access to inventory corrections, recipes, users, or settings —
+  // for small operations where one person covers several duties that don't
+  // otherwise map to one existing role. Location-scoped, like WAREHOUSE_STAFF.
+  OPERATOR = "OPERATOR",
 }
 
 export const ROLE_LABELS_RU: Record<Role, string> = {
@@ -24,6 +29,7 @@ export const ROLE_LABELS_RU: Record<Role, string> = {
   [Role.ACCOUNTANT]: "Бухгалтер",
   [Role.HR_MANAGER]: "HR-менеджер",
   [Role.ADMIN]: "Администратор",
+  [Role.OPERATOR]: "Оператор",
 };
 
 // Roles that see data across the whole organization instead of being pinned
@@ -66,11 +72,25 @@ export const PRODUCTION_MANAGE_ROLES: Role[] = [
 
 export const SUPPLIER_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.WAREHOUSE_STAFF];
 
-export const PURCHASE_ORDER_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.WAREHOUSE_STAFF];
+// OPERATOR is included here (and on invoices below) but deliberately left
+// out of INVENTORY_MANAGE_ROLES — receiving via a purchase order/invoice is
+// a documented, auditable flow, unlike ad-hoc manual stock receipt/write-off/
+// adjustment, which stays restricted to warehouse/ownership roles.
+export const PURCHASE_ORDER_MANAGE_ROLES: Role[] = [
+  Role.OWNER,
+  Role.ADMIN,
+  Role.WAREHOUSE_STAFF,
+  Role.OPERATOR,
+];
 
 // Recording and confirming supplier delivery notes is the same day-to-day
 // receiving job as purchase orders, so it follows the same roles.
-export const INVOICE_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.WAREHOUSE_STAFF];
+export const INVOICE_MANAGE_ROLES: Role[] = [
+  Role.OWNER,
+  Role.ADMIN,
+  Role.WAREHOUSE_STAFF,
+  Role.OPERATOR,
+];
 
 // Roles that can create/cancel vehicles and delivery routes. Drivers don't
 // plan routes, but they do execute their assigned ones (see LogisticsService).

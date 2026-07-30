@@ -25,6 +25,7 @@ enum Role {
   ACCOUNTANT
   HR_MANAGER
   ADMIN
+  OPERATOR
 }
 
 enum LocationType {
