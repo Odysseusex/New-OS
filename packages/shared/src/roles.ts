@@ -49,6 +49,7 @@ export const SALE_CREATE_ROLES: Role[] = [
   Role.ADMIN,
   Role.STORE_MANAGER,
   Role.CASHIER,
+  Role.OPERATOR,
 ];
 
 export const INVENTORY_MANAGE_ROLES: Role[] = [
