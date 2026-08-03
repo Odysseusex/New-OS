@@ -18,7 +18,7 @@ export enum Role {
 }
 
 export const ROLE_LABELS_RU: Record<Role, string> = {
-  [Role.OWNER]: "Владелец",
+  [Role.OWNER]: "Разработчик",
   [Role.REGIONAL_MANAGER]: "Региональный директор",
   [Role.STORE_MANAGER]: "Управляющий точкой",
   [Role.PRODUCTION_MANAGER]: "Технолог",

@@ -139,7 +139,7 @@ export class UsersService {
   // access to full ownership of the organization.
   private assertCanAssignRole(actor: AuthenticatedUser, role: Role) {
     if (role === Role.OWNER && actor.role !== Role.OWNER) {
-      throw new BadRequestException("Назначить роль «Владелец» может только владелец");
+      throw new BadRequestException("Назначить роль «Разработчик» может только разработчик");
     }
   }
 

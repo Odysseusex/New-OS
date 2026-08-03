@@ -60,7 +60,7 @@ export function RowActions({
       {onForceDelete && (
         <button
           onClick={onForceDelete}
-          title="Принудительное удаление (только Владелец)"
+          title="Принудительное удаление (только Разработчик)"
           className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-red-50 hover:text-red-700"
         >
           <Flame className="h-4 w-4" strokeWidth={1.75} />
