@@ -1,0 +1,821 @@
+// Bakery OS — canonical data model.
+// This schema is the internal "source of truth" that every external system
+// (UMAG, iiko, 1C, CSV, webhooks) gets translated into via the integrations layer.
+// Business modules (Sales, Inventory, Production, ...) all read/write this model,
+// never the external systems directly.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  REGIONAL_MANAGER
+  STORE_MANAGER
+  PRODUCTION_MANAGER
+  PRODUCTION_STAFF
+  WAREHOUSE_STAFF
+  DRIVER
+  CASHIER
+  ACCOUNTANT
+  HR_MANAGER
+  ADMIN
+  OPERATOR
+}
+
+enum LocationType {
+  BAKERY_PRODUCTION
+  STORE
+  WAREHOUSE
+}
+
+enum LocationOwnership {
+  OWNED
+  FRANCHISE
+}
+
+enum Unit {
+  PCS
+  KG
+  G
+  L
+  ML
+}
+
+enum ProductType {
+  RAW_MATERIAL
+  FINISHED_GOOD
+}
+
+enum StockMovementType {
+  RECEIPT
+  SALE
+  WRITE_OFF
+  ADJUSTMENT
+  PRODUCTION_CONSUMPTION
+  PRODUCTION_OUTPUT
+  TRANSFER_OUT
+  TRANSFER_IN
+}
+
+// Categorizes a WRITE_OFF movement so losses can be tracked and reported by
+// cause, not just as an undifferentiated "списание". Only meaningful when
+// StockMovement.type is WRITE_OFF.
+enum WriteOffReason {
+  EXPIRED
+  DAMAGED
+  PRODUCTION_DEFECT
+  QUALITY_ISSUE
+  OTHER
+}
+
+enum ProductionBatchStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// Categorizes why a batch was cancelled/aborted, mirroring the WriteOffReason
+// pattern — required when aborting an IN_PROGRESS batch (equipment/ingredient
+// problems are worth reporting on), optional when cancelling a PLANNED one
+// that was simply created by mistake.
+enum ProductionCancelReason {
+  EQUIPMENT_FAILURE
+  NO_INGREDIENTS
+  MISTAKE
+  OTHER
+}
+
+enum PurchaseOrderStatus {
+  PLACED
+  RECEIVED
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  CONFIRMED
+  CANCELLED
+}
+
+// Where an invoice's data originated. MANUAL is the only path today —
+// AI_SCAN and API_SYNC are placeholders so a future paper-photo OCR flow or
+// a UMAG/1С sync can populate invoices without another schema migration.
+enum InvoiceSource {
+  MANUAL
+  AI_SCAN
+  API_SYNC
+}
+
+enum VehicleStatus {
+  AVAILABLE
+  ON_ROUTE
+  MAINTENANCE
+}
+
+enum DeliveryRouteStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum RouteStopStatus {
+  PENDING
+  DELIVERED
+}
+
+enum ExpenseCategory {
+  RENT
+  UTILITIES
+  SALARY
+  MARKETING
+  LOGISTICS
+  OTHER
+}
+
+enum ShiftStatus {
+  SCHEDULED
+  CANCELLED
+}
+
+// A tenant of the platform — one bakery network / company.
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Atomically incremented to hand out unique auto-generated product SKUs
+  // (see ProductsService.generateSku) without a retry loop under concurrent
+  // creates — Prisma's `increment` compiles to a single atomic UPDATE.
+  productSkuSequence Int @default(0)
+
+  regions   Region[]
+  locations Location[]
+  users     User[]
+  invoices  Invoice[]
+
+  @@map("organizations")
+}
+
+// Optional grouping of locations used for regional roll-up reporting.
+model Region {
+  id             String       @id @default(cuid())
+  name           String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  locations Location[]
+  users     User[]
+
+  @@index([organizationId])
+  @@map("regions")
+}
+
+// A physical place: a bakery/production site, a retail store, or a warehouse.
+// This is also the anchor entity for the interactive city map module.
+model Location {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  regionId       String?
+  region         Region?      @relation(fields: [regionId], references: [id])
+
+  name      String
+  type      LocationType
+  ownership LocationOwnership @default(OWNED)
+  city      String
+  address   String
+  lat       Float?
+  lng       Float?
+  isActive  Boolean           @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users             User[]
+  stockLevels       StockLevel[]
+  stockMovements    StockMovement[]
+  sales             Sale[]
+  productionBatches ProductionBatch[]
+  purchaseOrders    PurchaseOrder[]
+  invoices          Invoice[]
+  originRoutes      DeliveryRoute[]   @relation("RouteOrigin")
+  destinationStops  RouteStop[]       @relation("RouteDestination")
+  expenses          Expense[]
+  shifts            Shift[]
+  timeEntries       TimeEntry[]
+
+  @@index([organizationId])
+  @@index([regionId])
+  @@map("locations")
+}
+
+// A platform user. Access scope is derived from role + organization + optional
+// region/location assignment (enforced in the RBAC guard, not in the DB).
+model User {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  regionId       String?
+  region         Region?      @relation(fields: [regionId], references: [id])
+  locationId     String?
+  location       Location?    @relation(fields: [locationId], references: [id])
+
+  fullName     String
+  email        String
+  passwordHash String
+  role         Role
+  // Optional custom display label shown instead of the role name in the
+  // topbar (e.g. "Разработчик" for someone who's technically OWNER-level
+  // but isn't "the bakery owner" in the everyday sense) — purely cosmetic,
+  // never affects permissions, which are still entirely driven by role.
+  title        String?
+  isActive     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stockMovements         StockMovement[]
+  sales                  Sale[]
+  productionBatches      ProductionBatch[]
+  purchaseOrders         PurchaseOrder[]
+  createdRoutes          DeliveryRoute[]         @relation("RouteCreatedBy")
+  drivenRoutes           DeliveryRoute[]         @relation("RouteDriver")
+  expenses               Expense[]
+  shiftsAsEmployee       Shift[]                 @relation("ShiftEmployee")
+  shiftsCreated          Shift[]                 @relation("ShiftCreatedBy")
+  timeEntries            TimeEntry[]             @relation("TimeEntryEmployee")
+  recipeRevisions        RecipeRevision[]
+  invoices               Invoice[]
+  notificationDismissals NotificationDismissal[]
+
+  @@unique([organizationId, email])
+  @@index([organizationId])
+  @@map("users")
+}
+
+// A user-managed grouping for the product catalog (e.g. "Мука", "Хлеб",
+// "Упаковка"). Purely organizational — does not affect recipe logic, unlike
+// ProductType below.
+model Category {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  products Product[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("categories")
+}
+
+// Product/ingredient catalog — shared by Sales, Inventory and (later) Production.
+model Product {
+  id             String      @id @default(cuid())
+  organizationId String
+  name           String
+  sku            String
+  unit           Unit
+  type           ProductType @default(FINISHED_GOOD)
+  categoryId     String?
+  categoryRef    Category?   @relation(fields: [categoryId], references: [id])
+  price          Decimal     @db.Decimal(12, 2)
+  // False for resources with no physical stock to track (e.g. tap water) —
+  // still usable in recipes and cost calculations, but excluded from stock
+  // levels, low-stock alerts, and receiving/write-off/adjustment operations.
+  trackInventory Boolean     @default(true)
+  // The organization's chosen low-stock threshold for this product, copied
+  // onto each StockLevel row (see stockLevel.minQuantity) the first time
+  // that product is stocked at a given location, and re-propagated to all
+  // existing StockLevel rows whenever this value is edited — so it behaves
+  // as one number per product even though the underlying per-location field
+  // still exists for a future per-location override, if one is ever needed.
+  minQuantity    Decimal     @default(0) @db.Decimal(12, 3)
+  isActive       Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  stockLevels        StockLevel[]
+  stockMovements     StockMovement[]
+  saleItems          SaleItem[]
+  recipe             Recipe?             @relation("RecipeOutput")
+  usedInRecipeItems  RecipeItem[]        @relation("RecipeIngredient")
+  purchaseOrderItems PurchaseOrderItem[]
+  invoiceItems       InvoiceItem[]
+  routeStopItems     RouteStopItem[]
+
+  @@unique([organizationId, sku])
+  @@index([organizationId])
+  @@index([categoryId])
+  @@map("products")
+}
+
+// Current quantity on hand for a product at a specific location.
+model StockLevel {
+  id             String   @id @default(cuid())
+  organizationId String
+  locationId     String
+  location       Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity       Decimal  @default(0) @db.Decimal(12, 3)
+  minQuantity    Decimal  @default(0) @db.Decimal(12, 3)
+  updatedAt      DateTime @updatedAt
+
+  @@unique([locationId, productId])
+  @@index([organizationId])
+  @@map("stock_levels")
+}
+
+// Append-only ledger of every stock change — the audit trail behind StockLevel.
+model StockMovement {
+  id              String            @id @default(cuid())
+  organizationId  String
+  locationId      String
+  location        Location          @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  type            StockMovementType
+  quantity        Decimal           @db.Decimal(12, 3)
+  reason          String?
+  writeOffReason  WriteOffReason?
+  saleId          String?
+  sale            Sale?             @relation(fields: [saleId], references: [id])
+  batchId         String?
+  batch           ProductionBatch?  @relation(fields: [batchId], references: [id])
+  purchaseOrderId String?
+  purchaseOrder   PurchaseOrder?    @relation(fields: [purchaseOrderId], references: [id])
+  routeStopId     String?
+  routeStop       RouteStop?        @relation(fields: [routeStopId], references: [id])
+  invoiceId       String?
+  invoice         Invoice?          @relation(fields: [invoiceId], references: [id])
+  createdById     String
+  createdBy       User              @relation(fields: [createdById], references: [id])
+  createdAt       DateTime          @default(now())
+
+  @@index([organizationId, locationId])
+  @@map("stock_movements")
+}
+
+model Sale {
+  id             String    @id @default(cuid())
+  organizationId String
+  locationId     String
+  location       Location  @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  customerId     String?
+  customer       Customer? @relation(fields: [customerId], references: [id])
+  soldAt         DateTime  @default(now())
+  totalAmount    Decimal   @db.Decimal(12, 2)
+  // How much of totalAmount has been collected so far. Walk-in retail sales
+  // are always paid in full at creation; wholesale customer orders may be
+  // placed on credit and paid down over time via recordPayment().
+  amountPaid     Decimal   @default(0) @db.Decimal(12, 2)
+  createdById    String
+  createdBy      User      @relation(fields: [createdById], references: [id])
+
+  items          SaleItem[]
+  stockMovements StockMovement[]
+
+  @@index([organizationId, locationId])
+  @@index([soldAt])
+  @@map("sales")
+}
+
+model SaleItem {
+  id        String  @id @default(cuid())
+  saleId    String
+  sale      Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Decimal @db.Decimal(12, 3)
+  unitPrice Decimal @db.Decimal(12, 2)
+  subtotal  Decimal @db.Decimal(12, 2)
+
+  @@map("sale_items")
+}
+
+// A техкарта: how many units of `product` one batch of this recipe yields,
+// and which ingredients (other products) it consumes to get there.
+model Recipe {
+  id             String  @id @default(cuid())
+  organizationId String
+  productId      String  @unique
+  product        Product @relation("RecipeOutput", fields: [productId], references: [id], onDelete: Cascade)
+  yieldQuantity  Decimal @db.Decimal(12, 3)
+  isActive       Boolean @default(true)
+
+  // Recipe-level (not process-stage-specific) technological card fields.
+  // All optional so an old-style recipe still works.
+  generalNotes  String?
+  pieceWeightG  Decimal? @db.Decimal(8, 2)
+  lossPercent   Decimal? @db.Decimal(5, 2)
+  shelfLifeDays Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items     RecipeItem[]
+  stages    RecipeStage[]
+  revisions RecipeRevision[]
+  batches   ProductionBatch[]
+
+  @@index([organizationId])
+  @@map("recipes")
+}
+
+model RecipeItem {
+  id                  String  @id @default(cuid())
+  recipeId            String
+  recipe              Recipe  @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  ingredientProductId String
+  ingredientProduct   Product @relation("RecipeIngredient", fields: [ingredientProductId], references: [id])
+  quantity            Decimal @db.Decimal(12, 3)
+
+  @@map("recipe_items")
+}
+
+// Organization-wide catalog of process stages (Замес, Брожение, Выпечка,
+// Сборка, ...). Deliberately generic and extensible — bread, viennoiserie
+// and cakes all describe their process as an ordered pick from this same
+// catalog rather than each needing their own hardcoded set of stages.
+model RecipeStageType {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  stages RecipeStage[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("recipe_stage_types")
+}
+
+// One stage instance within a specific recipe's process, in this recipe's
+// own order. Carries free-text notes plus zero or more structured
+// parameters — this is what used to be split across RecipeStep (text) and
+// Recipe's fixed baking/proofing/etc. columns (numbers).
+model RecipeStage {
+  id          String          @id @default(cuid())
+  recipeId    String
+  recipe      Recipe          @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  stageTypeId String
+  stageType   RecipeStageType @relation(fields: [stageTypeId], references: [id])
+  sequence    Int
+  note        String?
+
+  parameters RecipeStageParameter[]
+
+  @@index([recipeId])
+  @@map("recipe_stages")
+}
+
+// The fixed, closed set of measurement kinds a stage parameter can be —
+// these are the actual physical dimensions a bakery process is measured
+// in, not a per-concept list, so it doesn't grow as new stage types or
+// product categories are added.
+enum RecipeParameterKind {
+  TEMPERATURE_C
+  DURATION_MINUTES
+  PERCENT
+  WEIGHT_G
+  COUNT
+}
+
+// A single measured value on a stage (e.g. kind=TEMPERATURE_C on a
+// "Расстойка" stage = proofing temperature). `label` disambiguates two
+// parameters of the same kind on one stage (e.g. mixing time "медленно"
+// vs "быстро").
+model RecipeStageParameter {
+  id      String              @id @default(cuid())
+  stageId String
+  stage   RecipeStage         @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  kind    RecipeParameterKind
+  label   String?
+  value   Decimal             @db.Decimal(10, 2)
+
+  @@index([stageId])
+  @@map("recipe_stage_parameters")
+}
+
+// A lightweight audit trail: one row per edit, recording who changed the
+// techcard and a human-readable summary of what changed (not a full diff).
+model RecipeRevision {
+  id          String   @id @default(cuid())
+  recipeId    String
+  recipe      Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  changedById String
+  changedBy   User     @relation(fields: [changedById], references: [id])
+  changedAt   DateTime @default(now())
+  summary     String
+
+  @@index([recipeId])
+  @@map("recipe_revisions")
+}
+
+// A planned/completed run of a recipe at a production location. Completing a
+// batch is the event that turns raw ingredients into finished-goods stock.
+model ProductionBatch {
+  id              String                  @id @default(cuid())
+  organizationId  String
+  locationId      String
+  location        Location                @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  recipeId        String
+  recipe          Recipe                  @relation(fields: [recipeId], references: [id])
+  status          ProductionBatchStatus   @default(PLANNED)
+  plannedQuantity Decimal                 @db.Decimal(12, 3)
+  actualQuantity  Decimal?                @db.Decimal(12, 3)
+  scheduledFor    DateTime                @default(now())
+  startedAt       DateTime?
+  completedAt     DateTime?
+  cancelReason    ProductionCancelReason?
+  cancelNote      String?
+  createdById     String
+  createdBy       User                    @relation(fields: [createdById], references: [id])
+  createdAt       DateTime                @default(now())
+
+  stockMovements StockMovement[]
+
+  @@index([organizationId, locationId])
+  @@map("production_batches")
+}
+
+model Supplier {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  phone          String?
+  email          String?
+  notes          String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  purchaseOrders PurchaseOrder[]
+  invoices       Invoice[]
+
+  @@index([organizationId])
+  @@map("suppliers")
+}
+
+// An order placed with a supplier to replenish stock at one location.
+// Receiving it is the event that turns the order into actual StockLevel/
+// StockMovement entries — mirroring how ProductionBatch.complete() works.
+model PurchaseOrder {
+  id             String              @id @default(cuid())
+  organizationId String
+  supplierId     String
+  supplier       Supplier            @relation(fields: [supplierId], references: [id])
+  locationId     String
+  location       Location            @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  status         PurchaseOrderStatus @default(PLACED)
+  totalCost      Decimal             @db.Decimal(12, 2)
+  orderedAt      DateTime            @default(now())
+  receivedAt     DateTime?
+  createdById    String
+  createdBy      User                @relation(fields: [createdById], references: [id])
+
+  items          PurchaseOrderItem[]
+  stockMovements StockMovement[]
+
+  @@index([organizationId, locationId])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product       @relation(fields: [productId], references: [id])
+  quantity        Decimal       @db.Decimal(12, 3)
+  unitCost        Decimal       @db.Decimal(12, 2)
+  subtotal        Decimal       @db.Decimal(12, 2)
+
+  @@map("purchase_order_items")
+}
+
+// A documented delivery note — what a supplier physically hands over with
+// goods, transcribed into the system (today by hand; AI_SCAN/API_SYNC are
+// future sources for the same shape of record). Confirming one is the
+// formal, paper-trailed way to receive stock, independent of whether a
+// PurchaseOrder was placed first.
+model Invoice {
+  id             String        @id @default(cuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  locationId     String
+  location       Location      @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  supplierId     String
+  supplier       Supplier      @relation(fields: [supplierId], references: [id])
+  number         String
+  issuedAt       DateTime      @default(now())
+  status         InvoiceStatus @default(DRAFT)
+  source         InvoiceSource @default(MANUAL)
+  photoUrl       String?
+  externalSyncId String?
+  notes          String?
+  totalCost      Decimal       @db.Decimal(12, 2)
+  createdById    String
+  createdBy      User          @relation(fields: [createdById], references: [id])
+  confirmedAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  items          InvoiceItem[]
+  stockMovements StockMovement[]
+
+  @@index([organizationId, locationId])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id        String  @id @default(cuid())
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Decimal @db.Decimal(12, 3)
+  unitCost  Decimal @db.Decimal(12, 2)
+  subtotal  Decimal @db.Decimal(12, 2)
+
+  @@map("invoice_items")
+}
+
+model Vehicle {
+  id             String        @id @default(cuid())
+  organizationId String
+  name           String
+  plateNumber    String
+  status         VehicleStatus @default(AVAILABLE)
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  routes DeliveryRoute[]
+
+  @@index([organizationId])
+  @@map("vehicles")
+}
+
+// A delivery run: goods leave one location (production/warehouse) and are
+// dropped off at one or more stops (usually stores). Delivering a stop is
+// the event that transfers stock from the origin to that destination.
+model DeliveryRoute {
+  id               String              @id @default(cuid())
+  organizationId   String
+  originLocationId String
+  originLocation   Location            @relation("RouteOrigin", fields: [originLocationId], references: [id], onDelete: Cascade)
+  vehicleId        String?
+  vehicle          Vehicle?            @relation(fields: [vehicleId], references: [id])
+  driverId         String?
+  driver           User?               @relation("RouteDriver", fields: [driverId], references: [id])
+  status           DeliveryRouteStatus @default(PLANNED)
+  scheduledFor     DateTime            @default(now())
+  createdById      String
+  createdBy        User                @relation("RouteCreatedBy", fields: [createdById], references: [id])
+  createdAt        DateTime            @default(now())
+
+  stops RouteStop[]
+
+  @@index([organizationId])
+  @@map("delivery_routes")
+}
+
+model RouteStop {
+  id                    String          @id @default(cuid())
+  routeId               String
+  route                 DeliveryRoute   @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  destinationLocationId String
+  destinationLocation   Location        @relation("RouteDestination", fields: [destinationLocationId], references: [id], onDelete: Cascade)
+  sequence              Int
+  status                RouteStopStatus @default(PENDING)
+  deliveredAt           DateTime?
+
+  items          RouteStopItem[]
+  stockMovements StockMovement[]
+
+  @@map("route_stops")
+}
+
+model RouteStopItem {
+  id          String    @id @default(cuid())
+  routeStopId String
+  routeStop   RouteStop @relation(fields: [routeStopId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id])
+  quantity    Decimal   @db.Decimal(12, 3)
+
+  @@map("route_stop_items")
+}
+
+// A manually logged operating expense (rent, utilities, salaries, ...).
+// Location is optional — network-wide overhead (e.g. marketing) has none.
+model Expense {
+  id             String          @id @default(cuid())
+  organizationId String
+  locationId     String?
+  location       Location?       @relation(fields: [locationId], references: [id])
+  category       ExpenseCategory
+  amount         Decimal         @db.Decimal(12, 2)
+  description    String?
+  incurredOn     DateTime        @default(now())
+  createdById    String
+  createdBy      User            @relation(fields: [createdById], references: [id])
+  createdAt      DateTime        @default(now())
+
+  @@index([organizationId, incurredOn])
+  @@map("expenses")
+}
+
+// A planned work shift for an employee at a location.
+model Shift {
+  id             String      @id @default(cuid())
+  organizationId String
+  locationId     String
+  location       Location    @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User        @relation("ShiftEmployee", fields: [userId], references: [id])
+  startsAt       DateTime
+  endsAt         DateTime
+  status         ShiftStatus @default(SCHEDULED)
+  createdById    String
+  createdBy      User        @relation("ShiftCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime    @default(now())
+
+  @@index([organizationId, locationId])
+  @@map("shifts")
+}
+
+// Actual attendance — clock in/out. Independent of Shift so employees can
+// clock in even without a pre-planned schedule.
+model TimeEntry {
+  id             String    @id @default(cuid())
+  organizationId String
+  locationId     String
+  location       Location  @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User      @relation("TimeEntryEmployee", fields: [userId], references: [id])
+  clockInAt      DateTime  @default(now())
+  clockOutAt     DateTime?
+
+  @@index([organizationId, locationId])
+  @@index([userId])
+  @@map("time_entries")
+}
+
+// A wholesale/repeat customer (cafe, shop, ...). Not tied to a single
+// location — any location can serve them — so this is organization-wide,
+// same as the product catalog.
+model Customer {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  phone          String?
+  email          String?
+  address        String?
+  lat            Float?
+  lng            Float?
+  notes          String?
+  creditLimit    Decimal? @db.Decimal(12, 2)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  sales Sale[]
+
+  @@index([organizationId])
+  @@map("customers")
+}
+
+// Notifications are never stored themselves — they're computed live from the
+// canonical tables (stock levels, invoices, purchase orders, ...) so they can
+// never go stale. This table only tracks which computed alert "keys" a user
+// has already dismissed, so a dismissed alert stays hidden until the
+// underlying condition actually changes and produces a new key.
+model NotificationDismissal {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key            String
+  dismissedAt    DateTime @default(now())
+
+  @@unique([userId, key])
+  @@index([organizationId, userId])
+  @@map("notification_dismissals")
+}

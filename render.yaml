@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: bakery-os-api
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: >-
+      pnpm install --prod=false &&
+      pnpm --filter @bakery-os/shared build &&
+      pnpm --filter @bakery-os/api exec prisma generate &&
+      pnpm --filter @bakery-os/api build &&
+      pnpm --filter @bakery-os/api exec prisma migrate deploy
+    startCommand: node apps/api/dist/src/main.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: WEB_ORIGIN
+        sync: false

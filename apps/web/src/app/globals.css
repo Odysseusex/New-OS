@@ -1,0 +1,34 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f7f5f2;
+  --foreground: #1c1917;
+  --surface: #ffffff;
+  --surface-muted: #f1eee9;
+  --border: #e7e2da;
+  --accent: #c2704a;
+  --accent-foreground: #ffffff;
+  --muted: #78716c;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}

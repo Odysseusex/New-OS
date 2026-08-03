@@ -1,0 +1,39 @@
+import { IsEnum, IsNumber, IsOptional, IsString, MinLength } from "class-validator";
+import { LocationOwnership, LocationType } from "@bakery-os/shared";
+
+export class UpdateLocationDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  name?: string;
+
+  @IsOptional()
+  @IsEnum(LocationType)
+  type?: LocationType;
+
+  @IsOptional()
+  @IsEnum(LocationOwnership)
+  ownership?: LocationOwnership;
+
+  @IsOptional()
+  @IsString()
+  regionId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  address?: string;
+
+  @IsOptional()
+  @IsNumber()
+  lat?: number;
+
+  @IsOptional()
+  @IsNumber()
+  lng?: number;
+}

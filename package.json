@@ -1,0 +1,16 @@
+{
+  "name": "bakery-os",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "postinstall": "pnpm --filter @bakery-os/shared build",
+    "dev:web": "pnpm --filter @bakery-os/web dev",
+    "dev:api": "pnpm --filter @bakery-os/api start:dev",
+    "build": "pnpm --filter @bakery-os/shared build && pnpm -r build",
+    "lint": "pnpm -r lint"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@10.33.0"
+}
