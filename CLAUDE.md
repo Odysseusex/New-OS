@@ -6,6 +6,46 @@ This file is what a fresh session needs to work on this repo effectively
 without prior conversation history — the "why" behind decisions that isn't
 obvious from the code alone. For setup/run instructions see `README.md`.
 
+## Production deployment (current, as of the GitHub account migration)
+
+The user moved development from an old GitHub account (`keremetAI`, repo
+`keremetAI/repo`) to this one (`Odysseusex/New-OS`). Render/Vercel/Neon were
+originally connected to the old account. Current state:
+
+- **Frontend — Vercel project `repo-web-jzvl`**, domain
+  `https://repo-web-jzvl-virid.vercel.app` — connected to `Odysseusex/New-OS`,
+  auto-deploys on push to `main`. **This is the one to use/tell the user
+  about.**
+- **Old Vercel project `repo-web`**, domain `https://repo-web-kohl.vercel.app`
+  — still connected to the old `keremetAI/repo`, does NOT receive this
+  session's pushes. Stale/deprecated; don't debug "why isn't my change
+  showing up" against this domain — check which domain the user is actually
+  looking at first (this exact confusion cost a full debugging round once).
+- **Backend — Render service `bakery-os-api`**, `https://bakery-os-api.onrender.com`
+  (routes prefixed `/api`) — connected to `Odysseusex/New-OS`, tracks `main`
+  directly (unlike an earlier setup, there is no second branch to
+  fast-forward here — see Verification workflow below).
+- **Database — Neon**, unchanged through the migration; both the old and new
+  frontend point at the same `DATABASE_URL`, so user accounts/data are
+  identical regardless of which frontend domain is used.
+- Two env vars are the most common source of "it's live but doesn't work":
+  - Render's `WEB_ORIGIN` must exactly equal the frontend's production
+    domain (CORS) — a mismatch surfaces as a generic "Не удалось войти"
+    with no other clue.
+  - Vercel's `NEXT_PUBLIC_API_URL` must include the `/api` suffix
+    (`https://bakery-os-api.onrender.com/api`) — omitting it surfaces as
+    `Cannot POST /auth/login` (request hits the backend without its global
+    prefix).
+- Render's GitHub deployment credential could not be re-pointed from the old
+  `keremetAI` account to `Odysseusex` — disconnecting it and reconnecting
+  under the new account's active browser session still resolved back to the
+  old account every time (root cause not found; likely a stale GitHub App
+  installation on Render's side). Workaround in place: the repo is public,
+  so Render clones it unauthenticated ("we don't have access... but we'll
+  try anyway" in build logs is expected, not an error). Don't spend time
+  re-litigating this unless the user asks to revisit it — they explicitly
+  decided to leave it as-is.
+
 ## Non-negotiable conventions
 
 - **UI is 100% Russian.** Every label, button, error message, placeholder —
@@ -190,6 +230,14 @@ role dropdowns) for every user with that role, and reintroduces the exact
 non-Russian-UI bug this field was added to fix (a prior hardcoded
 `role === OWNER ? "App Owner" : ...` override in `topbar.tsx`).
 
+That said, a genuine global rename of a role's `ROLE_LABELS_RU` entry (not
+a one-person override) is fine when explicitly requested — the org's owner
+had `OWNER` relabeled from "Владелец" to "Разработчик" everywhere (Settings
+table, role dropdowns, and the two hardcoded error/tooltip strings that
+also said "Владелец" in `users.service.ts` and `row-actions.tsx`). The
+`OWNER` enum value and every permission array are untouched; only the
+Russian label changed. Don't revert this without being asked.
+
 **Brand color is one CSS custom property.** `--accent` in
 `apps/web/src/app/globals.css` (consumed everywhere via Tailwind's
 `accent`/`accent-foreground` tokens — never hardcoded hex in components)
@@ -237,27 +285,16 @@ deploying.
    isn't in this repo's own `node_modules`). Screenshot and actually look
    at it — don't infer success from HTTP status alone.
 6. Commit, push to whatever branch this session was assigned, **then
-   fast-forward BOTH `main` and `claude/bakery-platform-design-khuzwz`
-   to match** — Vercel (frontend) deploys from `main`; Render (backend)
-   is Blueprint-managed and, as of this writing, tracks
-   `claude/bakery-platform-design-khuzwz` specifically, **not** `main`.
-   This was the root cause of a whole debugging session once (every fix
-   looked like it "didn't work" because the API was still serving an
-   ancient commit) — confirmed via the user's Render dashboard
-   screenshot. Skipping the second fast-forward silently means backend
-   changes never reach production even though `git push` succeeded and
-   `main` looks up to date. (Worth suggesting the user repoint Render to
-   `main` directly in their dashboard to collapse this to one step —
-   not done yet as of this writing; only they have dashboard access.)
+   fast-forward `main` to match** — both Vercel (frontend, project
+   `repo-web-jzvl`) and Render (backend, `bakery-os-api`) deploy from
+   `main` on this repo, so a single fast-forward is enough (see
+   "Production deployment" above; this used to require a second branch
+   for Render under the old GitHub account's setup — no longer the case
+   here).
    ```bash
    git push -u origin <this-session's-branch>
    git fetch origin main && git checkout main && \
    git merge --ff-only <this-session's-branch> && git push origin main
-   git fetch origin claude/bakery-platform-design-khuzwz && \
-   git merge-base --is-ancestor origin/claude/bakery-platform-design-khuzwz origin/main && \
-   git checkout -B claude/bakery-platform-design-khuzwz origin/claude/bakery-platform-design-khuzwz && \
-   git merge --ff-only origin/main && \
-   git push origin claude/bakery-platform-design-khuzwz && \
    git checkout <this-session's-branch>
    ```
 
