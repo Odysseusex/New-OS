@@ -158,6 +158,14 @@ export const QUALITY_VIEW_ROLES: Role[] = [
 // otherwise create/edit/archive the same entity type.
 export const HARD_DELETE_ROLES: Role[] = [Role.OWNER, Role.ADMIN];
 
+// Force-deleting a product bypasses the usage check that normally blocks
+// HARD_DELETE_ROLES from removing a product referenced by sales, purchase
+// orders, invoices, routes, recipes or production history — it strips those
+// references outright. That's a materially bigger blast radius than a normal
+// hard delete (which only ever succeeds on an unused row), so it's reserved
+// for Owner alone rather than reusing HARD_DELETE_ROLES.
+export const PRODUCT_FORCE_DELETE_ROLES: Role[] = [Role.OWNER];
+
 // Managing employee accounts (creating logins, assigning roles) is an
 // access-control decision, so it's restricted the same way as location
 // management rather than opened up to operational roles.

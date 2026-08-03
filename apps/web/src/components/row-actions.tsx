@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, Pencil, RotateCcw, Trash2 } from "lucide-react";
+import { Archive, Flame, Pencil, RotateCcw, Trash2 } from "lucide-react";
 
 export function RowActions({
   isActive,
@@ -8,12 +8,17 @@ export function RowActions({
   onArchive,
   onRestore,
   onDelete,
+  onForceDelete,
 }: {
   isActive: boolean;
   onEdit?: () => void;
   onArchive: () => void;
   onRestore: () => void;
   onDelete?: () => void;
+  // Owner-only escape hatch that bypasses the usage check `onDelete` is
+  // subject to — kept as a separate, visually distinct action rather than a
+  // variant of onDelete so it can never be reached by accident.
+  onForceDelete?: () => void;
 }) {
   return (
     <div className="flex items-center gap-1">
@@ -50,6 +55,15 @@ export function RowActions({
           className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-red-600"
         >
           <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+        </button>
+      )}
+      {onForceDelete && (
+        <button
+          onClick={onForceDelete}
+          title="Принудительное удаление (только Владелец)"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-red-50 hover:text-red-700"
+        >
+          <Flame className="h-4 w-4" strokeWidth={1.75} />
         </button>
       )}
     </div>

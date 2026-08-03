@@ -8,6 +8,7 @@ import {
   HARD_DELETE_ROLES,
   INVENTORY_MANAGE_ROLES,
   ORG_WIDE_ROLES,
+  PRODUCT_FORCE_DELETE_ROLES,
   PRODUCT_MANAGE_ROLES,
   PRODUCT_TYPE_LABELS_RU,
   STOCK_MOVEMENT_TYPE_LABELS_RU,
@@ -20,6 +21,7 @@ import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
 import { StockMovementModal } from "@/components/stock-movement-modal";
 import { NewProductModal } from "@/components/new-product-modal";
 import { CategoryModal } from "@/components/category-modal";
+import { ForceDeleteProductModal } from "@/components/force-delete-product-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 
 type Tab = "stock" | "catalog" | "categories";
@@ -30,6 +32,7 @@ export default function InventoryPage() {
   const canManageInventory = user ? INVENTORY_MANAGE_ROLES.includes(user.role) : false;
   const canManageProducts = user ? PRODUCT_MANAGE_ROLES.includes(user.role) : false;
   const canDelete = user ? HARD_DELETE_ROLES.includes(user.role) : false;
+  const canForceDelete = user ? PRODUCT_FORCE_DELETE_ROLES.includes(user.role) : false;
 
   const [tab, setTab] = useState<Tab>("stock");
   const [locations, setLocations] = useState<LocationDto[]>([]);
@@ -43,6 +46,7 @@ export default function InventoryPage() {
   const [modal, setModal] = useState<"receive" | "write-off" | "adjustment" | "product" | "category" | null>(
     null,
   );
+  const [forceDeleteProduct, setForceDeleteProduct] = useState<ProductDto | undefined>(undefined);
   const [editingProduct, setEditingProduct] = useState<ProductDto | undefined>(undefined);
   const [editingCategory, setEditingCategory] = useState<CategoryDto | undefined>(undefined);
   const [newProductCategoryId, setNewProductCategoryId] = useState<string | undefined>(undefined);
@@ -132,6 +136,12 @@ export default function InventoryPage() {
     } catch (err) {
       alert(err instanceof ApiError ? err.message : "Не удалось удалить товар");
     }
+  }
+
+  function handleProductForceDeleted() {
+    setForceDeleteProduct(undefined);
+    loadProducts();
+    loadStock();
   }
 
   async function handleCategoryArchive(c: CategoryDto) {
@@ -431,6 +441,7 @@ export default function InventoryPage() {
                         onArchive={() => handleProductArchive(p)}
                         onRestore={() => handleProductRestore(p)}
                         onDelete={canDelete ? () => handleProductDelete(p) : undefined}
+                        onForceDelete={canForceDelete ? () => setForceDeleteProduct(p) : undefined}
                       />
                     </td>
                   )}
@@ -573,6 +584,7 @@ export default function InventoryPage() {
                         onArchive={() => handleProductArchive(p)}
                         onRestore={() => handleProductRestore(p)}
                         onDelete={canDelete ? () => handleProductDelete(p) : undefined}
+                        onForceDelete={canForceDelete ? () => setForceDeleteProduct(p) : undefined}
                       />
                     </td>
                   )}
@@ -627,6 +639,14 @@ export default function InventoryPage() {
             setModal(null);
             loadCategories();
           }}
+        />
+      )}
+
+      {forceDeleteProduct && (
+        <ForceDeleteProductModal
+          product={forceDeleteProduct}
+          onClose={() => setForceDeleteProduct(undefined)}
+          onDeleted={handleProductForceDeleted}
         />
       )}
     </div>

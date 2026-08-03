@@ -132,6 +132,7 @@ export const api = {
     archive: (id: string) => request<ProductDto>(`/products/${id}/archive`, { method: "POST" }),
     restore: (id: string) => request<ProductDto>(`/products/${id}/restore`, { method: "POST" }),
     remove: (id: string) => request<{ deleted: true }>(`/products/${id}`, { method: "DELETE" }),
+    forceRemove: (id: string) => request<{ deleted: true }>(`/products/${id}/force`, { method: "DELETE" }),
   },
 
   categories: {

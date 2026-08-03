@@ -141,6 +141,58 @@ export class ProductsService {
     return { deleted: true };
   }
 
+  // Owner-only escape hatch for cleaning up duplicate/test products that
+  // already made it into real documents (see `remove` above, which refuses
+  // that case). Unlike `remove`, this strips every reference instead of
+  // refusing when usageCount > 0:
+  //  - StockLevel/StockMovement (productId), and — when this product has its
+  //    own recipe — Recipe/RecipeItem/RecipeStage/RecipeStageParameter/
+  //    RecipeRevision all cascade at the DB level (see schema.prisma).
+  //  - Line items that reference this product from someone else's document
+  //    (SaleItem, PurchaseOrderItem, InvoiceItem, RouteStopItem) or recipe
+  //    (RecipeItem as ingredient) don't cascade and aren't nullable, so they
+  //    are deleted explicitly — only that line disappears, the parent
+  //    document/recipe stays intact.
+  //  - Production batches that ran this product's own recipe are deleted
+  //    outright (they only exist to produce the item being wiped); any stock
+  //    movement they caused for *other* products (e.g. ingredient
+  //    consumption) is preserved and just detached via batchId = null,
+  //    since StockMovement is an append-only ledger for those products.
+  async forceRemove(organizationId: string, productId: string): Promise<{ deleted: true }> {
+    const product = await this.prisma.product.findFirst({ where: { id: productId, organizationId } });
+    if (!product) {
+      throw new NotFoundException("Товар не найден");
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const ownRecipe = await tx.recipe.findUnique({ where: { productId }, select: { id: true } });
+      if (ownRecipe) {
+        const batches = await tx.productionBatch.findMany({
+          where: { recipeId: ownRecipe.id },
+          select: { id: true },
+        });
+        const batchIds = batches.map((b) => b.id);
+        if (batchIds.length > 0) {
+          await tx.stockMovement.updateMany({
+            where: { batchId: { in: batchIds } },
+            data: { batchId: null },
+          });
+          await tx.productionBatch.deleteMany({ where: { id: { in: batchIds } } });
+        }
+      }
+
+      await tx.saleItem.deleteMany({ where: { productId } });
+      await tx.recipeItem.deleteMany({ where: { ingredientProductId: productId } });
+      await tx.purchaseOrderItem.deleteMany({ where: { productId } });
+      await tx.invoiceItem.deleteMany({ where: { productId } });
+      await tx.routeStopItem.deleteMany({ where: { productId } });
+
+      await tx.product.delete({ where: { id: productId } });
+    });
+
+    return { deleted: true };
+  }
+
   private async setActive(organizationId: string, productId: string, isActive: boolean): Promise<ProductDto> {
     const product = await this.prisma.product.findFirst({ where: { id: productId, organizationId } });
     if (!product) {

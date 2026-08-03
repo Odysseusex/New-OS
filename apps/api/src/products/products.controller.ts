@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { HARD_DELETE_ROLES, PRODUCT_MANAGE_ROLES } from "@bakery-os/shared";
+import { HARD_DELETE_ROLES, PRODUCT_FORCE_DELETE_ROLES, PRODUCT_MANAGE_ROLES } from "@bakery-os/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
 import { Roles } from "../common/decorators/roles.decorator";
@@ -47,5 +47,11 @@ export class ProductsController {
   @Roles(...HARD_DELETE_ROLES)
   remove(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
     return this.productsService.remove(user.organizationId, id);
+  }
+
+  @Delete(":id/force")
+  @Roles(...PRODUCT_FORCE_DELETE_ROLES)
+  forceRemove(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
+    return this.productsService.forceRemove(user.organizationId, id);
   }
 }
