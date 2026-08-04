@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
 import { Plus, Receipt, TrendingUp, Wallet } from "lucide-react";
 import type { CustomerDto, LocationDto, ProductDto, SaleDto, SalesSummaryDto } from "@bakery-os/shared";
-import { ORG_WIDE_ROLES, PAYMENT_STATUS_LABELS_RU, PaymentStatus, SALE_CREATE_ROLES } from "@bakery-os/shared";
+import { ORG_WIDE_ROLES, PAYMENT_STATUS_LABELS_RU, PaymentStatus, ProductType, SALE_CREATE_ROLES } from "@bakery-os/shared";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney } from "@/lib/format";
@@ -43,7 +43,13 @@ export default function SalesPage() {
 
   useEffect(() => {
     api.locations.list().then(setLocations).catch(() => {});
-    api.products.list().then(setProducts).catch(() => {});
+    // A sale moves finished goods out to a customer — raw materials are only
+    // ever consumed via recipes, never sold directly, so they don't belong
+    // in this list.
+    api.products
+      .list()
+      .then((all) => setProducts(all.filter((p) => p.type === ProductType.FINISHED_GOOD)))
+      .catch(() => {});
     if (canCreateSale) {
       api.customers.list().then(setCustomers).catch(() => {});
     }
