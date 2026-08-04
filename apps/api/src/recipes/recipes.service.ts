@@ -90,7 +90,11 @@ export class RecipesService {
 
     const existingRecipe = await this.prisma.recipe.findUnique({ where: { productId: dto.productId } });
     if (existingRecipe) {
-      throw new ConflictException("У этого товара уже есть рецептура");
+      throw new ConflictException(
+        existingRecipe.isActive
+          ? "У этого товара уже есть рецептура"
+          : "У этого товара уже есть рецептура — она в архиве. Восстановите её вместо создания новой.",
+      );
     }
 
     if (dto.items.some((item) => item.ingredientProductId === dto.productId)) {

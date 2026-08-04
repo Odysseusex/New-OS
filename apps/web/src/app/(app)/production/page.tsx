@@ -67,11 +67,16 @@ export default function ProductionPage() {
   }, [locationFilter]);
 
   const loadRecipes = useCallback(() => {
+    // Always fetched including archived ones — `existingRecipeProductIds`
+    // (passed to NewRecipeModal below) needs to know about archived recipes
+    // too, since a product keeps at most one Recipe row ever (archived or
+    // not) and offering it again as "no recipe yet" just hits a 409 on
+    // save. The archived toggle filters client-side instead (visibleRecipes).
     api.recipes
-      .list(showArchivedRecipes)
+      .list(true)
       .then(setRecipes)
       .catch(() => setError("Не удалось загрузить рецептуры"));
-  }, [showArchivedRecipes]);
+  }, []);
 
   useEffect(() => {
     api.locations.list().then(setLocations).catch(() => {});
@@ -115,6 +120,8 @@ export default function ProductionPage() {
   }
 
   async function handleRecipeArchive(recipe: RecipeDto) {
+    if (!confirm(`Заархивировать рецептуру «${recipe.productName}»? Она пропадёт из общего списка, но данные сохранятся — её можно будет восстановить.`))
+      return;
     try {
       await api.recipes.archive(recipe.id);
       loadRecipes();
@@ -142,8 +149,10 @@ export default function ProductionPage() {
     }
   }
 
-  const visibleRecipes = recipes.filter((r) =>
-    r.productName.toLowerCase().includes(recipeSearch.trim().toLowerCase()),
+  const visibleRecipes = recipes.filter(
+    (r) =>
+      (showArchivedRecipes || r.isActive) &&
+      r.productName.toLowerCase().includes(recipeSearch.trim().toLowerCase()),
   );
 
   const visibleBatches = batches.filter((b) => {
