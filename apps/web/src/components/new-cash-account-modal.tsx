@@ -94,7 +94,7 @@ export function NewCashAccountModal({
 
         <div className="mb-4">
           <label className="mb-1.5 block text-sm font-medium text-foreground">
-            Начальный остаток, ₸ <span className="text-muted">(необязательно)</span>
+            Начальное сальдо, ₸ <span className="text-muted">(необязательно)</span>
           </label>
           <input
             type="number"

@@ -95,7 +95,7 @@ export function CashTransferModal({
 
         <div className="mb-5">
           <label className="mb-1.5 block text-sm font-medium text-foreground">
-            Комментарий <span className="text-muted">(необязательно)</span>
+            Основание <span className="text-muted">(необязательно)</span>
           </label>
           <input
             type="text"

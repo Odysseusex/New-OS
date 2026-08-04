@@ -8,9 +8,10 @@ import { Modal } from "@/components/modal";
 
 type Direction = "in" | "out";
 
-// One modal for both directions ("создание прихода денег" and cash
-// withdrawal) — a single toggle instead of two separate flows, so logging
-// either takes the same three fields either way.
+// One modal for both directions — a single toggle instead of two separate
+// flows, so logging either takes the same fields either way. Labeled
+// "Поступление / Списание" (not "внести/снять") to match the terminology
+// used everywhere else money moves in this module.
 export function CashMovementModal({
   accounts,
   onClose,
@@ -47,7 +48,7 @@ export function CashMovementModal({
   }
 
   return (
-    <Modal title="Деньги на счёт / со счёта" onClose={onClose}>
+    <Modal title="Операция по счёту" onClose={onClose}>
       <form onSubmit={handleSubmit}>
         <div className="mb-4 flex gap-1 rounded-xl bg-surface-muted p-1">
           <button
@@ -58,7 +59,7 @@ export function CashMovementModal({
               direction === "in" ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground",
             )}
           >
-            Внести
+            Поступление
           </button>
           <button
             type="button"
@@ -68,7 +69,7 @@ export function CashMovementModal({
               direction === "out" ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground",
             )}
           >
-            Снять
+            Списание
           </button>
         </div>
 
@@ -105,10 +106,11 @@ export function CashMovementModal({
 
         <div className="mb-5">
           <label className="mb-1.5 block text-sm font-medium text-foreground">
-            Комментарий <span className="text-muted">(необязательно)</span>
+            Основание <span className="text-muted">(необязательно)</span>
           </label>
           <input
             type="text"
+            placeholder={direction === "in" ? "Например: внесение выручки" : "Например: инкассация"}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
@@ -122,7 +124,7 @@ export function CashMovementModal({
           disabled={isSubmitting || !accountId}
           className="w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-60"
         >
-          {isSubmitting ? "Сохранение…" : direction === "in" ? "Внести деньги" : "Снять деньги"}
+          {isSubmitting ? "Сохранение…" : direction === "in" ? "Провести поступление" : "Провести списание"}
         </button>
       </form>
     </Modal>

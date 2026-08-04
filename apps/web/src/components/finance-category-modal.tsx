@@ -8,15 +8,20 @@ import { Modal } from "@/components/modal";
 
 export function FinanceCategoryModal({
   category,
+  defaultKind,
   onClose,
   onSaved,
 }: {
   category?: FinanceCategoryDto;
+  // Which list ("Статьи доходов" / "Статьи расходов") the add action was
+  // triggered from — the kind is unambiguous from that context, so there's
+  // no toggle to pick it here.
+  defaultKind: FinanceCategoryKind;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [name, setName] = useState(category?.name ?? "");
-  const [kind, setKind] = useState<FinanceCategoryKind>(category?.kind ?? FinanceCategoryKind.EXPENSE);
+  const kind = category?.kind ?? defaultKind;
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -32,32 +37,15 @@ export function FinanceCategoryModal({
       }
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Не удалось сохранить категорию");
+      setError(err instanceof ApiError ? err.message : "Не удалось сохранить статью");
     } finally {
       setIsSubmitting(false);
     }
   }
 
   return (
-    <Modal title={category ? "Изменить категорию" : "Новая категория"} onClose={onClose} width="max-w-sm">
+    <Modal title={category ? "Изменить статью ДДС" : `Новая статья ${kind === FinanceCategoryKind.INCOME ? "доходов" : "расходов"}`} onClose={onClose} width="max-w-sm">
       <form onSubmit={handleSubmit}>
-        {!category && (
-          <div className="mb-4 grid grid-cols-2 gap-1 rounded-xl bg-surface-muted p-1">
-            {([FinanceCategoryKind.EXPENSE, FinanceCategoryKind.INCOME] as const).map((k) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setKind(k)}
-                className={`rounded-lg py-2 text-sm font-medium transition ${
-                  kind === k ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground"
-                }`}
-              >
-                {k === FinanceCategoryKind.EXPENSE ? "Расход" : "Доход"}
-              </button>
-            ))}
-          </div>
-        )}
-
         <div className="mb-5">
           <label className="mb-1.5 block text-sm font-medium text-foreground">Название</label>
           <input

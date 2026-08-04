@@ -36,11 +36,12 @@ import {
   CashAccountType,
   CashMovementType,
   EXPENSE_MANAGE_ROLES,
-  EXPENSE_STATUS_LABELS_RU,
   ExpenseStatus,
   FINANCE_CATEGORY_MANAGE_ROLES,
   FINANCE_VIEW_ROLES,
   FinanceCategoryKind,
+  PAYMENT_STATUS_LABELS_RU,
+  PaymentStatus,
   SUPPLIER_PAYMENT_ROLES,
 } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
@@ -53,10 +54,21 @@ import { CashMovementModal } from "@/components/cash-movement-modal";
 import { CashTransferModal } from "@/components/cash-transfer-modal";
 import { FinanceCategoryModal } from "@/components/finance-category-modal";
 import { RecordDebtPaymentModal } from "@/components/record-debt-payment-modal";
-import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
+import { RowActions } from "@/components/row-actions";
 
-type Tab = "overview" | "accounts" | "expenses" | "debts" | "pnl";
+type Tab = "summary" | "bank" | "cashflow" | "receivables" | "payables" | "expenses" | "categories" | "pnl";
 type Period = "today" | "7d" | "30d" | "month";
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: "summary", label: "Сводка" },
+  { id: "bank", label: "Банк и касса" },
+  { id: "cashflow", label: "ДДС" },
+  { id: "receivables", label: "Дебиторская задолженность" },
+  { id: "payables", label: "Кредиторская задолженность" },
+  { id: "expenses", label: "Расходы" },
+  { id: "categories", label: "Статьи ДДС" },
+  { id: "pnl", label: "Прибыли и убытки" },
+];
 
 const PERIOD_LABELS: Record<Period, string> = {
   today: "Сегодня",
@@ -75,13 +87,14 @@ function periodRange(period: Period): { from: Date; to: Date } {
   return { from, to };
 }
 
-type DebtRow = {
+type PayableRow = {
   kind: "invoice" | "expense";
   id: string;
   label: string;
   counterparty: string;
   date: string;
   balanceDue: number;
+  paymentStatus: PaymentStatus;
 };
 
 export default function FinancePage() {
@@ -93,8 +106,8 @@ export default function FinancePage() {
   const canManageExpenses = user ? EXPENSE_MANAGE_ROLES.includes(user.role) : false;
   const canPaySuppliers = user ? SUPPLIER_PAYMENT_ROLES.includes(user.role) : false;
 
-  const [tab, setTab] = useState<Tab>("overview");
-  const [period, setPeriod] = useState<Period>("30d");
+  const [tab, setTab] = useState<Tab>("summary");
+  const [period, setPeriod] = useState<Period>("month");
   const [locations, setLocations] = useState<LocationDto[]>([]);
   const [locationFilter, setLocationFilter] = useState("");
 
@@ -114,20 +127,24 @@ export default function FinancePage() {
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [movementModalOpen, setMovementModalOpen] = useState(false);
   const [transferModalOpen, setTransferModalOpen] = useState(false);
-  const [categoryModal, setCategoryModal] = useState<"new" | FinanceCategoryDto | null>(null);
-  const [payingDebt, setPayingDebt] = useState<DebtRow | null>(null);
+  const [categoryModal, setCategoryModal] = useState<"income" | "expense" | FinanceCategoryDto | null>(null);
+  const [payingDebt, setPayingDebt] = useState<PayableRow | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadDashboard = useCallback(() => {
-    api.finance.dashboard().then(setDashboard).catch(() => setError("Не удалось загрузить сводку"));
-  }, []);
+    const { from, to } = periodRange(period);
+    api.finance
+      .dashboard(from.toISOString(), to.toISOString())
+      .then(setDashboard)
+      .catch(() => setError("Не удалось загрузить сводку"));
+  }, [period]);
 
   const loadPnl = useCallback(() => {
     const { from, to } = periodRange(period);
     api.finance
       .pnl(from.toISOString(), to.toISOString(), locationFilter || undefined)
       .then(setPnl)
-      .catch(() => setError("Не удалось загрузить P&L"));
+      .catch(() => setError("Не удалось загрузить отчёт"));
   }, [period, locationFilter]);
 
   const loadExpenses = useCallback(() => {
@@ -146,16 +163,16 @@ export default function FinancePage() {
 
   const loadMovements = useCallback(() => {
     api.finance.movements
-      .list(movementAccountFilter || undefined, 100)
+      .list(movementAccountFilter || undefined, 150)
       .then(setMovements)
-      .catch(() => setError("Не удалось загрузить операции"));
+      .catch(() => setError("Не удалось загрузить движение денежных средств"));
   }, [movementAccountFilter]);
 
   const loadCategories = useCallback(() => {
     api.finance.categories
       .list(undefined, showArchivedCategories)
       .then(setCategories)
-      .catch(() => setError("Не удалось загрузить категории"));
+      .catch(() => setError("Не удалось загрузить статьи ДДС"));
   }, [showArchivedCategories]);
 
   const loadDebts = useCallback(() => {
@@ -166,12 +183,15 @@ export default function FinancePage() {
   useEffect(() => {
     if (!canView) return;
     api.locations.list().then(setLocations).catch(() => {});
-    loadDashboard();
     loadAccounts();
     loadCategories();
     loadDebts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canView]);
+
+  useEffect(() => {
+    if (canView) loadDashboard();
+  }, [canView, loadDashboard]);
 
   useEffect(() => {
     if (canView) loadPnl();
@@ -263,7 +283,7 @@ export default function FinancePage() {
       await api.finance.categories.archive(category.id);
       loadCategories();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Не удалось заархивировать категорию");
+      setError(err instanceof ApiError ? err.message : "Не удалось заархивировать статью");
     }
   }
 
@@ -272,7 +292,7 @@ export default function FinancePage() {
       await api.finance.categories.restore(category.id);
       loadCategories();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Не удалось восстановить категорию");
+      setError(err instanceof ApiError ? err.message : "Не удалось восстановить статью");
     }
   }
 
@@ -300,34 +320,42 @@ export default function FinancePage() {
   const bankAccounts = accounts.filter((a) => a.type === CashAccountType.BANK);
   const cashAccounts = accounts.filter((a) => a.type === CashAccountType.CASH);
 
-  const debtorCustomers = customers.filter((c) => c.outstandingBalance > 0).sort((a, b) => b.outstandingBalance - a.outstandingBalance);
+  const debtorCustomers = customers
+    .filter((c) => c.outstandingBalance > 0)
+    .sort((a, b) => b.outstandingBalance - a.outstandingBalance);
   const totalReceivable = debtorCustomers.reduce((sum, c) => sum + c.outstandingBalance, 0);
 
-  const payableRows: DebtRow[] = [
+  const payableRows: PayableRow[] = [
     ...invoices
       .filter((i) => i.balanceDue > 0)
-      .map((i): DebtRow => ({
+      .map((i): PayableRow => ({
         kind: "invoice",
         id: i.id,
         label: `Накладная №${i.number}`,
         counterparty: i.supplierName,
         date: i.issuedAt,
         balanceDue: i.balanceDue,
+        paymentStatus: i.paymentStatus,
       })),
     ...expenses
       .filter((e) => e.status === ExpenseStatus.CONFIRMED && e.balanceDue > 0)
-      .map((e): DebtRow => ({
+      .map((e): PayableRow => ({
         kind: "expense",
         id: e.id,
         label: e.description || e.categoryName || "Расход",
         counterparty: e.categoryName ?? "—",
         date: e.incurredOn,
         balanceDue: e.balanceDue,
+        paymentStatus: e.paymentStatus,
       })),
   ].sort((a, b) => b.balanceDue - a.balanceDue);
   const totalPayable = payableRows.reduce((sum, r) => sum + r.balanceDue, 0);
 
-  async function submitDebtPayment(row: DebtRow, amount: number, accountId: string) {
+  function daysSince(dateIso: string): number {
+    return Math.max(0, Math.floor((Date.now() - new Date(dateIso).getTime()) / 86400000));
+  }
+
+  async function submitDebtPayment(row: PayableRow, amount: number, accountId: string) {
     if (row.kind === "invoice") {
       await api.invoices.recordPayment(row.id, { amount, accountId });
     } else {
@@ -346,7 +374,7 @@ export default function FinancePage() {
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-foreground">Финансы</h1>
-          <p className="mt-1 text-sm text-muted">Деньги, счета, P&amp;L и расходы</p>
+          <p className="mt-1 text-sm text-muted">Денежные средства, расчёты с контрагентами и финансовый результат</p>
         </div>
         {canOperateCash && (
           <div className="flex flex-wrap items-center gap-2">
@@ -355,14 +383,14 @@ export default function FinancePage() {
               className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3.5 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
             >
               <Banknote className="h-4 w-4" strokeWidth={1.75} />
-              Приход / расход
+              Новая операция
             </button>
             <button
               onClick={() => setTransferModalOpen(true)}
               className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3.5 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
             >
               <ArrowLeftRight className="h-4 w-4" strokeWidth={1.75} />
-              Перевод
+              Новый перевод
             </button>
             {canManageExpenses && (
               <button
@@ -380,43 +408,61 @@ export default function FinancePage() {
       {error && <div className="mb-6 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
       <div className="mb-6 flex flex-wrap items-center gap-1 rounded-xl bg-surface-muted p-1">
-        <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>
-          Обзор
-        </TabButton>
-        <TabButton active={tab === "accounts"} onClick={() => setTab("accounts")}>
-          Счета и операции
-        </TabButton>
-        <TabButton active={tab === "expenses"} onClick={() => setTab("expenses")}>
-          Расходы
-        </TabButton>
-        <TabButton active={tab === "debts"} onClick={() => setTab("debts")}>
-          Задолженности
-        </TabButton>
-        <TabButton active={tab === "pnl"} onClick={() => setTab("pnl")}>
-          P&amp;L
-        </TabButton>
+        {TABS.map((t) => (
+          <TabButton key={t.id} active={tab === t.id} onClick={() => setTab(t.id)}>
+            {t.label}
+          </TabButton>
+        ))}
       </div>
 
-      {tab === "overview" && (
+      {tab === "summary" && (
         <>
-          <div className="mb-4 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
-            <StatCard icon={Wallet} label="Остаток денег" value={formatMoney(dashboard?.cashOnHand ?? 0)} />
-            <StatCard icon={Landmark} label="На банковских счетах" value={formatMoney(dashboard?.bankBalance ?? 0)} />
-            <StatCard icon={Banknote} label="В кассах" value={formatMoney(dashboard?.cashRegisterBalance ?? 0)} />
-            <StatCard icon={TrendingUp} label="Поступления сегодня" value={formatMoney(dashboard?.todayInflow ?? 0)} />
-            <StatCard icon={TrendingDown} label="Списания сегодня" value={formatMoney(dashboard?.todayOutflow ?? 0)} />
+          <div className="mb-5 flex items-center justify-between">
+            <p className="text-xs text-muted">
+              Остатки и расчёты — на текущий момент. Финансовый результат — за период ниже.
+            </p>
+            <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
+              {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
+                <TabButton key={p} active={period === p} onClick={() => setPeriod(p)}>
+                  {PERIOD_LABELS[p]}
+                </TabButton>
+              ))}
+            </div>
+          </div>
+
+          <SummarySection title="Денежные средства">
+            <StatCard icon={Wallet} label="Остаток денежных средств" value={formatMoney(dashboard?.cashOnHand ?? 0)} />
+            <StatCard icon={Landmark} label="Банковские счета" value={formatMoney(dashboard?.bankBalance ?? 0)} />
+            <StatCard icon={Banknote} label="Кассы" value={formatMoney(dashboard?.cashRegisterBalance ?? 0)} />
+          </SummarySection>
+
+          <SummarySection title="Движение за сегодня">
+            <StatCard icon={TrendingUp} label="Поступления" value={formatMoney(dashboard?.todayInflow ?? 0)} />
+            <StatCard icon={TrendingDown} label="Списания" value={formatMoney(dashboard?.todayOutflow ?? 0)} />
+            <StatCard
+              icon={Wallet}
+              label="Чистое изменение"
+              value={formatMoney((dashboard?.todayInflow ?? 0) - (dashboard?.todayOutflow ?? 0))}
+              tone={dashboard && dashboard.todayInflow - dashboard.todayOutflow < 0 ? "danger" : "default"}
+            />
+          </SummarySection>
+
+          <SummarySection title="Расчёты с контрагентами">
             <StatCard
               icon={TrendingUp}
-              label="Нам должны"
+              label="Дебиторская задолженность"
               value={formatMoney(dashboard?.accountsReceivable ?? 0)}
               tone={dashboard && dashboard.accountsReceivable > 0 ? "warning" : "default"}
             />
             <StatCard
               icon={TrendingDown}
-              label="Мы должны"
+              label="Кредиторская задолженность"
               value={formatMoney(dashboard?.accountsPayable ?? 0)}
               tone={dashboard && dashboard.accountsPayable > 0 ? "warning" : "default"}
             />
+          </SummarySection>
+
+          <SummarySection title={`Финансовый результат — ${PERIOD_LABELS[period].toLowerCase()}`} last>
             <StatCard icon={Wallet} label="Валовая прибыль" value={formatMoney(dashboard?.grossProfit ?? 0)} />
             <StatCard
               icon={Wallet}
@@ -430,10 +476,7 @@ export default function FinancePage() {
               value={formatMoney(dashboard?.netProfit ?? 0)}
               tone={dashboard && dashboard.netProfit < 0 ? "danger" : "default"}
             />
-          </div>
-          <p className="mb-6 text-xs text-muted">
-            Прибыль — с начала текущего месяца. Остальное — текущее состояние на сейчас.
-          </p>
+          </SummarySection>
 
           <div className="rounded-2xl border border-border bg-surface shadow-card">
             <div className="border-b border-border px-5 py-4">
@@ -444,10 +487,10 @@ export default function FinancePage() {
         </>
       )}
 
-      {tab === "accounts" && (
+      {tab === "bank" && (
         <>
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground">Банковские счета</h2>
+            <h2 className="text-sm font-semibold text-foreground">Счета</h2>
             {canManageAccounts && (
               <button
                 onClick={() => setAccountModalOpen(true)}
@@ -458,39 +501,85 @@ export default function FinancePage() {
               </button>
             )}
           </div>
-          <div className="mb-6 flex justify-end">
-            <ArchivedToggle checked={showArchivedAccounts} onChange={setShowArchivedAccounts} />
-          </div>
-          <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {bankAccounts.map((a) => (
-              <AccountCard
-                key={a.id}
-                account={a}
-                canManage={canManageAccounts}
-                onArchive={() => handleArchiveAccount(a)}
-                onRestore={() => handleRestoreAccount(a)}
-                onSetDefault={() => handleSetDefaultAccount(a)}
+
+          <div className="mb-4 flex justify-end">
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-muted">
+              <input
+                type="checkbox"
+                checked={showArchivedAccounts}
+                onChange={(e) => setShowArchivedAccounts(e.target.checked)}
+                className="h-4 w-4 rounded border-border accent-accent"
               />
-            ))}
-            {bankAccounts.length === 0 && <p className="text-sm text-muted">Банковских счетов пока нет</p>}
+              Показать архивные
+            </label>
           </div>
 
-          <h2 className="mb-4 text-sm font-semibold text-foreground">Кассы</h2>
-          <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {cashAccounts.map((a) => (
-              <AccountCard
-                key={a.id}
-                account={a}
-                canManage={canManageAccounts}
-                onArchive={() => handleArchiveAccount(a)}
-                onRestore={() => handleRestoreAccount(a)}
-              />
-            ))}
-            {cashAccounts.length === 0 && <p className="text-sm text-muted">Касс пока нет — создаётся автоматически при первой продаже</p>}
+          <div className="rounded-2xl border border-border bg-surface shadow-card">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+                  <th className="px-5 py-3 font-medium">Счёт</th>
+                  <th className="px-5 py-3 font-medium">Тип</th>
+                  <th className="px-5 py-3 font-medium">Точка</th>
+                  <th className="px-5 py-3 text-right font-medium">Сальдо</th>
+                  <th className="px-5 py-3 text-right font-medium">Действия</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {[...bankAccounts, ...cashAccounts].map((a) => (
+                  <tr key={a.id} className={!a.isActive ? "opacity-50" : undefined}>
+                    <td className="px-5 py-3 font-medium text-foreground">
+                      {a.name}
+                      {a.isDefault && (
+                        <span className="ml-2 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
+                          Основной
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3 text-muted">{CASH_ACCOUNT_TYPE_LABELS_RU[a.type]}</td>
+                    <td className="px-5 py-3 text-muted">{a.locationName ?? "—"}</td>
+                    <td className="px-5 py-3 text-right font-medium text-foreground">{formatMoney(a.currentBalance)}</td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center justify-end gap-2">
+                        {canManageAccounts && a.type === CashAccountType.BANK && !a.isDefault && a.isActive && (
+                          <button
+                            onClick={() => handleSetDefaultAccount(a)}
+                            className="text-xs font-medium text-accent hover:opacity-80"
+                          >
+                            Сделать основным
+                          </button>
+                        )}
+                        {canManageAccounts && (
+                          <RowActions
+                            isActive={a.isActive}
+                            onArchive={() => handleArchiveAccount(a)}
+                            onRestore={() => handleRestoreAccount(a)}
+                          />
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {accounts.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-8 text-center text-sm text-muted">
+                      Счетов пока нет
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
+        </>
+      )}
 
+      {tab === "cashflow" && (
+        <>
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground">Денежные операции</h2>
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Движение денежных средств</h2>
+              <p className="mt-0.5 text-xs text-muted">Полный, неизменяемый журнал всех денежных операций</p>
+            </div>
             <select
               value={movementAccountFilter}
               onChange={(e) => setMovementAccountFilter(e.target.value)}
@@ -510,206 +599,240 @@ export default function FinancePage() {
         </>
       )}
 
-      {tab === "expenses" && (
-        <>
-          {canManageCategories && (
-            <div className="mb-4 flex items-center justify-between rounded-2xl border border-border bg-surface p-4 shadow-card">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-medium text-foreground">Категории:</span>
-                {categories
-                  .filter((c) => c.kind === FinanceCategoryKind.EXPENSE)
-                  .map((c) => (
-                    <span
-                      key={c.id}
-                      className={clsx(
-                        "flex items-center gap-1 rounded-full border border-border py-1 pl-3 pr-1 text-xs font-medium",
-                        !c.isActive && "opacity-50",
-                      )}
-                    >
-                      <button onClick={() => setCategoryModal(c)} className="hover:underline">
-                        {c.name}
-                      </button>
-                      {c.isActive ? (
-                        <button
-                          onClick={() => handleArchiveCategory(c)}
-                          title="Архивировать"
-                          className="flex h-5 w-5 items-center justify-center rounded-full text-muted transition hover:bg-surface-muted hover:text-amber-600"
-                        >
-                          <Archive className="h-3 w-3" strokeWidth={1.75} />
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleRestoreCategory(c)}
-                          title="Восстановить"
-                          className="flex h-5 w-5 items-center justify-center rounded-full text-muted transition hover:bg-surface-muted hover:text-green-600"
-                        >
-                          <RotateCcw className="h-3 w-3" strokeWidth={1.75} />
-                        </button>
-                      )}
-                    </span>
-                  ))}
-              </div>
-              <div className="flex items-center gap-2">
-                <ArchivedToggle checked={showArchivedCategories} onChange={setShowArchivedCategories} />
-                <button
-                  onClick={() => setCategoryModal("new")}
-                  className="flex items-center gap-1 rounded-xl border border-border px-2.5 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-muted"
-                >
-                  <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
-                  Категория
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="rounded-2xl border border-border bg-surface shadow-card">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
-                  <th className="px-5 py-3 font-medium">Дата</th>
-                  <th className="px-5 py-3 font-medium">Категория</th>
-                  <th className="px-5 py-3 font-medium">Точка</th>
-                  <th className="px-5 py-3 font-medium">Описание</th>
-                  <th className="px-5 py-3 font-medium">Статус</th>
-                  <th className="px-5 py-3 text-right font-medium">Сумма</th>
-                  <th className="px-5 py-3 text-right font-medium">Действия</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {expenses.map((e) => (
-                  <tr key={e.id}>
-                    <td className="px-5 py-3 text-muted">{formatDateTime(e.incurredOn)}</td>
-                    <td className="px-5 py-3 text-foreground">{e.categoryName ?? "—"}</td>
-                    <td className="px-5 py-3 text-muted">{e.locationName ?? "Вся сеть"}</td>
-                    <td className="px-5 py-3 text-muted">{e.description ?? "—"}</td>
-                    <td className="px-5 py-3">
-                      <ExpenseStatusBadge expense={e} />
-                    </td>
-                    <td className="px-5 py-3 text-right font-medium text-foreground">{formatMoney(e.amount)}</td>
-                    <td className="px-5 py-3 text-right">
-                      {canManageExpenses && e.status === ExpenseStatus.DRAFT && (
-                        <div className="flex justify-end gap-2">
-                          <button
-                            onClick={() => handleConfirmExpense(e)}
-                            className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-foreground transition hover:bg-surface-muted"
-                          >
-                            Подтвердить
-                          </button>
-                          <button
-                            onClick={() => handleCancelExpense(e)}
-                            className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-red-600 transition hover:bg-red-50"
-                          >
-                            Отменить
-                          </button>
-                        </div>
-                      )}
-                      {canManageExpenses && e.status === ExpenseStatus.CONFIRMED && e.balanceDue > 0 && (
-                        <button
-                          onClick={() =>
-                            setPayingDebt({
-                              kind: "expense",
-                              id: e.id,
-                              label: e.description || e.categoryName || "Расход",
-                              counterparty: e.categoryName ?? "—",
-                              date: e.incurredOn,
-                              balanceDue: e.balanceDue,
-                            })
-                          }
-                          className="rounded-lg bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground transition hover:opacity-90"
-                        >
-                          Оплатить
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {expenses.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="px-5 py-8 text-center text-sm text-muted">
-                      Расходов пока нет
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
-
-      {tab === "debts" && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <div className="rounded-2xl border border-border bg-surface shadow-card">
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+      {tab === "receivables" && (
+        <div className="rounded-2xl border border-border bg-surface shadow-card">
+          <div className="flex items-center justify-between border-b border-border px-5 py-4">
+            <div>
               <h2 className="text-sm font-semibold text-foreground">Дебиторская задолженность</h2>
-              <span className="text-sm font-semibold text-foreground">{formatMoney(totalReceivable)}</span>
+              <p className="mt-0.5 text-xs text-muted">Задолженность покупателей перед нами</p>
             </div>
-            <table className="w-full text-sm">
-              <tbody className="divide-y divide-border">
-                {debtorCustomers.map((c) => (
+            <span className="text-base font-semibold text-foreground">{formatMoney(totalReceivable)}</span>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+                <th className="px-5 py-3 font-medium">Контрагент</th>
+                <th className="px-5 py-3 text-right font-medium">Кредитный лимит</th>
+                <th className="px-5 py-3 text-right font-medium">Использовано</th>
+                <th className="px-5 py-3 text-right font-medium">Задолженность</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {debtorCustomers.map((c) => {
+                const utilization = c.creditLimit ? (c.outstandingBalance / c.creditLimit) * 100 : null;
+                return (
                   <tr key={c.id}>
                     <td className="px-5 py-3 text-foreground">{c.name}</td>
+                    <td className="px-5 py-3 text-right text-muted">{c.creditLimit !== null ? formatMoney(c.creditLimit) : "—"}</td>
+                    <td className={clsx("px-5 py-3 text-right", utilization !== null && utilization >= 100 ? "font-medium text-red-600" : "text-muted")}>
+                      {utilization !== null ? `${utilization.toFixed(0)}%` : "—"}
+                    </td>
                     <td className="px-5 py-3 text-right font-medium text-foreground">{formatMoney(c.outstandingBalance)}</td>
                   </tr>
-                ))}
-                {debtorCustomers.length === 0 && (
-                  <tr>
-                    <td className="px-5 py-8 text-center text-sm text-muted">Нам никто не должен</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="rounded-2xl border border-border bg-surface shadow-card">
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
-              <h2 className="text-sm font-semibold text-foreground">Кредиторская задолженность</h2>
-              <span className="text-sm font-semibold text-foreground">{formatMoney(totalPayable)}</span>
-            </div>
-            <table className="w-full text-sm">
-              <tbody className="divide-y divide-border">
-                {payableRows.map((r) => (
-                  <tr key={`${r.kind}-${r.id}`}>
-                    <td className="px-5 py-3">
-                      <p className="text-foreground">{r.label}</p>
-                      <p className="text-xs text-muted">{r.counterparty}</p>
-                    </td>
-                    <td className="px-5 py-3 text-right font-medium text-foreground">{formatMoney(r.balanceDue)}</td>
-                    <td className="px-5 py-3 text-right">
-                      {canPaySuppliers && (
-                        <button
-                          onClick={() => setPayingDebt(r)}
-                          className="rounded-lg bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground transition hover:opacity-90"
-                        >
-                          Оплатить
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {payableRows.length === 0 && (
-                  <tr>
-                    <td colSpan={3} className="px-5 py-8 text-center text-sm text-muted">
-                      Мы никому не должны
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                );
+              })}
+              {debtorCustomers.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-5 py-8 text-center text-sm text-muted">
+                    Дебиторской задолженности нет
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
+      )}
+
+      {tab === "payables" && (
+        <div className="rounded-2xl border border-border bg-surface shadow-card">
+          <div className="flex items-center justify-between border-b border-border px-5 py-4">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Кредиторская задолженность</h2>
+              <p className="mt-0.5 text-xs text-muted">Наша задолженность перед поставщиками и по расходам</p>
+            </div>
+            <span className="text-base font-semibold text-foreground">{formatMoney(totalPayable)}</span>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+                <th className="px-5 py-3 font-medium">Документ</th>
+                <th className="px-5 py-3 font-medium">Контрагент / статья</th>
+                <th className="px-5 py-3 text-right font-medium">Дней</th>
+                <th className="px-5 py-3 font-medium">Статус</th>
+                <th className="px-5 py-3 text-right font-medium">Остаток</th>
+                <th className="px-5 py-3 text-right font-medium">Действия</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {payableRows.map((r) => (
+                <tr key={`${r.kind}-${r.id}`}>
+                  <td className="px-5 py-3 text-foreground">{r.label}</td>
+                  <td className="px-5 py-3 text-muted">{r.counterparty}</td>
+                  <td className="px-5 py-3 text-right text-muted">{daysSince(r.date)}</td>
+                  <td className="px-5 py-3">
+                    <PaymentStatusBadge status={r.paymentStatus} />
+                  </td>
+                  <td className="px-5 py-3 text-right font-medium text-foreground">{formatMoney(r.balanceDue)}</td>
+                  <td className="px-5 py-3 text-right">
+                    {canPaySuppliers && (
+                      <button
+                        onClick={() => setPayingDebt(r)}
+                        className="rounded-lg bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground transition hover:opacity-90"
+                      >
+                        Погасить
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {payableRows.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-5 py-8 text-center text-sm text-muted">
+                    Кредиторской задолженности нет
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab === "expenses" && (
+        <div className="rounded-2xl border border-border bg-surface shadow-card">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+                <th className="px-5 py-3 font-medium">Дата</th>
+                <th className="px-5 py-3 font-medium">Статья</th>
+                <th className="px-5 py-3 font-medium">Точка</th>
+                <th className="px-5 py-3 font-medium">Описание</th>
+                <th className="px-5 py-3 font-medium">Статус</th>
+                <th className="px-5 py-3 text-right font-medium">Сумма</th>
+                <th className="px-5 py-3 text-right font-medium">Действия</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {expenses.map((e) => (
+                <tr key={e.id}>
+                  <td className="px-5 py-3 text-muted">{formatDateTime(e.incurredOn)}</td>
+                  <td className="px-5 py-3 text-foreground">{e.categoryName ?? "—"}</td>
+                  <td className="px-5 py-3 text-muted">{e.locationName ?? "Вся сеть"}</td>
+                  <td className="px-5 py-3 text-muted">{e.description ?? "—"}</td>
+                  <td className="px-5 py-3">
+                    {e.status === ExpenseStatus.CONFIRMED ? (
+                      <PaymentStatusBadge status={e.paymentStatus} />
+                    ) : (
+                      <span
+                        className={clsx(
+                          "rounded-full px-2.5 py-1 text-xs font-medium",
+                          e.status === ExpenseStatus.DRAFT ? "bg-surface-muted text-muted" : "bg-red-50 text-red-700",
+                        )}
+                      >
+                        {e.status === ExpenseStatus.DRAFT ? "Черновик" : "Отменён"}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-5 py-3 text-right font-medium text-foreground">{formatMoney(e.amount)}</td>
+                  <td className="px-5 py-3 text-right">
+                    {canManageExpenses && e.status === ExpenseStatus.DRAFT && (
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => handleConfirmExpense(e)}
+                          className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-foreground transition hover:bg-surface-muted"
+                        >
+                          Подтвердить
+                        </button>
+                        <button
+                          onClick={() => handleCancelExpense(e)}
+                          className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-red-600 transition hover:bg-red-50"
+                        >
+                          Отменить
+                        </button>
+                      </div>
+                    )}
+                    {canManageExpenses && e.status === ExpenseStatus.CONFIRMED && e.balanceDue > 0 && (
+                      <button
+                        onClick={() =>
+                          setPayingDebt({
+                            kind: "expense",
+                            id: e.id,
+                            label: e.description || e.categoryName || "Расход",
+                            counterparty: e.categoryName ?? "—",
+                            date: e.incurredOn,
+                            balanceDue: e.balanceDue,
+                            paymentStatus: e.paymentStatus,
+                          })
+                        }
+                        className="rounded-lg bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground transition hover:opacity-90"
+                      >
+                        Погасить
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {expenses.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-5 py-8 text-center text-sm text-muted">
+                    Расходов пока нет
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab === "categories" && (
+        <>
+          <div className="mb-4 flex justify-end">
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-muted">
+              <input
+                type="checkbox"
+                checked={showArchivedCategories}
+                onChange={(e) => setShowArchivedCategories(e.target.checked)}
+                className="h-4 w-4 rounded border-border accent-accent"
+              />
+              Показать архивные
+            </label>
+          </div>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <CategoryList
+              title="Статьи доходов"
+              categories={categories.filter((c) => c.kind === FinanceCategoryKind.INCOME)}
+              canManage={canManageCategories}
+              onAdd={() => setCategoryModal("income")}
+              onEdit={(c) => setCategoryModal(c)}
+              onArchive={handleArchiveCategory}
+              onRestore={handleRestoreCategory}
+            />
+            <CategoryList
+              title="Статьи расходов"
+              categories={categories.filter((c) => c.kind === FinanceCategoryKind.EXPENSE)}
+              canManage={canManageCategories}
+              onAdd={() => setCategoryModal("expense")}
+              onEdit={(c) => setCategoryModal(c)}
+              onArchive={handleArchiveCategory}
+              onRestore={handleRestoreCategory}
+            />
+          </div>
+        </>
       )}
 
       {tab === "pnl" && (
         <>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
-              {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
-                <TabButton key={p} active={period === p} onClick={() => setPeriod(p)}>
-                  {PERIOD_LABELS[p]}
-                </TabButton>
-              ))}
+            <div>
+              <h2 className="text-base font-semibold text-foreground">Отчёт о прибылях и убытках (P&amp;L)</h2>
             </div>
             <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
+                {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
+                  <TabButton key={p} active={period === p} onClick={() => setPeriod(p)}>
+                    {PERIOD_LABELS[p]}
+                  </TabButton>
+                ))}
+              </div>
               <select
                 value={locationFilter}
                 onChange={(e) => setLocationFilter(e.target.value)}
@@ -741,7 +864,7 @@ export default function FinancePage() {
               label={`Валовая прибыль${pnl?.grossMarginPercent != null ? ` (${pnl.grossMarginPercent.toFixed(0)}%)` : ""}`}
               value={formatMoney(pnl?.grossProfit ?? 0)}
             />
-            <StatCard icon={TrendingDown} label="Расходы" value={formatMoney(pnl?.expensesTotal ?? 0)} />
+            <StatCard icon={TrendingDown} label="Операционные расходы" value={formatMoney(pnl?.expensesTotal ?? 0)} />
             <StatCard
               icon={Wallet}
               label="Операционная прибыль"
@@ -761,7 +884,7 @@ export default function FinancePage() {
 
           <div className="rounded-2xl border border-border bg-surface shadow-card">
             <div className="border-b border-border px-5 py-4">
-              <h2 className="text-sm font-semibold text-foreground">P&amp;L по товарам</h2>
+              <h2 className="text-sm font-semibold text-foreground">Финансовый результат по товарам</h2>
             </div>
             <table className="w-full text-sm">
               <thead>
@@ -859,7 +982,8 @@ export default function FinancePage() {
 
       {categoryModal && (
         <FinanceCategoryModal
-          category={categoryModal === "new" ? undefined : categoryModal}
+          category={typeof categoryModal === "object" ? categoryModal : undefined}
+          defaultKind={categoryModal === "income" ? FinanceCategoryKind.INCOME : FinanceCategoryKind.EXPENSE}
           onClose={() => setCategoryModal(null)}
           onSaved={() => {
             setCategoryModal(null);
@@ -870,13 +994,73 @@ export default function FinancePage() {
 
       {payingDebt && (
         <RecordDebtPaymentModal
-          title={`Оплата: ${payingDebt.label}`}
+          title={`Погашение: ${payingDebt.label}`}
           balanceDue={payingDebt.balanceDue}
           accounts={activeAccounts}
           onClose={() => setPayingDebt(null)}
           onSubmit={(amount, accountId) => submitDebtPayment(payingDebt, amount, accountId)}
         />
       )}
+    </div>
+  );
+}
+
+function CategoryList({
+  title,
+  categories,
+  canManage,
+  onAdd,
+  onEdit,
+  onArchive,
+  onRestore,
+}: {
+  title: string;
+  categories: FinanceCategoryDto[];
+  canManage: boolean;
+  onAdd: () => void;
+  onEdit: (c: FinanceCategoryDto) => void;
+  onArchive: (c: FinanceCategoryDto) => void;
+  onRestore: (c: FinanceCategoryDto) => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-surface shadow-card">
+      <div className="flex items-center justify-between border-b border-border px-5 py-4">
+        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+        {canManage && (
+          <button onClick={onAdd} className="flex items-center gap-1 text-xs font-medium text-accent hover:opacity-80">
+            <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
+            Добавить
+          </button>
+        )}
+      </div>
+      <ul className="divide-y divide-border">
+        {categories.map((c) => (
+          <li key={c.id} className={clsx("flex items-center justify-between px-5 py-3 text-sm", !c.isActive && "opacity-50")}>
+            <button onClick={() => canManage && onEdit(c)} className={clsx("text-foreground", canManage && "hover:underline")}>
+              {c.name}
+            </button>
+            {canManage &&
+              (c.isActive ? (
+                <button
+                  onClick={() => onArchive(c)}
+                  title="Архивировать"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-amber-600"
+                >
+                  <Archive className="h-3.5 w-3.5" strokeWidth={1.75} />
+                </button>
+              ) : (
+                <button
+                  onClick={() => onRestore(c)}
+                  title="Восстановить"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-green-600"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" strokeWidth={1.75} />
+                </button>
+              ))}
+          </li>
+        ))}
+        {categories.length === 0 && <li className="px-5 py-8 text-center text-sm text-muted">Статей пока нет</li>}
+      </ul>
     </div>
   );
 }
@@ -888,8 +1072,8 @@ function MovementsTable({ movements }: { movements: CashMovementDto[] }) {
         <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
           <th className="px-5 py-3 font-medium">Дата</th>
           <th className="px-5 py-3 font-medium">Счёт</th>
-          <th className="px-5 py-3 font-medium">Тип</th>
-          <th className="px-5 py-3 font-medium">Комментарий</th>
+          <th className="px-5 py-3 font-medium">Тип операции</th>
+          <th className="px-5 py-3 font-medium">Контрагент / статья</th>
           <th className="px-5 py-3 text-right font-medium">Сумма</th>
         </tr>
       </thead>
@@ -929,62 +1113,34 @@ function MovementsTable({ movements }: { movements: CashMovementDto[] }) {
   );
 }
 
-function AccountCard({
-  account,
-  canManage,
-  onArchive,
-  onRestore,
-  onSetDefault,
-}: {
-  account: CashAccountDto;
-  canManage: boolean;
-  onArchive: () => void;
-  onRestore: () => void;
-  onSetDefault?: () => void;
-}) {
+function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
+  const styles: Record<PaymentStatus, string> = {
+    [PaymentStatus.PAID]: "bg-emerald-50 text-emerald-700",
+    [PaymentStatus.PARTIALLY_PAID]: "bg-amber-50 text-amber-700",
+    [PaymentStatus.UNPAID]: "bg-red-50 text-red-700",
+  };
   return (
-    <div className="flex items-center justify-between rounded-2xl border border-border bg-surface p-5 shadow-card">
-      <div>
-        <p className="flex items-center gap-2 font-medium text-foreground">
-          {account.name}
-          {account.isDefault && (
-            <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">Основной</span>
-          )}
-          {!account.isActive && <ArchivedBadge />}
-        </p>
-        <p className="mt-1 text-xs text-muted">
-          {CASH_ACCOUNT_TYPE_LABELS_RU[account.type]}
-          {account.locationName ? ` · ${account.locationName}` : ""}
-        </p>
-        <p className="mt-2 text-lg font-semibold text-foreground">{formatMoney(account.currentBalance)}</p>
-      </div>
-      {canManage && (
-        <div className="flex flex-col items-end gap-2">
-          {onSetDefault && !account.isDefault && account.isActive && (
-            <button onClick={onSetDefault} className="text-xs font-medium text-accent hover:opacity-80">
-              Сделать основным
-            </button>
-          )}
-          <RowActions isActive={account.isActive} onEdit={undefined} onArchive={onArchive} onRestore={onRestore} />
-        </div>
-      )}
-    </div>
+    <span className={clsx("rounded-full px-2.5 py-1 text-xs font-medium", styles[status])}>
+      {PAYMENT_STATUS_LABELS_RU[status]}
+    </span>
   );
 }
 
-function ExpenseStatusBadge({ expense }: { expense: ExpenseDto }) {
-  const styles: Record<ExpenseStatus, string> = {
-    [ExpenseStatus.DRAFT]: "bg-surface-muted text-muted",
-    [ExpenseStatus.CONFIRMED]: expense.balanceDue > 0 ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700",
-    [ExpenseStatus.CANCELLED]: "bg-red-50 text-red-700",
-  };
-  const label =
-    expense.status === ExpenseStatus.CONFIRMED
-      ? expense.balanceDue > 0
-        ? "Не оплачен"
-        : "Оплачен"
-      : EXPENSE_STATUS_LABELS_RU[expense.status];
-  return <span className={clsx("rounded-full px-2.5 py-1 text-xs font-medium", styles[expense.status])}>{label}</span>;
+function SummarySection({
+  title,
+  children,
+  last = false,
+}: {
+  title: string;
+  children: React.ReactNode;
+  last?: boolean;
+}) {
+  return (
+    <div className={last ? "mb-4" : "mb-6"}>
+      <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">{title}</h2>
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3">{children}</div>
+    </div>
+  );
 }
 
 function StatCard({
