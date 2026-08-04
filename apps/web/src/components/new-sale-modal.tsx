@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import clsx from "clsx";
 import { Plus, Trash2 } from "lucide-react";
 import type { CustomerDto, LocationDto, ProductDto } from "@bakery-os/shared";
-import { UNIT_LABELS_RU } from "@bakery-os/shared";
+import { PAYMENT_METHOD_LABELS_RU, PaymentMethod, UNIT_LABELS_RU } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
 import { formatMoney } from "@/lib/format";
@@ -33,6 +34,7 @@ export function NewSaleModal({
   const [rows, setRows] = useState<Row[]>([{ productId: "", quantity: "1", unitPrice: "" }]);
   const [customerId, setCustomerId] = useState("");
   const [amountPaid, setAmountPaid] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.CASH);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -81,6 +83,7 @@ export function NewSaleModal({
         locationId: fixedLocationId ?? locationId,
         customerId: customerId || undefined,
         amountPaid: customerId ? Number(amountPaid) || 0 : undefined,
+        paymentMethod,
         items: rows.map((r) => ({
           productId: r.productId,
           quantity: Number(r.quantity),
@@ -168,6 +171,25 @@ export function NewSaleModal({
           <Plus className="h-4 w-4" strokeWidth={1.75} />
           Добавить товар
         </button>
+
+        <div className="mb-4">
+          <label className="mb-1.5 block text-sm font-medium text-foreground">Оплата</label>
+          <div className="flex gap-1 rounded-xl bg-surface-muted p-1">
+            {(Object.values(PaymentMethod) as PaymentMethod[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setPaymentMethod(m)}
+                className={clsx(
+                  "flex-1 rounded-lg py-1.5 text-sm font-medium transition",
+                  paymentMethod === m ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground",
+                )}
+              >
+                {PAYMENT_METHOD_LABELS_RU[m]}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <div className="mb-4">
           <label className="mb-1.5 block text-sm font-medium text-foreground">

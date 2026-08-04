@@ -1,13 +1,13 @@
-import { IsDateString, IsEnum, IsNumber, IsOptional, IsPositive, IsString } from "class-validator";
-import { ExpenseCategory } from "@bakery-os/shared";
+import { IsBoolean, IsDateString, IsNumber, IsOptional, IsPositive, IsString } from "class-validator";
 
 export class CreateExpenseDto {
   @IsOptional()
   @IsString()
   locationId?: string;
 
-  @IsEnum(ExpenseCategory)
-  category!: ExpenseCategory;
+  @IsOptional()
+  @IsString()
+  categoryId?: string;
 
   @IsNumber()
   @IsPositive()
@@ -20,4 +20,12 @@ export class CreateExpenseDto {
   @IsOptional()
   @IsDateString()
   incurredOn?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  paidImmediately?: boolean;
+
+  @IsOptional()
+  @IsString()
+  accountId?: string;
 }

@@ -1,5 +1,6 @@
 import { Type } from "class-transformer";
-import { ArrayMinSize, IsArray, IsNumber, IsOptional, IsPositive, IsString, Min, ValidateNested } from "class-validator";
+import { ArrayMinSize, IsArray, IsEnum, IsNumber, IsOptional, IsPositive, IsString, Min, ValidateNested } from "class-validator";
+import { PaymentMethod } from "@bakery-os/shared";
 
 export class CreateSaleItemDto {
   @IsString()
@@ -27,6 +28,10 @@ export class CreateSaleDto {
   @IsNumber()
   @Min(0)
   amountPaid?: number;
+
+  @IsOptional()
+  @IsEnum(PaymentMethod)
+  paymentMethod?: PaymentMethod;
 
   @IsArray()
   @ArrayMinSize(1)

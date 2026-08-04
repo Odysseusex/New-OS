@@ -1,4 +1,5 @@
 import { PaymentStatus } from "./customers";
+import { PaymentMethod } from "./finance";
 
 export interface SaleItemDto {
   id: string;
@@ -20,6 +21,7 @@ export interface SaleDto {
   amountPaid: number;
   balanceDue: number;
   paymentStatus: PaymentStatus;
+  paymentMethod: PaymentMethod;
   itemsCount: number;
   createdByName: string;
 }
@@ -38,6 +40,7 @@ export interface CreateSaleRequestDto {
   locationId?: string;
   customerId?: string;
   amountPaid?: number;
+  paymentMethod?: PaymentMethod;
   items: CreateSaleItemRequestDto[];
 }
 

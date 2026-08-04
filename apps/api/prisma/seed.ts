@@ -7,7 +7,7 @@ import {
   ProductType,
   StockMovementType,
   ProductionBatchStatus,
-  ExpenseCategory,
+  FinanceCategoryKind,
 } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
 
@@ -32,6 +32,27 @@ async function main() {
     update: {},
     create: { id: REGION_ID, name: "Алматы", organizationId: org.id },
   });
+
+  // Same default categories the finance-module migration seeds for
+  // organizations that already existed at migration time — a freshly
+  // created demo org needs them created here instead, with matching
+  // deterministic IDs so the expenses seeded below can reference them.
+  const defaultFinanceCategories: { key: string; name: string; kind: FinanceCategoryKind }[] = [
+    { key: "rent", name: "Аренда", kind: "EXPENSE" },
+    { key: "utilities", name: "Коммунальные услуги", kind: "EXPENSE" },
+    { key: "salary", name: "Зарплата", kind: "EXPENSE" },
+    { key: "marketing", name: "Маркетинг", kind: "EXPENSE" },
+    { key: "logistics", name: "Логистика", kind: "EXPENSE" },
+    { key: "other-expense", name: "Прочее", kind: "EXPENSE" },
+    { key: "other-income", name: "Прочий доход", kind: "INCOME" },
+  ];
+  for (const c of defaultFinanceCategories) {
+    await prisma.financeCategory.upsert({
+      where: { id: `fincat-${org.id}-${c.key}` },
+      update: {},
+      create: { id: `fincat-${org.id}-${c.key}`, organizationId: org.id, name: c.name, kind: c.kind },
+    });
+  }
 
   const locations: {
     id: string;
@@ -468,17 +489,17 @@ async function main() {
   if (existingExpenses === 0) {
     const expenses: {
       locationId: string | null;
-      category: ExpenseCategory;
+      categoryKey: "rent" | "utilities" | "salary" | "marketing" | "logistics";
       amount: number;
       description: string;
       daysAgo: number;
     }[] = [
-      { locationId: LOC_STORE_1, category: ExpenseCategory.RENT, amount: 350000, description: "Аренда за месяц", daysAgo: 3 },
-      { locationId: LOC_STORE_2, category: ExpenseCategory.RENT, amount: 280000, description: "Аренда за месяц", daysAgo: 3 },
-      { locationId: LOC_PRODUCTION, category: ExpenseCategory.UTILITIES, amount: 95000, description: "Электричество и вода", daysAgo: 2 },
-      { locationId: null, category: ExpenseCategory.SALARY, amount: 1800000, description: "Зарплата за месяц", daysAgo: 1 },
-      { locationId: null, category: ExpenseCategory.MARKETING, amount: 60000, description: "Реклама в соцсетях", daysAgo: 5 },
-      { locationId: LOC_WAREHOUSE, category: ExpenseCategory.LOGISTICS, amount: 45000, description: "Топливо для доставки", daysAgo: 1 },
+      { locationId: LOC_STORE_1, categoryKey: "rent", amount: 350000, description: "Аренда за месяц", daysAgo: 3 },
+      { locationId: LOC_STORE_2, categoryKey: "rent", amount: 280000, description: "Аренда за месяц", daysAgo: 3 },
+      { locationId: LOC_PRODUCTION, categoryKey: "utilities", amount: 95000, description: "Электричество и вода", daysAgo: 2 },
+      { locationId: null, categoryKey: "salary", amount: 1800000, description: "Зарплата за месяц", daysAgo: 1 },
+      { locationId: null, categoryKey: "marketing", amount: 60000, description: "Реклама в соцсетях", daysAgo: 5 },
+      { locationId: LOC_WAREHOUSE, categoryKey: "logistics", amount: 45000, description: "Топливо для доставки", daysAgo: 1 },
     ];
 
     for (const e of expenses) {
@@ -489,8 +510,10 @@ async function main() {
         data: {
           organizationId: org.id,
           locationId: e.locationId,
-          category: e.category,
+          categoryId: `fincat-${org.id}-${e.categoryKey}`,
+          status: "CONFIRMED",
           amount: e.amount,
+          amountPaid: e.amount,
           description: e.description,
           incurredOn,
           createdById: owner.id,
@@ -574,6 +597,72 @@ async function main() {
         amountPaid: 10000,
         createdById: manager?.id ?? owner.id,
         items: { create: items },
+      },
+    });
+  }
+
+  // One cash register per location plus one default bank account, each
+  // seeded with an OPENING_BALANCE movement — the same "balance = sum of
+  // the ledger, no exceptions" path a real org's first setup goes through.
+  const cashAccountSeeds: { id: string; name: string; locationId: string | null; openingBalance: number }[] = [
+    { id: "cash-account-store-1", name: "Касса «Магазин «Абай»»", locationId: LOC_STORE_1, openingBalance: 150000 },
+    { id: "cash-account-store-2", name: "Касса «Магазин №2»", locationId: LOC_STORE_2, openingBalance: 90000 },
+    { id: "cash-account-production", name: "Касса «Производство №1»", locationId: LOC_PRODUCTION, openingBalance: 30000 },
+  ];
+  for (const seed of cashAccountSeeds) {
+    const account = await prisma.cashAccount.upsert({
+      where: { id: seed.id },
+      update: {},
+      create: {
+        id: seed.id,
+        organizationId: org.id,
+        name: seed.name,
+        type: "CASH",
+        locationId: seed.locationId,
+        currentBalance: seed.openingBalance,
+      },
+    });
+    const existingOpening = await prisma.cashMovement.count({
+      where: { accountId: account.id, type: "OPENING_BALANCE" },
+    });
+    if (existingOpening === 0) {
+      await prisma.cashMovement.create({
+        data: {
+          organizationId: org.id,
+          accountId: account.id,
+          type: "OPENING_BALANCE",
+          amount: seed.openingBalance,
+          reason: "Начальный остаток",
+          createdById: owner.id,
+        },
+      });
+    }
+  }
+
+  const bankAccount = await prisma.cashAccount.upsert({
+    where: { id: "cash-account-bank-main" },
+    update: {},
+    create: {
+      id: "cash-account-bank-main",
+      organizationId: org.id,
+      name: "Расчётный счёт (Kaspi Bank)",
+      type: "BANK",
+      isDefault: true,
+      currentBalance: 2500000,
+    },
+  });
+  const existingBankOpening = await prisma.cashMovement.count({
+    where: { accountId: bankAccount.id, type: "OPENING_BALANCE" },
+  });
+  if (existingBankOpening === 0) {
+    await prisma.cashMovement.create({
+      data: {
+        organizationId: org.id,
+        accountId: bankAccount.id,
+        type: "OPENING_BALANCE",
+        amount: 2500000,
+        reason: "Начальный остаток",
+        createdById: owner.id,
       },
     });
   }

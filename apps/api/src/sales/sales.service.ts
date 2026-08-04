@@ -1,9 +1,20 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
-import { PaymentStatus, SaleDetailDto, SaleDto, SalesReportDto, SalesSummaryDto } from "@bakery-os/shared";
+import {
+  CashAccountType,
+  CashMovementType,
+  PaymentMethod,
+  PaymentStatus,
+  SaleDetailDto,
+  SaleDto,
+  SalesReportDto,
+  SalesSummaryDto,
+} from "@bakery-os/shared";
 import { StockMovementType } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
+import { CashMovementsService } from "../finance/cash-movements.service";
 import { CreateSaleDto } from "./dto/create-sale.dto";
 import { RecordPaymentDto } from "./dto/record-payment.dto";
 
@@ -17,7 +28,46 @@ const SALE_DETAIL_INCLUDE = {
 
 @Injectable()
 export class SalesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private cashMovementsService: CashMovementsService,
+  ) {}
+
+  // CASH sales land in the selling location's own till, auto-created the
+  // first time it's needed so a cashier never has to set up accounting
+  // before ringing up a sale. CARD/TRANSFER land in the organization's
+  // default bank account; if none is configured yet, the sale still
+  // succeeds — the cash ledger is additive, never a gate on selling — it
+  // just doesn't gain a CashMovement for that receipt.
+  private async resolveSaleAccountId(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    locationId: string,
+    paymentMethod: PaymentMethod,
+  ): Promise<string | null> {
+    if (paymentMethod === PaymentMethod.CASH) {
+      const existing = await tx.cashAccount.findFirst({
+        where: { organizationId, locationId, type: CashAccountType.CASH },
+      });
+      if (existing) return existing.id;
+
+      const location = await tx.location.findUnique({ where: { id: locationId } });
+      const created = await tx.cashAccount.create({
+        data: {
+          organizationId,
+          name: `Касса «${location?.name ?? "точка"}»`,
+          type: CashAccountType.CASH,
+          locationId,
+        },
+      });
+      return created.id;
+    }
+
+    const bank = await tx.cashAccount.findFirst({
+      where: { organizationId, type: CashAccountType.BANK, isDefault: true, isActive: true },
+    });
+    return bank?.id ?? null;
+  }
 
   async findAll(user: AuthenticatedUser, requestedLocationId?: string, limit = 50): Promise<SaleDto[]> {
     const locationId = resolveLocationScope(user, requestedLocationId);
@@ -166,6 +216,7 @@ export class SalesService {
     // Walk-in retail sales are always settled immediately. Only a sale tied
     // to a customer account can be placed on credit (partially or fully).
     const amountPaid = dto.customerId ? Math.min(dto.amountPaid ?? 0, totalAmount) : totalAmount;
+    const paymentMethod = dto.paymentMethod ?? PaymentMethod.CASH;
 
     return this.prisma.$transaction(async (tx) => {
       const products = await tx.product.findMany({
@@ -197,11 +248,28 @@ export class SalesService {
           customerId: dto.customerId,
           totalAmount,
           amountPaid,
+          paymentMethod,
           createdById: user.id,
           items: { create: items },
         },
         include: SALE_DETAIL_INCLUDE,
       });
+
+      if (amountPaid > 0) {
+        const accountId = await this.resolveSaleAccountId(tx, user.organizationId, locationId, paymentMethod);
+        if (accountId) {
+          await this.cashMovementsService.recordMovement(tx, {
+            organizationId: user.organizationId,
+            accountId,
+            type: CashMovementType.SALE_RECEIPT,
+            amount: amountPaid,
+            customerId: dto.customerId,
+            saleId: sale.id,
+            reason: "Продажа",
+            createdById: user.id,
+          });
+        }
+      }
 
       for (const item of items) {
         await tx.stockLevel.update({
@@ -241,10 +309,32 @@ export class SalesService {
       throw new BadRequestException("Сумма оплаты превышает остаток задолженности");
     }
 
-    const updated = await this.prisma.sale.update({
-      where: { id: saleId },
-      data: { amountPaid: { increment: dto.amount } },
-      include: SALE_DETAIL_INCLUDE,
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const accountId =
+        dto.accountId ??
+        (await this.resolveSaleAccountId(
+          tx,
+          user.organizationId,
+          sale.locationId,
+          sale.paymentMethod as PaymentMethod,
+        ));
+      if (accountId) {
+        await this.cashMovementsService.recordMovement(tx, {
+          organizationId: user.organizationId,
+          accountId,
+          type: CashMovementType.CUSTOMER_PAYMENT,
+          amount: dto.amount,
+          customerId: sale.customerId ?? undefined,
+          saleId: sale.id,
+          reason: "Погашение долга по продаже",
+          createdById: user.id,
+        });
+      }
+      return tx.sale.update({
+        where: { id: saleId },
+        data: { amountPaid: { increment: dto.amount } },
+        include: SALE_DETAIL_INCLUDE,
+      });
     });
 
     return this.toSaleDetailDto(updated);
@@ -259,6 +349,7 @@ export class SalesService {
     soldAt: Date;
     totalAmount: { toNumber: () => number };
     amountPaid: { toNumber: () => number };
+    paymentMethod: string;
     createdBy: { fullName: string };
     items: unknown[];
   }): SaleDto => {
@@ -278,6 +369,7 @@ export class SalesService {
       balanceDue,
       paymentStatus:
         balanceDue <= 0 ? PaymentStatus.PAID : amountPaid > 0 ? PaymentStatus.PARTIALLY_PAID : PaymentStatus.UNPAID,
+      paymentMethod: sale.paymentMethod as PaymentMethod,
       itemsCount: sale.items.length,
       createdByName: sale.createdBy.fullName,
     };
@@ -292,6 +384,7 @@ export class SalesService {
     soldAt: Date;
     totalAmount: { toNumber: () => number };
     amountPaid: { toNumber: () => number };
+    paymentMethod: string;
     createdBy: { fullName: string };
     items: {
       id: string;

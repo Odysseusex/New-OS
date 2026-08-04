@@ -62,4 +62,7 @@ export interface CustomerDetailDto extends CustomerDto {
 
 export interface RecordPaymentRequestDto {
   amount: number;
+  // Which account the payment landed in. Falls back to the sale's own
+  // paymentMethod-implied account when omitted.
+  accountId?: string;
 }

@@ -1,10 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { InvoiceDto, InvoiceSource, InvoiceStatus, Unit } from "@bakery-os/shared";
+import { CashMovementType, InvoiceDto, InvoiceSource, InvoiceStatus, PaymentStatus, Unit } from "@bakery-os/shared";
 import { InvoiceStatus as PrismaInvoiceStatus, StockMovementType } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
+import { CashMovementsService } from "../finance/cash-movements.service";
 import { CreateInvoiceDto } from "./dto/create-invoice.dto";
+import { RecordInvoicePaymentDto } from "./dto/record-invoice-payment.dto";
 
 const INVOICE_INCLUDE = {
   supplier: true,
@@ -15,7 +17,10 @@ const INVOICE_INCLUDE = {
 
 @Injectable()
 export class InvoicesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private cashMovementsService: CashMovementsService,
+  ) {}
 
   async findAll(user: AuthenticatedUser, requestedLocationId?: string): Promise<InvoiceDto[]> {
     const locationId = resolveLocationScope(user, requestedLocationId);
@@ -150,6 +155,51 @@ export class InvoicesService {
     return this.toDto(updated);
   }
 
+  // Settling accounts payable — only meaningful once an invoice is
+  // CONFIRMED (that's the point it became a real obligation; a DRAFT one
+  // owes nothing yet). Never edits totalCost, only pays it down.
+  async recordPayment(user: AuthenticatedUser, invoiceId: string, dto: RecordInvoicePaymentDto): Promise<InvoiceDto> {
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id: invoiceId, organizationId: user.organizationId },
+    });
+    if (!invoice) {
+      throw new NotFoundException("Накладная не найдена");
+    }
+    if (invoice.status !== PrismaInvoiceStatus.CONFIRMED) {
+      throw new BadRequestException("Оплатить можно только проведённую накладную");
+    }
+    const balanceDue = invoice.totalCost.toNumber() - invoice.amountPaid.toNumber();
+    if (dto.amount > balanceDue) {
+      throw new BadRequestException("Сумма оплаты превышает остаток задолженности");
+    }
+    const account = await this.prisma.cashAccount.findFirst({
+      where: { id: dto.accountId, organizationId: user.organizationId },
+    });
+    if (!account || !account.isActive) {
+      throw new BadRequestException("Счёт не найден или заархивирован");
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await this.cashMovementsService.recordMovement(tx, {
+        organizationId: user.organizationId,
+        accountId: dto.accountId,
+        type: CashMovementType.SUPPLIER_PAYMENT,
+        amount: dto.amount,
+        supplierId: invoice.supplierId,
+        invoiceId: invoice.id,
+        reason: `Оплата по накладной №${invoice.number}`,
+        createdById: user.id,
+      });
+      return tx.invoice.update({
+        where: { id: invoiceId },
+        data: { amountPaid: { increment: dto.amount } },
+        include: INVOICE_INCLUDE,
+      });
+    });
+
+    return this.toDto(updated);
+  }
+
   private toDto = (invoice: {
     id: string;
     supplierId: string;
@@ -163,6 +213,7 @@ export class InvoicesService {
     photoUrl: string | null;
     notes: string | null;
     totalCost: { toNumber: () => number };
+    amountPaid: { toNumber: () => number };
     createdBy: { fullName: string };
     confirmedAt: Date | null;
     items: {
@@ -173,7 +224,11 @@ export class InvoicesService {
       unitCost: { toNumber: () => number };
       subtotal: { toNumber: () => number };
     }[];
-  }): InvoiceDto => ({
+  }): InvoiceDto => {
+    const totalCost = invoice.totalCost.toNumber();
+    const amountPaid = invoice.amountPaid.toNumber();
+    const balanceDue = totalCost - amountPaid;
+    return {
     id: invoice.id,
     supplierId: invoice.supplierId,
     supplierName: invoice.supplier.name,
@@ -185,7 +240,11 @@ export class InvoicesService {
     source: invoice.source as InvoiceSource,
     photoUrl: invoice.photoUrl,
     notes: invoice.notes,
-    totalCost: invoice.totalCost.toNumber(),
+    totalCost,
+    amountPaid,
+    balanceDue,
+    paymentStatus:
+      balanceDue <= 0 ? PaymentStatus.PAID : amountPaid > 0 ? PaymentStatus.PARTIALLY_PAID : PaymentStatus.UNPAID,
     createdByName: invoice.createdBy.fullName,
     confirmedAt: invoice.confirmedAt ? invoice.confirmedAt.toISOString() : null,
     items: invoice.items.map((item) => ({
@@ -197,5 +256,6 @@ export class InvoicesService {
       unitCost: item.unitCost.toNumber(),
       subtotal: item.subtotal.toNumber(),
     })),
-  });
+    };
+  };
 }

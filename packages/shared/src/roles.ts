@@ -105,6 +105,36 @@ export const FINANCE_VIEW_ROLES: Role[] = ORG_WIDE_ROLES;
 
 export const EXPENSE_MANAGE_ROLES: Role[] = ORG_WIDE_ROLES;
 
+// Bank accounts and the income/expense category catalog are org-wide
+// financial configuration — same tier as expenses, not opened up to
+// location-level operational roles.
+export const CASH_ACCOUNT_MANAGE_ROLES: Role[] = ORG_WIDE_ROLES;
+export const FINANCE_CATEGORY_MANAGE_ROLES: Role[] = ORG_WIDE_ROLES;
+
+// Day-to-day cash register operations (пополнение/снятие) at a location are
+// closer to a sales-floor task than network-wide finance oversight, so
+// store-level roles that already handle a till are included alongside the
+// org-wide ones.
+export const CASH_REGISTER_MANAGE_ROLES: Role[] = [
+  Role.OWNER,
+  Role.ADMIN,
+  Role.ACCOUNTANT,
+  Role.STORE_MANAGER,
+  Role.CASHIER,
+];
+
+// Correcting a cash movement after the fact (the CashMovement ledger is
+// append-only — see CashMovement's schema comment) is materially more
+// sensitive than an everyday deposit/withdrawal, so it's held to the same
+// bar as a hard delete, plus the accountant who actually reconciles books.
+export const CASH_ADJUSTMENT_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT];
+
+// Recording that a supplier invoice has been paid is a financial-oversight
+// action, not a receiving/warehouse one — deliberately follows
+// EXPENSE_MANAGE_ROLES rather than INVOICE_MANAGE_ROLES, which governs who
+// can receive goods.
+export const SUPPLIER_PAYMENT_ROLES: Role[] = EXPENSE_MANAGE_ROLES;
+
 // Roles that can schedule shifts and view attendance/KPI for their team.
 // Store/production managers manage their own location; HR-wide roles see all.
 export const HR_MANAGE_ROLES: Role[] = [

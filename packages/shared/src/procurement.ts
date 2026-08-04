@@ -1,4 +1,5 @@
 import { Unit } from "./catalog";
+import { PaymentStatus } from "./customers";
 
 export enum PurchaseOrderStatus {
   PLACED = "PLACED",
@@ -121,6 +122,9 @@ export interface InvoiceDto {
   photoUrl: string | null;
   notes: string | null;
   totalCost: number;
+  amountPaid: number;
+  balanceDue: number;
+  paymentStatus: PaymentStatus;
   createdByName: string;
   confirmedAt: string | null;
   items: InvoiceItemDto[];

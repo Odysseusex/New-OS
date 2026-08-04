@@ -1,13 +1,21 @@
 import type {
   AdjustStockRequestDto,
   CancelProductionBatchRequestDto,
+  CashAccountDto,
+  CashAdjustmentRequestDto,
+  CashDepositRequestDto,
+  CashMovementDto,
+  CashTransferRequestDto,
+  CashWithdrawalRequestDto,
   CategoryDto,
   ClockInRequestDto,
   CompleteProductionBatchRequestDto,
+  CreateCashAccountRequestDto,
   CreateCategoryRequestDto,
   CreateCustomerRequestDto,
   CreateDeliveryRouteRequestDto,
   CreateExpenseRequestDto,
+  CreateFinanceCategoryRequestDto,
   CreateInvoiceRequestDto,
   CreateProductionBatchRequestDto,
   CreateProductRequestDto,
@@ -28,6 +36,9 @@ import type {
   DriverDto,
   EmployeeDto,
   ExpenseDto,
+  FinanceCategoryDto,
+  FinanceCategoryKind,
+  FinanceDashboardDto,
   HrKpiResponseDto,
   InvoiceDto,
   LocationComparisonDto,
@@ -42,7 +53,9 @@ import type {
   QualitySummaryDto,
   RecipeDto,
   RecipeStageTypeDto,
+  RecordExpensePaymentRequestDto,
   RecordPaymentRequestDto,
+  RecordSupplierPaymentRequestDto,
   RegionDto,
   SaleDetailDto,
   SaleDto,
@@ -53,8 +66,10 @@ import type {
   StockMovementDto,
   SupplierDto,
   TimeEntryDto,
+  UpdateCashAccountRequestDto,
   UpdateCategoryRequestDto,
   UpdateCustomerRequestDto,
+  UpdateFinanceCategoryRequestDto,
   UpdateLocationRequestDto,
   UpdateProductionBatchRequestDto,
   UpdateProductRequestDto,
@@ -291,6 +306,8 @@ export const api = {
       request<InvoiceDto>("/invoices", { method: "POST", body: JSON.stringify(dto) }),
     confirm: (id: string) => request<InvoiceDto>(`/invoices/${id}/confirm`, { method: "POST" }),
     cancel: (id: string) => request<InvoiceDto>(`/invoices/${id}/cancel`, { method: "POST" }),
+    recordPayment: (id: string, dto: RecordSupplierPaymentRequestDto) =>
+      request<InvoiceDto>(`/invoices/${id}/payments`, { method: "POST", body: JSON.stringify(dto) }),
   },
 
   vehicles: {
@@ -330,12 +347,56 @@ export const api = {
   },
 
   finance: {
+    dashboard: (from?: string, to?: string) =>
+      request<FinanceDashboardDto>(withQuery("/finance/dashboard", { from, to })),
     pnl: (from: string, to: string, locationId?: string) =>
       request<ProfitAndLossDto>(withQuery("/finance/pnl", { from, to, locationId })),
     expenses: (locationId?: string) =>
       request<ExpenseDto[]>(withQuery("/finance/expenses", { locationId })),
     createExpense: (dto: CreateExpenseRequestDto) =>
       request<ExpenseDto>("/finance/expenses", { method: "POST", body: JSON.stringify(dto) }),
+    confirmExpense: (id: string) => request<ExpenseDto>(`/finance/expenses/${id}/confirm`, { method: "POST" }),
+    cancelExpense: (id: string) => request<ExpenseDto>(`/finance/expenses/${id}/cancel`, { method: "POST" }),
+    recordExpensePayment: (id: string, dto: RecordExpensePaymentRequestDto) =>
+      request<ExpenseDto>(`/finance/expenses/${id}/payments`, { method: "POST", body: JSON.stringify(dto) }),
+    accounts: {
+      list: (includeArchived?: boolean) =>
+        request<CashAccountDto[]>(withQuery("/finance/accounts", { includeArchived: includeArchived ? "true" : undefined })),
+      create: (dto: CreateCashAccountRequestDto) =>
+        request<CashAccountDto>("/finance/accounts", { method: "POST", body: JSON.stringify(dto) }),
+      update: (id: string, dto: UpdateCashAccountRequestDto) =>
+        request<CashAccountDto>(`/finance/accounts/${id}`, { method: "PATCH", body: JSON.stringify(dto) }),
+      setDefault: (id: string) => request<CashAccountDto>(`/finance/accounts/${id}/set-default`, { method: "POST" }),
+      archive: (id: string) => request<CashAccountDto>(`/finance/accounts/${id}/archive`, { method: "POST" }),
+      restore: (id: string) => request<CashAccountDto>(`/finance/accounts/${id}/restore`, { method: "POST" }),
+    },
+    categories: {
+      list: (kind?: FinanceCategoryKind, includeArchived?: boolean) =>
+        request<FinanceCategoryDto[]>(
+          withQuery("/finance/categories", { kind, includeArchived: includeArchived ? "true" : undefined }),
+        ),
+      create: (dto: CreateFinanceCategoryRequestDto) =>
+        request<FinanceCategoryDto>("/finance/categories", { method: "POST", body: JSON.stringify(dto) }),
+      update: (id: string, dto: UpdateFinanceCategoryRequestDto) =>
+        request<FinanceCategoryDto>(`/finance/categories/${id}`, { method: "PATCH", body: JSON.stringify(dto) }),
+      archive: (id: string) => request<FinanceCategoryDto>(`/finance/categories/${id}/archive`, { method: "POST" }),
+      restore: (id: string) => request<FinanceCategoryDto>(`/finance/categories/${id}/restore`, { method: "POST" }),
+      remove: (id: string) => request<{ deleted: true }>(`/finance/categories/${id}`, { method: "DELETE" }),
+    },
+    movements: {
+      list: (accountId?: string, limit?: number) =>
+        request<CashMovementDto[]>(
+          withQuery("/finance/movements", { accountId, limit: limit ? String(limit) : undefined }),
+        ),
+      deposit: (dto: CashDepositRequestDto) =>
+        request<CashMovementDto>("/finance/movements/deposit", { method: "POST", body: JSON.stringify(dto) }),
+      withdraw: (dto: CashWithdrawalRequestDto) =>
+        request<CashMovementDto>("/finance/movements/withdraw", { method: "POST", body: JSON.stringify(dto) }),
+      transfer: (dto: CashTransferRequestDto) =>
+        request<CashMovementDto>("/finance/movements/transfer", { method: "POST", body: JSON.stringify(dto) }),
+      adjust: (dto: CashAdjustmentRequestDto) =>
+        request<CashMovementDto>("/finance/movements/adjust", { method: "POST", body: JSON.stringify(dto) }),
+    },
   },
 
   hr: {

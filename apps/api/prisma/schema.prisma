@@ -131,18 +131,50 @@ enum RouteStopStatus {
   DELIVERED
 }
 
-enum ExpenseCategory {
-  RENT
-  UTILITIES
-  SALARY
-  MARKETING
-  LOGISTICS
-  OTHER
+enum ExpenseStatus {
+  DRAFT
+  CONFIRMED
+  CANCELLED
 }
 
 enum ShiftStatus {
   SCHEDULED
   CANCELLED
+}
+
+enum CashAccountType {
+  BANK
+  CASH
+}
+
+enum FinanceCategoryKind {
+  INCOME
+  EXPENSE
+}
+
+// The closed set of ways a CashMovement can happen. Which side of the
+// account it hits (in vs out) is implicit in the type, the same way
+// StockMovementType conveys direction for StockMovement — no separate
+// "direction" column.
+enum CashMovementType {
+  OPENING_BALANCE
+  SALE_RECEIPT
+  CUSTOMER_PAYMENT
+  SUPPLIER_PAYMENT
+  EXPENSE_PAYMENT
+  TRANSFER_IN
+  TRANSFER_OUT
+  CASH_DEPOSIT
+  CASH_WITHDRAWAL
+  OTHER_INCOME
+  OTHER_EXPENSE
+  ADJUSTMENT
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
 }
 
 // A tenant of the platform — one bakery network / company.
@@ -213,6 +245,7 @@ model Location {
   expenses          Expense[]
   shifts            Shift[]
   timeEntries       TimeEntry[]
+  cashAccounts      CashAccount[]
 
   @@index([organizationId])
   @@index([regionId])
@@ -257,6 +290,7 @@ model User {
   recipeRevisions        RecipeRevision[]
   invoices               Invoice[]
   notificationDismissals NotificationDismissal[]
+  cashMovements          CashMovement[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -382,11 +416,15 @@ model Sale {
   // are always paid in full at creation; wholesale customer orders may be
   // placed on credit and paid down over time via recordPayment().
   amountPaid     Decimal   @default(0) @db.Decimal(12, 2)
+  // Which CashAccount a payment lands in: CASH -> the selling location's
+  // cash register, CARD/TRANSFER -> the organization's default bank account.
+  paymentMethod  PaymentMethod @default(CASH)
   createdById    String
   createdBy      User      @relation(fields: [createdById], references: [id])
 
   items          SaleItem[]
   stockMovements StockMovement[]
+  cashMovements  CashMovement[]
 
   @@index([organizationId, locationId])
   @@index([soldAt])
@@ -567,6 +605,7 @@ model Supplier {
 
   purchaseOrders PurchaseOrder[]
   invoices       Invoice[]
+  cashMovements  CashMovement[]
 
   @@index([organizationId])
   @@map("suppliers")
@@ -630,6 +669,10 @@ model Invoice {
   externalSyncId String?
   notes          String?
   totalCost      Decimal       @db.Decimal(12, 2)
+  // Supplier accounts payable — 0 until confirmed and paid down via
+  // recordPayment(), same increment-only shape as Sale.amountPaid. Only
+  // meaningful once status = CONFIRMED (a DRAFT invoice owes nothing yet).
+  amountPaid     Decimal       @default(0) @db.Decimal(12, 2)
   createdById    String
   createdBy      User          @relation(fields: [createdById], references: [id])
   confirmedAt    DateTime?
@@ -638,6 +681,7 @@ model Invoice {
 
   items          InvoiceItem[]
   stockMovements StockMovement[]
+  cashMovements  CashMovement[]
 
   @@index([organizationId, locationId])
   @@map("invoices")
@@ -725,18 +769,29 @@ model RouteStopItem {
 
 // A manually logged operating expense (rent, utilities, salaries, ...).
 // Location is optional — network-wide overhead (e.g. marketing) has none.
+// Has its own document lifecycle, same shape as Invoice's supplier side:
+// DRAFT (editable, no obligation yet) -> CONFIRMED (a real payable, locked)
+// -> paid down via amountPaid, same increment-only pattern as Sale.amountPaid.
+// Confirming does NOT itself move money — only recordPayment() does, which
+// writes a CashMovement. Cancelling is only possible before any money has
+// actually moved (amountPaid = 0), mirroring Invoice/PurchaseOrder cancel.
 model Expense {
   id             String          @id @default(cuid())
   organizationId String
   locationId     String?
   location       Location?       @relation(fields: [locationId], references: [id])
-  category       ExpenseCategory
+  categoryId     String?
+  categoryRef    FinanceCategory? @relation(fields: [categoryId], references: [id])
+  status         ExpenseStatus   @default(CONFIRMED)
   amount         Decimal         @db.Decimal(12, 2)
+  amountPaid     Decimal         @default(0) @db.Decimal(12, 2)
   description    String?
   incurredOn     DateTime        @default(now())
   createdById    String
   createdBy      User            @relation(fields: [createdById], references: [id])
   createdAt      DateTime        @default(now())
+
+  cashMovements CashMovement[]
 
   @@index([organizationId, incurredOn])
   @@map("expenses")
@@ -796,7 +851,8 @@ model Customer {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  sales Sale[]
+  sales         Sale[]
+  cashMovements CashMovement[]
 
   @@index([organizationId])
   @@map("customers")
@@ -818,4 +874,103 @@ model NotificationDismissal {
   @@unique([userId, key])
   @@index([organizationId, userId])
   @@map("notification_dismissals")
+}
+
+// A bank account or cash register — the two are the same entity with a
+// different `type`, same as Location.type or Product.type distinguish their
+// own subtypes elsewhere in this schema. CASH accounts belong to one
+// Location (a till); BANK accounts are organization-wide. `currentBalance`
+// is a cached running total, only ever changed in the same transaction as a
+// CashMovement insert against this account (mirrors StockLevel next to
+// StockMovement) — never edited directly, including its starting value,
+// which is itself the account's first CashMovement (type OPENING_BALANCE).
+model CashAccount {
+  id             String          @id @default(cuid())
+  organizationId String
+  name           String
+  type           CashAccountType
+  locationId     String?
+  location       Location?       @relation(fields: [locationId], references: [id])
+  // At most one BANK account per organization may be default — the target
+  // for non-cash sale receipts when no account is otherwise implied.
+  isDefault      Boolean         @default(false)
+  currentBalance Decimal         @default(0) @db.Decimal(14, 2)
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  movements CashMovement[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([locationId])
+  @@map("cash_accounts")
+}
+
+// Org-scoped, user-managed catalog of income/expense categories — replaces
+// what used to be a hardcoded ExpenseCategory enum, same pattern as Category
+// (products) and RecipeStageType (recipe process stages): adding a new
+// category is a user action, not a code deploy.
+model FinanceCategory {
+  id             String              @id @default(cuid())
+  organizationId String
+  name           String
+  kind           FinanceCategoryKind
+  isActive       Boolean             @default(true)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  expenses      Expense[]
+  cashMovements CashMovement[]
+
+  @@unique([organizationId, name, kind])
+  @@index([organizationId])
+  @@map("finance_categories")
+}
+
+// The single append-only ledger of every money movement — the direct
+// financial counterpart of StockMovement. Never edited or deleted; a
+// mistaken entry is corrected by a new ADJUSTMENT row that references it via
+// correctsMovementId, keeping the full history intact and auditable. Nullable
+// FKs point at whichever document (if any) caused the movement, the same
+// multi-FK-bag shape StockMovement already uses instead of a polymorphic
+// reference.
+model CashMovement {
+  id             String           @id @default(cuid())
+  organizationId String
+  accountId      String
+  account        CashAccount      @relation(fields: [accountId], references: [id])
+  type           CashMovementType
+  // Positive magnitude for every type except ADJUSTMENT, which stores a
+  // signed delta — mirrors StockMovement.quantity's own ADJUSTMENT convention.
+  amount         Decimal          @db.Decimal(14, 2)
+  occurredAt     DateTime         @default(now())
+  reason         String?
+  categoryId     String?
+  categoryRef    FinanceCategory? @relation(fields: [categoryId], references: [id])
+  customerId     String?
+  customer       Customer?        @relation(fields: [customerId], references: [id])
+  supplierId     String?
+  supplier       Supplier?        @relation(fields: [supplierId], references: [id])
+  saleId         String?
+  sale           Sale?            @relation(fields: [saleId], references: [id])
+  expenseId      String?
+  expense        Expense?         @relation(fields: [expenseId], references: [id])
+  invoiceId      String?
+  invoice        Invoice?         @relation(fields: [invoiceId], references: [id])
+  // Pairs a transfer's two legs (TRANSFER_OUT on the source account,
+  // TRANSFER_IN on the destination) — not a separate Transfer entity.
+  transferGroupId String?
+  // Self-reference for corrections: points at the movement this ADJUSTMENT
+  // is correcting for.
+  correctsMovementId String?
+  correctsMovement   CashMovement?  @relation("Correction", fields: [correctsMovementId], references: [id])
+  correctedBy        CashMovement[] @relation("Correction")
+  createdById    String
+  createdBy      User             @relation(fields: [createdById], references: [id])
+  createdAt      DateTime         @default(now())
+
+  @@index([organizationId, accountId])
+  @@index([occurredAt])
+  @@map("cash_movements")
 }

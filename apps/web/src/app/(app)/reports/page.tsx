@@ -238,7 +238,7 @@ function FinanceReport({ period, locationId }: { period: Period; locationId: str
           { label: "Выручка", value: formatMoney(pnl.revenue) },
           { label: "Себестоимость", value: formatMoney(pnl.cogs) },
           { label: "Валовая прибыль", value: formatMoney(pnl.grossProfit) },
-          { label: "Чистая прибыль", value: formatMoney(pnl.netProfit) },
+          { label: "Операционная прибыль", value: formatMoney(pnl.operatingProfit) },
         ]}
       />
       <ReportTable
