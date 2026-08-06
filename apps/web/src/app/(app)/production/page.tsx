@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
-import { CheckCircle2, Copy, Pencil, Play, Plus, Search, Trash2, XCircle } from "lucide-react";
+import { CheckCircle2, Copy, FileDown, Pencil, Play, Plus, Search, Trash2, XCircle } from "lucide-react";
 import type { LocationDto, ProductDto, ProductionBatchDto, RecipeDto } from "@bakery-os/shared";
 import {
   HARD_DELETE_ROLES,
@@ -22,6 +22,7 @@ import { EditBatchModal } from "@/components/edit-batch-modal";
 import { AbortBatchModal } from "@/components/abort-batch-modal";
 import { CompleteBatchModal } from "@/components/complete-batch-modal";
 import { NewRecipeModal } from "@/components/new-recipe-modal";
+import { ExportRecipesPdfModal } from "@/components/export-recipes-pdf-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 
 type Tab = "batches" | "recipes";
@@ -57,6 +58,8 @@ export default function ProductionPage() {
   const [editingBatch, setEditingBatch] = useState<ProductionBatchDto | null>(null);
   const [completingBatch, setCompletingBatch] = useState<ProductionBatchDto | null>(null);
   const [abortingBatch, setAbortingBatch] = useState<ProductionBatchDto | null>(null);
+  const [selectedRecipeIds, setSelectedRecipeIds] = useState<Set<string>>(new Set());
+  const [exportingRecipes, setExportingRecipes] = useState<RecipeDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadBatches = useCallback(() => {
@@ -149,11 +152,22 @@ export default function ProductionPage() {
     }
   }
 
+  function toggleRecipeSelection(id: string) {
+    setSelectedRecipeIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   const visibleRecipes = recipes.filter(
     (r) =>
       (showArchivedRecipes || r.isActive) &&
       r.productName.toLowerCase().includes(recipeSearch.trim().toLowerCase()),
   );
+
+  const selectedRecipes = recipes.filter((r) => selectedRecipeIds.has(r.id));
 
   const visibleBatches = batches.filter((b) => {
     switch (batchFilter) {
@@ -250,6 +264,16 @@ export default function ProductionPage() {
 
           {tab === "recipes" && canManageRecipes && (
             <ArchivedToggle checked={showArchivedRecipes} onChange={setShowArchivedRecipes} />
+          )}
+
+          {tab === "recipes" && selectedRecipeIds.size > 0 && (
+            <button
+              onClick={() => setExportingRecipes(selectedRecipes)}
+              className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3.5 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+            >
+              <FileDown className="h-4 w-4" strokeWidth={1.75} />
+              Экспорт PDF ({selectedRecipeIds.size})
+            </button>
           )}
 
           {tab === "recipes" && canManageRecipes && (
@@ -377,19 +401,34 @@ export default function ProductionPage() {
           {visibleRecipes.map((recipe) => (
             <div key={recipe.id} className="rounded-2xl border border-border bg-surface p-5 shadow-card">
               <div className="mb-3 flex items-start justify-between">
-                <div>
-                  <p className="flex items-center gap-2 font-medium text-foreground">
-                    {recipe.productName}
-                    {!recipe.isActive && <ArchivedBadge />}
-                  </p>
-                  <p className="text-xs text-muted">
-                    Выход: {recipe.yieldQuantity} {UNIT_LABELS_RU[recipe.productUnit]}
-                  </p>
+                <div className="flex items-start gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={selectedRecipeIds.has(recipe.id)}
+                    onChange={() => toggleRecipeSelection(recipe.id)}
+                    className="mt-1 h-4 w-4 rounded border-border accent-accent"
+                  />
+                  <div>
+                    <p className="flex items-center gap-2 font-medium text-foreground">
+                      {recipe.productName}
+                      {!recipe.isActive && <ArchivedBadge />}
+                    </p>
+                    <p className="text-xs text-muted">
+                      Выход: {recipe.yieldQuantity} {UNIT_LABELS_RU[recipe.productUnit]}
+                    </p>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="rounded-full bg-surface-muted px-2.5 py-1 text-xs font-medium text-muted">
                     {formatMoney(recipe.productPrice)}
                   </span>
+                  <button
+                    onClick={() => setExportingRecipes([recipe])}
+                    title="Экспорт PDF"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-foreground"
+                  >
+                    <FileDown className="h-4 w-4" strokeWidth={1.75} />
+                  </button>
                   {canManageRecipes && (
                     <button
                       onClick={() => {
@@ -524,6 +563,16 @@ export default function ProductionPage() {
           onAborted={() => {
             setAbortingBatch(null);
             loadBatches();
+          }}
+        />
+      )}
+
+      {exportingRecipes && (
+        <ExportRecipesPdfModal
+          recipes={exportingRecipes}
+          onClose={() => {
+            setExportingRecipes(null);
+            setSelectedRecipeIds(new Set());
           }}
         />
       )}

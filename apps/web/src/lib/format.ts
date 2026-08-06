@@ -33,6 +33,18 @@ export function formatDateTime(iso: string): string {
   return dateTimeFormatter.format(new Date(iso));
 }
 
+const dateFormatter = new Intl.DateTimeFormat("ru-RU", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
+
+// Day/month/year only, no time — for document headers/footers (e.g. "дата
+// печати" on a printed техкарта) where the time of day is noise.
+export function formatDate(date: Date | string): string {
+  return dateFormatter.format(typeof date === "string" ? new Date(date) : date);
+}
+
 export function formatQuantity(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(3).replace(/\.?0+$/, "");
 }

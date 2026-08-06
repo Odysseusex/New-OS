@@ -1,0 +1,10 @@
+Liberation Sans — SIL Open Font License, Version 1.1
+Source: https://github.com/liberationfonts
+Copyright (c) 2012 Red Hat, Inc. with Reserved Font Name "Liberation".
+Copyright (c) 2010 Google Corporation with Reserved Font Arimo, Tinos and Cousine.
+
+Full license text: https://scripts.sil.org/OFL
+
+Used here for PDF generation (техкарты export) — embeds and redistributes
+under the OFL, which explicitly permits bundling/embedding in documents
+and software.
