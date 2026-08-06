@@ -189,6 +189,31 @@ model Organization {
   // creates — Prisma's `increment` compiles to a single atomic UPDATE.
   productSkuSequence Int @default(0)
 
+  // "Запуск финансового учёта" (FinanceSetupService) — set once, ever, when
+  // the owner finalizes the opening financial position after adopting the
+  // Finance module on top of pre-existing stock/production/sales history.
+  // financeInitializedAt gates re-running the setup flow (see
+  // FinanceSetupService.complete) and blocks CashAccount.openingBalance
+  // afterwards (see CashAccountsService.create) — a new account opened
+  // later always starts at zero and is funded by an ordinary deposit or
+  // transfer, never another "opening balance", so summing OPENING_BALANCE
+  // CashMovements stays a stable, permanent record of cash at go-live with
+  // no separate frozen cash field needed.
+  //
+  // The three opening* values are a frozen historical snapshot, not a
+  // cache — inventory cost and outstanding balances both drift after
+  // go-live (prices change, debts get paid down), so recomputing them
+  // live would silently rewrite history. Once set, they are immutable:
+  // later corrections go through normal ERP mechanisms (stock adjustment,
+  // cash ADJUSTMENT, ordinary expense/invoice payment) — never by editing
+  // these fields directly. No API route exists to update them post-set.
+  financeInitializedAt    DateTime?
+  financeInitializedById  String?
+  financeInitializedBy    User?     @relation("FinanceInitializedBy", fields: [financeInitializedById], references: [id])
+  openingInventoryValue   Decimal?  @db.Decimal(14, 2)
+  openingReceivablesValue Decimal?  @db.Decimal(14, 2)
+  openingPayablesValue    Decimal?  @db.Decimal(14, 2)
+
   regions   Region[]
   locations Location[]
   users     User[]
@@ -291,6 +316,7 @@ model User {
   invoices               Invoice[]
   notificationDismissals NotificationDismissal[]
   cashMovements          CashMovement[]
+  financeInitializedOrgs Organization[]          @relation("FinanceInitializedBy")
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -325,6 +351,16 @@ model Product {
   type           ProductType @default(FINISHED_GOOD)
   categoryId     String?
   categoryRef    Category?   @relation(fields: [categoryId], references: [id])
+  // Dual meaning depending on `type` — same column, different semantics:
+  //   - FINISHED_GOOD: the client SALE price (what Sale/SaleItem charge).
+  //   - RAW_MATERIAL:  the COST input consumed by recipe cost calculations
+  //     (RecipesService.toDto, FinanceService P&L/inventory valuation) — it
+  //     is NEVER a sale price, even though raw materials are occasionally
+  //     sold directly. Never use FINISHED_GOOD.price when valuing stock as
+  //     an asset (inventory valuation, opening balances) — that would price
+  //     an asset at what a customer pays for it, not what it cost to have on
+  //     hand. Finished-goods valuation must go through recipe cost (or
+  //     average purchase cost as a fallback), never this field.
   price          Decimal     @db.Decimal(12, 2)
   // False for resources with no physical stock to track (e.g. tap water) —
   // still usable in recipes and cost calculations, but excluded from stock

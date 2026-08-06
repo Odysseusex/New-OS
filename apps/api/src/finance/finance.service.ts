@@ -7,9 +7,12 @@ import {
   ExpenseDto,
   ExpenseStatus,
   FinanceDashboardDto,
+  InventoryValuationDto,
   PaymentStatus,
   ProductPnLDto,
+  ProductType,
   ProfitAndLossDto,
+  Unit,
 } from "@bakery-os/shared";
 import { InvoiceStatus as PrismaInvoiceStatus } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
@@ -190,37 +193,21 @@ export class FinanceService {
     return this.toExpenseDto(updated);
   }
 
-  async getProfitAndLoss(
-    organizationId: string,
-    from: Date,
-    to: Date,
-    locationId?: string,
-  ): Promise<ProfitAndLossDto> {
-    const [sales, recipes, purchaseItems, expenses] = await Promise.all([
-      this.prisma.sale.findMany({
-        where: {
-          organizationId,
-          soldAt: { gte: from, lte: to },
-          ...(locationId ? { locationId } : {}),
-        },
-        include: { items: { include: { product: true } } },
-      }),
+  // Resolves a per-unit COST (never a sale price) for FINISHED_GOOD
+  // products: recipe-derived cost first, weighted-average purchase cost as
+  // fallback, `null` when neither exists — the same resolution used by P&L
+  // COGS and by inventory valuation (getInventoryValuation), extracted here
+  // so both stay in lockstep instead of drifting apart. Deliberately never
+  // reads Product.price for a FINISHED_GOOD — see the schema comment on
+  // Product.price for why that field cannot stand in for cost.
+  private async resolveFinishedGoodUnitCosts(organizationId: string): Promise<Map<string, number>> {
+    const [recipes, purchaseItems] = await Promise.all([
       this.prisma.recipe.findMany({
         where: { organizationId, isActive: true },
         include: { items: { include: { ingredientProduct: true } } },
       }),
       this.prisma.purchaseOrderItem.findMany({
         where: { purchaseOrder: { organizationId } },
-      }),
-      // Only confirmed obligations count toward P&L — a draft expense isn't
-      // a real cost yet, a cancelled one never was.
-      this.prisma.expense.findMany({
-        where: {
-          organizationId,
-          status: ExpenseStatus.CONFIRMED,
-          incurredOn: { gte: from, lte: to },
-          ...(locationId ? { OR: [{ locationId }, { locationId: null }] } : {}),
-        },
       }),
     ]);
 
@@ -249,8 +236,88 @@ export class FinanceService {
       if (agg.totalQty > 0) avgPurchaseCostByProduct.set(productId, agg.totalCost / agg.totalQty);
     }
 
-    const costFor = (productId: string): number | null =>
-      recipeCostByProduct.get(productId) ?? avgPurchaseCostByProduct.get(productId) ?? null;
+    const merged = new Map<string, number>(avgPurchaseCostByProduct);
+    for (const [productId, cost] of recipeCostByProduct) merged.set(productId, cost);
+    return merged;
+  }
+
+  // Values every product currently on hand as an asset — for the "Запуск
+  // финансового учёта" opening balance and for anyone wanting a current
+  // stock valuation later. RAW_MATERIAL uses Product.price directly (that
+  // field IS cost for raw materials — see the schema comment). FINISHED_GOOD
+  // NEVER uses Product.price (that's the sale price for that type); it goes
+  // through the same recipe-cost/purchase-cost resolution as P&L COGS.
+  // Products with neither a recipe nor purchase history are reported with
+  // hasCostData=false and excluded from totalValue rather than guessed at.
+  async getInventoryValuation(organizationId: string): Promise<InventoryValuationDto> {
+    const [stockLevels, finishedGoodCosts] = await Promise.all([
+      this.prisma.stockLevel.findMany({
+        where: { organizationId, quantity: { gt: 0 } },
+        include: { product: true, location: true },
+      }),
+      this.resolveFinishedGoodUnitCosts(organizationId),
+    ]);
+
+    let totalValue = 0;
+    let unknownValueLineItems = 0;
+    const byProduct = stockLevels.map((level) => {
+      const quantity = level.quantity.toNumber();
+      const unitCost =
+        level.product.type === ProductType.RAW_MATERIAL
+          ? level.product.price.toNumber()
+          : (finishedGoodCosts.get(level.productId) ?? null);
+      const hasCostData = unitCost !== null;
+      if (!hasCostData) unknownValueLineItems += 1;
+      const value = hasCostData ? unitCost * quantity : 0;
+      totalValue += value;
+
+      return {
+        productId: level.productId,
+        productName: level.product.name,
+        locationId: level.locationId,
+        locationName: level.location.name,
+        unit: level.product.unit as Unit,
+        quantity,
+        unitCost,
+        value,
+        hasCostData,
+      };
+    });
+
+    byProduct.sort((a, b) => b.value - a.value);
+
+    return { totalValue, unknownValueLineItems, byProduct };
+  }
+
+  async getProfitAndLoss(
+    organizationId: string,
+    from: Date,
+    to: Date,
+    locationId?: string,
+  ): Promise<ProfitAndLossDto> {
+    const [sales, unitCosts, expenses] = await Promise.all([
+      this.prisma.sale.findMany({
+        where: {
+          organizationId,
+          soldAt: { gte: from, lte: to },
+          ...(locationId ? { locationId } : {}),
+        },
+        include: { items: { include: { product: true } } },
+      }),
+      this.resolveFinishedGoodUnitCosts(organizationId),
+      // Only confirmed obligations count toward P&L — a draft expense isn't
+      // a real cost yet, a cancelled one never was.
+      this.prisma.expense.findMany({
+        where: {
+          organizationId,
+          status: ExpenseStatus.CONFIRMED,
+          incurredOn: { gte: from, lte: to },
+          ...(locationId ? { OR: [{ locationId }, { locationId: null }] } : {}),
+        },
+      }),
+    ]);
+
+    const costFor = (productId: string): number | null => unitCosts.get(productId) ?? null;
 
     const byProductMap = new Map<string, ProductPnLDto>();
     let unknownCostLineItems = 0;
@@ -314,6 +381,38 @@ export class FinanceService {
     };
   }
 
+  // Sum of every unpaid balance on wholesale customer sales — the same
+  // figure the Дебиторская задолженность tab and the dashboard card show,
+  // extracted here so getDashboard and the finance-setup status endpoint
+  // can't drift apart.
+  async getAccountsReceivable(organizationId: string): Promise<number> {
+    const unpaidSales = await this.prisma.sale.findMany({
+      where: { organizationId, customerId: { not: null } },
+      select: { totalAmount: true, amountPaid: true },
+    });
+    return unpaidSales.reduce((sum, s) => sum + Math.max(0, s.totalAmount.toNumber() - s.amountPaid.toNumber()), 0);
+  }
+
+  // Sum of every unpaid balance on confirmed supplier invoices and
+  // confirmed expenses — same figure the Кредиторская задолженность tab
+  // and the dashboard card show.
+  async getAccountsPayable(organizationId: string): Promise<number> {
+    const [unpaidInvoices, unpaidExpenses] = await Promise.all([
+      this.prisma.invoice.findMany({
+        where: { organizationId, status: PrismaInvoiceStatus.CONFIRMED },
+        select: { totalCost: true, amountPaid: true },
+      }),
+      this.prisma.expense.findMany({
+        where: { organizationId, status: ExpenseStatus.CONFIRMED },
+        select: { amount: true, amountPaid: true },
+      }),
+    ]);
+    return (
+      unpaidInvoices.reduce((sum, i) => sum + Math.max(0, i.totalCost.toNumber() - i.amountPaid.toNumber()), 0) +
+      unpaidExpenses.reduce((sum, e) => sum + Math.max(0, e.amount.toNumber() - e.amountPaid.toNumber()), 0)
+    );
+  }
+
   // Powers the owner dashboard's at-a-glance cards. Balances/AR/AP are
   // point-in-time (as of now); profit figures cover the given period,
   // defaulting to the current calendar month.
@@ -324,21 +423,11 @@ export class FinanceService {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
-    const [accounts, todayMovements, unpaidSales, unpaidInvoices, unpaidExpenses, pnl] = await Promise.all([
+    const [accounts, todayMovements, accountsReceivable, accountsPayable, pnl] = await Promise.all([
       this.prisma.cashAccount.findMany({ where: { organizationId, isActive: true } }),
       this.prisma.cashMovement.findMany({ where: { organizationId, occurredAt: { gte: startOfToday } } }),
-      this.prisma.sale.findMany({
-        where: { organizationId, customerId: { not: null } },
-        select: { totalAmount: true, amountPaid: true },
-      }),
-      this.prisma.invoice.findMany({
-        where: { organizationId, status: PrismaInvoiceStatus.CONFIRMED },
-        select: { totalCost: true, amountPaid: true },
-      }),
-      this.prisma.expense.findMany({
-        where: { organizationId, status: ExpenseStatus.CONFIRMED },
-        select: { amount: true, amountPaid: true },
-      }),
+      this.getAccountsReceivable(organizationId),
+      this.getAccountsPayable(organizationId),
       this.getProfitAndLoss(organizationId, periodFrom, periodTo),
     ]);
 
@@ -363,14 +452,6 @@ export class FinanceService {
         todayOutflow += amount;
       }
     }
-
-    const accountsReceivable = unpaidSales.reduce(
-      (sum, s) => sum + Math.max(0, s.totalAmount.toNumber() - s.amountPaid.toNumber()),
-      0,
-    );
-    const accountsPayable =
-      unpaidInvoices.reduce((sum, i) => sum + Math.max(0, i.totalCost.toNumber() - i.amountPaid.toNumber()), 0) +
-      unpaidExpenses.reduce((sum, e) => sum + Math.max(0, e.amount.toNumber() - e.amountPaid.toNumber()), 0);
 
     return {
       cashOnHand,

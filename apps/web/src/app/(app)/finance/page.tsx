@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import clsx from "clsx";
 import {
   AlertTriangle,
   Archive,
   ArrowLeftRight,
+  ArrowRight,
   Banknote,
   Download,
   Landmark,
@@ -23,6 +25,7 @@ import type {
   ExpenseDto,
   FinanceCategoryDto,
   FinanceDashboardDto,
+  FinanceSetupStatusDto,
   InvoiceDto,
   LocationDto,
   ProfitAndLossDto,
@@ -38,6 +41,7 @@ import {
   EXPENSE_MANAGE_ROLES,
   ExpenseStatus,
   FINANCE_CATEGORY_MANAGE_ROLES,
+  FINANCE_SETUP_ROLES,
   FINANCE_VIEW_ROLES,
   FinanceCategoryKind,
   PAYMENT_STATUS_LABELS_RU,
@@ -105,7 +109,9 @@ export default function FinancePage() {
   const canOperateCash = user ? CASH_REGISTER_MANAGE_ROLES.includes(user.role) : false;
   const canManageExpenses = user ? EXPENSE_MANAGE_ROLES.includes(user.role) : false;
   const canPaySuppliers = user ? SUPPLIER_PAYMENT_ROLES.includes(user.role) : false;
+  const canRunSetup = user ? FINANCE_SETUP_ROLES.includes(user.role) : false;
 
+  const [setupStatus, setSetupStatus] = useState<FinanceSetupStatusDto | null>(null);
   const [tab, setTab] = useState<Tab>("summary");
   const [period, setPeriod] = useState<Period>("month");
   const [locations, setLocations] = useState<LocationDto[]>([]);
@@ -186,8 +192,11 @@ export default function FinancePage() {
     loadAccounts();
     loadCategories();
     loadDebts();
+    if (canRunSetup) {
+      api.finance.setup.status().then(setSetupStatus).catch(() => {});
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canView]);
+  }, [canView, canRunSetup]);
 
   useEffect(() => {
     if (canView) loadDashboard();
@@ -406,6 +415,25 @@ export default function FinancePage() {
       </div>
 
       {error && <div className="mb-6 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+
+      {canRunSetup && setupStatus && !setupStatus.initialized && (
+        <Link
+          href="/finance/setup"
+          className="mb-6 flex items-center justify-between rounded-2xl border border-accent/30 bg-accent/5 px-5 py-4 text-sm transition hover:bg-accent/10"
+        >
+          <div>
+            <p className="font-medium text-foreground">Финансовый учёт ещё не запущен</p>
+            <p className="mt-0.5 text-muted">
+              Склад, продажи и производство уже ведутся — зафиксируйте начальное финансовое состояние
+              компании, чтобы остатки и отчёты были верными.
+            </p>
+          </div>
+          <span className="flex shrink-0 items-center gap-1 pl-4 font-medium text-accent">
+            Запустить
+            <ArrowRight className="h-4 w-4" strokeWidth={1.75} />
+          </span>
+        </Link>
+      )}
 
       <div className="mb-6 flex flex-wrap items-center gap-1 rounded-xl bg-surface-muted p-1">
         {TABS.map((t) => (

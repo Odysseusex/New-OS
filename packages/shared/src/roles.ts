@@ -188,6 +188,12 @@ export const QUALITY_VIEW_ROLES: Role[] = [
 // otherwise create/edit/archive the same entity type.
 export const HARD_DELETE_ROLES: Role[] = [Role.OWNER, Role.ADMIN];
 
+// "Запуск финансового учёта" declares the whole company's opening financial
+// position, once, ever — the most sensitive single action in the app, so it
+// follows the same bar as a permanent hard delete rather than ordinary
+// finance oversight.
+export const FINANCE_SETUP_ROLES: Role[] = HARD_DELETE_ROLES;
+
 // Force-deleting a product bypasses the usage check that normally blocks
 // HARD_DELETE_ROLES from removing a product referenced by sales, purchase
 // orders, invoices, routes, recipes or production history — it strips those

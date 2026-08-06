@@ -1,4 +1,5 @@
 import { PaymentStatus } from "./customers";
+import { Unit } from "./catalog";
 
 // How a sale was settled — decides which CashAccount a receipt lands in
 // (CASH -> the selling location's till, CARD/TRANSFER -> the organization's
@@ -265,6 +266,62 @@ export interface ProfitAndLossDto {
 }
 
 // ── Owner dashboard — one endpoint powering the 10 at-a-glance cards ───
+
+// ── Inventory valuation — stock on hand priced as an asset. RAW_MATERIAL
+// uses Product.price (that IS cost for that type); FINISHED_GOOD never
+// does (that's the sale price) — it goes through recipe/purchase cost,
+// same resolution P&L COGS uses. See FinanceService.getInventoryValuation.
+
+export interface InventoryValuationLineDto {
+  productId: string;
+  productName: string;
+  locationId: string;
+  locationName: string;
+  unit: Unit;
+  quantity: number;
+  unitCost: number | null;
+  value: number;
+  hasCostData: boolean;
+}
+
+export interface InventoryValuationDto {
+  totalValue: number;
+  unknownValueLineItems: number;
+  byProduct: InventoryValuationLineDto[];
+}
+
+// ── "Запуск финансового учёта" — one-time opening balance setup, run once
+// per organization after adopting Finance on top of pre-existing
+// stock/production/sales history. See Organization.financeInitializedAt.
+
+export interface FinanceSetupStatusDto {
+  initialized: boolean;
+  initializedAt: string | null;
+  initializedByName: string | null;
+  // Always derived live from OPENING_BALANCE CashMovements — stable
+  // forever once initialized, since accounts opened afterwards can no
+  // longer use openingBalance (see CashAccountsService.create).
+  cashValue: number;
+  // Frozen (post-initialization) or live preview (pre-initialization) —
+  // same shape either way so the wizard's review step and the permanent
+  // record render identically.
+  inventoryValue: number;
+  inventoryUnknownValueLineItems: number;
+  receivablesValue: number;
+  payablesValue: number;
+  totalAssets: number;
+  totalLiabilities: number;
+  equity: number;
+}
+
+export interface ReconcileInvoiceItemDto {
+  invoiceId: string;
+  amountPaid: number;
+}
+
+export interface ReconcileInvoicesRequestDto {
+  items: ReconcileInvoiceItemDto[];
+}
 
 export interface FinanceDashboardDto {
   cashOnHand: number;

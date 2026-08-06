@@ -45,6 +45,7 @@ async function main() {
     { key: "logistics", name: "Логистика", kind: "EXPENSE" },
     { key: "other-expense", name: "Прочее", kind: "EXPENSE" },
     { key: "other-income", name: "Прочий доход", kind: "INCOME" },
+    { key: "opening-balance", name: "Начальные остатки", kind: "EXPENSE" },
   ];
   for (const c of defaultFinanceCategories) {
     await prisma.financeCategory.upsert({

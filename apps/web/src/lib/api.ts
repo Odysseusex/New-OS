@@ -39,6 +39,8 @@ import type {
   FinanceCategoryDto,
   FinanceCategoryKind,
   FinanceDashboardDto,
+  FinanceSetupStatusDto,
+  InventoryValuationDto,
   HrKpiResponseDto,
   InvoiceDto,
   LocationComparisonDto,
@@ -53,6 +55,7 @@ import type {
   QualitySummaryDto,
   RecipeDto,
   RecipeStageTypeDto,
+  ReconcileInvoicesRequestDto,
   RecordExpensePaymentRequestDto,
   RecordPaymentRequestDto,
   RecordSupplierPaymentRequestDto,
@@ -349,6 +352,7 @@ export const api = {
   finance: {
     dashboard: (from?: string, to?: string) =>
       request<FinanceDashboardDto>(withQuery("/finance/dashboard", { from, to })),
+    inventoryValuation: () => request<InventoryValuationDto>("/finance/inventory-valuation"),
     pnl: (from: string, to: string, locationId?: string) =>
       request<ProfitAndLossDto>(withQuery("/finance/pnl", { from, to, locationId })),
     expenses: (locationId?: string) =>
@@ -396,6 +400,15 @@ export const api = {
         request<CashMovementDto>("/finance/movements/transfer", { method: "POST", body: JSON.stringify(dto) }),
       adjust: (dto: CashAdjustmentRequestDto) =>
         request<CashMovementDto>("/finance/movements/adjust", { method: "POST", body: JSON.stringify(dto) }),
+    },
+    setup: {
+      status: () => request<FinanceSetupStatusDto>("/finance/setup/status"),
+      reconcileInvoices: (dto: ReconcileInvoicesRequestDto) =>
+        request<{ updated: number }>("/finance/setup/reconcile-invoices", {
+          method: "POST",
+          body: JSON.stringify(dto),
+        }),
+      complete: () => request<FinanceSetupStatusDto>("/finance/setup/complete", { method: "POST" }),
     },
   },
 

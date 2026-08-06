@@ -36,6 +36,21 @@ export class CashAccountsService {
       }
     }
 
+    // Only "Запуск финансового учёта" may seed a starting balance out of
+    // nowhere — a real account opened after go-live always got its first
+    // money from somewhere real (another account, a deposit), so it starts
+    // at zero and is funded the ordinary way. This also keeps "sum of every
+    // OPENING_BALANCE movement" a stable, permanent stand-in for "cash at
+    // go-live" forever, with no separate frozen field needed for it.
+    if (dto.openingBalance) {
+      const org = await this.prisma.organization.findUniqueOrThrow({ where: { id: user.organizationId } });
+      if (org.financeInitializedAt) {
+        throw new BadRequestException(
+          "Начальный остаток можно указать только при запуске финансового учёта. Пополните новый счёт обычным поступлением или переводом.",
+        );
+      }
+    }
+
     const openingBalance = dto.openingBalance ?? 0;
 
     const account = await this.prisma.$transaction(async (tx) => {

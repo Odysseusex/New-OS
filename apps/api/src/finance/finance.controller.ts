@@ -16,6 +16,11 @@ import { GetPnlQueryDto } from "./dto/get-pnl-query.dto";
 export class FinanceController {
   constructor(private financeService: FinanceService) {}
 
+  @Get("inventory-valuation")
+  getInventoryValuation(@CurrentUser() user: AuthenticatedUser) {
+    return this.financeService.getInventoryValuation(user.organizationId);
+  }
+
   @Get("dashboard")
   getDashboard(@CurrentUser() user: AuthenticatedUser, @Query("from") from?: string, @Query("to") to?: string) {
     return this.financeService.getDashboard(
