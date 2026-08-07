@@ -1,26 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import clsx from "clsx";
 import { Plus, Receipt, TrendingUp, Wallet } from "lucide-react";
 import type { CustomerDto, LocationDto, ProductDto, SaleDto, SalesSummaryDto } from "@bakery-os/shared";
-import { ORG_WIDE_ROLES, PAYMENT_STATUS_LABELS_RU, PaymentStatus, ProductType, SALE_CREATE_ROLES } from "@bakery-os/shared";
+import { ORG_WIDE_ROLES, PAYMENT_RECORD_ROLES, ProductType, SALE_CREATE_ROLES } from "@bakery-os/shared";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { NewSaleModal } from "@/components/new-sale-modal";
 import { SaleDetailModal } from "@/components/sale-detail-modal";
-
-const STATUS_STYLES: Record<PaymentStatus, string> = {
-  [PaymentStatus.PAID]: "bg-emerald-50 text-emerald-700",
-  [PaymentStatus.PARTIALLY_PAID]: "bg-amber-50 text-amber-700",
-  [PaymentStatus.UNPAID]: "bg-red-50 text-red-700",
-};
+import { PaymentStatusBadge } from "@/components/payment-status-badge";
+import { RecordSalePaymentModal, type SalePaymentContext } from "@/components/record-sale-payment-modal";
 
 export default function SalesPage() {
   const { user } = useAuth();
   const isOrgWide = user ? ORG_WIDE_ROLES.includes(user.role) : false;
   const canCreateSale = user ? SALE_CREATE_ROLES.includes(user.role) : false;
+  const canRecordPayment = user ? PAYMENT_RECORD_ROLES.includes(user.role) : false;
 
   const [locations, setLocations] = useState<LocationDto[]>([]);
   const [products, setProducts] = useState<ProductDto[]>([]);
@@ -30,6 +26,7 @@ export default function SalesPage() {
   const [locationFilter, setLocationFilter] = useState<string>("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
+  const [payingSale, setPayingSale] = useState<SalePaymentContext | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -135,9 +132,23 @@ export default function SalesPage() {
                   {formatMoney(sale.totalAmount)}
                 </td>
                 <td className="px-5 py-3">
-                  <span className={clsx("rounded-full px-2.5 py-1 text-xs font-medium", STATUS_STYLES[sale.paymentStatus])}>
-                    {PAYMENT_STATUS_LABELS_RU[sale.paymentStatus]}
-                  </span>
+                  <PaymentStatusBadge
+                    status={sale.paymentStatus}
+                    amountPaid={sale.amountPaid}
+                    totalAmount={sale.totalAmount}
+                    onClick={
+                      canRecordPayment && sale.balanceDue > 0
+                        ? () =>
+                            setPayingSale({
+                              id: sale.id,
+                              customerName: sale.customerName,
+                              totalAmount: sale.totalAmount,
+                              amountPaid: sale.amountPaid,
+                              balanceDue: sale.balanceDue,
+                            })
+                        : undefined
+                    }
+                  />
                 </td>
               </tr>
             ))}
@@ -167,7 +178,20 @@ export default function SalesPage() {
       )}
 
       {selectedSaleId && (
-        <SaleDetailModal saleId={selectedSaleId} onClose={() => setSelectedSaleId(null)} />
+        <SaleDetailModal
+          saleId={selectedSaleId}
+          canRecordPayment={canRecordPayment}
+          onClose={() => setSelectedSaleId(null)}
+          onPaid={load}
+        />
+      )}
+
+      {payingSale && (
+        <RecordSalePaymentModal
+          sale={payingSale}
+          onClose={() => setPayingSale(null)}
+          onPaid={load}
+        />
       )}
     </div>
   );

@@ -54,4 +54,9 @@ export class SalesController {
   ) {
     return this.salesService.recordPayment(user, id, dto);
   }
+
+  @Get(":id/payments")
+  payments(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
+    return this.salesService.paymentsForSale(user, id);
+  }
 }

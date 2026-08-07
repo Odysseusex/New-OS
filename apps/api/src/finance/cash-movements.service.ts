@@ -91,9 +91,10 @@ export class CashMovementsService {
     organizationId: string,
     accountId?: string,
     limit = 100,
+    saleId?: string,
   ): Promise<CashMovementDto[]> {
     const movements = await this.prisma.cashMovement.findMany({
-      where: { organizationId, ...(accountId ? { accountId } : {}) },
+      where: { organizationId, ...(accountId ? { accountId } : {}), ...(saleId ? { saleId } : {}) },
       include: MOVEMENT_INCLUDE,
       orderBy: { occurredAt: "desc" },
       take: limit,

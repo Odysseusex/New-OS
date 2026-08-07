@@ -215,6 +215,7 @@ export const api = {
         method: "POST",
         body: JSON.stringify(dto),
       }),
+    payments: (id: string) => request<CashMovementDto[]>(`/sales/${id}/payments`),
   },
 
   customers: {

@@ -1,23 +1,39 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Printer } from "lucide-react";
+import { CreditCard, Printer } from "lucide-react";
 import type { SaleDetailDto } from "@bakery-os/shared";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { Modal } from "@/components/modal";
 import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
+import { RecordSalePaymentModal } from "@/components/record-sale-payment-modal";
 
-export function SaleDetailModal({ saleId, onClose }: { saleId: string; onClose: () => void }) {
+export function SaleDetailModal({
+  saleId,
+  canRecordPayment,
+  onClose,
+  onPaid,
+}: {
+  saleId: string;
+  canRecordPayment: boolean;
+  onClose: () => void;
+  onPaid?: () => void;
+}) {
   const { user } = useAuth();
   const [sale, setSale] = useState<SaleDetailDto | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isPaying, setIsPaying] = useState(false);
 
-  useEffect(() => {
+  function load() {
     api.sales
       .findOne(saleId)
       .then(setSale)
       .catch(() => setError("Не удалось загрузить накладную"));
+  }
+
+  useEffect(() => {
+    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saleId]);
 
@@ -102,14 +118,42 @@ export function SaleDetailModal({ saleId, onClose }: { saleId: string; onClose: 
             </div>
           </div>
 
-          <button
-            onClick={() => window.print()}
-            className="mt-5 flex w-full items-center justify-center gap-1.5 rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition hover:opacity-90 print:hidden"
-          >
-            <Printer className="h-4 w-4" strokeWidth={1.75} />
-            Печать накладной
-          </button>
+          <div className="mt-5 flex gap-3 print:hidden">
+            {canRecordPayment && sale.balanceDue > 0 && (
+              <button
+                onClick={() => setIsPaying(true)}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition hover:opacity-90"
+              >
+                <CreditCard className="h-4 w-4" strokeWidth={1.75} />
+                Получить оплату
+              </button>
+            )}
+            <button
+              onClick={() => window.print()}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+            >
+              <Printer className="h-4 w-4" strokeWidth={1.75} />
+              Печать накладной
+            </button>
+          </div>
         </>
+      )}
+
+      {isPaying && sale && (
+        <RecordSalePaymentModal
+          sale={{
+            id: sale.id,
+            customerName: sale.customerName,
+            totalAmount: sale.totalAmount,
+            amountPaid: sale.amountPaid,
+            balanceDue: sale.balanceDue,
+          }}
+          onClose={() => setIsPaying(false)}
+          onPaid={() => {
+            load();
+            onPaid?.();
+          }}
+        />
       )}
 
       <style jsx global>{`

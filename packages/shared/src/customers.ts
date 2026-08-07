@@ -65,4 +65,7 @@ export interface RecordPaymentRequestDto {
   // Which account the payment landed in. Falls back to the sale's own
   // paymentMethod-implied account when omitted.
   accountId?: string;
+  // Optional free-text note, stored on the CashMovement in place of the
+  // default "Погашение долга по продаже" reason.
+  reason?: string;
 }

@@ -3,16 +3,11 @@
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import type { CustomerDetailDto } from "@bakery-os/shared";
-import { PAYMENT_STATUS_LABELS_RU, PaymentStatus } from "@bakery-os/shared";
-import { api, ApiError } from "@/lib/api";
+import { api } from "@/lib/api";
 import { Modal } from "@/components/modal";
 import { formatDateTime, formatMoney } from "@/lib/format";
-
-const STATUS_STYLES: Record<PaymentStatus, string> = {
-  [PaymentStatus.PAID]: "bg-emerald-50 text-emerald-700",
-  [PaymentStatus.PARTIALLY_PAID]: "bg-amber-50 text-amber-700",
-  [PaymentStatus.UNPAID]: "bg-red-50 text-red-700",
-};
+import { PaymentStatusBadge } from "@/components/payment-status-badge";
+import { RecordSalePaymentModal, type SalePaymentContext } from "@/components/record-sale-payment-modal";
 
 export function CustomerDetailModal({
   customerId,
@@ -27,8 +22,7 @@ export function CustomerDetailModal({
 }) {
   const [customer, setCustomer] = useState<CustomerDetailDto | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [paymentDrafts, setPaymentDrafts] = useState<Record<string, string>>({});
-  const [busySaleId, setBusySaleId] = useState<string | null>(null);
+  const [payingSale, setPayingSale] = useState<SalePaymentContext | null>(null);
 
   function load() {
     api.customers
@@ -41,28 +35,6 @@ export function CustomerDetailModal({
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerId]);
-
-  async function handleRecordPayment(saleId: string, balanceDue: number) {
-    const raw = paymentDrafts[saleId];
-    const amount = Number(raw);
-    if (!raw || !(amount > 0)) return;
-    if (amount > balanceDue) {
-      setError("Сумма оплаты превышает остаток задолженности");
-      return;
-    }
-    setBusySaleId(saleId);
-    setError(null);
-    try {
-      await api.sales.recordPayment(saleId, { amount });
-      setPaymentDrafts((prev) => ({ ...prev, [saleId]: "" }));
-      load();
-      onChanged();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Не удалось провести оплату");
-    } finally {
-      setBusySaleId(null);
-    }
-  }
 
   return (
     <Modal title={customer?.name ?? "Клиент"} onClose={onClose} width="max-w-3xl">
@@ -95,9 +67,7 @@ export function CustomerDetailModal({
                   <th className="px-4 py-2.5 font-medium">Дата</th>
                   <th className="px-4 py-2.5 font-medium">Точка</th>
                   <th className="px-4 py-2.5 text-right font-medium">Сумма</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Оплачено</th>
                   <th className="px-4 py-2.5 font-medium">Статус</th>
-                  {canRecordPayment && <th className="px-4 py-2.5 font-medium">Оплата</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -106,46 +76,30 @@ export function CustomerDetailModal({
                     <td className="px-4 py-2.5 text-foreground">{formatDateTime(order.soldAt)}</td>
                     <td className="px-4 py-2.5 text-muted">{order.locationName}</td>
                     <td className="px-4 py-2.5 text-right text-foreground">{formatMoney(order.totalAmount)}</td>
-                    <td className="px-4 py-2.5 text-right text-muted">{formatMoney(order.amountPaid)}</td>
-                    <td className="px-4 py-2.5">
-                      <span className={clsx("rounded-full px-2.5 py-1 text-xs font-medium", STATUS_STYLES[order.paymentStatus])}>
-                        {PAYMENT_STATUS_LABELS_RU[order.paymentStatus]}
-                      </span>
+                    <td className={clsx("px-4 py-2.5", canRecordPayment && order.balanceDue > 0 && "cursor-pointer")}>
+                      <PaymentStatusBadge
+                        status={order.paymentStatus}
+                        amountPaid={order.amountPaid}
+                        totalAmount={order.totalAmount}
+                        onClick={
+                          canRecordPayment && order.balanceDue > 0
+                            ? () =>
+                                setPayingSale({
+                                  id: order.saleId,
+                                  customerName: customer.name,
+                                  totalAmount: order.totalAmount,
+                                  amountPaid: order.amountPaid,
+                                  balanceDue: order.balanceDue,
+                                })
+                            : undefined
+                        }
+                      />
                     </td>
-                    {canRecordPayment && (
-                      <td className="px-4 py-2.5">
-                        {order.balanceDue > 0 ? (
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              type="number"
-                              min="0"
-                              max={order.balanceDue}
-                              step="any"
-                              placeholder="Сумма"
-                              value={paymentDrafts[order.saleId] ?? ""}
-                              onChange={(e) =>
-                                setPaymentDrafts((prev) => ({ ...prev, [order.saleId]: e.target.value }))
-                              }
-                              className="w-20 rounded-lg border border-border bg-surface px-2 py-1 text-xs text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-                            />
-                            <button
-                              onClick={() => handleRecordPayment(order.saleId, order.balanceDue)}
-                              disabled={busySaleId === order.saleId}
-                              className="rounded-lg bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-60"
-                            >
-                              Внести
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted">—</span>
-                        )}
-                      </td>
-                    )}
                   </tr>
                 ))}
                 {customer.orders.length === 0 && (
                   <tr>
-                    <td colSpan={canRecordPayment ? 6 : 5} className="px-4 py-8 text-center text-sm text-muted">
+                    <td colSpan={4} className="px-4 py-8 text-center text-sm text-muted">
                       Заказов пока нет
                     </td>
                   </tr>
@@ -154,6 +108,17 @@ export function CustomerDetailModal({
             </table>
           </div>
         </>
+      )}
+
+      {payingSale && (
+        <RecordSalePaymentModal
+          sale={payingSale}
+          onClose={() => setPayingSale(null)}
+          onPaid={() => {
+            load();
+            onChanged();
+          }}
+        />
       )}
     </Modal>
   );

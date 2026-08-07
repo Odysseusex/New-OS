@@ -8,4 +8,8 @@ export class RecordPaymentDto {
   @IsOptional()
   @IsString()
   accountId?: string;
+
+  @IsOptional()
+  @IsString()
+  reason?: string;
 }

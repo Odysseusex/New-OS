@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   CashAccountType,
+  CashMovementDto,
   CashMovementType,
   PaymentMethod,
   PaymentStatus,
@@ -326,7 +327,7 @@ export class SalesService {
           amount: dto.amount,
           customerId: sale.customerId ?? undefined,
           saleId: sale.id,
-          reason: "Погашение долга по продаже",
+          reason: dto.reason || "Погашение долга по продаже",
           createdById: user.id,
         });
       }
@@ -338,6 +339,22 @@ export class SalesService {
     });
 
     return this.toSaleDetailDto(updated);
+  }
+
+  // Payment history for one sale — every CashMovement tagged with this
+  // saleId, i.e. the receipt taken at sale time (SALE_RECEIPT, if any) plus
+  // every later CUSTOMER_PAYMENT against it. Open to any authenticated role
+  // that can see the sale itself (see findOne) rather than gated behind
+  // FINANCE_VIEW_ROLES, since this is sale-scoped data, not the org ledger.
+  async paymentsForSale(user: AuthenticatedUser, saleId: string): Promise<CashMovementDto[]> {
+    const sale = await this.prisma.sale.findFirst({
+      where: { id: saleId, organizationId: user.organizationId },
+    });
+    if (!sale) {
+      throw new NotFoundException("Продажа не найдена");
+    }
+    resolveLocationScope(user, sale.locationId);
+    return this.cashMovementsService.findAll(user.organizationId, undefined, undefined, saleId);
   }
 
   private toSaleDto = (sale: {
