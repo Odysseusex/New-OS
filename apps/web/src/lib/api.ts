@@ -1,5 +1,8 @@
 import type {
   AdjustStockRequestDto,
+  AiExecutiveSummaryDto,
+  AiInsightsResponseDto,
+  AiLocationDeviationResponseDto,
   CancelProductionBatchRequestDto,
   CashAccountDto,
   CashAdjustmentRequestDto,
@@ -33,6 +36,7 @@ import type {
   CustomerDto,
   DashboardSummaryDto,
   DeliveryRouteDto,
+  DismissAiInsightResponseDto,
   DriverDto,
   EmployeeDto,
   ExpenseDto,
@@ -429,5 +433,15 @@ export const api = {
     clockOut: () => request<TimeEntryDto>("/hr/time-entries/clock-out", { method: "POST" }),
     kpi: (from: string, to: string, locationId?: string) =>
       request<HrKpiResponseDto>(withQuery("/hr/kpi", { from, to, locationId })),
+  },
+
+  ai: {
+    summary: (days?: number) => request<AiExecutiveSummaryDto>(withQuery("/ai/summary", { days: days ? String(days) : undefined })),
+    locations: (days?: number) =>
+      request<AiLocationDeviationResponseDto>(withQuery("/ai/locations", { days: days ? String(days) : undefined })),
+    insights: () => request<AiInsightsResponseDto>("/ai/insights"),
+    dismiss: (key: string) =>
+      request<DismissAiInsightResponseDto>(`/ai/insights/${encodeURIComponent(key)}/dismiss`, { method: "POST" }),
+    dismissAll: () => request<DismissAiInsightResponseDto>("/ai/insights/dismiss-all", { method: "POST" }),
   },
 };

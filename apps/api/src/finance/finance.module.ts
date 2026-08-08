@@ -22,6 +22,9 @@ import { FinanceSetupController } from "./finance-setup.controller";
   // CashMovementsService is the single writer for the money ledger — other
   // modules (Sales, Invoices) inject it to record a movement as part of
   // their own transaction rather than duplicating that logic.
-  exports: [CashMovementsService],
+  // FinanceService/CashAccountsService are exported so read-only consumers
+  // (AiModule) can reuse their existing aggregations (P&L, AR/AP, account
+  // balances) instead of re-querying the same tables.
+  exports: [CashMovementsService, FinanceService, CashAccountsService],
 })
 export class FinanceModule {}

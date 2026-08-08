@@ -23,6 +23,7 @@ import { UsersModule } from "./users/users.module";
 import { InvoicesModule } from "./invoices/invoices.module";
 import { QualityModule } from "./quality/quality.module";
 import { NotificationsModule } from "./notifications/notifications.module";
+import { AiModule } from "./ai/ai.module";
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { NotificationsModule } from "./notifications/notifications.module";
     InvoicesModule,
     QualityModule,
     NotificationsModule,
+    AiModule,
   ],
   controllers: [AppController],
 })

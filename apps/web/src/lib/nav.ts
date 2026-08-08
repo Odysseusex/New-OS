@@ -39,8 +39,8 @@ export const primaryNav: NavItem[] = [
     href: "/ai",
     label: "AI-центр",
     icon: Sparkles,
-    status: "soon",
-    description: "Рекомендации, прогнозы спроса, обнаружение аномалий",
+    status: "live",
+    description: "Приоритеты, отклонения и сравнение точек — аналитика без LLM (Этап 1)",
   },
   {
     href: "/sales",

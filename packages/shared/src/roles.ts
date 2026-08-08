@@ -206,3 +206,11 @@ export const PRODUCT_FORCE_DELETE_ROLES: Role[] = [Role.OWNER];
 // access-control decision, so it's restricted the same way as location
 // management rather than opened up to operational roles.
 export const USER_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN];
+
+// AI-центр surfaces cross-module financial data (margin, cash balances,
+// AR/AP) that isn't otherwise open to location-scoped operational roles —
+// same breadth as Finance/Network/Reports, not a per-insight ACL. A
+// location-scoped manager still gets the same signal today via
+// Notifications (low stock, stale documents); AI-центр's cross-module
+// correlation view is deliberately owner/oversight-level only for now.
+export const AI_INSIGHTS_VIEW_ROLES: Role[] = ORG_WIDE_ROLES;
