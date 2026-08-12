@@ -66,20 +66,43 @@ export const FINANCE_CATEGORY_KIND_LABELS_RU: Record<FinanceCategoryKind, string
   [FinanceCategoryKind.EXPENSE]: "Расход",
 };
 
+// How an expense category behaves as sales volume changes — the input to
+// break-even/contribution-margin analysis. UNCLASSIFIED is a first-class,
+// always-visible state (not silently inferred as either): a new category
+// starts here and stays here until someone deliberately classifies it, and
+// break-even reporting must say so honestly rather than guess.
+export enum CostBehavior {
+  FIXED = "FIXED",
+  VARIABLE = "VARIABLE",
+  UNCLASSIFIED = "UNCLASSIFIED",
+}
+
+export const COST_BEHAVIOR_LABELS_RU: Record<CostBehavior, string> = {
+  [CostBehavior.FIXED]: "Постоянные",
+  [CostBehavior.VARIABLE]: "Переменные",
+  [CostBehavior.UNCLASSIFIED]: "Не классифицированы",
+};
+
 export interface FinanceCategoryDto {
   id: string;
   name: string;
   kind: FinanceCategoryKind;
   isActive: boolean;
+  costBehavior: CostBehavior;
 }
 
 export interface CreateFinanceCategoryRequestDto {
   name: string;
   kind: FinanceCategoryKind;
+  costBehavior?: CostBehavior;
 }
 
 export interface UpdateFinanceCategoryRequestDto {
   name: string;
+}
+
+export interface SetFinanceCategoryCostBehaviorRequestDto {
+  costBehavior: CostBehavior;
 }
 
 // ── Cash movements — the single append-only money ledger, the direct
@@ -263,6 +286,60 @@ export interface ProfitAndLossDto {
   operatingProfit: number;
   unknownCostLineItems: number;
   byProduct: ProductPnLDto[];
+}
+
+// ── Break-even analysis — reuses getProfitAndLoss()'s revenue/cogs rather
+// than recomputing them; the only new input is FinanceCategory.costBehavior
+// applied to CONFIRMED expenses in the same period. Deliberately not a
+// forecast: it answers "at this period's actual margin, what revenue would
+// have covered fixed costs", nothing more. Every non-OK status means the
+// number is intentionally withheld rather than shown wrong. ────────────
+
+export enum BreakEvenStatus {
+  // Enough classified data to compute a real number.
+  OK = "OK",
+  // No revenue in the period — contribution margin is undefined.
+  NO_SALES = "NO_SALES",
+  // No expense in the period has been classified FIXED yet.
+  NO_FIXED_COSTS_CLASSIFIED = "NO_FIXED_COSTS_CLASSIFIED",
+  // Revenue doesn't cover COGS + variable expenses — contribution margin
+  // is zero or negative, so no break-even revenue exists (more sales alone
+  // would never recover fixed costs at this margin).
+  NEGATIVE_MARGIN = "NEGATIVE_MARGIN",
+}
+
+export const BREAK_EVEN_STATUS_LABELS_RU: Record<BreakEvenStatus, string> = {
+  [BreakEvenStatus.OK]: "Рассчитано",
+  [BreakEvenStatus.NO_SALES]: "Нет продаж за период",
+  [BreakEvenStatus.NO_FIXED_COSTS_CLASSIFIED]: "Постоянные расходы не классифицированы",
+  [BreakEvenStatus.NEGATIVE_MARGIN]: "Маржинальная прибыль отрицательна или нулевая",
+};
+
+export interface BreakEvenFixedCostLineDto {
+  categoryId: string;
+  categoryName: string;
+  amount: number;
+}
+
+export interface BreakEvenDto {
+  from: string;
+  to: string;
+  status: BreakEvenStatus;
+  revenue: number;
+  cogs: number;
+  variableExpensesTotal: number;
+  fixedExpensesTotal: number;
+  // Expenses in the period whose category is still UNCLASSIFIED — surfaced
+  // so the user knows the fixed/variable totals above are partial, not to
+  // be silently folded into either side.
+  unclassifiedExpensesTotal: number;
+  contributionMargin: number;
+  // Null only when revenue is zero (undefined ratio) — still computed (and
+  // may be zero or negative) for NO_FIXED_COSTS_CLASSIFIED/NEGATIVE_MARGIN
+  // so the number itself remains a useful diagnostic even when status isn't OK.
+  contributionMarginPercent: number | null;
+  breakEvenRevenue: number | null;
+  fixedCostLines: BreakEvenFixedCostLineDto[];
 }
 
 // ── Owner dashboard — one endpoint powering the 10 at-a-glance cards ───

@@ -1,5 +1,5 @@
-import { IsEnum, IsString, MinLength } from "class-validator";
-import { FinanceCategoryKind } from "@bakery-os/shared";
+import { IsEnum, IsOptional, IsString, MinLength } from "class-validator";
+import { CostBehavior, FinanceCategoryKind } from "@bakery-os/shared";
 
 export class CreateFinanceCategoryDto {
   @IsString()
@@ -8,4 +8,8 @@ export class CreateFinanceCategoryDto {
 
   @IsEnum(FinanceCategoryKind)
   kind!: FinanceCategoryKind;
+
+  @IsOptional()
+  @IsEnum(CostBehavior)
+  costBehavior?: CostBehavior;
 }

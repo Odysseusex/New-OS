@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { FinanceCategoryDto, FinanceCategoryKind } from "@bakery-os/shared";
+import { CostBehavior, FinanceCategoryDto, FinanceCategoryKind } from "@bakery-os/shared";
 import { CreateFinanceCategoryDto } from "./dto/create-finance-category.dto";
 import { UpdateFinanceCategoryDto } from "./dto/update-finance-category.dto";
 
@@ -48,6 +48,19 @@ export class FinanceCategoriesService {
     return this.toDto(updated);
   }
 
+  async setCostBehavior(
+    organizationId: string,
+    categoryId: string,
+    costBehavior: CostBehavior,
+  ): Promise<FinanceCategoryDto> {
+    const category = await this.prisma.financeCategory.findFirst({ where: { id: categoryId, organizationId } });
+    if (!category) {
+      throw new NotFoundException("Категория не найдена");
+    }
+    const updated = await this.prisma.financeCategory.update({ where: { id: categoryId }, data: { costBehavior } });
+    return this.toDto(updated);
+  }
+
   async archive(organizationId: string, categoryId: string): Promise<FinanceCategoryDto> {
     return this.setActive(organizationId, categoryId, false);
   }
@@ -87,10 +100,12 @@ export class FinanceCategoriesService {
     name: string;
     kind: string;
     isActive: boolean;
+    costBehavior: string;
   }): FinanceCategoryDto => ({
     id: category.id,
     name: category.name,
     kind: category.kind as FinanceCategoryKind,
     isActive: category.isActive,
+    costBehavior: category.costBehavior as CostBehavior,
   });
 }

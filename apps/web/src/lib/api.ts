@@ -1,8 +1,10 @@
 import type {
+  AddEmployeeCompensationRequestDto,
   AdjustStockRequestDto,
   AiExecutiveSummaryDto,
   AiInsightsResponseDto,
   AiLocationDeviationResponseDto,
+  BreakEvenDto,
   CancelProductionBatchRequestDto,
   CashAccountDto,
   CashAdjustmentRequestDto,
@@ -11,12 +13,15 @@ import type {
   CashTransferRequestDto,
   CashWithdrawalRequestDto,
   CategoryDto,
+  ClockInForRequestDto,
   ClockInRequestDto,
   CompleteProductionBatchRequestDto,
+  CostBehavior,
   CreateCashAccountRequestDto,
   CreateCategoryRequestDto,
   CreateCustomerRequestDto,
   CreateDeliveryRouteRequestDto,
+  CreateEmployeeRequestDto,
   CreateExpenseRequestDto,
   CreateFinanceCategoryRequestDto,
   CreateInvoiceRequestDto,
@@ -38,6 +43,7 @@ import type {
   DeliveryRouteDto,
   DismissAiInsightResponseDto,
   DriverDto,
+  EmployeeCompensationDto,
   EmployeeDto,
   ExpenseDto,
   FinanceCategoryDto,
@@ -76,6 +82,7 @@ import type {
   UpdateCashAccountRequestDto,
   UpdateCategoryRequestDto,
   UpdateCustomerRequestDto,
+  UpdateEmployeeRequestDto,
   UpdateFinanceCategoryRequestDto,
   UpdateLocationRequestDto,
   UpdateProductionBatchRequestDto,
@@ -360,6 +367,8 @@ export const api = {
     inventoryValuation: () => request<InventoryValuationDto>("/finance/inventory-valuation"),
     pnl: (from: string, to: string, locationId?: string) =>
       request<ProfitAndLossDto>(withQuery("/finance/pnl", { from, to, locationId })),
+    breakEven: (from: string, to: string, locationId?: string) =>
+      request<BreakEvenDto>(withQuery("/finance/break-even", { from, to, locationId })),
     expenses: (locationId?: string) =>
       request<ExpenseDto[]>(withQuery("/finance/expenses", { locationId })),
     createExpense: (dto: CreateExpenseRequestDto) =>
@@ -391,6 +400,11 @@ export const api = {
       archive: (id: string) => request<FinanceCategoryDto>(`/finance/categories/${id}/archive`, { method: "POST" }),
       restore: (id: string) => request<FinanceCategoryDto>(`/finance/categories/${id}/restore`, { method: "POST" }),
       remove: (id: string) => request<{ deleted: true }>(`/finance/categories/${id}`, { method: "DELETE" }),
+      setCostBehavior: (id: string, costBehavior: CostBehavior) =>
+        request<FinanceCategoryDto>(`/finance/categories/${id}/cost-behavior`, {
+          method: "PATCH",
+          body: JSON.stringify({ costBehavior }),
+        }),
     },
     movements: {
       list: (accountId?: string, limit?: number) =>
@@ -418,8 +432,28 @@ export const api = {
   },
 
   hr: {
-    employees: (locationId?: string) =>
-      request<EmployeeDto[]>(withQuery("/hr/employees", { locationId })),
+    employees: {
+      list: (locationId?: string, includeArchived?: boolean) =>
+        request<EmployeeDto[]>(
+          withQuery("/hr/employees", { locationId, includeArchived: includeArchived ? "true" : undefined }),
+        ),
+      create: (dto: CreateEmployeeRequestDto) =>
+        request<EmployeeDto>("/hr/employees", { method: "POST", body: JSON.stringify(dto) }),
+      update: (id: string, dto: UpdateEmployeeRequestDto) =>
+        request<EmployeeDto>(`/hr/employees/${id}`, { method: "PATCH", body: JSON.stringify(dto) }),
+      archive: (id: string) => request<EmployeeDto>(`/hr/employees/${id}/archive`, { method: "POST" }),
+      restore: (id: string) => request<EmployeeDto>(`/hr/employees/${id}/restore`, { method: "POST" }),
+      remove: (id: string) => request<{ deleted: true }>(`/hr/employees/${id}`, { method: "DELETE" }),
+      compensations: (id: string) => request<EmployeeCompensationDto[]>(`/hr/employees/${id}/compensations`),
+      addCompensation: (id: string, dto: AddEmployeeCompensationRequestDto) =>
+        request<EmployeeCompensationDto>(`/hr/employees/${id}/compensations`, {
+          method: "POST",
+          body: JSON.stringify(dto),
+        }),
+      clockIn: (id: string, dto: ClockInForRequestDto) =>
+        request<TimeEntryDto>(`/hr/employees/${id}/clock-in`, { method: "POST", body: JSON.stringify(dto) }),
+      clockOut: (id: string) => request<TimeEntryDto>(`/hr/employees/${id}/clock-out`, { method: "POST" }),
+    },
     shifts: (locationId?: string) => request<ShiftDto[]>(withQuery("/hr/shifts", { locationId })),
     myShifts: () => request<ShiftDto[]>("/hr/shifts/me"),
     createShift: (dto: CreateShiftRequestDto) =>

@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import type { EmployeeDto, LocationDto } from "@bakery-os/shared";
-import { ROLE_LABELS_RU } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
 
@@ -30,7 +29,7 @@ export function NewShiftModal({
   const tomorrowEnd = new Date(tomorrow);
   tomorrowEnd.setHours(18, 0, 0, 0);
 
-  const [userId, setUserId] = useState(employees[0]?.id ?? "");
+  const [employeeId, setEmployeeId] = useState(employees[0]?.id ?? "");
   const [locationId, setLocationId] = useState(fixedLocationId ?? locations[0]?.id ?? "");
   const [startsAt, setStartsAt] = useState(toLocalInputValue(tomorrow));
   const [endsAt, setEndsAt] = useState(toLocalInputValue(tomorrowEnd));
@@ -43,7 +42,7 @@ export function NewShiftModal({
     setIsSubmitting(true);
     try {
       await api.hr.createShift({
-        userId,
+        employeeId,
         locationId: fixedLocationId ?? locationId,
         startsAt: new Date(startsAt).toISOString(),
         endsAt: new Date(endsAt).toISOString(),
@@ -62,13 +61,13 @@ export function NewShiftModal({
         <div className="mb-4">
           <label className="mb-1.5 block text-sm font-medium text-foreground">Сотрудник</label>
           <select
-            value={userId}
-            onChange={(e) => setUserId(e.target.value)}
+            value={employeeId}
+            onChange={(e) => setEmployeeId(e.target.value)}
             className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
           >
             {employees.map((emp) => (
               <option key={emp.id} value={emp.id}>
-                {emp.fullName} ({ROLE_LABELS_RU[emp.role]})
+                {emp.fullName} ({emp.position})
               </option>
             ))}
           </select>

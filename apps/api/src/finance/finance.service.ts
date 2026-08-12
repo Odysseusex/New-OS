@@ -1,9 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import {
+  BreakEvenDto,
+  BreakEvenFixedCostLineDto,
+  BreakEvenStatus,
   CASH_MOVEMENT_INFLOW_TYPES,
   CashAccountType,
   CashMovementType,
+  CostBehavior,
   ExpenseDto,
   ExpenseStatus,
   FinanceDashboardDto,
@@ -378,6 +382,89 @@ export class FinanceService {
       operatingProfit,
       unknownCostLineItems,
       byProduct,
+    };
+  }
+
+  // Break-even/contribution-margin analysis for the period — reuses
+  // getProfitAndLoss()'s revenue/cogs rather than recomputing them; the only
+  // new input is FinanceCategory.costBehavior applied to the same CONFIRMED
+  // expenses P&L already counts. Deliberately not a forecast — it answers
+  // "at this period's actual margin, what revenue would have covered fixed
+  // costs", using this period's own numbers, nothing projected forward.
+  async getBreakEven(organizationId: string, from: Date, to: Date, locationId?: string): Promise<BreakEvenDto> {
+    const [pnl, expenses] = await Promise.all([
+      this.getProfitAndLoss(organizationId, from, to, locationId),
+      this.prisma.expense.findMany({
+        where: {
+          organizationId,
+          status: ExpenseStatus.CONFIRMED,
+          incurredOn: { gte: from, lte: to },
+          ...(locationId ? { OR: [{ locationId }, { locationId: null }] } : {}),
+        },
+        include: { categoryRef: true },
+      }),
+    ]);
+
+    let fixedExpensesTotal = 0;
+    let variableExpensesTotal = 0;
+    let unclassifiedExpensesTotal = 0;
+    const fixedByCategory = new Map<string, { categoryName: string; amount: number }>();
+
+    for (const expense of expenses) {
+      const amount = expense.amount.toNumber();
+      const behavior = expense.categoryRef?.costBehavior as CostBehavior | undefined;
+
+      if (behavior === CostBehavior.FIXED) {
+        fixedExpensesTotal += amount;
+        const key = expense.categoryId ?? "uncategorized";
+        const categoryName = expense.categoryRef?.name ?? "Без категории";
+        const existing = fixedByCategory.get(key);
+        if (existing) {
+          existing.amount += amount;
+        } else {
+          fixedByCategory.set(key, { categoryName, amount });
+        }
+      } else if (behavior === CostBehavior.VARIABLE) {
+        variableExpensesTotal += amount;
+      } else {
+        unclassifiedExpensesTotal += amount;
+      }
+    }
+
+    const fixedCostLines: BreakEvenFixedCostLineDto[] = Array.from(fixedByCategory.entries())
+      .map(([categoryId, v]) => ({ categoryId, categoryName: v.categoryName, amount: v.amount }))
+      .sort((a, b) => b.amount - a.amount);
+
+    const contributionMargin = pnl.revenue - (pnl.cogs + variableExpensesTotal);
+    const contributionMarginPercent = pnl.revenue > 0 ? (contributionMargin / pnl.revenue) * 100 : null;
+
+    let status: BreakEvenStatus;
+    let breakEvenRevenue: number | null = null;
+
+    if (pnl.revenue <= 0) {
+      status = BreakEvenStatus.NO_SALES;
+    } else if (fixedExpensesTotal <= 0) {
+      status = BreakEvenStatus.NO_FIXED_COSTS_CLASSIFIED;
+    } else if (contributionMargin <= 0) {
+      status = BreakEvenStatus.NEGATIVE_MARGIN;
+    } else {
+      status = BreakEvenStatus.OK;
+      breakEvenRevenue = fixedExpensesTotal / (contributionMargin / pnl.revenue);
+    }
+
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      status,
+      revenue: pnl.revenue,
+      cogs: pnl.cogs,
+      variableExpensesTotal,
+      fixedExpensesTotal,
+      unclassifiedExpensesTotal,
+      contributionMargin,
+      contributionMarginPercent,
+      breakEvenRevenue,
+      fixedCostLines,
     };
   }
 

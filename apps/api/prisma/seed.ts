@@ -225,6 +225,66 @@ async function main() {
     },
   });
 
+  // Every demo user is also a real Employee (ERP access is an optional
+  // extra on top of being staff, not the definition of staff) — matches
+  // the same 1:1 backfill the migration performs for pre-existing
+  // organizations, just with real job titles instead of a placeholder
+  // since we know them here.
+  const employeePositionByEmail: Record<string, string> = {
+    "owner@bakery.demo": "Владелец",
+    "manager@bakery.demo": "Управляющий точкой",
+    "cashier@bakery.demo": "Кассир",
+    "warehouse@bakery.demo": "Кладовщик",
+    "technologist@bakery.demo": "Технолог",
+    "baker@bakery.demo": "Пекарь",
+    "driver@bakery.demo": "Водитель",
+    "hr@bakery.demo": "HR-менеджер",
+  };
+  const demoUsers = await prisma.user.findMany({ where: { organizationId: org.id } });
+  for (const u of demoUsers) {
+    const position = employeePositionByEmail[u.email] ?? "Сотрудник";
+    await prisma.employee.upsert({
+      where: { id: `emp-${u.id}` },
+      // Existing organizations' employees were backfilled from User.title
+      // (mostly null → placeholder "Сотрудник") by the HR-foundation
+      // migration before this seed knew any real job titles — reapply them
+      // here so re-running the seed against already-migrated demo data
+      // fixes the placeholder instead of leaving it forever.
+      update: { position, locationId: u.locationId, fullName: u.fullName },
+      create: {
+        id: `emp-${u.id}`,
+        organizationId: org.id,
+        locationId: u.locationId,
+        fullName: u.fullName,
+        position,
+        status: "ACTIVE",
+        userId: u.id,
+      },
+    });
+  }
+
+  // One employee with no ERP login at all — demonstrates the actual point
+  // of this model: a real staff member ArAmir OS tracks (shifts, HR
+  // records) without ever needing to grant them access to the system.
+  const salesperson = await prisma.employee.upsert({
+    where: { id: `emp-demo-salesperson` },
+    update: {
+      locationId: LOC_STORE_2,
+      fullName: "Айгуль Ермекова",
+      position: "Продавец",
+      phone: "+7 701 555 4321",
+    },
+    create: {
+      id: "emp-demo-salesperson",
+      organizationId: org.id,
+      locationId: LOC_STORE_2,
+      fullName: "Айгуль Ермекова",
+      position: "Продавец",
+      phone: "+7 701 555 4321",
+      status: "ACTIVE",
+    },
+  });
+
   const categoryNames = ["Хлеб", "Выпечка", "Торты", "Сырьё"];
   const categoriesByName = new Map<string, string>();
   for (const name of categoryNames) {
@@ -542,7 +602,7 @@ async function main() {
       data: {
         organizationId: org.id,
         locationId: LOC_STORE_1,
-        userId: cashier.id,
+        employeeId: `emp-${cashier.id}`,
         startsAt: tomorrow,
         endsAt: tomorrowEnd,
         createdById: manager.id,
@@ -555,13 +615,40 @@ async function main() {
     const yesterdayEnd = new Date(yesterday);
     yesterdayEnd.setHours(17, 30, 0, 0);
 
+    // Self-recorded — the cashier has ERP access and clocked themself in.
     await prisma.timeEntry.create({
       data: {
         organizationId: org.id,
         locationId: LOC_STORE_1,
-        userId: cashier.id,
+        employeeId: `emp-${cashier.id}`,
         clockInAt: yesterday,
         clockOutAt: yesterdayEnd,
+        recordedById: cashier.id,
+      },
+    });
+
+    // Айгуль (продавец) has no ERP login at all — her shift and attendance
+    // are recorded by her manager instead, demonstrating the exact
+    // capability this model exists for.
+    await prisma.shift.create({
+      data: {
+        organizationId: org.id,
+        locationId: LOC_STORE_2,
+        employeeId: salesperson.id,
+        startsAt: tomorrow,
+        endsAt: tomorrowEnd,
+        createdById: manager.id,
+      },
+    });
+
+    await prisma.timeEntry.create({
+      data: {
+        organizationId: org.id,
+        locationId: LOC_STORE_2,
+        employeeId: salesperson.id,
+        clockInAt: yesterday,
+        clockOutAt: yesterdayEnd,
+        recordedById: manager.id,
       },
     });
   }

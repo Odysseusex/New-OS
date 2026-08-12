@@ -6,7 +6,7 @@ export class CreateShiftDto {
   locationId?: string;
 
   @IsString()
-  userId!: string;
+  employeeId!: string;
 
   @IsDateString()
   startsAt!: string;

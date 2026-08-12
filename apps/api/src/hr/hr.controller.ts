@@ -8,18 +8,13 @@ import { AuthenticatedUser } from "../auth/auth.types";
 import { HrService } from "./hr.service";
 import { CreateShiftDto } from "./dto/create-shift.dto";
 import { ClockInDto } from "./dto/clock-in.dto";
+import { ClockInForDto } from "./dto/clock-in-for.dto";
 import { GetKpiQueryDto } from "./dto/get-kpi-query.dto";
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("hr")
 export class HrController {
   constructor(private hrService: HrService) {}
-
-  @Get("employees")
-  @Roles(...HR_MANAGE_ROLES)
-  listEmployees(@CurrentUser() user: AuthenticatedUser, @Query("locationId") locationId?: string) {
-    return this.hrService.listEmployees(user, locationId);
-  }
 
   @Get("shifts")
   @Roles(...HR_MANAGE_ROLES)
@@ -63,6 +58,23 @@ export class HrController {
   @Post("time-entries/clock-out")
   clockOut(@CurrentUser() user: AuthenticatedUser) {
     return this.hrService.clockOut(user);
+  }
+
+  // Manager-assisted attendance for employees with no ERP login of their own.
+  @Post("employees/:employeeId/clock-in")
+  @Roles(...HR_MANAGE_ROLES)
+  clockInFor(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("employeeId") employeeId: string,
+    @Body() dto: ClockInForDto,
+  ) {
+    return this.hrService.clockInFor(user, employeeId, dto);
+  }
+
+  @Post("employees/:employeeId/clock-out")
+  @Roles(...HR_MANAGE_ROLES)
+  clockOutFor(@CurrentUser() user: AuthenticatedUser, @Param("employeeId") employeeId: string) {
+    return this.hrService.clockOutFor(user, employeeId);
   }
 
   @Get("kpi")

@@ -8,6 +8,7 @@ import { AuthenticatedUser } from "../auth/auth.types";
 import { FinanceCategoriesService } from "./finance-categories.service";
 import { CreateFinanceCategoryDto } from "./dto/create-finance-category.dto";
 import { UpdateFinanceCategoryDto } from "./dto/update-finance-category.dto";
+import { SetCostBehaviorDto } from "./dto/set-cost-behavior.dto";
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(...FINANCE_VIEW_ROLES)
@@ -34,6 +35,12 @@ export class FinanceCategoriesController {
   @Roles(...FINANCE_CATEGORY_MANAGE_ROLES)
   update(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: UpdateFinanceCategoryDto) {
     return this.financeCategoriesService.update(user.organizationId, id, dto);
+  }
+
+  @Patch(":id/cost-behavior")
+  @Roles(...FINANCE_CATEGORY_MANAGE_ROLES)
+  setCostBehavior(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: SetCostBehaviorDto) {
+    return this.financeCategoriesService.setCostBehavior(user.organizationId, id, dto.costBehavior);
   }
 
   @Post(":id/archive")

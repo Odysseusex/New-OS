@@ -146,6 +146,22 @@ export const HR_MANAGE_ROLES: Role[] = [
   Role.PRODUCTION_MANAGER,
 ];
 
+// Creating/editing Employee records (name, position, location, status,
+// linking a User) is day-to-day HR administration — same bar as shifts.
+export const EMPLOYEE_MANAGE_ROLES: Role[] = HR_MANAGE_ROLES;
+
+// Compensation is more sensitive than ordinary HR admin: a Store/Production
+// manager can schedule their team's shifts but has no business seeing or
+// setting anyone's pay rate — deliberately narrower than HR_MANAGE_ROLES.
+export const SALARY_VIEW_ROLES: Role[] = [
+  Role.OWNER,
+  Role.ADMIN,
+  Role.REGIONAL_MANAGER,
+  Role.HR_MANAGER,
+  Role.ACCOUNTANT,
+];
+export const SALARY_MANAGE_ROLES: Role[] = SALARY_VIEW_ROLES;
+
 // Customer directory is organization-wide (a wholesale client isn't tied to
 // one location), so viewing/using it follows the same people who record
 // sales, plus accounting for reconciliation.

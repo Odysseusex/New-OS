@@ -14,11 +14,13 @@ import {
   Plus,
   RotateCcw,
   ShieldAlert,
+  Target,
   TrendingDown,
   TrendingUp,
   Wallet,
 } from "lucide-react";
 import type {
+  BreakEvenDto,
   CashAccountDto,
   CashMovementDto,
   CustomerDto,
@@ -31,6 +33,8 @@ import type {
   ProfitAndLossDto,
 } from "@bakery-os/shared";
 import {
+  BREAK_EVEN_STATUS_LABELS_RU,
+  BreakEvenStatus,
   CASH_ACCOUNT_MANAGE_ROLES,
   CASH_ACCOUNT_TYPE_LABELS_RU,
   CASH_MOVEMENT_INFLOW_TYPES,
@@ -38,6 +42,8 @@ import {
   CASH_REGISTER_MANAGE_ROLES,
   CashAccountType,
   CashMovementType,
+  COST_BEHAVIOR_LABELS_RU,
+  CostBehavior,
   EXPENSE_MANAGE_ROLES,
   ExpenseStatus,
   FINANCE_CATEGORY_MANAGE_ROLES,
@@ -60,7 +66,16 @@ import { FinanceCategoryModal } from "@/components/finance-category-modal";
 import { RecordDebtPaymentModal } from "@/components/record-debt-payment-modal";
 import { RowActions } from "@/components/row-actions";
 
-type Tab = "summary" | "bank" | "cashflow" | "receivables" | "payables" | "expenses" | "categories" | "pnl";
+type Tab =
+  | "summary"
+  | "bank"
+  | "cashflow"
+  | "receivables"
+  | "payables"
+  | "expenses"
+  | "categories"
+  | "pnl"
+  | "breakeven";
 type Period = "today" | "7d" | "30d" | "month";
 
 const TABS: { id: Tab; label: string }[] = [
@@ -72,6 +87,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "expenses", label: "Расходы" },
   { id: "categories", label: "Статьи ДДС" },
   { id: "pnl", label: "Прибыли и убытки" },
+  { id: "breakeven", label: "Точка безубыточности" },
 ];
 
 const PERIOD_LABELS: Record<Period, string> = {
@@ -89,6 +105,21 @@ function periodRange(period: Period): { from: Date; to: Date } {
   if (period === "30d") from.setDate(from.getDate() - 29);
   if (period === "month") from.setDate(1);
   return { from, to };
+}
+
+// Every non-OK status means the number is intentionally withheld rather than
+// shown wrong (see BreakEvenStatus in packages/shared/src/finance.ts).
+function breakEvenStatusMessage(status: BreakEvenStatus): string {
+  switch (status) {
+    case BreakEvenStatus.NO_SALES:
+      return "За этот период нет продаж — точку безубыточности посчитать не из чего.";
+    case BreakEvenStatus.NO_FIXED_COSTS_CLASSIFIED:
+      return "Ни одна статья расходов не отмечена как постоянная — отметьте тип статей на вкладке «Статьи ДДС».";
+    case BreakEvenStatus.NEGATIVE_MARGIN:
+      return "Переменные затраты превышают выручку — маржинальная прибыль отрицательна, при таких условиях точки безубыточности не существует.";
+    default:
+      return BREAK_EVEN_STATUS_LABELS_RU[status];
+  }
 }
 
 type PayableRow = {
@@ -119,6 +150,7 @@ export default function FinancePage() {
 
   const [dashboard, setDashboard] = useState<FinanceDashboardDto | null>(null);
   const [pnl, setPnl] = useState<ProfitAndLossDto | null>(null);
+  const [breakEven, setBreakEven] = useState<BreakEvenDto | null>(null);
   const [expenses, setExpenses] = useState<ExpenseDto[]>([]);
   const [accounts, setAccounts] = useState<CashAccountDto[]>([]);
   const [showArchivedAccounts, setShowArchivedAccounts] = useState(false);
@@ -151,6 +183,14 @@ export default function FinancePage() {
       .pnl(from.toISOString(), to.toISOString(), locationFilter || undefined)
       .then(setPnl)
       .catch(() => setError("Не удалось загрузить отчёт"));
+  }, [period, locationFilter]);
+
+  const loadBreakEven = useCallback(() => {
+    const { from, to } = periodRange(period);
+    api.finance
+      .breakEven(from.toISOString(), to.toISOString(), locationFilter || undefined)
+      .then(setBreakEven)
+      .catch(() => setError("Не удалось загрузить точку безубыточности"));
   }, [period, locationFilter]);
 
   const loadExpenses = useCallback(() => {
@@ -207,6 +247,10 @@ export default function FinancePage() {
   }, [canView, loadPnl]);
 
   useEffect(() => {
+    if (canView) loadBreakEven();
+  }, [canView, loadBreakEven]);
+
+  useEffect(() => {
     if (canView) loadExpenses();
   }, [canView, loadExpenses]);
 
@@ -229,6 +273,7 @@ export default function FinancePage() {
     loadExpenses();
     loadDebts();
     loadPnl();
+    loadBreakEven();
   }
 
   if (!canView) {
@@ -293,6 +338,16 @@ export default function FinancePage() {
       loadCategories();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось заархивировать статью");
+    }
+  }
+
+  async function handleSetCostBehavior(category: FinanceCategoryDto, costBehavior: CostBehavior) {
+    try {
+      await api.finance.categories.setCostBehavior(category.id, costBehavior);
+      loadCategories();
+      loadBreakEven();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось изменить тип статьи");
     }
   }
 
@@ -838,12 +893,19 @@ export default function FinancePage() {
               title="Статьи расходов"
               categories={categories.filter((c) => c.kind === FinanceCategoryKind.EXPENSE)}
               canManage={canManageCategories}
+              showCostBehavior
               onAdd={() => setCategoryModal("expense")}
               onEdit={(c) => setCategoryModal(c)}
               onArchive={handleArchiveCategory}
               onRestore={handleRestoreCategory}
+              onSetCostBehavior={handleSetCostBehavior}
             />
           </div>
+          <p className="mt-4 text-xs text-muted">
+            «Тип» у статей расходов определяет постоянные (не зависят от объёма продаж — аренда,
+            оклады) и переменные (растут вместе с продажами — логистика) затраты. Это нужно для
+            расчёта точки безубыточности — см. вкладку «Точка безубыточности».
+          </p>
         </>
       )}
 
@@ -960,6 +1022,111 @@ export default function FinancePage() {
         </>
       )}
 
+      {tab === "breakeven" && (
+        <>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-foreground">Точка безубыточности</h2>
+              <p className="mt-1 text-sm text-muted">
+                Выручка за период, ниже которой постоянные расходы не покрываются
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
+                {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
+                  <TabButton key={p} active={period === p} onClick={() => setPeriod(p)}>
+                    {PERIOD_LABELS[p]}
+                  </TabButton>
+                ))}
+              </div>
+              <select
+                value={locationFilter}
+                onChange={(e) => setLocationFilter(e.target.value)}
+                className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+              >
+                <option value="">Вся сеть</option>
+                {locations.map((loc) => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {breakEven && breakEven.status !== BreakEvenStatus.OK && (
+            <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <AlertTriangle className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+              {breakEvenStatusMessage(breakEven.status)}
+            </div>
+          )}
+
+          <div className="mb-4 grid grid-cols-2 gap-4 md:grid-cols-3">
+            <StatCard icon={TrendingUp} label="Выручка за период" value={formatMoney(breakEven?.revenue ?? 0)} />
+            <StatCard
+              icon={TrendingDown}
+              label="Переменные затраты"
+              value={formatMoney((breakEven?.cogs ?? 0) + (breakEven?.variableExpensesTotal ?? 0))}
+            />
+            <StatCard icon={TrendingDown} label="Постоянные расходы" value={formatMoney(breakEven?.fixedExpensesTotal ?? 0)} />
+            <StatCard
+              icon={Wallet}
+              label="Маржинальная прибыль"
+              value={formatMoney(breakEven?.contributionMargin ?? 0)}
+              tone={breakEven && breakEven.contributionMargin < 0 ? "danger" : "default"}
+            />
+            <StatCard
+              icon={Wallet}
+              label="Маржинальность"
+              value={breakEven?.contributionMarginPercent != null ? `${breakEven.contributionMarginPercent.toFixed(1)}%` : "—"}
+            />
+            <StatCard
+              icon={Target}
+              label="Точка безубыточности"
+              value={breakEven?.status === BreakEvenStatus.OK && breakEven.breakEvenRevenue != null ? formatMoney(breakEven.breakEvenRevenue) : "—"}
+            />
+          </div>
+
+          {breakEven && breakEven.unclassifiedExpensesTotal > 0 && (
+            <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <AlertTriangle className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+              Не классифицировано расходов на {formatMoney(breakEven.unclassifiedExpensesTotal)} за
+              период — они не учтены ни как постоянные, ни как переменные. Отметьте тип статьи на
+              вкладке «Статьи ДДС» для точного расчёта.
+            </div>
+          )}
+
+          <div className="rounded-2xl border border-border bg-surface shadow-card">
+            <div className="border-b border-border px-5 py-4">
+              <h2 className="text-sm font-semibold text-foreground">Постоянные расходы по статьям</h2>
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+                  <th className="px-5 py-3 font-medium">Статья</th>
+                  <th className="px-5 py-3 text-right font-medium">Сумма за период</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {breakEven?.fixedCostLines.map((line) => (
+                  <tr key={line.categoryId}>
+                    <td className="px-5 py-3 font-medium text-foreground">{line.categoryName}</td>
+                    <td className="px-5 py-3 text-right text-foreground">{formatMoney(line.amount)}</td>
+                  </tr>
+                ))}
+                {(!breakEven || breakEven.fixedCostLines.length === 0) && (
+                  <tr>
+                    <td colSpan={2} className="px-5 py-8 text-center text-sm text-muted">
+                      Нет расходов, отмеченных как постоянные, за этот период
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
       {expenseModalOpen && (
         <NewExpenseModal
           locations={locations}
@@ -1037,18 +1204,22 @@ function CategoryList({
   title,
   categories,
   canManage,
+  showCostBehavior = false,
   onAdd,
   onEdit,
   onArchive,
   onRestore,
+  onSetCostBehavior,
 }: {
   title: string;
   categories: FinanceCategoryDto[];
   canManage: boolean;
+  showCostBehavior?: boolean;
   onAdd: () => void;
   onEdit: (c: FinanceCategoryDto) => void;
   onArchive: (c: FinanceCategoryDto) => void;
   onRestore: (c: FinanceCategoryDto) => void;
+  onSetCostBehavior?: (c: FinanceCategoryDto, costBehavior: CostBehavior) => void;
 }) {
   return (
     <div className="rounded-2xl border border-border bg-surface shadow-card">
@@ -1063,28 +1234,58 @@ function CategoryList({
       </div>
       <ul className="divide-y divide-border">
         {categories.map((c) => (
-          <li key={c.id} className={clsx("flex items-center justify-between px-5 py-3 text-sm", !c.isActive && "opacity-50")}>
+          <li key={c.id} className={clsx("flex items-center justify-between gap-3 px-5 py-3 text-sm", !c.isActive && "opacity-50")}>
             <button onClick={() => canManage && onEdit(c)} className={clsx("text-foreground", canManage && "hover:underline")}>
               {c.name}
             </button>
-            {canManage &&
-              (c.isActive ? (
-                <button
-                  onClick={() => onArchive(c)}
-                  title="Архивировать"
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-amber-600"
-                >
-                  <Archive className="h-3.5 w-3.5" strokeWidth={1.75} />
-                </button>
-              ) : (
-                <button
-                  onClick={() => onRestore(c)}
-                  title="Восстановить"
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-green-600"
-                >
-                  <RotateCcw className="h-3.5 w-3.5" strokeWidth={1.75} />
-                </button>
-              ))}
+            <div className="flex items-center gap-2">
+              {showCostBehavior &&
+                (canManage && onSetCostBehavior ? (
+                  <select
+                    value={c.costBehavior}
+                    onChange={(e) => onSetCostBehavior(c, e.target.value as CostBehavior)}
+                    className={clsx(
+                      "rounded-lg border border-border bg-surface px-2 py-1 text-xs outline-none focus:border-accent",
+                      c.costBehavior === CostBehavior.UNCLASSIFIED ? "text-amber-600" : "text-muted",
+                    )}
+                  >
+                    {Object.values(CostBehavior).map((b) => (
+                      <option key={b} value={b}>
+                        {COST_BEHAVIOR_LABELS_RU[b]}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span
+                    className={clsx(
+                      "rounded-full px-2 py-0.5 text-xs font-medium",
+                      c.costBehavior === CostBehavior.UNCLASSIFIED
+                        ? "bg-amber-50 text-amber-700"
+                        : "bg-surface-muted text-muted",
+                    )}
+                  >
+                    {COST_BEHAVIOR_LABELS_RU[c.costBehavior]}
+                  </span>
+                ))}
+              {canManage &&
+                (c.isActive ? (
+                  <button
+                    onClick={() => onArchive(c)}
+                    title="Архивировать"
+                    className="flex h-7 w-7 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-amber-600"
+                  >
+                    <Archive className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => onRestore(c)}
+                    title="Восстановить"
+                    className="flex h-7 w-7 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-green-600"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  </button>
+                ))}
+            </div>
           </li>
         ))}
         {categories.length === 0 && <li className="px-5 py-8 text-center text-sm text-muted">Статей пока нет</li>}

@@ -1,37 +1,16 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { EmployeeDto, EmployeeKpiDto, HrKpiResponseDto, Role, ShiftDto, ShiftStatus, TimeEntryDto } from "@bakery-os/shared";
+import { EmployeeKpiDto, HrKpiResponseDto, Role, ShiftDto, ShiftStatus, TimeEntryDto } from "@bakery-os/shared";
 import { ShiftStatus as PrismaShiftStatus, StockMovementType } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
 import { CreateShiftDto } from "./dto/create-shift.dto";
 import { ClockInDto } from "./dto/clock-in.dto";
+import { ClockInForDto } from "./dto/clock-in-for.dto";
 
 @Injectable()
 export class HrService {
   constructor(private prisma: PrismaService) {}
-
-  async listEmployees(user: AuthenticatedUser, requestedLocationId?: string): Promise<EmployeeDto[]> {
-    const locationId = resolveLocationScope(user, requestedLocationId);
-
-    const employees = await this.prisma.user.findMany({
-      where: {
-        organizationId: user.organizationId,
-        isActive: true,
-        ...(locationId ? { locationId } : {}),
-      },
-      include: { location: true },
-      orderBy: { fullName: "asc" },
-    });
-
-    return employees.map((e) => ({
-      id: e.id,
-      fullName: e.fullName,
-      role: e.role as Role,
-      locationId: e.locationId,
-      locationName: e.location?.name ?? null,
-    }));
-  }
 
   async listShifts(user: AuthenticatedUser, requestedLocationId?: string): Promise<ShiftDto[]> {
     const locationId = resolveLocationScope(user, requestedLocationId);
@@ -41,7 +20,7 @@ export class HrService {
         organizationId: user.organizationId,
         ...(locationId ? { locationId } : {}),
       },
-      include: { location: true, user: true, createdBy: true },
+      include: { location: true, employee: true, createdBy: true },
       orderBy: { startsAt: "desc" },
       take: 200,
     });
@@ -50,9 +29,14 @@ export class HrService {
   }
 
   async listMyShifts(user: AuthenticatedUser): Promise<ShiftDto[]> {
+    const employee = await this.prisma.employee.findUnique({ where: { userId: user.id } });
+    if (!employee) {
+      return [];
+    }
+
     const shifts = await this.prisma.shift.findMany({
-      where: { organizationId: user.organizationId, userId: user.id },
-      include: { location: true, user: true, createdBy: true },
+      where: { organizationId: user.organizationId, employeeId: employee.id },
+      include: { location: true, employee: true, createdBy: true },
       orderBy: { startsAt: "desc" },
       take: 50,
     });
@@ -63,8 +47,8 @@ export class HrService {
   async createShift(user: AuthenticatedUser, dto: CreateShiftDto): Promise<ShiftDto> {
     const locationId = requireLocationScope(user, dto.locationId);
 
-    const employee = await this.prisma.user.findFirst({
-      where: { id: dto.userId, organizationId: user.organizationId },
+    const employee = await this.prisma.employee.findFirst({
+      where: { id: dto.employeeId, organizationId: user.organizationId },
     });
     if (!employee) {
       throw new NotFoundException("Сотрудник не найден");
@@ -78,12 +62,12 @@ export class HrService {
       data: {
         organizationId: user.organizationId,
         locationId,
-        userId: dto.userId,
+        employeeId: dto.employeeId,
         startsAt: new Date(dto.startsAt),
         endsAt: new Date(dto.endsAt),
         createdById: user.id,
       },
-      include: { location: true, user: true, createdBy: true },
+      include: { location: true, employee: true, createdBy: true },
     });
 
     return this.toShiftDto(shift);
@@ -104,7 +88,7 @@ export class HrService {
     const updated = await this.prisma.shift.update({
       where: { id: shiftId },
       data: { status: PrismaShiftStatus.CANCELLED },
-      include: { location: true, user: true, createdBy: true },
+      include: { location: true, employee: true, createdBy: true },
     });
 
     return this.toShiftDto(updated);
@@ -118,7 +102,7 @@ export class HrService {
         organizationId: user.organizationId,
         ...(locationId ? { locationId } : {}),
       },
-      include: { location: true, user: true },
+      include: { location: true, employee: true, recordedBy: true },
       orderBy: { clockInAt: "desc" },
       take: 200,
     });
@@ -127,9 +111,14 @@ export class HrService {
   }
 
   async listMyTimeEntries(user: AuthenticatedUser): Promise<TimeEntryDto[]> {
+    const employee = await this.prisma.employee.findUnique({ where: { userId: user.id } });
+    if (!employee) {
+      return [];
+    }
+
     const entries = await this.prisma.timeEntry.findMany({
-      where: { organizationId: user.organizationId, userId: user.id },
-      include: { location: true, user: true },
+      where: { organizationId: user.organizationId, employeeId: employee.id },
+      include: { location: true, employee: true, recordedBy: true },
       orderBy: { clockInAt: "desc" },
       take: 30,
     });
@@ -138,13 +127,18 @@ export class HrService {
   }
 
   async clockIn(user: AuthenticatedUser, dto: ClockInDto): Promise<TimeEntryDto> {
-    const locationId = dto.locationId ?? user.locationId;
+    const employee = await this.prisma.employee.findUnique({ where: { userId: user.id } });
+    if (!employee) {
+      throw new BadRequestException("Ваш аккаунт не привязан к сотруднику");
+    }
+
+    const locationId = dto.locationId ?? employee.locationId ?? user.locationId;
     if (!locationId) {
       throw new BadRequestException("Укажите точку для отметки начала смены");
     }
 
     const openEntry = await this.prisma.timeEntry.findFirst({
-      where: { organizationId: user.organizationId, userId: user.id, clockOutAt: null },
+      where: { organizationId: user.organizationId, employeeId: employee.id, clockOutAt: null },
     });
     if (openEntry) {
       throw new BadRequestException("У вас уже есть открытая смена — сначала завершите её");
@@ -154,17 +148,23 @@ export class HrService {
       data: {
         organizationId: user.organizationId,
         locationId,
-        userId: user.id,
+        employeeId: employee.id,
+        recordedById: user.id,
       },
-      include: { location: true, user: true },
+      include: { location: true, employee: true, recordedBy: true },
     });
 
     return this.toTimeEntryDto(entry);
   }
 
   async clockOut(user: AuthenticatedUser): Promise<TimeEntryDto> {
+    const employee = await this.prisma.employee.findUnique({ where: { userId: user.id } });
+    if (!employee) {
+      throw new BadRequestException("Ваш аккаунт не привязан к сотруднику");
+    }
+
     const openEntry = await this.prisma.timeEntry.findFirst({
-      where: { organizationId: user.organizationId, userId: user.id, clockOutAt: null },
+      where: { organizationId: user.organizationId, employeeId: employee.id, clockOutAt: null },
       orderBy: { clockInAt: "desc" },
     });
     if (!openEntry) {
@@ -174,7 +174,69 @@ export class HrService {
     const entry = await this.prisma.timeEntry.update({
       where: { id: openEntry.id },
       data: { clockOutAt: new Date() },
-      include: { location: true, user: true },
+      include: { location: true, employee: true, recordedBy: true },
+    });
+
+    return this.toTimeEntryDto(entry);
+  }
+
+  // Manager-assisted clock-in/out — for employees with no ERP login of
+  // their own. The acting manager is recorded as recordedById.
+  async clockInFor(user: AuthenticatedUser, employeeId: string, dto: ClockInForDto): Promise<TimeEntryDto> {
+    const employee = await this.prisma.employee.findFirst({
+      where: { id: employeeId, organizationId: user.organizationId },
+    });
+    if (!employee) {
+      throw new NotFoundException("Сотрудник не найден");
+    }
+    resolveLocationScope(user, employee.locationId ?? undefined);
+
+    const locationId = dto.locationId ?? employee.locationId ?? user.locationId;
+    if (!locationId) {
+      throw new BadRequestException("Укажите точку для отметки начала смены");
+    }
+
+    const openEntry = await this.prisma.timeEntry.findFirst({
+      where: { organizationId: user.organizationId, employeeId, clockOutAt: null },
+    });
+    if (openEntry) {
+      throw new BadRequestException("У этого сотрудника уже есть открытая смена — сначала завершите её");
+    }
+
+    const entry = await this.prisma.timeEntry.create({
+      data: {
+        organizationId: user.organizationId,
+        locationId,
+        employeeId,
+        recordedById: user.id,
+      },
+      include: { location: true, employee: true, recordedBy: true },
+    });
+
+    return this.toTimeEntryDto(entry);
+  }
+
+  async clockOutFor(user: AuthenticatedUser, employeeId: string): Promise<TimeEntryDto> {
+    const employee = await this.prisma.employee.findFirst({
+      where: { id: employeeId, organizationId: user.organizationId },
+    });
+    if (!employee) {
+      throw new NotFoundException("Сотрудник не найден");
+    }
+    resolveLocationScope(user, employee.locationId ?? undefined);
+
+    const openEntry = await this.prisma.timeEntry.findFirst({
+      where: { organizationId: user.organizationId, employeeId, clockOutAt: null },
+      orderBy: { clockInAt: "desc" },
+    });
+    if (!openEntry) {
+      throw new BadRequestException("Нет открытой смены, которую можно завершить");
+    }
+
+    const entry = await this.prisma.timeEntry.update({
+      where: { id: openEntry.id },
+      data: { clockOutAt: new Date() },
+      include: { location: true, employee: true, recordedBy: true },
     });
 
     return this.toTimeEntryDto(entry);
@@ -249,8 +311,8 @@ export class HrService {
     id: string;
     locationId: string;
     location: { name: string };
-    userId: string;
-    user: { fullName: string; role: string };
+    employeeId: string;
+    employee: { fullName: string; position: string };
     startsAt: Date;
     endsAt: Date;
     status: string;
@@ -259,9 +321,9 @@ export class HrService {
     id: shift.id,
     locationId: shift.locationId,
     locationName: shift.location.name,
-    userId: shift.userId,
-    userFullName: shift.user.fullName,
-    userRole: shift.user.role as Role,
+    employeeId: shift.employeeId,
+    employeeFullName: shift.employee.fullName,
+    employeePosition: shift.employee.position,
     startsAt: shift.startsAt.toISOString(),
     endsAt: shift.endsAt.toISOString(),
     status: shift.status as ShiftStatus,
@@ -272,20 +334,22 @@ export class HrService {
     id: string;
     locationId: string;
     location: { name: string };
-    userId: string;
-    user: { fullName: string };
+    employeeId: string;
+    employee: { fullName: string };
     clockInAt: Date;
     clockOutAt: Date | null;
+    recordedBy: { fullName: string };
   }): TimeEntryDto => ({
     id: entry.id,
     locationId: entry.locationId,
     locationName: entry.location.name,
-    userId: entry.userId,
-    userFullName: entry.user.fullName,
+    employeeId: entry.employeeId,
+    employeeFullName: entry.employee.fullName,
     clockInAt: entry.clockInAt.toISOString(),
     clockOutAt: entry.clockOutAt ? entry.clockOutAt.toISOString() : null,
     hoursWorked: entry.clockOutAt
       ? (entry.clockOutAt.getTime() - entry.clockInAt.getTime()) / (1000 * 60 * 60)
       : null,
+    recordedByName: entry.recordedBy.fullName,
   });
 }

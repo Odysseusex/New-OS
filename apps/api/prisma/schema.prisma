@@ -142,6 +142,21 @@ enum ShiftStatus {
   CANCELLED
 }
 
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+}
+
+// The rate/frequency a compensation figure is quoted in — a label only,
+// deliberately not fed into any calculation engine yet (no payroll exists).
+// Kept flexible now so a future payroll module isn't blocked by having to
+// add this later.
+enum CompensationType {
+  MONTHLY
+  HOURLY
+  PIECE_RATE
+}
+
 enum CashAccountType {
   BANK
   CASH
@@ -150,6 +165,17 @@ enum CashAccountType {
 enum FinanceCategoryKind {
   INCOME
   EXPENSE
+}
+
+// Cost behavior for management accounting (break-even, contribution
+// margin) — orthogonal to FinanceCategoryKind (income/expense). Only
+// meaningful for EXPENSE categories. UNCLASSIFIED is the explicit default
+// on every new/existing category — never silently guessed, since not every
+// expense can be classified from its name alone (see FinanceCategory.costBehavior).
+enum CostBehavior {
+  FIXED
+  VARIABLE
+  UNCLASSIFIED
 }
 
 // The closed set of ways a CashMovement can happen. Which side of the
@@ -218,6 +244,7 @@ model Organization {
   locations Location[]
   users     User[]
   invoices  Invoice[]
+  employees Employee[]
 
   @@map("organizations")
 }
@@ -271,6 +298,7 @@ model Location {
   shifts            Shift[]
   timeEntries       TimeEntry[]
   cashAccounts      CashAccount[]
+  employees         Employee[]
 
   @@index([organizationId])
   @@index([regionId])
@@ -309,14 +337,21 @@ model User {
   createdRoutes          DeliveryRoute[]         @relation("RouteCreatedBy")
   drivenRoutes           DeliveryRoute[]         @relation("RouteDriver")
   expenses               Expense[]
-  shiftsAsEmployee       Shift[]                 @relation("ShiftEmployee")
   shiftsCreated          Shift[]                 @relation("ShiftCreatedBy")
-  timeEntries            TimeEntry[]             @relation("TimeEntryEmployee")
+  // Who physically performed a TimeEntry's clock-in/out — the employee
+  // themself (self-service) or a manager acting on behalf of an employee
+  // with no ERP login. See TimeEntry.recordedById.
+  timeEntriesRecorded    TimeEntry[]             @relation("TimeEntryRecordedBy")
   recipeRevisions        RecipeRevision[]
   invoices               Invoice[]
   notificationDismissals NotificationDismissal[]
   cashMovements          CashMovement[]
   financeInitializedOrgs Organization[]          @relation("FinanceInitializedBy")
+  // Optional — not every real employee has ERP access, and not every User
+  // necessarily has to correspond to a tracked Employee (though in
+  // practice everyone with a login is also a real person on staff).
+  employee               Employee?
+  compensationsCreated   EmployeeCompensation[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -833,14 +868,79 @@ model Expense {
   @@map("expenses")
 }
 
+// A real member of staff — independent of User (ERP login). Most bakery
+// staff (bakers, drivers, sales floor) never log into ArAmir OS at all;
+// User is an optional grant of ERP access layered on top of a real
+// Employee, not the other way around (see the 1:1 optional userId below).
+// Deliberately minimal — this is the HR foundation, not a payroll module:
+// no wage-calculation fields live here, see EmployeeCompensation for why
+// even the pay rate is a separate append-only history rather than a column.
+model Employee {
+  id             String         @id @default(cuid())
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  locationId     String?
+  location       Location?      @relation(fields: [locationId], references: [id])
+
+  fullName String
+  // Job title (e.g. "Водитель", "Пекарь 2-й категории") — deliberately NOT
+  // the same thing as User.role. Role is an ERP permission level and only
+  // exists for employees who also have a User account; position exists
+  // for every employee regardless of ERP access.
+  position String
+  phone    String?
+  hiredAt  DateTime?
+  status   EmployeeStatus @default(ACTIVE)
+
+  // Optional — set only when this employee also has ERP access.
+  userId String? @unique
+  user   User?   @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shifts        Shift[]
+  timeEntries   TimeEntry[]
+  compensations EmployeeCompensation[]
+
+  @@index([organizationId, locationId])
+  @@map("employees")
+}
+
+// Append-only history of an employee's pay rate — never overwritten, so
+// "what did we pay Данияр in March" stays answerable. Explicitly NOT
+// linked to any CashMovement/Expense: a rate here states intent/policy
+// ("his rate is 250 000 ₸/мес"), never a fact about money that has
+// actually moved. Real salary expense still goes through the existing
+// Expense flow (category "Зарплата") exactly as before — this table feeds
+// management reporting (e.g. planned labor cost) only. At most one row per
+// employee has effectiveTo = null at a time (the current rate); setting a
+// new rate closes the previous open-ended row rather than deleting it.
+model EmployeeCompensation {
+  id             String            @id @default(cuid())
+  organizationId String
+  employeeId     String
+  employee       Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  amount         Decimal           @db.Decimal(12, 2)
+  paymentType    CompensationType  @default(MONTHLY)
+  effectiveFrom  DateTime
+  effectiveTo    DateTime?
+  createdById    String
+  createdBy      User              @relation(fields: [createdById], references: [id])
+  createdAt      DateTime          @default(now())
+
+  @@index([organizationId, employeeId])
+  @@map("employee_compensations")
+}
+
 // A planned work shift for an employee at a location.
 model Shift {
   id             String      @id @default(cuid())
   organizationId String
   locationId     String
   location       Location    @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  userId         String
-  user           User        @relation("ShiftEmployee", fields: [userId], references: [id])
+  employeeId     String
+  employee       Employee    @relation(fields: [employeeId], references: [id])
   startsAt       DateTime
   endsAt         DateTime
   status         ShiftStatus @default(SCHEDULED)
@@ -859,13 +959,18 @@ model TimeEntry {
   organizationId String
   locationId     String
   location       Location  @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  userId         String
-  user           User      @relation("TimeEntryEmployee", fields: [userId], references: [id])
+  employeeId     String
+  employee       Employee  @relation(fields: [employeeId], references: [id])
   clockInAt      DateTime  @default(now())
   clockOutAt     DateTime?
+  // Who performed the clock-in/out action — the employee themself
+  // (self-service, when they have ERP access) or a manager acting on
+  // their behalf (when they don't). Always set, one code path either way.
+  recordedById String
+  recordedBy   User   @relation("TimeEntryRecordedBy", fields: [recordedById], references: [id])
 
   @@index([organizationId, locationId])
-  @@index([userId])
+  @@index([employeeId])
   @@map("time_entries")
 }
 
@@ -953,6 +1058,12 @@ model FinanceCategory {
   name           String
   kind           FinanceCategoryKind
   isActive       Boolean             @default(true)
+  // Management-accounting classification for break-even/contribution-margin
+  // reporting — only meaningful on EXPENSE categories. Defaults to
+  // UNCLASSIFIED and stays that way until the owner (or a reasonable
+  // built-in default for well-known seeded categories) sets it explicitly;
+  // never inferred from the name at query time.
+  costBehavior   CostBehavior        @default(UNCLASSIFIED)
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 
