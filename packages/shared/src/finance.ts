@@ -1,5 +1,6 @@
 import { PaymentStatus } from "./customers";
 import { Unit } from "./catalog";
+import { CompensationType } from "./hr";
 
 // How a sale was settled — decides which CashAccount a receipt lands in
 // (CASH -> the selling location's till, CARD/TRANSFER -> the organization's
@@ -302,6 +303,9 @@ export enum BreakEvenStatus {
   NO_SALES = "NO_SALES",
   // No expense in the period has been classified FIXED yet.
   NO_FIXED_COSTS_CLASSIFIED = "NO_FIXED_COSTS_CLASSIFIED",
+  // Planned mode only: nothing has been planned yet — no monthly pay rates
+  // and no planned fixed costs entered.
+  NO_PLANNED_FIXED_COSTS = "NO_PLANNED_FIXED_COSTS",
   // Revenue doesn't cover COGS + variable expenses — contribution margin
   // is zero or negative, so no break-even revenue exists (more sales alone
   // would never recover fixed costs at this margin).
@@ -312,6 +316,7 @@ export const BREAK_EVEN_STATUS_LABELS_RU: Record<BreakEvenStatus, string> = {
   [BreakEvenStatus.OK]: "Рассчитано",
   [BreakEvenStatus.NO_SALES]: "Нет продаж за период",
   [BreakEvenStatus.NO_FIXED_COSTS_CLASSIFIED]: "Постоянные расходы не классифицированы",
+  [BreakEvenStatus.NO_PLANNED_FIXED_COSTS]: "Плановые постоянные расходы не заданы",
   [BreakEvenStatus.NEGATIVE_MARGIN]: "Маржинальная прибыль отрицательна или нулевая",
 };
 
@@ -340,6 +345,106 @@ export interface BreakEvenDto {
   contributionMarginPercent: number | null;
   breakEvenRevenue: number | null;
   fixedCostLines: BreakEvenFixedCostLineDto[];
+}
+
+// ── Planned fixed costs — the PLAN half of the plan/fact split ─────────
+//
+// A PlannedFixedCost states what a recurring cost is EXPECTED to be each
+// month (rent, electricity, internet). It is never turned into an Expense
+// or CashMovement — real money still moves only through Finance → Расходы.
+// Planned and actual figures are reported separately and never summed.
+//
+// `amount` is always per-month, deliberately: every one of these costs is
+// quoted monthly in practice, and a second period unit would only invite
+// mismatched arithmetic.
+
+export interface PlannedFixedCostDto {
+  id: string;
+  categoryId: string;
+  categoryName: string;
+  // Null = organization-wide ("Вся сеть").
+  locationId: string | null;
+  locationName: string | null;
+  amount: number;
+  effectiveFrom: string;
+  // Null = this is the currently active planned amount.
+  effectiveTo: string | null;
+  createdByName: string;
+  createdAt: string;
+}
+
+export interface CreatePlannedFixedCostRequestDto {
+  categoryId: string;
+  // Omit for an organization-wide cost.
+  locationId?: string;
+  amount: number;
+  // Defaults to now if omitted.
+  effectiveFrom?: string;
+}
+
+// Why an employee's pay rate could not be counted into the planned payroll
+// total. Surfaced explicitly rather than silently dropping the person, so
+// the planned figure never looks more complete than it is.
+export enum PayrollExclusionReason {
+  // Hourly/piece-rate: no hours or output volume is planned anywhere yet,
+  // so any monthly figure would be invented rather than derived.
+  NON_MONTHLY_RATE = "NON_MONTHLY_RATE",
+  // Active employee who simply has no rate entered at all.
+  NO_RATE_SET = "NO_RATE_SET",
+}
+
+export const PAYROLL_EXCLUSION_REASON_LABELS_RU: Record<PayrollExclusionReason, string> = {
+  [PayrollExclusionReason.NON_MONTHLY_RATE]: "Не месячная ставка",
+  [PayrollExclusionReason.NO_RATE_SET]: "Ставка не задана",
+};
+
+export interface PlannedPayrollExclusionDto {
+  reason: PayrollExclusionReason;
+  // Set only for NON_MONTHLY_RATE — which kind of rate it was.
+  paymentType: CompensationType | null;
+  employeeCount: number;
+  // Names, so the owner can act on it instead of just seeing a count.
+  employeeNames: string[];
+}
+
+// Planned monthly payroll, derived live from the currently active
+// EmployeeCompensation rows of ACTIVE employees. Never stored.
+export interface PlannedPayrollDto {
+  // Sum of active MONTHLY rates only.
+  total: number;
+  includedEmployeeCount: number;
+  // Everyone deliberately left out of `total`, with the reason why.
+  exclusions: PlannedPayrollExclusionDto[];
+}
+
+// Planned-side break-even. Uses the SAME contribution-margin ratio the
+// actual break-even computes from real sales (a ratio is scale-invariant,
+// so it transfers honestly), but weighs it against PLANNED monthly fixed
+// costs instead of the period's booked expenses.
+//
+// The answer is therefore always a MONTHLY revenue figure, regardless of
+// which period is selected — pro-rating a month of rent down to a single
+// day would be arithmetic that reads precise and means nothing.
+export interface PlannedBreakEvenDto {
+  // Period the margin ratio was measured over (not the planned costs).
+  from: string;
+  to: string;
+  status: BreakEvenStatus;
+  // Actuals, carried through purely as the margin input.
+  revenue: number;
+  cogs: number;
+  variableExpensesTotal: number;
+  contributionMargin: number;
+  contributionMarginPercent: number | null;
+  // The plan.
+  payroll: PlannedPayrollDto;
+  plannedOtherFixedTotal: number;
+  // = payroll.total + plannedOtherFixedTotal
+  plannedFixedTotal: number;
+  plannedFixedCostLines: PlannedFixedCostDto[];
+  // Monthly revenue needed to cover plannedFixedTotal at this margin.
+  // Null whenever status !== OK.
+  breakEvenRevenue: number | null;
 }
 
 // ── Owner dashboard — one endpoint powering the 10 at-a-glance cards ───

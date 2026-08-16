@@ -7,18 +7,26 @@ import {
   CASH_MOVEMENT_INFLOW_TYPES,
   CashAccountType,
   CashMovementType,
+  CompensationType,
   CostBehavior,
   ExpenseDto,
   ExpenseStatus,
   FinanceDashboardDto,
   InventoryValuationDto,
+  PayrollExclusionReason,
   PaymentStatus,
+  PlannedBreakEvenDto,
+  PlannedFixedCostDto,
+  PlannedPayrollExclusionDto,
   ProductPnLDto,
   ProductType,
   ProfitAndLossDto,
   Unit,
 } from "@bakery-os/shared";
-import { InvoiceStatus as PrismaInvoiceStatus } from "@prisma/client";
+import {
+  EmployeeStatus as PrismaEmployeeStatus,
+  InvoiceStatus as PrismaInvoiceStatus,
+} from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { CashMovementsService } from "./cash-movements.service";
 import { CreateExpenseDto } from "./dto/create-expense.dto";
@@ -465,6 +473,146 @@ export class FinanceService {
       contributionMarginPercent,
       breakEvenRevenue,
       fixedCostLines,
+    };
+  }
+
+  // Planned-side break-even — the PLAN half of the plan/fact split.
+  //
+  // Reuses getBreakEven() wholesale for the contribution-margin ratio rather
+  // than recomputing revenue/COGS/variable costs, so the planned and actual
+  // views can never disagree about margin. The only thing swapped out is the
+  // fixed-cost side: booked expenses give way to planned monthly pay rates
+  // plus planned recurring costs.
+  //
+  // The result is always a MONTHLY revenue figure regardless of the selected
+  // period — the margin ratio is scale-invariant so it transfers honestly,
+  // but pro-rating a month of rent down to one day would read precise and
+  // mean nothing.
+  //
+  // Nothing here writes: planned rows are never converted into Expense or
+  // CashMovement, so a plan can never be double-counted against the actuals.
+  async getPlannedBreakEven(
+    organizationId: string,
+    from: Date,
+    to: Date,
+    locationId?: string,
+  ): Promise<PlannedBreakEvenDto> {
+    // Location scoping matches the expense convention used throughout
+    // Finance: a location-scoped view includes both that location's own
+    // costs and organization-wide ones, since org-wide costs really do
+    // burden every location.
+    const locationFilter = locationId ? { OR: [{ locationId }, { locationId: null }] } : {};
+
+    const [actual, employees, plannedRows] = await Promise.all([
+      this.getBreakEven(organizationId, from, to, locationId),
+      this.prisma.employee.findMany({
+        where: {
+          organizationId,
+          status: PrismaEmployeeStatus.ACTIVE,
+          ...locationFilter,
+        },
+        include: { compensations: { where: { effectiveTo: null } } },
+        orderBy: { fullName: "asc" },
+      }),
+      this.prisma.plannedFixedCost.findMany({
+        where: { organizationId, effectiveTo: null, ...locationFilter },
+        include: { category: true, location: true, createdBy: true },
+      }),
+    ]);
+
+    // Planned payroll: only MONTHLY rates can be summed into a monthly
+    // total. Hourly/piece-rate staff have no planned hours or output volume
+    // anywhere in the system, so any monthly figure for them would be
+    // invented — they are excluded and reported by name instead of being
+    // silently dropped, which would make the plan look more complete than
+    // it is.
+    let payrollTotal = 0;
+    let includedEmployeeCount = 0;
+    const nonMonthlyByType = new Map<CompensationType, string[]>();
+    const withoutRate: string[] = [];
+
+    for (const employee of employees) {
+      const activeRate = employee.compensations[0];
+      if (!activeRate) {
+        withoutRate.push(employee.fullName);
+        continue;
+      }
+      const paymentType = activeRate.paymentType as CompensationType;
+      if (paymentType === CompensationType.MONTHLY) {
+        payrollTotal += activeRate.amount.toNumber();
+        includedEmployeeCount += 1;
+      } else {
+        const names = nonMonthlyByType.get(paymentType) ?? [];
+        names.push(employee.fullName);
+        nonMonthlyByType.set(paymentType, names);
+      }
+    }
+
+    const exclusions: PlannedPayrollExclusionDto[] = [
+      ...Array.from(nonMonthlyByType.entries()).map(([paymentType, employeeNames]) => ({
+        reason: PayrollExclusionReason.NON_MONTHLY_RATE,
+        paymentType,
+        employeeCount: employeeNames.length,
+        employeeNames,
+      })),
+      ...(withoutRate.length > 0
+        ? [
+            {
+              reason: PayrollExclusionReason.NO_RATE_SET,
+              paymentType: null,
+              employeeCount: withoutRate.length,
+              employeeNames: withoutRate,
+            },
+          ]
+        : []),
+    ];
+
+    const plannedFixedCostLines: PlannedFixedCostDto[] = plannedRows
+      .map((row) => ({
+        id: row.id,
+        categoryId: row.categoryId,
+        categoryName: row.category.name,
+        locationId: row.locationId,
+        locationName: row.location?.name ?? null,
+        amount: row.amount.toNumber(),
+        effectiveFrom: row.effectiveFrom.toISOString(),
+        effectiveTo: null as string | null,
+        createdByName: row.createdBy.fullName,
+        createdAt: row.createdAt.toISOString(),
+      }))
+      .sort((a, b) => b.amount - a.amount);
+
+    const plannedOtherFixedTotal = plannedFixedCostLines.reduce((sum, line) => sum + line.amount, 0);
+    const plannedFixedTotal = payrollTotal + plannedOtherFixedTotal;
+
+    let status: BreakEvenStatus;
+    let breakEvenRevenue: number | null = null;
+
+    if (actual.revenue <= 0) {
+      status = BreakEvenStatus.NO_SALES;
+    } else if (plannedFixedTotal <= 0) {
+      status = BreakEvenStatus.NO_PLANNED_FIXED_COSTS;
+    } else if (actual.contributionMargin <= 0) {
+      status = BreakEvenStatus.NEGATIVE_MARGIN;
+    } else {
+      status = BreakEvenStatus.OK;
+      breakEvenRevenue = plannedFixedTotal / (actual.contributionMargin / actual.revenue);
+    }
+
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      status,
+      revenue: actual.revenue,
+      cogs: actual.cogs,
+      variableExpensesTotal: actual.variableExpensesTotal,
+      contributionMargin: actual.contributionMargin,
+      contributionMarginPercent: actual.contributionMarginPercent,
+      payroll: { total: payrollTotal, includedEmployeeCount, exclusions },
+      plannedOtherFixedTotal,
+      plannedFixedTotal,
+      plannedFixedCostLines,
+      breakEvenRevenue,
     };
   }
 

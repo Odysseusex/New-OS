@@ -50,6 +50,16 @@ export class FinanceController {
     );
   }
 
+  @Get("break-even/planned")
+  getPlannedBreakEven(@CurrentUser() user: AuthenticatedUser, @Query() query: GetPnlQueryDto) {
+    return this.financeService.getPlannedBreakEven(
+      user.organizationId,
+      new Date(query.from),
+      new Date(query.to),
+      query.locationId,
+    );
+  }
+
   @Get("expenses")
   listExpenses(@CurrentUser() user: AuthenticatedUser, @Query("locationId") locationId?: string) {
     return this.financeService.listExpenses(user.organizationId, locationId);

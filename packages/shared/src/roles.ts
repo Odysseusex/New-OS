@@ -111,6 +111,14 @@ export const EXPENSE_MANAGE_ROLES: Role[] = ORG_WIDE_ROLES;
 export const CASH_ACCOUNT_MANAGE_ROLES: Role[] = ORG_WIDE_ROLES;
 export const FINANCE_CATEGORY_MANAGE_ROLES: Role[] = ORG_WIDE_ROLES;
 
+// Planned (not actual) fixed costs — rent, utilities, internet. Same tier as
+// the category catalog they hang off: org-wide financial configuration.
+// Note this deliberately needs no separate salary gate even though the
+// planned break-even it feeds includes a payroll total: FINANCE_VIEW_ROLES
+// and SALARY_VIEW_ROLES already resolve to the same five roles, so the
+// Finance controller's existing class-level guard is exactly as tight.
+export const PLANNED_FIXED_COST_MANAGE_ROLES: Role[] = FINANCE_CATEGORY_MANAGE_ROLES;
+
 // Day-to-day cash register operations (пополнение/снятие) at a location are
 // closer to a sales-floor task than network-wide finance oversight, so
 // store-level roles that already handle a till are included alongside the

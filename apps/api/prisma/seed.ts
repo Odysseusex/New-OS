@@ -8,6 +8,7 @@ import {
   StockMovementType,
   ProductionBatchStatus,
   FinanceCategoryKind,
+  CompensationType,
 } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
 
@@ -284,6 +285,68 @@ async function main() {
       status: "ACTIVE",
     },
   });
+
+  // Planned pay rates — the PLAN side of the plan/fact split. These never
+  // create an Expense or CashMovement; they only feed the planned payroll
+  // total on the break-even tab. Two of them are deliberately non-MONTHLY so
+  // the "не учтено в плановом ФЗП" disclosure has something real to report
+  // instead of silently swallowing those employees.
+  const now = new Date();
+  const userIdByEmail = new Map(demoUsers.map((u) => [u.email, u.id]));
+  const demoRates: { employeeId: string; amount: number; paymentType: CompensationType }[] = [
+    { employeeId: `emp-${userIdByEmail.get("owner@bakery.demo")}`, amount: 400000, paymentType: "MONTHLY" },
+    { employeeId: `emp-${userIdByEmail.get("technologist@bakery.demo")}`, amount: 300000, paymentType: "MONTHLY" },
+    { employeeId: `emp-${userIdByEmail.get("driver@bakery.demo")}`, amount: 250000, paymentType: "MONTHLY" },
+    { employeeId: salesperson.id, amount: 200000, paymentType: "MONTHLY" },
+    { employeeId: `emp-${userIdByEmail.get("cashier@bakery.demo")}`, amount: 2500, paymentType: "HOURLY" },
+    { employeeId: `emp-${userIdByEmail.get("baker@bakery.demo")}`, amount: 150, paymentType: "PIECE_RATE" },
+  ];
+  for (const rate of demoRates) {
+    await prisma.employeeCompensation.upsert({
+      where: { id: `comp-${rate.employeeId}` },
+      update: { amount: rate.amount, paymentType: rate.paymentType },
+      create: {
+        id: `comp-${rate.employeeId}`,
+        organizationId: org.id,
+        employeeId: rate.employeeId,
+        amount: rate.amount,
+        paymentType: rate.paymentType,
+        // Open-ended = this is the currently active rate.
+        effectiveFrom: new Date(now.getFullYear(), now.getMonth() - 3, 1),
+        createdById: owner.id,
+      },
+    });
+  }
+
+  // Planned non-payroll fixed costs — the other half of the PLAN side.
+  // Rent/electricity belong to one location; internet is one contract for
+  // the whole network (locationId = null → "Вся сеть").
+  const demoPlannedFixedCosts: {
+    key: string;
+    categoryKey: string;
+    locationId: string | null;
+    amount: number;
+  }[] = [
+    { key: "rent-store-1", categoryKey: "rent", locationId: LOC_STORE_1, amount: 300000 },
+    { key: "utilities-store-1", categoryKey: "utilities", locationId: LOC_STORE_1, amount: 100000 },
+    { key: "utilities-prod", categoryKey: "utilities", locationId: LOC_PRODUCTION, amount: 145000 },
+    { key: "other-network", categoryKey: "other-expense", locationId: null, amount: 15000 },
+  ];
+  for (const planned of demoPlannedFixedCosts) {
+    await prisma.plannedFixedCost.upsert({
+      where: { id: `planned-${org.id}-${planned.key}` },
+      update: { amount: planned.amount },
+      create: {
+        id: `planned-${org.id}-${planned.key}`,
+        organizationId: org.id,
+        categoryId: `fincat-${org.id}-${planned.categoryKey}`,
+        locationId: planned.locationId,
+        amount: planned.amount,
+        effectiveFrom: new Date(now.getFullYear(), now.getMonth() - 3, 1),
+        createdById: owner.id,
+      },
+    });
+  }
 
   const categoryNames = ["Хлеб", "Выпечка", "Торты", "Сырьё"];
   const categoriesByName = new Map<string, string>();

@@ -25,6 +25,7 @@ import type {
   CreateExpenseRequestDto,
   CreateFinanceCategoryRequestDto,
   CreateInvoiceRequestDto,
+  CreatePlannedFixedCostRequestDto,
   CreateProductionBatchRequestDto,
   CreateProductRequestDto,
   CreatePurchaseOrderRequestDto,
@@ -58,6 +59,8 @@ import type {
   LocationOverviewDto,
   LoginResponseDto,
   NotificationDto,
+  PlannedBreakEvenDto,
+  PlannedFixedCostDto,
   ProductDto,
   ProductionBatchDto,
   ProfitAndLossDto,
@@ -369,6 +372,21 @@ export const api = {
       request<ProfitAndLossDto>(withQuery("/finance/pnl", { from, to, locationId })),
     breakEven: (from: string, to: string, locationId?: string) =>
       request<BreakEvenDto>(withQuery("/finance/break-even", { from, to, locationId })),
+    plannedBreakEven: (from: string, to: string, locationId?: string) =>
+      request<PlannedBreakEvenDto>(withQuery("/finance/break-even/planned", { from, to, locationId })),
+    plannedFixedCosts: {
+      list: (includeHistory?: boolean) =>
+        request<PlannedFixedCostDto[]>(
+          withQuery("/finance/planned-fixed-costs", { includeHistory: includeHistory ? "true" : undefined }),
+        ),
+      create: (dto: CreatePlannedFixedCostRequestDto) =>
+        request<PlannedFixedCostDto>("/finance/planned-fixed-costs", {
+          method: "POST",
+          body: JSON.stringify(dto),
+        }),
+      close: (id: string) =>
+        request<PlannedFixedCostDto>(`/finance/planned-fixed-costs/${id}/close`, { method: "POST" }),
+    },
     expenses: (locationId?: string) =>
       request<ExpenseDto[]>(withQuery("/finance/expenses", { locationId })),
     createExpense: (dto: CreateExpenseRequestDto) =>

@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import type {
   BreakEvenDto,
+  PlannedBreakEvenDto,
+  PlannedFixedCostDto,
   CashAccountDto,
   CashMovementDto,
   CustomerDto,
@@ -35,6 +37,10 @@ import type {
 import {
   BREAK_EVEN_STATUS_LABELS_RU,
   BreakEvenStatus,
+  COMPENSATION_TYPE_LABELS_RU,
+  PAYROLL_EXCLUSION_REASON_LABELS_RU,
+  PLANNED_FIXED_COST_MANAGE_ROLES,
+  PayrollExclusionReason,
   CASH_ACCOUNT_MANAGE_ROLES,
   CASH_ACCOUNT_TYPE_LABELS_RU,
   CASH_MOVEMENT_INFLOW_TYPES,
@@ -63,6 +69,7 @@ import { NewCashAccountModal } from "@/components/new-cash-account-modal";
 import { CashMovementModal } from "@/components/cash-movement-modal";
 import { CashTransferModal } from "@/components/cash-transfer-modal";
 import { FinanceCategoryModal } from "@/components/finance-category-modal";
+import { PlannedFixedCostModal } from "@/components/planned-fixed-cost-modal";
 import { RecordDebtPaymentModal } from "@/components/record-debt-payment-modal";
 import { RowActions } from "@/components/row-actions";
 
@@ -122,6 +129,21 @@ function breakEvenStatusMessage(status: BreakEvenStatus): string {
   }
 }
 
+// Same honest-withholding rule as the actual break-even, but the reasons
+// differ: here the missing input is the PLAN, not the classification.
+function plannedBreakEvenStatusMessage(status: BreakEvenStatus): string {
+  switch (status) {
+    case BreakEvenStatus.NO_SALES:
+      return "За этот период нет продаж — маржинальность посчитать не из чего, поэтому плановую точку безубыточности показать нельзя.";
+    case BreakEvenStatus.NO_PLANNED_FIXED_COSTS:
+      return "Плановые постоянные расходы не заданы — укажите ставки сотрудников в разделе «Персонал» и плановые расходы ниже.";
+    case BreakEvenStatus.NEGATIVE_MARGIN:
+      return "Переменные затраты превышают выручку — при такой маржинальности плановые постоянные расходы не окупятся никаким объёмом продаж.";
+    default:
+      return BREAK_EVEN_STATUS_LABELS_RU[status];
+  }
+}
+
 type PayableRow = {
   kind: "invoice" | "expense";
   id: string;
@@ -137,6 +159,7 @@ export default function FinancePage() {
   const canView = user ? FINANCE_VIEW_ROLES.includes(user.role) : false;
   const canManageAccounts = user ? CASH_ACCOUNT_MANAGE_ROLES.includes(user.role) : false;
   const canManageCategories = user ? FINANCE_CATEGORY_MANAGE_ROLES.includes(user.role) : false;
+  const canManagePlannedCosts = user ? PLANNED_FIXED_COST_MANAGE_ROLES.includes(user.role) : false;
   const canOperateCash = user ? CASH_REGISTER_MANAGE_ROLES.includes(user.role) : false;
   const canManageExpenses = user ? EXPENSE_MANAGE_ROLES.includes(user.role) : false;
   const canPaySuppliers = user ? SUPPLIER_PAYMENT_ROLES.includes(user.role) : false;
@@ -151,6 +174,13 @@ export default function FinancePage() {
   const [dashboard, setDashboard] = useState<FinanceDashboardDto | null>(null);
   const [pnl, setPnl] = useState<ProfitAndLossDto | null>(null);
   const [breakEven, setBreakEven] = useState<BreakEvenDto | null>(null);
+  // Плановая («что мы запланировали») vs фактическая («что реально
+  // произошло») точка безубыточности — две отдельные цифры, никогда не
+  // складываются друг с другом.
+  const [breakEvenMode, setBreakEvenMode] = useState<"fact" | "plan">("fact");
+  const [plannedBreakEven, setPlannedBreakEven] = useState<PlannedBreakEvenDto | null>(null);
+  const [plannedFixedCosts, setPlannedFixedCosts] = useState<PlannedFixedCostDto[]>([]);
+  const [plannedCostModalOpen, setPlannedCostModalOpen] = useState(false);
   const [expenses, setExpenses] = useState<ExpenseDto[]>([]);
   const [accounts, setAccounts] = useState<CashAccountDto[]>([]);
   const [showArchivedAccounts, setShowArchivedAccounts] = useState(false);
@@ -192,6 +222,21 @@ export default function FinancePage() {
       .then(setBreakEven)
       .catch(() => setError("Не удалось загрузить точку безубыточности"));
   }, [period, locationFilter]);
+
+  const loadPlannedBreakEven = useCallback(() => {
+    const { from, to } = periodRange(period);
+    api.finance
+      .plannedBreakEven(from.toISOString(), to.toISOString(), locationFilter || undefined)
+      .then(setPlannedBreakEven)
+      .catch(() => setError("Не удалось загрузить плановую точку безубыточности"));
+  }, [period, locationFilter]);
+
+  const loadPlannedFixedCosts = useCallback(() => {
+    api.finance.plannedFixedCosts
+      .list()
+      .then(setPlannedFixedCosts)
+      .catch(() => setError("Не удалось загрузить плановые расходы"));
+  }, []);
 
   const loadExpenses = useCallback(() => {
     api.finance
@@ -251,6 +296,14 @@ export default function FinancePage() {
   }, [canView, loadBreakEven]);
 
   useEffect(() => {
+    if (canView) loadPlannedBreakEven();
+  }, [canView, loadPlannedBreakEven]);
+
+  useEffect(() => {
+    if (canView) loadPlannedFixedCosts();
+  }, [canView, loadPlannedFixedCosts]);
+
+  useEffect(() => {
     if (canView) loadExpenses();
   }, [canView, loadExpenses]);
 
@@ -274,6 +327,18 @@ export default function FinancePage() {
     loadDebts();
     loadPnl();
     loadBreakEven();
+    loadPlannedBreakEven();
+  }
+
+  async function handleClosePlannedFixedCost(row: PlannedFixedCostDto) {
+    if (!confirm(`Убрать плановый расход «${row.categoryName}»? История сохранится.`)) return;
+    try {
+      await api.finance.plannedFixedCosts.close(row.id);
+      loadPlannedFixedCosts();
+      loadPlannedBreakEven();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось убрать плановый расход");
+    }
   }
 
   if (!canView) {
@@ -1028,10 +1093,20 @@ export default function FinancePage() {
             <div>
               <h2 className="text-base font-semibold text-foreground">Точка безубыточности</h2>
               <p className="mt-1 text-sm text-muted">
-                Выручка за период, ниже которой постоянные расходы не покрываются
+                {breakEvenMode === "fact"
+                  ? "Факт: выручка за период, ниже которой фактические постоянные расходы не покрылись"
+                  : "План: выручка в месяц, необходимая чтобы покрыть плановые постоянные расходы"}
               </p>
             </div>
             <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
+                <TabButton active={breakEvenMode === "fact"} onClick={() => setBreakEvenMode("fact")}>
+                  Факт
+                </TabButton>
+                <TabButton active={breakEvenMode === "plan"} onClick={() => setBreakEvenMode("plan")}>
+                  План
+                </TabButton>
+              </div>
               <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
                 {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
                   <TabButton key={p} active={period === p} onClick={() => setPeriod(p)}>
@@ -1054,76 +1129,241 @@ export default function FinancePage() {
             </div>
           </div>
 
-          {breakEven && breakEven.status !== BreakEvenStatus.OK && (
-            <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              <AlertTriangle className="h-4 w-4 shrink-0" strokeWidth={1.75} />
-              {breakEvenStatusMessage(breakEven.status)}
-            </div>
+          {breakEvenMode === "fact" ? (
+            <>
+              {breakEven && breakEven.status !== BreakEvenStatus.OK && (
+                <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  <AlertTriangle className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+                  {breakEvenStatusMessage(breakEven.status)}
+                </div>
+              )}
+
+              <div className="mb-4 grid grid-cols-2 gap-4 md:grid-cols-3">
+                <StatCard icon={TrendingUp} label="Выручка за период" value={formatMoney(breakEven?.revenue ?? 0)} />
+                <StatCard
+                  icon={TrendingDown}
+                  label="Переменные затраты"
+                  value={formatMoney((breakEven?.cogs ?? 0) + (breakEven?.variableExpensesTotal ?? 0))}
+                />
+                <StatCard
+                  icon={TrendingDown}
+                  label="Постоянные расходы (факт)"
+                  value={formatMoney(breakEven?.fixedExpensesTotal ?? 0)}
+                />
+                <StatCard
+                  icon={Wallet}
+                  label="Маржинальная прибыль"
+                  value={formatMoney(breakEven?.contributionMargin ?? 0)}
+                  tone={breakEven && breakEven.contributionMargin < 0 ? "danger" : "default"}
+                />
+                <StatCard
+                  icon={Wallet}
+                  label="Маржинальность"
+                  value={breakEven?.contributionMarginPercent != null ? `${breakEven.contributionMarginPercent.toFixed(1)}%` : "—"}
+                />
+                <StatCard
+                  icon={Target}
+                  label="Точка безубыточности (факт)"
+                  value={breakEven?.status === BreakEvenStatus.OK && breakEven.breakEvenRevenue != null ? formatMoney(breakEven.breakEvenRevenue) : "—"}
+                />
+              </div>
+
+              {breakEven && breakEven.unclassifiedExpensesTotal > 0 && (
+                <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  <AlertTriangle className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+                  Не классифицировано расходов на {formatMoney(breakEven.unclassifiedExpensesTotal)} за
+                  период — они не учтены ни как постоянные, ни как переменные. Отметьте тип статьи на
+                  вкладке «Статьи ДДС» для точного расчёта.
+                </div>
+              )}
+
+              <div className="rounded-2xl border border-border bg-surface shadow-card">
+                <div className="border-b border-border px-5 py-4">
+                  <h2 className="text-sm font-semibold text-foreground">
+                    Фактические постоянные расходы по статьям
+                  </h2>
+                </div>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+                      <th className="px-5 py-3 font-medium">Статья</th>
+                      <th className="px-5 py-3 text-right font-medium">Сумма за период</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {breakEven?.fixedCostLines.map((line) => (
+                      <tr key={line.categoryId}>
+                        <td className="px-5 py-3 font-medium text-foreground">{line.categoryName}</td>
+                        <td className="px-5 py-3 text-right text-foreground">{formatMoney(line.amount)}</td>
+                      </tr>
+                    ))}
+                    {(!breakEven || breakEven.fixedCostLines.length === 0) && (
+                      <tr>
+                        <td colSpan={2} className="px-5 py-8 text-center text-sm text-muted">
+                          Нет расходов, отмеченных как постоянные, за этот период
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="mb-4 rounded-xl bg-surface-muted px-4 py-3 text-sm text-muted">
+                Плановые суммы указываются <b className="text-foreground">в месяц</b> и никогда не
+                создают расход — они не влияют на ДДС, P&amp;L и фактическую точку безубыточности.
+                Маржинальность берётся фактическая, за выбранный период.
+              </div>
+
+              {plannedBreakEven && plannedBreakEven.status !== BreakEvenStatus.OK && (
+                <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  <AlertTriangle className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+                  {plannedBreakEvenStatusMessage(plannedBreakEven.status)}
+                </div>
+              )}
+
+              <div className="mb-4 grid grid-cols-2 gap-4 md:grid-cols-3">
+                <StatCard
+                  icon={Wallet}
+                  label="Плановый ФЗП (в месяц)"
+                  value={formatMoney(plannedBreakEven?.payroll.total ?? 0)}
+                />
+                <StatCard
+                  icon={TrendingDown}
+                  label="Прочие плановые постоянные"
+                  value={formatMoney(plannedBreakEven?.plannedOtherFixedTotal ?? 0)}
+                />
+                <StatCard
+                  icon={TrendingDown}
+                  label="Плановые постоянные всего"
+                  value={formatMoney(plannedBreakEven?.plannedFixedTotal ?? 0)}
+                />
+                <StatCard
+                  icon={TrendingUp}
+                  label="Выручка за период (факт)"
+                  value={formatMoney(plannedBreakEven?.revenue ?? 0)}
+                />
+                <StatCard
+                  icon={Wallet}
+                  label="Маржинальность (факт)"
+                  value={
+                    plannedBreakEven?.contributionMarginPercent != null
+                      ? `${plannedBreakEven.contributionMarginPercent.toFixed(1)}%`
+                      : "—"
+                  }
+                  tone={plannedBreakEven && plannedBreakEven.contributionMargin < 0 ? "danger" : "default"}
+                />
+                <StatCard
+                  icon={Target}
+                  label="Нужно выручки в месяц"
+                  value={
+                    plannedBreakEven?.status === BreakEvenStatus.OK && plannedBreakEven.breakEvenRevenue != null
+                      ? formatMoney(plannedBreakEven.breakEvenRevenue)
+                      : "—"
+                  }
+                />
+              </div>
+
+              {plannedBreakEven && plannedBreakEven.payroll.exclusions.length > 0 && (
+                <div className="mb-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  <div className="flex items-center gap-2 font-medium">
+                    <AlertTriangle className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+                    Не учтено в плановом ФЗП
+                  </div>
+                  <ul className="mt-2 space-y-1 pl-6">
+                    {plannedBreakEven.payroll.exclusions.map((ex) => (
+                      <li key={`${ex.reason}-${ex.paymentType ?? "none"}`} className="list-disc">
+                        {ex.employeeCount}{" "}
+                        {ex.employeeCount === 1 ? "сотрудник" : "сотрудников"} —{" "}
+                        {ex.reason === PayrollExclusionReason.NON_MONTHLY_RATE && ex.paymentType
+                          ? COMPENSATION_TYPE_LABELS_RU[ex.paymentType].toLowerCase()
+                          : PAYROLL_EXCLUSION_REASON_LABELS_RU[ex.reason].toLowerCase()}{" "}
+                        <span className="text-amber-700">({ex.employeeNames.join(", ")})</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 pl-6 text-xs">
+                    Плановый ФЗП посчитан только по месячным окладам, поэтому реальные затраты на
+                    персонал выше указанной суммы.
+                  </p>
+                </div>
+              )}
+
+              <div className="rounded-2xl border border-border bg-surface shadow-card">
+                <div className="flex items-center justify-between border-b border-border px-5 py-4">
+                  <h2 className="text-sm font-semibold text-foreground">
+                    Плановые постоянные расходы (кроме зарплат)
+                  </h2>
+                  {canManagePlannedCosts && (
+                    <button
+                      onClick={() => setPlannedCostModalOpen(true)}
+                      className="flex items-center gap-1 text-xs font-medium text-accent hover:opacity-80"
+                    >
+                      <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
+                      Добавить
+                    </button>
+                  )}
+                </div>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+                      <th className="px-5 py-3 font-medium">Статья</th>
+                      <th className="px-5 py-3 font-medium">Точка</th>
+                      <th className="px-5 py-3 text-right font-medium">Сумма в месяц</th>
+                      {canManagePlannedCosts && <th className="px-5 py-3 font-medium">Действия</th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {plannedFixedCosts.map((row) => (
+                      <tr key={row.id}>
+                        <td className="px-5 py-3 font-medium text-foreground">{row.categoryName}</td>
+                        <td className="px-5 py-3 text-muted">{row.locationName ?? "Вся сеть"}</td>
+                        <td className="px-5 py-3 text-right text-foreground">{formatMoney(row.amount)}</td>
+                        {canManagePlannedCosts && (
+                          <td className="px-5 py-3">
+                            <button
+                              onClick={() => handleClosePlannedFixedCost(row)}
+                              title="Убрать из плана"
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-red-600"
+                            >
+                              <Archive className="h-4 w-4" strokeWidth={1.75} />
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                    {plannedFixedCosts.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={canManagePlannedCosts ? 4 : 3}
+                          className="px-5 py-8 text-center text-sm text-muted"
+                        >
+                          Плановых постоянных расходов пока нет
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-border bg-surface shadow-card">
+                <div className="border-b border-border px-5 py-4">
+                  <h2 className="text-sm font-semibold text-foreground">Плановый ФЗП по сотрудникам</h2>
+                </div>
+                <div className="px-5 py-4 text-sm text-muted">
+                  Учтено {plannedBreakEven?.payroll.includedEmployeeCount ?? 0} сотрудников с месячным
+                  окладом на сумму{" "}
+                  <b className="text-foreground">{formatMoney(plannedBreakEven?.payroll.total ?? 0)}</b> в
+                  месяц. Ставки задаются в разделе{" "}
+                  <Link href="/hr" className="text-accent hover:underline">
+                    Персонал
+                  </Link>{" "}
+                  — кнопка «Ставка» у сотрудника.
+                </div>
+              </div>
+            </>
           )}
-
-          <div className="mb-4 grid grid-cols-2 gap-4 md:grid-cols-3">
-            <StatCard icon={TrendingUp} label="Выручка за период" value={formatMoney(breakEven?.revenue ?? 0)} />
-            <StatCard
-              icon={TrendingDown}
-              label="Переменные затраты"
-              value={formatMoney((breakEven?.cogs ?? 0) + (breakEven?.variableExpensesTotal ?? 0))}
-            />
-            <StatCard icon={TrendingDown} label="Постоянные расходы" value={formatMoney(breakEven?.fixedExpensesTotal ?? 0)} />
-            <StatCard
-              icon={Wallet}
-              label="Маржинальная прибыль"
-              value={formatMoney(breakEven?.contributionMargin ?? 0)}
-              tone={breakEven && breakEven.contributionMargin < 0 ? "danger" : "default"}
-            />
-            <StatCard
-              icon={Wallet}
-              label="Маржинальность"
-              value={breakEven?.contributionMarginPercent != null ? `${breakEven.contributionMarginPercent.toFixed(1)}%` : "—"}
-            />
-            <StatCard
-              icon={Target}
-              label="Точка безубыточности"
-              value={breakEven?.status === BreakEvenStatus.OK && breakEven.breakEvenRevenue != null ? formatMoney(breakEven.breakEvenRevenue) : "—"}
-            />
-          </div>
-
-          {breakEven && breakEven.unclassifiedExpensesTotal > 0 && (
-            <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              <AlertTriangle className="h-4 w-4 shrink-0" strokeWidth={1.75} />
-              Не классифицировано расходов на {formatMoney(breakEven.unclassifiedExpensesTotal)} за
-              период — они не учтены ни как постоянные, ни как переменные. Отметьте тип статьи на
-              вкладке «Статьи ДДС» для точного расчёта.
-            </div>
-          )}
-
-          <div className="rounded-2xl border border-border bg-surface shadow-card">
-            <div className="border-b border-border px-5 py-4">
-              <h2 className="text-sm font-semibold text-foreground">Постоянные расходы по статьям</h2>
-            </div>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
-                  <th className="px-5 py-3 font-medium">Статья</th>
-                  <th className="px-5 py-3 text-right font-medium">Сумма за период</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {breakEven?.fixedCostLines.map((line) => (
-                  <tr key={line.categoryId}>
-                    <td className="px-5 py-3 font-medium text-foreground">{line.categoryName}</td>
-                    <td className="px-5 py-3 text-right text-foreground">{formatMoney(line.amount)}</td>
-                  </tr>
-                ))}
-                {(!breakEven || breakEven.fixedCostLines.length === 0) && (
-                  <tr>
-                    <td colSpan={2} className="px-5 py-8 text-center text-sm text-muted">
-                      Нет расходов, отмеченных как постоянные, за этот период
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
         </>
       )}
 
@@ -1183,6 +1423,19 @@ export default function FinancePage() {
           onSaved={() => {
             setCategoryModal(null);
             loadCategories();
+          }}
+        />
+      )}
+
+      {plannedCostModalOpen && (
+        <PlannedFixedCostModal
+          categories={categories}
+          locations={locations}
+          onClose={() => setPlannedCostModalOpen(false)}
+          onSaved={() => {
+            setPlannedCostModalOpen(false);
+            loadPlannedFixedCosts();
+            loadPlannedBreakEven();
           }}
         />
       )}

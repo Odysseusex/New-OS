@@ -73,22 +73,48 @@ export class LocationsService {
       throw new NotFoundException("Точка не найдена");
     }
 
-    const [users, movements, sales, batches, orders, routes, stops, expenses, shifts, employees, timeEntries] =
-      await Promise.all([
-        this.prisma.user.count({ where: { locationId } }),
-        this.prisma.stockMovement.count({ where: { locationId } }),
-        this.prisma.sale.count({ where: { locationId } }),
-        this.prisma.productionBatch.count({ where: { locationId } }),
-        this.prisma.purchaseOrder.count({ where: { locationId } }),
-        this.prisma.deliveryRoute.count({ where: { originLocationId: locationId } }),
-        this.prisma.routeStop.count({ where: { destinationLocationId: locationId } }),
-        this.prisma.expense.count({ where: { locationId } }),
-        this.prisma.shift.count({ where: { locationId } }),
-        this.prisma.employee.count({ where: { locationId } }),
-        this.prisma.timeEntry.count({ where: { locationId } }),
-      ]);
+    const [
+      users,
+      movements,
+      sales,
+      batches,
+      orders,
+      routes,
+      stops,
+      expenses,
+      shifts,
+      employees,
+      timeEntries,
+      plannedFixedCosts,
+    ] = await Promise.all([
+      this.prisma.user.count({ where: { locationId } }),
+      this.prisma.stockMovement.count({ where: { locationId } }),
+      this.prisma.sale.count({ where: { locationId } }),
+      this.prisma.productionBatch.count({ where: { locationId } }),
+      this.prisma.purchaseOrder.count({ where: { locationId } }),
+      this.prisma.deliveryRoute.count({ where: { originLocationId: locationId } }),
+      this.prisma.routeStop.count({ where: { destinationLocationId: locationId } }),
+      this.prisma.expense.count({ where: { locationId } }),
+      this.prisma.shift.count({ where: { locationId } }),
+      this.prisma.employee.count({ where: { locationId } }),
+      this.prisma.timeEntry.count({ where: { locationId } }),
+      // Without this the location FK's ON DELETE SET NULL would silently
+      // turn a location-specific planned cost into a network-wide one.
+      this.prisma.plannedFixedCost.count({ where: { locationId } }),
+    ]);
     const usageCount =
-      users + movements + sales + batches + orders + routes + stops + expenses + shifts + employees + timeEntries;
+      users +
+      movements +
+      sales +
+      batches +
+      orders +
+      routes +
+      stops +
+      expenses +
+      shifts +
+      employees +
+      timeEntries +
+      plannedFixedCosts;
     if (usageCount > 0) {
       throw new BadRequestException(
         "Нельзя удалить точку — с ней уже связаны данные (сотрудники, документы или остатки). Заархивируйте её вместо удаления.",
