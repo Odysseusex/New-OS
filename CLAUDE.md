@@ -51,9 +51,22 @@ originally connected to the old account. Current state:
 - **UI is 100% Russian.** Every label, button, error message, placeholder —
   Russian. Code (variables, types, comments, commit messages) is English.
 - **Communication with the user is simple and non-technical.** They are the
-  business owner, not a developer — no jargon, explain trade-offs in plain
-  terms. They write informally in Russian and may address you as
-  "бро"/"родной" — that's just their tone, not a cue to change how you work.
+  business owner, not a developer — no *engineering* jargon, explain
+  trade-offs in plain terms. They write informally in Russian and may
+  address you as "бро"/"родной" — that's just their tone, not a cue to
+  change how you work. This is about *software* vocabulary only — it does
+  NOT extend to domain terminology, see next point.
+- **Never simplify professional financial/management-accounting terms in
+  the UI.** The owner uses ArAmir OS to learn финансовый и управленческий
+  учёт, so the real term is the feature. Use "Точка безубыточности", not
+  "Нужно выручки в месяц"; "Маржинальная прибыль", "Маржинальность",
+  "Постоянные затраты", "Переменные затраты", "Выручка", "Себестоимость",
+  "Дебиторская/Кредиторская задолженность", "P&L / Прибыли и убытки",
+  "ДДС / Денежный поток", "ФЗП", "План/Факт". When a term may be unclear,
+  **keep the term and add a short explanation under it** (`StatCard`'s
+  `hint` prop on `/finance` is the established pattern) — never swap it for
+  a conversational paraphrase. Don't simplify terminology without a fresh,
+  explicit request; this was corrected once already.
 - **Don't add scope beyond what's asked.** AI-центр and Интеграции modules
   are explicitly deferred (AI: cost concerns; Integrations: no real
   connector credentials) — do not start either without a fresh, explicit

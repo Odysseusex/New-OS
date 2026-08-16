@@ -64,7 +64,7 @@ export function PlannedFixedCostModal({
   }
 
   return (
-    <Modal title="Плановый постоянный расход" onClose={onClose}>
+    <Modal title="Плановые постоянные затраты" onClose={onClose}>
       <form onSubmit={handleSubmit}>
         <div className="mb-4">
           <label className="mb-1.5 block text-sm font-medium text-foreground">Статья расхода</label>
@@ -83,15 +83,17 @@ export function PlannedFixedCostModal({
           </select>
           {selectedCategory && selectedCategory.costBehavior !== CostBehavior.FIXED && (
             <p className="mt-1.5 text-xs text-amber-600">
-              Эта статья сейчас не отмечена как «Постоянные». Плановая сумма всё равно сохранится, но
-              в фактической точке безубыточности расходы по ней постоянными считаться не будут.
+              Эта статья не классифицирована как «Постоянные». Плановая сумма сохранится, но в
+              фактической точке безубыточности затраты по ней постоянными учитываться не будут.
             </p>
           )}
         </div>
 
         <div className="mb-4 grid grid-cols-2 gap-3">
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-foreground">Сумма в месяц</label>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
+              Сумма, ₸/мес.
+            </label>
             <input
               type="number"
               required
@@ -130,8 +132,8 @@ export function PlannedFixedCostModal({
           {isSubmitting ? "Сохранение…" : "Сохранить план"}
         </button>
         <p className="mt-2 text-xs text-muted">
-          Это плановая сумма для управленческой отчётности — она не создаёт расход и не списывает
-          деньги. Фактическую оплату по-прежнему нужно провести через Финансы → Расходы.
+          Плановая величина для управленческого учёта — не формирует расход и не отражается в
+          денежном потоке. Фактическую оплату необходимо провести через Финансы → Расходы.
         </p>
       </form>
     </Modal>

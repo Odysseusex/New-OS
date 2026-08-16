@@ -119,11 +119,11 @@ function periodRange(period: Period): { from: Date; to: Date } {
 function breakEvenStatusMessage(status: BreakEvenStatus): string {
   switch (status) {
     case BreakEvenStatus.NO_SALES:
-      return "За этот период нет продаж — точку безубыточности посчитать не из чего.";
+      return "За выбранный период отсутствует выручка — маржинальность не определена, точка безубыточности не рассчитывается.";
     case BreakEvenStatus.NO_FIXED_COSTS_CLASSIFIED:
-      return "Ни одна статья расходов не отмечена как постоянная — отметьте тип статей на вкладке «Статьи ДДС».";
+      return "Ни одна статья затрат не классифицирована как постоянная — укажите тип затрат на вкладке «Статьи ДДС».";
     case BreakEvenStatus.NEGATIVE_MARGIN:
-      return "Переменные затраты превышают выручку — маржинальная прибыль отрицательна, при таких условиях точки безубыточности не существует.";
+      return "Переменные затраты превышают выручку — маржинальная прибыль отрицательна, точка безубыточности не существует.";
     default:
       return BREAK_EVEN_STATUS_LABELS_RU[status];
   }
@@ -134,11 +134,11 @@ function breakEvenStatusMessage(status: BreakEvenStatus): string {
 function plannedBreakEvenStatusMessage(status: BreakEvenStatus): string {
   switch (status) {
     case BreakEvenStatus.NO_SALES:
-      return "За этот период нет продаж — маржинальность посчитать не из чего, поэтому плановую точку безубыточности показать нельзя.";
+      return "За выбранный период отсутствует выручка — маржинальность не определена, плановая точка безубыточности не рассчитывается.";
     case BreakEvenStatus.NO_PLANNED_FIXED_COSTS:
-      return "Плановые постоянные расходы не заданы — укажите ставки сотрудников в разделе «Персонал» и плановые расходы ниже.";
+      return "Плановые постоянные затраты не заданы — укажите оклады сотрудников в разделе «Персонал» и плановые затраты в таблице ниже.";
     case BreakEvenStatus.NEGATIVE_MARGIN:
-      return "Переменные затраты превышают выручку — при такой маржинальности плановые постоянные расходы не окупятся никаким объёмом продаж.";
+      return "Переменные затраты превышают выручку — маржинальная прибыль отрицательна, плановые постоянные затраты не покрываются ни при каком объёме продаж.";
     default:
       return BREAK_EVEN_STATUS_LABELS_RU[status];
   }
@@ -967,9 +967,10 @@ export default function FinancePage() {
             />
           </div>
           <p className="mt-4 text-xs text-muted">
-            «Тип» у статей расходов определяет постоянные (не зависят от объёма продаж — аренда,
-            оклады) и переменные (растут вместе с продажами — логистика) затраты. Это нужно для
-            расчёта точки безубыточности — см. вкладку «Точка безубыточности».
+            Тип затрат по статье расходов: <b className="text-foreground">постоянные</b> — не зависят
+            от объёма продаж (аренда, оклады), <b className="text-foreground">переменные</b> — растут
+            вместе с объёмом продаж (логистика). Классификация используется при расчёте маржинальной
+            прибыли и точки безубыточности — см. вкладку «Точка безубыточности».
           </p>
         </>
       )}
@@ -1094,8 +1095,8 @@ export default function FinancePage() {
               <h2 className="text-base font-semibold text-foreground">Точка безубыточности</h2>
               <p className="mt-1 text-sm text-muted">
                 {breakEvenMode === "fact"
-                  ? "Факт: выручка за период, ниже которой фактические постоянные расходы не покрылись"
-                  : "План: выручка в месяц, необходимая чтобы покрыть плановые постоянные расходы"}
+                  ? "Факт: расчёт по фактическим затратам за выбранный период"
+                  : "План: расчёт по плановым постоянным затратам, в расчёте на месяц"}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -1139,48 +1140,58 @@ export default function FinancePage() {
               )}
 
               <div className="mb-4 grid grid-cols-2 gap-4 md:grid-cols-3">
-                <StatCard icon={TrendingUp} label="Выручка за период" value={formatMoney(breakEven?.revenue ?? 0)} />
+                <StatCard
+                  icon={TrendingUp}
+                  label="Выручка"
+                  value={formatMoney(breakEven?.revenue ?? 0)}
+                  hint="Сумма продаж за выбранный период"
+                />
                 <StatCard
                   icon={TrendingDown}
                   label="Переменные затраты"
                   value={formatMoney((breakEven?.cogs ?? 0) + (breakEven?.variableExpensesTotal ?? 0))}
+                  hint="Себестоимость проданного плюс расходы, растущие вместе с объёмом продаж"
                 />
                 <StatCard
                   icon={TrendingDown}
-                  label="Постоянные расходы (факт)"
+                  label="Постоянные затраты"
                   value={formatMoney(breakEven?.fixedExpensesTotal ?? 0)}
+                  hint="Затраты, не зависящие от объёма продаж, за выбранный период"
                 />
                 <StatCard
                   icon={Wallet}
                   label="Маржинальная прибыль"
                   value={formatMoney(breakEven?.contributionMargin ?? 0)}
+                  hint="Выручка минус переменные затраты — то, что остаётся на покрытие постоянных затрат"
                   tone={breakEven && breakEven.contributionMargin < 0 ? "danger" : "default"}
                 />
                 <StatCard
                   icon={Wallet}
                   label="Маржинальность"
                   value={breakEven?.contributionMarginPercent != null ? `${breakEven.contributionMarginPercent.toFixed(1)}%` : "—"}
+                  hint="Доля маржинальной прибыли в выручке"
                 />
                 <StatCard
                   icon={Target}
-                  label="Точка безубыточности (факт)"
+                  label="Точка безубыточности"
                   value={breakEven?.status === BreakEvenStatus.OK && breakEven.breakEvenRevenue != null ? formatMoney(breakEven.breakEvenRevenue) : "—"}
+                  hint="Минимальная выручка за период для покрытия постоянных и переменных затрат"
                 />
               </div>
 
               {breakEven && breakEven.unclassifiedExpensesTotal > 0 && (
                 <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
                   <AlertTriangle className="h-4 w-4 shrink-0" strokeWidth={1.75} />
-                  Не классифицировано расходов на {formatMoney(breakEven.unclassifiedExpensesTotal)} за
-                  период — они не учтены ни как постоянные, ни как переменные. Отметьте тип статьи на
-                  вкладке «Статьи ДДС» для точного расчёта.
+                  Не классифицировано затрат на {formatMoney(breakEven.unclassifiedExpensesTotal)} за
+                  период — они не учтены ни как постоянные, ни как переменные. Укажите тип затрат по
+                  статье на вкладке «Статьи ДДС» для корректного расчёта.
                 </div>
               )}
 
               <div className="rounded-2xl border border-border bg-surface shadow-card">
                 <div className="border-b border-border px-5 py-4">
                   <h2 className="text-sm font-semibold text-foreground">
-                    Фактические постоянные расходы по статьям
+                    Постоянные затраты по статьям (факт)
                   </h2>
                 </div>
                 <table className="w-full text-sm">
@@ -1211,8 +1222,8 @@ export default function FinancePage() {
           ) : (
             <>
               <div className="mb-4 rounded-xl bg-surface-muted px-4 py-3 text-sm text-muted">
-                Плановые суммы указываются <b className="text-foreground">в месяц</b> и никогда не
-                создают расход — они не влияют на ДДС, P&amp;L и фактическую точку безубыточности.
+                Плановые суммы указываются <b className="text-foreground">в расчёте на месяц</b> и не
+                формируют проводок — они не влияют на ДДС, P&amp;L и фактическую точку безубыточности.
                 Маржинальность берётся фактическая, за выбранный период.
               </div>
 
@@ -1226,23 +1237,27 @@ export default function FinancePage() {
               <div className="mb-4 grid grid-cols-2 gap-4 md:grid-cols-3">
                 <StatCard
                   icon={Wallet}
-                  label="Плановый ФЗП (в месяц)"
-                  value={formatMoney(plannedBreakEven?.payroll.total ?? 0)}
+                  label="Плановый ФЗП"
+                  value={`${formatMoney(plannedBreakEven?.payroll.total ?? 0)}/мес.`}
+                  hint="Фонд заработной платы — сумма месячных окладов сотрудников"
                 />
                 <StatCard
                   icon={TrendingDown}
-                  label="Прочие плановые постоянные"
-                  value={formatMoney(plannedBreakEven?.plannedOtherFixedTotal ?? 0)}
+                  label="Прочие постоянные затраты (план)"
+                  value={`${formatMoney(plannedBreakEven?.plannedOtherFixedTotal ?? 0)}/мес.`}
+                  hint="Аренда, коммунальные услуги и другие плановые постоянные затраты"
                 />
                 <StatCard
                   icon={TrendingDown}
-                  label="Плановые постоянные всего"
-                  value={formatMoney(plannedBreakEven?.plannedFixedTotal ?? 0)}
+                  label="Постоянные затраты, всего (план)"
+                  value={`${formatMoney(plannedBreakEven?.plannedFixedTotal ?? 0)}/мес.`}
+                  hint="Плановый ФЗП плюс прочие плановые постоянные затраты"
                 />
                 <StatCard
                   icon={TrendingUp}
-                  label="Выручка за период (факт)"
+                  label="Выручка (факт)"
                   value={formatMoney(plannedBreakEven?.revenue ?? 0)}
+                  hint="Фактические продажи за выбранный период — база для расчёта маржинальности"
                 />
                 <StatCard
                   icon={Wallet}
@@ -1252,16 +1267,18 @@ export default function FinancePage() {
                       ? `${plannedBreakEven.contributionMarginPercent.toFixed(1)}%`
                       : "—"
                   }
+                  hint="Доля маржинальной прибыли в выручке по фактическим данным периода"
                   tone={plannedBreakEven && plannedBreakEven.contributionMargin < 0 ? "danger" : "default"}
                 />
                 <StatCard
                   icon={Target}
-                  label="Нужно выручки в месяц"
+                  label="Точка безубыточности"
                   value={
                     plannedBreakEven?.status === BreakEvenStatus.OK && plannedBreakEven.breakEvenRevenue != null
-                      ? formatMoney(plannedBreakEven.breakEvenRevenue)
+                      ? `${formatMoney(plannedBreakEven.breakEvenRevenue)}/мес.`
                       : "—"
                   }
+                  hint="Минимальная месячная выручка для покрытия постоянных и переменных затрат"
                 />
               </div>
 
@@ -1284,8 +1301,8 @@ export default function FinancePage() {
                     ))}
                   </ul>
                   <p className="mt-2 pl-6 text-xs">
-                    Плановый ФЗП посчитан только по месячным окладам, поэтому реальные затраты на
-                    персонал выше указанной суммы.
+                    Плановый ФЗП рассчитан только по месячным окладам, поэтому фактические затраты
+                    на персонал выше указанной суммы.
                   </p>
                 </div>
               )}
@@ -1293,7 +1310,7 @@ export default function FinancePage() {
               <div className="rounded-2xl border border-border bg-surface shadow-card">
                 <div className="flex items-center justify-between border-b border-border px-5 py-4">
                   <h2 className="text-sm font-semibold text-foreground">
-                    Плановые постоянные расходы (кроме зарплат)
+                    Прочие постоянные затраты по статьям (план)
                   </h2>
                   {canManagePlannedCosts && (
                     <button
@@ -1349,13 +1366,15 @@ export default function FinancePage() {
 
               <div className="mt-4 rounded-2xl border border-border bg-surface shadow-card">
                 <div className="border-b border-border px-5 py-4">
-                  <h2 className="text-sm font-semibold text-foreground">Плановый ФЗП по сотрудникам</h2>
+                  <h2 className="text-sm font-semibold text-foreground">
+                    Плановый ФЗП (фонд заработной платы)
+                  </h2>
                 </div>
                 <div className="px-5 py-4 text-sm text-muted">
-                  Учтено {plannedBreakEven?.payroll.includedEmployeeCount ?? 0} сотрудников с месячным
-                  окладом на сумму{" "}
-                  <b className="text-foreground">{formatMoney(plannedBreakEven?.payroll.total ?? 0)}</b> в
-                  месяц. Ставки задаются в разделе{" "}
+                  В расчёт включено {plannedBreakEven?.payroll.includedEmployeeCount ?? 0} сотрудников
+                  с месячным окладом на сумму{" "}
+                  <b className="text-foreground">{formatMoney(plannedBreakEven?.payroll.total ?? 0)}</b>{" "}
+                  в месяц. Оклады задаются в разделе{" "}
                   <Link href="/hr" className="text-accent hover:underline">
                     Персонал
                   </Link>{" "}
@@ -1629,11 +1648,16 @@ function StatCard({
   icon: Icon,
   label,
   value,
+  hint,
   tone = "default",
 }: {
   icon: typeof Wallet;
   label: string;
   value: string;
+  // Plain-language explanation of the term in `label`. The professional
+  // term always stays as the label — the hint explains it, it never
+  // replaces it (see the terminology rule in CLAUDE.md).
+  hint?: string;
   tone?: "default" | "danger" | "warning";
 }) {
   return (
@@ -1655,6 +1679,7 @@ function StatCard({
         {value}
       </p>
       <p className="mt-0.5 text-sm text-muted">{label}</p>
+      {hint && <p className="mt-1 text-xs leading-snug text-muted/80">{hint}</p>}
     </div>
   );
 }
