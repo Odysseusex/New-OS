@@ -62,11 +62,21 @@ originally connected to the old account. Current state:
   "Нужно выручки в месяц"; "Маржинальная прибыль", "Маржинальность",
   "Постоянные затраты", "Переменные затраты", "Выручка", "Себестоимость",
   "Дебиторская/Кредиторская задолженность", "P&L / Прибыли и убытки",
-  "ДДС / Денежный поток", "ФЗП", "План/Факт". When a term may be unclear,
-  **keep the term and add a short explanation under it** (`StatCard`'s
-  `hint` prop on `/finance` is the established pattern) — never swap it for
-  a conversational paraphrase. Don't simplify terminology without a fresh,
-  explicit request; this was corrected once already.
+  "ДДС / Денежный поток", "ФЗП", "План/Факт". Don't simplify terminology
+  without a fresh, explicit request; this was corrected once already.
+- **…but don't explain the terms in the UI either.** This is a working ERP
+  panel, not a textbook. A stat card is exactly *term + value + unit*
+  ("Плановый ФЗП" / "1 150 000 ₸/мес.") — no descriptive subtitle under it,
+  no intro paragraph above a section, no "что это значит" helper prose.
+  Both halves of this rule were learned the hard way in one session: first
+  terms got paraphrased into conversational Russian, then the correction
+  overshot into per-card glossary lines that had to be stripped out again.
+  What legitimately stays is a *data* message, not a *teaching* one: a
+  warning that the figures are incomplete ("Не учтено в плановом ФЗП" plus
+  the affected employees), an unclassified-costs alert, a status line
+  explaining why a number is withheld, or a one-line consequence warning at
+  the point of action inside a modal. If a term genuinely needs teaching,
+  that belongs in documentation, not on the panel.
 - **Don't add scope beyond what's asked.** AI-центр and Интеграции modules
   are explicitly deferred (AI: cost concerns; Integrations: no real
   connector credentials) — do not start either without a fresh, explicit

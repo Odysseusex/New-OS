@@ -967,10 +967,7 @@ export default function FinancePage() {
             />
           </div>
           <p className="mt-4 text-xs text-muted">
-            Тип затрат по статье расходов: <b className="text-foreground">постоянные</b> — не зависят
-            от объёма продаж (аренда, оклады), <b className="text-foreground">переменные</b> — растут
-            вместе с объёмом продаж (логистика). Классификация используется при расчёте маржинальной
-            прибыли и точки безубыточности — см. вкладку «Точка безубыточности».
+            Тип затрат используется при расчёте точки безубыточности.
           </p>
         </>
       )}
@@ -1091,14 +1088,7 @@ export default function FinancePage() {
       {tab === "breakeven" && (
         <>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold text-foreground">Точка безубыточности</h2>
-              <p className="mt-1 text-sm text-muted">
-                {breakEvenMode === "fact"
-                  ? "Факт: расчёт по фактическим затратам за выбранный период"
-                  : "План: расчёт по плановым постоянным затратам, в расчёте на месяц"}
-              </p>
-            </div>
+            <h2 className="text-base font-semibold text-foreground">Точка безубыточности</h2>
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
                 <TabButton active={breakEvenMode === "fact"} onClick={() => setBreakEvenMode("fact")}>
@@ -1140,42 +1130,32 @@ export default function FinancePage() {
               )}
 
               <div className="mb-4 grid grid-cols-2 gap-4 md:grid-cols-3">
-                <StatCard
-                  icon={TrendingUp}
-                  label="Выручка"
-                  value={formatMoney(breakEven?.revenue ?? 0)}
-                  hint="Сумма продаж за выбранный период"
-                />
+                <StatCard icon={TrendingUp} label="Выручка" value={formatMoney(breakEven?.revenue ?? 0)} />
                 <StatCard
                   icon={TrendingDown}
                   label="Переменные затраты"
                   value={formatMoney((breakEven?.cogs ?? 0) + (breakEven?.variableExpensesTotal ?? 0))}
-                  hint="Себестоимость проданного плюс расходы, растущие вместе с объёмом продаж"
                 />
                 <StatCard
                   icon={TrendingDown}
                   label="Постоянные затраты"
                   value={formatMoney(breakEven?.fixedExpensesTotal ?? 0)}
-                  hint="Затраты, не зависящие от объёма продаж, за выбранный период"
                 />
                 <StatCard
                   icon={Wallet}
                   label="Маржинальная прибыль"
                   value={formatMoney(breakEven?.contributionMargin ?? 0)}
-                  hint="Выручка минус переменные затраты — то, что остаётся на покрытие постоянных затрат"
                   tone={breakEven && breakEven.contributionMargin < 0 ? "danger" : "default"}
                 />
                 <StatCard
                   icon={Wallet}
                   label="Маржинальность"
                   value={breakEven?.contributionMarginPercent != null ? `${breakEven.contributionMarginPercent.toFixed(1)}%` : "—"}
-                  hint="Доля маржинальной прибыли в выручке"
                 />
                 <StatCard
                   icon={Target}
                   label="Точка безубыточности"
                   value={breakEven?.status === BreakEvenStatus.OK && breakEven.breakEvenRevenue != null ? formatMoney(breakEven.breakEvenRevenue) : "—"}
-                  hint="Минимальная выручка за период для покрытия постоянных и переменных затрат"
                 />
               </div>
 
@@ -1191,7 +1171,7 @@ export default function FinancePage() {
               <div className="rounded-2xl border border-border bg-surface shadow-card">
                 <div className="border-b border-border px-5 py-4">
                   <h2 className="text-sm font-semibold text-foreground">
-                    Постоянные затраты по статьям (факт)
+                    Постоянные затраты по статьям
                   </h2>
                 </div>
                 <table className="w-full text-sm">
@@ -1221,12 +1201,6 @@ export default function FinancePage() {
             </>
           ) : (
             <>
-              <div className="mb-4 rounded-xl bg-surface-muted px-4 py-3 text-sm text-muted">
-                Плановые суммы указываются <b className="text-foreground">в расчёте на месяц</b> и не
-                формируют проводок — они не влияют на ДДС, P&amp;L и фактическую точку безубыточности.
-                Маржинальность берётся фактическая, за выбранный период.
-              </div>
-
               {plannedBreakEven && plannedBreakEven.status !== BreakEvenStatus.OK && (
                 <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
                   <AlertTriangle className="h-4 w-4 shrink-0" strokeWidth={1.75} />
@@ -1239,35 +1213,30 @@ export default function FinancePage() {
                   icon={Wallet}
                   label="Плановый ФЗП"
                   value={`${formatMoney(plannedBreakEven?.payroll.total ?? 0)}/мес.`}
-                  hint="Фонд заработной платы — сумма месячных окладов сотрудников"
                 />
                 <StatCard
                   icon={TrendingDown}
-                  label="Прочие постоянные затраты (план)"
+                  label="Прочие постоянные затраты"
                   value={`${formatMoney(plannedBreakEven?.plannedOtherFixedTotal ?? 0)}/мес.`}
-                  hint="Аренда, коммунальные услуги и другие плановые постоянные затраты"
                 />
                 <StatCard
                   icon={TrendingDown}
-                  label="Постоянные затраты, всего (план)"
+                  label="Постоянные затраты, всего"
                   value={`${formatMoney(plannedBreakEven?.plannedFixedTotal ?? 0)}/мес.`}
-                  hint="Плановый ФЗП плюс прочие плановые постоянные затраты"
                 />
                 <StatCard
                   icon={TrendingUp}
-                  label="Выручка (факт)"
+                  label="Выручка"
                   value={formatMoney(plannedBreakEven?.revenue ?? 0)}
-                  hint="Фактические продажи за выбранный период — база для расчёта маржинальности"
                 />
                 <StatCard
                   icon={Wallet}
-                  label="Маржинальность (факт)"
+                  label="Маржинальность"
                   value={
                     plannedBreakEven?.contributionMarginPercent != null
                       ? `${plannedBreakEven.contributionMarginPercent.toFixed(1)}%`
                       : "—"
                   }
-                  hint="Доля маржинальной прибыли в выручке по фактическим данным периода"
                   tone={plannedBreakEven && plannedBreakEven.contributionMargin < 0 ? "danger" : "default"}
                 />
                 <StatCard
@@ -1278,7 +1247,6 @@ export default function FinancePage() {
                       ? `${formatMoney(plannedBreakEven.breakEvenRevenue)}/мес.`
                       : "—"
                   }
-                  hint="Минимальная месячная выручка для покрытия постоянных и переменных затрат"
                 />
               </div>
 
@@ -1300,17 +1268,13 @@ export default function FinancePage() {
                       </li>
                     ))}
                   </ul>
-                  <p className="mt-2 pl-6 text-xs">
-                    Плановый ФЗП рассчитан только по месячным окладам, поэтому фактические затраты
-                    на персонал выше указанной суммы.
-                  </p>
                 </div>
               )}
 
               <div className="rounded-2xl border border-border bg-surface shadow-card">
                 <div className="flex items-center justify-between border-b border-border px-5 py-4">
                   <h2 className="text-sm font-semibold text-foreground">
-                    Прочие постоянные затраты по статьям (план)
+                    Прочие постоянные затраты по статьям
                   </h2>
                   {canManagePlannedCosts && (
                     <button
@@ -1356,30 +1320,12 @@ export default function FinancePage() {
                           colSpan={canManagePlannedCosts ? 4 : 3}
                           className="px-5 py-8 text-center text-sm text-muted"
                         >
-                          Плановых постоянных расходов пока нет
+                          Плановых постоянных затрат пока нет
                         </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
-              </div>
-
-              <div className="mt-4 rounded-2xl border border-border bg-surface shadow-card">
-                <div className="border-b border-border px-5 py-4">
-                  <h2 className="text-sm font-semibold text-foreground">
-                    Плановый ФЗП (фонд заработной платы)
-                  </h2>
-                </div>
-                <div className="px-5 py-4 text-sm text-muted">
-                  В расчёт включено {plannedBreakEven?.payroll.includedEmployeeCount ?? 0} сотрудников
-                  с месячным окладом на сумму{" "}
-                  <b className="text-foreground">{formatMoney(plannedBreakEven?.payroll.total ?? 0)}</b>{" "}
-                  в месяц. Оклады задаются в разделе{" "}
-                  <Link href="/hr" className="text-accent hover:underline">
-                    Персонал
-                  </Link>{" "}
-                  — кнопка «Ставка» у сотрудника.
-                </div>
               </div>
             </>
           )}
@@ -1648,16 +1594,11 @@ function StatCard({
   icon: Icon,
   label,
   value,
-  hint,
   tone = "default",
 }: {
   icon: typeof Wallet;
   label: string;
   value: string;
-  // Plain-language explanation of the term in `label`. The professional
-  // term always stays as the label — the hint explains it, it never
-  // replaces it (see the terminology rule in CLAUDE.md).
-  hint?: string;
   tone?: "default" | "danger" | "warning";
 }) {
   return (
@@ -1679,7 +1620,6 @@ function StatCard({
         {value}
       </p>
       <p className="mt-0.5 text-sm text-muted">{label}</p>
-      {hint && <p className="mt-1 text-xs leading-snug text-muted/80">{hint}</p>}
     </div>
   );
 }
