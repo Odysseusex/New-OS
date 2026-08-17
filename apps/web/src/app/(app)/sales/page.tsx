@@ -12,6 +12,8 @@ import { SaleDetailModal } from "@/components/sale-detail-modal";
 import { PaymentStatusBadge } from "@/components/payment-status-badge";
 import { RecordSalePaymentModal, type SalePaymentContext } from "@/components/record-sale-payment-modal";
 
+const PAGE_SIZE = 50;
+
 export default function SalesPage() {
   const { user } = useAuth();
   const isOrgWide = user ? ORG_WIDE_ROLES.includes(user.role) : false;
@@ -23,6 +25,8 @@ export default function SalesPage() {
   const [customers, setCustomers] = useState<CustomerDto[]>([]);
   const [summary, setSummary] = useState<SalesSummaryDto | null>(null);
   const [sales, setSales] = useState<SaleDto[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [locationFilter, setLocationFilter] = useState<string>("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
@@ -30,13 +34,32 @@ export default function SalesPage() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    Promise.all([api.sales.summary(locationFilter || undefined), api.sales.list(locationFilter || undefined)])
+    Promise.all([
+      api.sales.summary(locationFilter || undefined),
+      api.sales.list(locationFilter || undefined, PAGE_SIZE),
+    ])
       .then(([s, list]) => {
         setSummary(s);
         setSales(list);
+        // A full page might mean there's more, or might just mean the list
+        // ends exactly on a page boundary — either way, "Показать ещё" is
+        // the correct next click; a short page is the only reliable "done".
+        setHasMore(list.length === PAGE_SIZE);
       })
       .catch(() => setError("Не удалось загрузить продажи"));
   }, [locationFilter]);
+
+  function loadMore() {
+    setIsLoadingMore(true);
+    api.sales
+      .list(locationFilter || undefined, PAGE_SIZE, sales.length)
+      .then((next) => {
+        setSales((prev) => [...prev, ...next]);
+        setHasMore(next.length === PAGE_SIZE);
+      })
+      .catch(() => setError("Не удалось загрузить продажи"))
+      .finally(() => setIsLoadingMore(false));
+  }
 
   useEffect(() => {
     api.locations.list().then(setLocations).catch(() => {});
@@ -161,6 +184,17 @@ export default function SalesPage() {
             )}
           </tbody>
         </table>
+        {hasMore && (
+          <div className="border-t border-border px-5 py-4 text-center">
+            <button
+              onClick={loadMore}
+              disabled={isLoadingMore}
+              className="rounded-xl border border-border px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted disabled:opacity-60"
+            >
+              {isLoadingMore ? "Загрузка…" : "Показать ещё"}
+            </button>
+          </div>
+        )}
       </div>
 
       {isModalOpen && (

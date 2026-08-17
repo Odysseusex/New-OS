@@ -22,8 +22,13 @@ export class CashMovementsController {
     @CurrentUser() user: AuthenticatedUser,
     @Query("accountId") accountId?: string,
     @Query("limit") limit?: string,
+    @Query("offset") offset?: string,
   ) {
-    return this.cashMovementsService.findAll(user.organizationId, accountId, limit ? Number(limit) : undefined);
+    return this.cashMovementsService.findAll(user.organizationId, {
+      accountId,
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+    });
   }
 
   @Post("deposit")

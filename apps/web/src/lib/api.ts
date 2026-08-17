@@ -217,7 +217,14 @@ export const api = {
   },
 
   sales: {
-    list: (locationId?: string) => request<SaleDto[]>(withQuery("/sales", { locationId })),
+    list: (locationId?: string, limit?: number, offset?: number) =>
+      request<SaleDto[]>(
+        withQuery("/sales", {
+          locationId,
+          limit: limit ? String(limit) : undefined,
+          offset: offset ? String(offset) : undefined,
+        }),
+      ),
     summary: (locationId?: string) =>
       request<SalesSummaryDto>(withQuery("/sales/summary", { locationId })),
     report: (from: string, to: string, locationId?: string) =>
@@ -441,9 +448,13 @@ export const api = {
         }),
     },
     movements: {
-      list: (accountId?: string, limit?: number) =>
+      list: (accountId?: string, limit?: number, offset?: number) =>
         request<CashMovementDto[]>(
-          withQuery("/finance/movements", { accountId, limit: limit ? String(limit) : undefined }),
+          withQuery("/finance/movements", {
+            accountId,
+            limit: limit ? String(limit) : undefined,
+            offset: offset ? String(offset) : undefined,
+          }),
         ),
       deposit: (dto: CashDepositRequestDto) =>
         request<CashMovementDto>("/finance/movements/deposit", { method: "POST", body: JSON.stringify(dto) }),

@@ -89,14 +89,14 @@ export class CashMovementsService {
 
   async findAll(
     organizationId: string,
-    accountId?: string,
-    limit = 100,
-    saleId?: string,
+    opts: { accountId?: string; limit?: number; offset?: number; saleId?: string } = {},
   ): Promise<CashMovementDto[]> {
+    const { accountId, limit = 100, offset = 0, saleId } = opts;
     const movements = await this.prisma.cashMovement.findMany({
       where: { organizationId, ...(accountId ? { accountId } : {}), ...(saleId ? { saleId } : {}) },
       include: MOVEMENT_INCLUDE,
       orderBy: { occurredAt: "desc" },
+      skip: offset,
       take: limit,
     });
     return movements.map(this.toDto);

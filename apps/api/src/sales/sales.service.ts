@@ -74,7 +74,12 @@ export class SalesService {
     return bank?.id ?? null;
   }
 
-  async findAll(user: AuthenticatedUser, requestedLocationId?: string, limit = 50): Promise<SaleDto[]> {
+  async findAll(
+    user: AuthenticatedUser,
+    requestedLocationId?: string,
+    limit = 50,
+    offset = 0,
+  ): Promise<SaleDto[]> {
     const locationId = resolveLocationScope(user, requestedLocationId);
 
     const sales = await this.prisma.sale.findMany({
@@ -84,6 +89,7 @@ export class SalesService {
       },
       include: SALE_INCLUDE,
       orderBy: { soldAt: "desc" },
+      skip: offset,
       take: limit,
     });
 
@@ -521,7 +527,7 @@ export class SalesService {
       throw new NotFoundException("Продажа не найдена");
     }
     resolveLocationScope(user, sale.locationId);
-    return this.cashMovementsService.findAll(user.organizationId, undefined, undefined, saleId);
+    return this.cashMovementsService.findAll(user.organizationId, { saleId });
   }
 
   private toSaleDto = (sale: {

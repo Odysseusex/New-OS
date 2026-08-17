@@ -16,8 +16,18 @@ export class SalesController {
   constructor(private salesService: SalesService) {}
 
   @Get()
-  findAll(@CurrentUser() user: AuthenticatedUser, @Query("locationId") locationId?: string) {
-    return this.salesService.findAll(user, locationId);
+  findAll(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("locationId") locationId?: string,
+    @Query("limit") limit?: string,
+    @Query("offset") offset?: string,
+  ) {
+    return this.salesService.findAll(
+      user,
+      locationId,
+      limit ? Number(limit) : undefined,
+      offset ? Number(offset) : undefined,
+    );
   }
 
   @Get("summary")

@@ -97,6 +97,8 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "breakeven", label: "Точка безубыточности" },
 ];
 
+const MOVEMENTS_PAGE_SIZE = 100;
+
 const PERIOD_LABELS: Record<Period, string> = {
   today: "Сегодня",
   "7d": "7 дней",
@@ -185,6 +187,8 @@ export default function FinancePage() {
   const [accounts, setAccounts] = useState<CashAccountDto[]>([]);
   const [showArchivedAccounts, setShowArchivedAccounts] = useState(false);
   const [movements, setMovements] = useState<CashMovementDto[]>([]);
+  const [hasMoreMovements, setHasMoreMovements] = useState(false);
+  const [isLoadingMoreMovements, setIsLoadingMoreMovements] = useState(false);
   const [movementAccountFilter, setMovementAccountFilter] = useState("");
   const [categories, setCategories] = useState<FinanceCategoryDto[]>([]);
   const [showArchivedCategories, setShowArchivedCategories] = useState(false);
@@ -254,10 +258,25 @@ export default function FinancePage() {
 
   const loadMovements = useCallback(() => {
     api.finance.movements
-      .list(movementAccountFilter || undefined, 150)
-      .then(setMovements)
+      .list(movementAccountFilter || undefined, MOVEMENTS_PAGE_SIZE)
+      .then((list) => {
+        setMovements(list);
+        setHasMoreMovements(list.length === MOVEMENTS_PAGE_SIZE);
+      })
       .catch(() => setError("Не удалось загрузить движение денежных средств"));
   }, [movementAccountFilter]);
+
+  function loadMoreMovements() {
+    setIsLoadingMoreMovements(true);
+    api.finance.movements
+      .list(movementAccountFilter || undefined, MOVEMENTS_PAGE_SIZE, movements.length)
+      .then((next) => {
+        setMovements((prev) => [...prev, ...next]);
+        setHasMoreMovements(next.length === MOVEMENTS_PAGE_SIZE);
+      })
+      .catch(() => setError("Не удалось загрузить движение денежных средств"))
+      .finally(() => setIsLoadingMoreMovements(false));
+  }
 
   const loadCategories = useCallback(() => {
     api.finance.categories
@@ -743,6 +762,17 @@ export default function FinancePage() {
           </div>
           <div className="rounded-2xl border border-border bg-surface shadow-card">
             <MovementsTable movements={movements} />
+            {hasMoreMovements && (
+              <div className="border-t border-border px-5 py-4 text-center">
+                <button
+                  onClick={loadMoreMovements}
+                  disabled={isLoadingMoreMovements}
+                  className="rounded-xl border border-border px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted disabled:opacity-60"
+                >
+                  {isLoadingMoreMovements ? "Загрузка…" : "Показать ещё"}
+                </button>
+              </div>
+            )}
           </div>
         </>
       )}
