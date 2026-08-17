@@ -75,6 +75,7 @@ import type {
   RegionDto,
   SaleDetailDto,
   SaleDto,
+  SalesDemandAnalysisDto,
   SalesReportDto,
   SalesSummaryDto,
   ShiftDto,
@@ -221,6 +222,21 @@ export const api = {
       request<SalesSummaryDto>(withQuery("/sales/summary", { locationId })),
     report: (from: string, to: string, locationId?: string) =>
       request<SalesReportDto>(withQuery("/sales/report", { from, to, locationId })),
+    demand: (
+      from: string,
+      to: string,
+      opts?: { locationId?: string; customerId?: string; categoryId?: string; productId?: string },
+    ) =>
+      request<SalesDemandAnalysisDto>(
+        withQuery("/sales/demand", {
+          from,
+          to,
+          locationId: opts?.locationId,
+          customerId: opts?.customerId,
+          categoryId: opts?.categoryId,
+          productId: opts?.productId,
+        }),
+      ),
     findOne: (id: string) => request<SaleDetailDto>(`/sales/${id}`),
     create: (dto: CreateSaleRequestDto) =>
       request<SaleDetailDto>("/sales", { method: "POST", body: JSON.stringify(dto) }),

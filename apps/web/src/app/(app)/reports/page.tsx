@@ -4,10 +4,14 @@ import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { Download, Printer } from "lucide-react";
 import type {
+  CategoryDto,
+  CustomerDto,
   HrKpiResponseDto,
   LocationDto,
+  ProductDto,
   ProfitAndLossDto,
   QualitySummaryDto,
+  SalesDemandAnalysisDto,
   SalesReportDto,
   StockLevelDto,
 } from "@bakery-os/shared";
@@ -15,18 +19,20 @@ import {
   FINANCE_VIEW_ROLES,
   HR_MANAGE_ROLES,
   ORG_WIDE_ROLES,
+  ProductType,
   QUALITY_VIEW_ROLES,
   WRITE_OFF_REASON_LABELS_RU,
 } from "@bakery-os/shared";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { downloadCsv } from "@/lib/csv";
-import { formatMoney, formatQuantity } from "@/lib/format";
+import { formatAverage, formatMoney, formatQuantity } from "@/lib/format";
 
 type ReportKey = "finance" | "sales" | "quality" | "hr" | "stock";
-type Period = "7d" | "30d" | "month";
+type Period = "today" | "7d" | "30d" | "month";
 
 const PERIOD_LABELS: Record<Period, string> = {
+  today: "Сегодня",
   "7d": "7 дней",
   "30d": "30 дней",
   month: "Этот месяц",
@@ -322,7 +328,154 @@ function SalesReport({
           rows={report.byProduct.map((p) => [p.productName, formatQuantity(p.quantity), formatMoney(p.revenue)])}
         />
       </ReportCard>
+
+      <SalesDemandCard period={period} locationId={locationId} />
     </div>
+  );
+}
+
+function SalesDemandCard({ period, locationId }: { period: Period; locationId: string }) {
+  const [customers, setCustomers] = useState<CustomerDto[]>([]);
+  const [categories, setCategories] = useState<CategoryDto[]>([]);
+  const [products, setProducts] = useState<ProductDto[]>([]);
+  const [customerId, setCustomerId] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [productId, setProductId] = useState("");
+  const [demand, setDemand] = useState<SalesDemandAnalysisDto | null>(null);
+
+  useEffect(() => {
+    api.customers.list().then(setCustomers).catch(() => {});
+    api.categories.list().then(setCategories).catch(() => {});
+    // A sale moves finished goods to a customer — raw materials aren't sold
+    // directly, so they don't belong in this filter (same rule the sales
+    // form itself already follows).
+    api.products
+      .list()
+      .then((all) => setProducts(all.filter((p) => p.type === ProductType.FINISHED_GOOD)))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const { from, to } = periodRange(period);
+    api.sales
+      .demand(from.toISOString(), to.toISOString(), {
+        locationId: locationId || undefined,
+        customerId: customerId || undefined,
+        categoryId: categoryId || undefined,
+        productId: productId || undefined,
+      })
+      .then(setDemand)
+      .catch(() => {});
+  }, [period, locationId, customerId, categoryId, productId]);
+
+  const productsInCategory = categoryId ? products.filter((p) => p.categoryId === categoryId) : products;
+
+  function handleCategoryChange(value: string) {
+    setCategoryId(value);
+    // Clear a product selection that no longer belongs to the new category
+    // rather than silently keep filtering by a hidden productId.
+    if (value && productId) {
+      const stillValid = products.some((p) => p.id === productId && p.categoryId === value);
+      if (!stillValid) setProductId("");
+    }
+  }
+
+  // Only one breakdown is meaningful at a time: pick one product and see who
+  // buys it, or pick one customer and see what they buy. With both filters
+  // open, the product breakdown is the default (it's the main "сколько мы
+  // продаём" question).
+  const showByCustomer = Boolean(productId);
+  const groupLabel = showByCustomer ? "Клиент" : "Товар";
+  const rows: { label: string; quantity: number; avgPerDay: number | null; avgPerSale: number | null; revenue: number }[] =
+    showByCustomer
+      ? (demand?.byCustomer ?? []).map((r) => ({ label: r.customerName, ...r }))
+      : (demand?.byProduct ?? []).map((r) => ({ label: r.productName, ...r }));
+
+  return (
+    <ReportCard
+      title="Средний объём продаж"
+      onExport={
+        demand
+          ? () =>
+              downloadCsv(
+                `sales-demand-${period}.csv`,
+                [groupLabel, "Продано", "Среднее/день", "Среднее/продажу", "Выручка"],
+                rows.map((r) => [
+                  r.label,
+                  formatQuantity(r.quantity),
+                  r.avgPerDay !== null ? formatAverage(r.avgPerDay) : "—",
+                  r.avgPerSale !== null ? formatAverage(r.avgPerSale) : "—",
+                  r.revenue.toFixed(2),
+                ]),
+              )
+          : undefined
+      }
+    >
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-4">
+        <select
+          value={customerId}
+          onChange={(e) => setCustomerId(e.target.value)}
+          className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+        >
+          <option value="">Все клиенты</option>
+          {customers.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+        <select
+          value={categoryId}
+          onChange={(e) => handleCategoryChange(e.target.value)}
+          className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+        >
+          <option value="">Все категории</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+        <select
+          value={productId}
+          onChange={(e) => setProductId(e.target.value)}
+          className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+        >
+          <option value="">Все товары</option>
+          {productsInCategory.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <StatRow
+        items={[
+          { label: "Продано", value: demand ? formatQuantity(demand.summary.quantity) : "—" },
+          {
+            label: "Среднее в день",
+            value: demand?.summary.avgPerDay != null ? formatAverage(demand.summary.avgPerDay) : "—",
+          },
+          {
+            label: "Среднее за продажу",
+            value: demand?.summary.avgPerSale != null ? formatAverage(demand.summary.avgPerSale) : "—",
+          },
+          { label: "Выручка", value: demand ? formatMoney(demand.summary.revenue) : "—" },
+        ]}
+      />
+
+      <ReportTable
+        columns={[groupLabel, "Продано", "Среднее/день", "Среднее/продажу", "Выручка"]}
+        rows={rows.map((r) => [
+          r.label,
+          formatQuantity(r.quantity),
+          r.avgPerDay !== null ? formatAverage(r.avgPerDay) : "—",
+          r.avgPerSale !== null ? formatAverage(r.avgPerSale) : "—",
+          formatMoney(r.revenue),
+        ])}
+      />
+    </ReportCard>
   );
 }
 

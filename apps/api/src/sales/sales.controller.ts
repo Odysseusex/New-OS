@@ -7,6 +7,7 @@ import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { SalesService } from "./sales.service";
 import { CreateSaleDto } from "./dto/create-sale.dto";
+import { GetDemandQueryDto } from "./dto/get-demand-query.dto";
 import { RecordPaymentDto } from "./dto/record-payment.dto";
 
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -32,6 +33,16 @@ export class SalesController {
     @Query("locationId") locationId?: string,
   ) {
     return this.salesService.report(user, new Date(from), new Date(to), locationId);
+  }
+
+  @Get("demand")
+  demandAnalysis(@CurrentUser() user: AuthenticatedUser, @Query() query: GetDemandQueryDto) {
+    return this.salesService.demandAnalysis(user, new Date(query.from), new Date(query.to), {
+      locationId: query.locationId,
+      customerId: query.customerId,
+      categoryId: query.categoryId,
+      productId: query.productId,
+    });
   }
 
   @Get(":id")

@@ -49,6 +49,13 @@ export function formatQuantity(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(3).replace(/\.?0+$/, "");
 }
 
+// For derived averages (per day, per sale) — 2 decimal places reads as an
+// average, not as a precise stock count, which is what formatQuantity's 3
+// decimals are calibrated for.
+export function formatAverage(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/, "");
+}
+
 // Formats a Date/ISO string for a <input type="datetime-local"> value, in
 // the browser's local time (not UTC) — the format that input requires.
 export function toDatetimeLocalValue(date: Date | string): string {

@@ -9,6 +9,10 @@ import {
   PaymentStatus,
   SaleDetailDto,
   SaleDto,
+  SalesDemandAnalysisDto,
+  SalesDemandByCustomerRowDto,
+  SalesDemandByProductRowDto,
+  SalesDemandSummaryDto,
   SalesReportDto,
   SalesSummaryDto,
 } from "@bakery-os/shared";
@@ -179,6 +183,169 @@ export class SalesService {
       byLocation,
       byProduct,
     };
+  }
+
+  // Average sales volume by product and by customer — "how much of this do
+  // we sell, and to whom" for production/demand planning. Deliberately
+  // reuses the same Sale/SaleItem rows report() reads (a Sale row IS a
+  // completed transaction regardless of amountPaid — see the schema
+  // comment on Sale.amountPaid), so payment status never moves this number.
+  async demandAnalysis(
+    user: AuthenticatedUser,
+    from: Date,
+    to: Date,
+    opts: { locationId?: string; customerId?: string; categoryId?: string; productId?: string },
+  ): Promise<SalesDemandAnalysisDto> {
+    const locationId = resolveLocationScope(user, opts.locationId);
+
+    if (opts.customerId) {
+      const customer = await this.prisma.customer.findFirst({
+        where: { id: opts.customerId, organizationId: user.organizationId },
+      });
+      if (!customer) {
+        throw new NotFoundException("Клиент не найден");
+      }
+    }
+    if (opts.productId) {
+      const product = await this.prisma.product.findFirst({
+        where: { id: opts.productId, organizationId: user.organizationId },
+      });
+      if (!product) {
+        throw new NotFoundException("Товар не найден");
+      }
+    }
+    if (opts.categoryId) {
+      const category = await this.prisma.category.findFirst({
+        where: { id: opts.categoryId, organizationId: user.organizationId },
+      });
+      if (!category) {
+        throw new NotFoundException("Категория не найдена");
+      }
+    }
+
+    const sales = await this.prisma.sale.findMany({
+      where: {
+        organizationId: user.organizationId,
+        soldAt: { gte: from, lte: to },
+        ...(locationId ? { locationId } : {}),
+        ...(opts.customerId ? { customerId: opts.customerId } : {}),
+      },
+      include: { customer: true, items: { include: { product: true } } },
+    });
+
+    type Agg = { quantity: number; revenue: number; saleIds: Set<string> };
+    const byProductAgg = new Map<string, Agg & { productName: string }>();
+    // Keyed by customerId, or RETAIL_KEY for walk-in sales with no linked
+    // Customer — kept in the same breakdown so summary.quantity always
+    // reconciles with the sum of byCustomer rows.
+    const RETAIL_KEY = "__retail__";
+    const byCustomerAgg = new Map<string, Agg & { customerName: string }>();
+    let totalQuantity = 0;
+    let totalRevenue = 0;
+    // Distinct sales with at least one item matching the product/category
+    // filter — never a sum of per-product sale counts, which would count a
+    // multi-item order more than once.
+    const overallSaleIds = new Set<string>();
+
+    for (const sale of sales) {
+      const customerKey = sale.customerId ?? RETAIL_KEY;
+      const customerName = sale.customer?.name ?? "Розница";
+
+      for (const item of sale.items) {
+        if (opts.productId && item.productId !== opts.productId) continue;
+        if (opts.categoryId && item.product.categoryId !== opts.categoryId) continue;
+
+        const quantity = item.quantity.toNumber();
+        const revenue = item.subtotal.toNumber();
+
+        totalQuantity += quantity;
+        totalRevenue += revenue;
+        overallSaleIds.add(sale.id);
+
+        const productEntry = byProductAgg.get(item.productId) ?? {
+          quantity: 0,
+          revenue: 0,
+          saleIds: new Set<string>(),
+          productName: item.product.name,
+        };
+        productEntry.quantity += quantity;
+        productEntry.revenue += revenue;
+        productEntry.saleIds.add(sale.id);
+        byProductAgg.set(item.productId, productEntry);
+
+        const customerEntry = byCustomerAgg.get(customerKey) ?? {
+          quantity: 0,
+          revenue: 0,
+          saleIds: new Set<string>(),
+          customerName,
+        };
+        customerEntry.quantity += quantity;
+        customerEntry.revenue += revenue;
+        customerEntry.saleIds.add(sale.id);
+        byCustomerAgg.set(customerKey, customerEntry);
+      }
+    }
+
+    const completedDays = this.completedDaysInPeriod(from, to);
+    const avgPerDay = (quantity: number) => (completedDays > 0 ? quantity / completedDays : null);
+    const avgPerSale = (quantity: number, count: number) => (count > 0 ? quantity / count : null);
+
+    const byProduct: SalesDemandByProductRowDto[] = Array.from(byProductAgg.entries())
+      .map(([productId, v]) => ({
+        productId,
+        productName: v.productName,
+        quantity: v.quantity,
+        salesCount: v.saleIds.size,
+        avgPerDay: avgPerDay(v.quantity),
+        avgPerSale: avgPerSale(v.quantity, v.saleIds.size),
+        revenue: v.revenue,
+      }))
+      .sort((a, b) => b.quantity - a.quantity);
+
+    const byCustomer: SalesDemandByCustomerRowDto[] = Array.from(byCustomerAgg.entries())
+      .map(([key, v]) => ({
+        customerId: key === RETAIL_KEY ? null : key,
+        customerName: v.customerName,
+        quantity: v.quantity,
+        salesCount: v.saleIds.size,
+        avgPerDay: avgPerDay(v.quantity),
+        avgPerSale: avgPerSale(v.quantity, v.saleIds.size),
+        revenue: v.revenue,
+      }))
+      .sort((a, b) => b.quantity - a.quantity);
+
+    const overallSalesCount = overallSaleIds.size;
+    const summary: SalesDemandSummaryDto = {
+      quantity: totalQuantity,
+      salesCount: overallSalesCount,
+      revenue: totalRevenue,
+      avgPerDay: avgPerDay(totalQuantity),
+      avgPerSale: avgPerSale(totalQuantity, overallSalesCount),
+      avgRevenuePerDay: avgPerDay(totalRevenue),
+    };
+
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      completedDays,
+      summary,
+      byProduct,
+      byCustomer,
+    };
+  }
+
+  // A day counts toward the average only once it's fully over. If the
+  // period's last calendar day is today, it's excluded from the
+  // denominator (its quantity still counts in the totals above) so an
+  // in-progress day never silently drags the average down. A period that
+  // doesn't reach today is unaffected — no exclusion applied.
+  private completedDaysInPeriod(from: Date, to: Date): number {
+    const dateOnly = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const fromDate = dateOnly(from);
+    const toDate = dateOnly(to);
+    const totalDays = Math.floor((toDate.getTime() - fromDate.getTime()) / 86_400_000) + 1;
+    const includesToday = toDate.getTime() === dateOnly(new Date()).getTime();
+    return Math.max(0, includesToday ? totalDays - 1 : totalDays);
   }
 
   async findOne(user: AuthenticatedUser, saleId: string): Promise<SaleDetailDto> {
