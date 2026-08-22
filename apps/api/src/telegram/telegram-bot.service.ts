@@ -51,7 +51,7 @@ export class TelegramBotService implements OnModuleInit {
     private productsService: ProductsService,
   ) {}
 
-  onModuleInit() {
+  async onModuleInit() {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     if (!token) {
       this.logger.warn("TELEGRAM_BOT_TOKEN not set — Telegram bot disabled");
@@ -59,6 +59,22 @@ export class TelegramBotService implements OnModuleInit {
     }
     this.bot = new Telegraf(token);
     this.registerHandlers(this.bot);
+
+    // Telegraf lazily fetches getMe() on the first incoming update if
+    // botInfo isn't already cached — and that fetch happens inside
+    // Telegraf's own handleUpdate, before any of our handlers (and their
+    // try/catch) ever run. Warming it here at boot means a bad token or
+    // network problem surfaces once, clearly, in the startup log — not as
+    // an unexplained 500 on someone's first /start.
+    try {
+      this.bot.botInfo = await this.bot.telegram.getMe();
+      this.logger.log(`Telegram bot ready: @${this.bot.botInfo.username}`);
+    } catch (err) {
+      this.logger.error(
+        "Telegram getMe() failed at startup — check TELEGRAM_BOT_TOKEN",
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
   }
 
   isEnabled(): boolean {
@@ -67,7 +83,16 @@ export class TelegramBotService implements OnModuleInit {
 
   async handleUpdate(update: Update): Promise<void> {
     if (!this.bot) return;
-    await this.bot.handleUpdate(update);
+    try {
+      await this.bot.handleUpdate(update);
+    } catch (err) {
+      // Last-resort net: anything Telegraf throws before dispatching to our
+      // own handlers (e.g. its internal getMe() call) bypasses every
+      // try/catch inside registerHandlers. Catching here means a hiccup
+      // never turns into a raw 500 back to Telegram — it's logged and
+      // swallowed, same posture as withAuth's own catch block.
+      this.logger.error("Unhandled Telegram update error", err instanceof Error ? err.stack : String(err));
+    }
   }
 
   async sendMessage(chatId: string, text: string): Promise<void> {
