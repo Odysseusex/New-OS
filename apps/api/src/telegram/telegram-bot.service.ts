@@ -124,37 +124,46 @@ export class TelegramBotService implements OnModuleInit {
 
   // ---- auth / linking ----------------------------------------------------
 
+  // Unlike every other handler, /start can't go through withAuth (there's
+  // no linked user yet on a first run) — so it needs its own try/catch, or
+  // an exception here (e.g. a DB hiccup) fails completely silently: no
+  // reply, no log, nothing visibly wrong from the chat's side.
   private async onStart(ctx: any) {
-    const chatId = String(ctx.chat.id);
-    const payload = (ctx.startPayload as string | undefined)?.trim();
+    try {
+      const chatId = String(ctx.chat.id);
+      const payload = (ctx.startPayload as string | undefined)?.trim();
 
-    const existing = await this.authResolver.resolve(chatId);
-    if (existing) {
-      await this.showMainMenu(ctx, existing);
-      return;
+      const existing = await this.authResolver.resolve(chatId);
+      if (existing) {
+        await this.showMainMenu(ctx, existing);
+        return;
+      }
+
+      if (!payload) {
+        await this.reply(
+          ctx,
+          "Этот аккаунт ещё не привязан к ArAmir OS.\n\n" +
+            "Откройте <b>Настройки → Telegram</b> в ArAmir OS, получите код и отправьте его сюда командой:\n" +
+            "<code>/start КОД</code>",
+        );
+        return;
+      }
+
+      const result = await this.linkService.consumeToken(payload, chatId);
+      if (!result.ok) {
+        const reason = result.reason === "expired" ? "Код истёк, получите новый в Настройках." : "Неверный код.";
+        await this.reply(ctx, `⚠️ Не удалось привязать аккаунт. ${reason}`);
+        return;
+      }
+
+      const user = await this.authResolver.resolve(chatId);
+      if (!user) return;
+      await this.reply(ctx, `✅ Аккаунт привязан: <b>${escapeHtml(user.fullName)}</b>`);
+      await this.showMainMenu(ctx, user);
+    } catch (err) {
+      this.logger.error("Telegram /start error", err instanceof Error ? err.stack : String(err));
+      await this.reply(ctx, "⚠️ Произошла ошибка. Попробуйте ещё раз чуть позже.").catch(() => {});
     }
-
-    if (!payload) {
-      await this.reply(
-        ctx,
-        "Этот аккаунт ещё не привязан к ArAmir OS.\n\n" +
-          "Откройте <b>Настройки → Telegram</b> в ArAmir OS, получите код и отправьте его сюда командой:\n" +
-          "<code>/start КОД</code>",
-      );
-      return;
-    }
-
-    const result = await this.linkService.consumeToken(payload, chatId);
-    if (!result.ok) {
-      const reason = result.reason === "expired" ? "Код истёк, получите новый в Настройках." : "Неверный код.";
-      await this.reply(ctx, `⚠️ Не удалось привязать аккаунт. ${reason}`);
-      return;
-    }
-
-    const user = await this.authResolver.resolve(chatId);
-    if (!user) return;
-    await this.reply(ctx, `✅ Аккаунт привязан: <b>${escapeHtml(user.fullName)}</b>`);
-    await this.showMainMenu(ctx, user);
   }
 
   private async withAuth(ctx: any, handler: (user: AuthenticatedUser) => Promise<void>) {

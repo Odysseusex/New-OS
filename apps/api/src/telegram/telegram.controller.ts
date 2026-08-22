@@ -24,6 +24,15 @@ export class TelegramController {
     return { code, expiresAt: expiresAt.toISOString(), botUsername: process.env.TELEGRAM_BOT_USERNAME || null };
   }
 
+  // Unauthenticated on purpose — reveals only whether a token was picked up
+  // at boot, never the token itself. Exists so a stuck deploy ("bot doesn't
+  // reply to anything") can be diagnosed without needing Render dashboard
+  // access.
+  @Get("health")
+  health(): { enabled: boolean } {
+    return { enabled: this.botService.isEnabled() };
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get("status")
   async status(@CurrentUser() user: AuthenticatedUser): Promise<TelegramStatusDto> {
