@@ -191,6 +191,22 @@ export class TelegramBotService implements OnModuleInit {
     }
   }
 
+  // `ctx.answerCbQuery` is a method Telegraf attaches to every context
+  // regardless of update type — `if (ctx.answerCbQuery)` is therefore
+  // always true and never actually detects "was this a button tap". Calling
+  // it on a plain message throws *synchronously* (Telegraf's own
+  // Context.assert), before a Promise even exists to attach `.catch()` to —
+  // so that guard-and-catch pattern silently didn't protect anything. The
+  // only correct check is the update's actual `callbackQuery` field.
+  private async ackCallback(ctx: any): Promise<void> {
+    if (!ctx.callbackQuery) return;
+    try {
+      await ctx.answerCbQuery();
+    } catch {
+      // e.g. the callback is too old to acknowledge — harmless
+    }
+  }
+
   private async withAuth(ctx: any, handler: (user: AuthenticatedUser) => Promise<void>) {
     try {
       const chatId = String(ctx.chat?.id ?? ctx.from?.id);
@@ -200,14 +216,14 @@ export class TelegramBotService implements OnModuleInit {
           ctx,
           "Аккаунт не привязан. Отправьте /start и следуйте инструкции, чтобы подключить Telegram в Настройках ArAmir OS.",
         );
-        if (ctx.answerCbQuery) await ctx.answerCbQuery();
+        await this.ackCallback(ctx);
         return;
       }
       await handler(user);
     } catch (err) {
       this.logger.error("Telegram handler error", err instanceof Error ? err.stack : String(err));
       await this.reply(ctx, "⚠️ Произошла ошибка. Попробуйте ещё раз.");
-      if (ctx.answerCbQuery) await ctx.answerCbQuery().catch(() => {});
+      await this.ackCallback(ctx);
     }
   }
 
@@ -234,7 +250,7 @@ export class TelegramBotService implements OnModuleInit {
         [Markup.button.callback("💰 Продажи", "l:m")],
       ]),
     );
-    if (ctx.answerCbQuery) await ctx.answerCbQuery().catch(() => {});
+    await this.ackCallback(ctx);
   }
 
   private async showStockMenu(ctx: any, user: AuthenticatedUser) {
@@ -248,7 +264,7 @@ export class TelegramBotService implements OnModuleInit {
     }
     rows.push([Markup.button.callback("⬅️ Назад", "m")]);
     await this.replyOrEdit(ctx, "📦 <b>Склад</b>", Markup.inlineKeyboard(rows));
-    if (ctx.answerCbQuery) await ctx.answerCbQuery().catch(() => {});
+    await this.ackCallback(ctx);
   }
 
   private async showSalesMenu(ctx: any, user: AuthenticatedUser) {
@@ -261,7 +277,7 @@ export class TelegramBotService implements OnModuleInit {
     }
     rows.push([Markup.button.callback("⬅️ Назад", "m")]);
     await this.replyOrEdit(ctx, "💰 <b>Продажи</b>", Markup.inlineKeyboard(rows));
-    if (ctx.answerCbQuery) await ctx.answerCbQuery().catch(() => {});
+    await this.ackCallback(ctx);
   }
 
   // ---- stock: read ----------------------------------------------------------
@@ -271,7 +287,7 @@ export class TelegramBotService implements OnModuleInit {
     const filtered = lowOnly ? levels.filter((l) => l.isLow) : levels;
     if (filtered.length === 0) {
       await this.reply(ctx, lowOnly ? "Низких остатков нет ✅" : "Остатков нет.");
-      if (ctx.answerCbQuery) await ctx.answerCbQuery().catch(() => {});
+      await this.ackCallback(ctx);
       return;
     }
     const shown = filtered.slice(0, MAX_LIST_ITEMS);
@@ -282,7 +298,7 @@ export class TelegramBotService implements OnModuleInit {
     const title = lowOnly ? "⚠️ <b>Низкие остатки</b>" : "📋 <b>Остатки</b>";
     const truncated = filtered.length > MAX_LIST_ITEMS ? `\n\n…показаны первые ${MAX_LIST_ITEMS} из ${filtered.length}` : "";
     await this.reply(ctx, `${title}\n\n${lines.join("\n")}${truncated}`);
-    if (ctx.answerCbQuery) await ctx.answerCbQuery().catch(() => {});
+    await this.ackCallback(ctx);
   }
 
   private async showStockHistory(ctx: any, user: AuthenticatedUser) {
@@ -290,7 +306,7 @@ export class TelegramBotService implements OnModuleInit {
     const shown = movements.slice(0, 15);
     if (shown.length === 0) {
       await this.reply(ctx, "Движений пока нет.");
-      if (ctx.answerCbQuery) await ctx.answerCbQuery().catch(() => {});
+      await this.ackCallback(ctx);
       return;
     }
     const lines = shown.map((m) => {
@@ -298,7 +314,7 @@ export class TelegramBotService implements OnModuleInit {
       return `${formatDateTime(m.createdAt)} — <b>${escapeHtml(m.productName)}</b> (${escapeHtml(m.locationName)}): ${sign}${formatQuantity(m.quantity)}`;
     });
     await this.reply(ctx, `📜 <b>Последние движения</b>\n\n${lines.join("\n")}`);
-    if (ctx.answerCbQuery) await ctx.answerCbQuery().catch(() => {});
+    await this.ackCallback(ctx);
   }
 
   // ---- stock: receive / write-off wizard ------------------------------------
@@ -306,7 +322,7 @@ export class TelegramBotService implements OnModuleInit {
   private async startStockWizard(ctx: any, user: AuthenticatedUser, kind: "receive" | "writeoff") {
     if (!INVENTORY_MANAGE_ROLES.includes(user.role)) {
       await this.reply(ctx, "У вас нет прав на эту операцию.");
-      if (ctx.answerCbQuery) await ctx.answerCbQuery().catch(() => {});
+      await this.ackCallback(ctx);
       return;
     }
     const chatId = String(ctx.chat.id);
@@ -322,14 +338,14 @@ export class TelegramBotService implements OnModuleInit {
       await this.chatState.set(chatId, user.id, `${kind}_product`, { locationId: user.locationId });
       await this.showProductPicker(ctx, user, kind);
     }
-    if (ctx.answerCbQuery) await ctx.answerCbQuery().catch(() => {});
+    await this.ackCallback(ctx);
   }
 
   private async pickStockLocation(ctx: any, user: AuthenticatedUser, kind: "receive" | "writeoff", locationId: string) {
     const chatId = String(ctx.chat.id);
     await this.chatState.set(chatId, user.id, `${kind}_product`, { locationId });
     await this.showProductPicker(ctx, user, kind);
-    if (ctx.answerCbQuery) await ctx.answerCbQuery().catch(() => {});
+    await this.ackCallback(ctx);
   }
 
   private async showProductPicker(ctx: any, user: AuthenticatedUser, kind: "receive" | "writeoff") {
@@ -350,12 +366,12 @@ export class TelegramBotService implements OnModuleInit {
     const product = products.find((p) => p.id === productId);
     if (!product) {
       await this.reply(ctx, "Товар не найден.");
-      if (ctx.answerCbQuery) await ctx.answerCbQuery().catch(() => {});
+      await this.ackCallback(ctx);
       return;
     }
     await this.chatState.set(chatId, user.id, `${kind}_qty`, { ...data, productId, productName: product.name });
     await this.reply(ctx, `Введите количество (${product.unit}) для «${escapeHtml(product.name)}»:`);
-    if (ctx.answerCbQuery) await ctx.answerCbQuery().catch(() => {});
+    await this.ackCallback(ctx);
   }
 
   private async onText(ctx: any, user: AuthenticatedUser, text: string) {
@@ -405,7 +421,7 @@ export class TelegramBotService implements OnModuleInit {
     const state = await this.chatState.get(chatId);
     const data = (state?.data as Record<string, unknown>) ?? {};
     await this.finishStockWizard(ctx, user, kind, data);
-    if (ctx.answerCbQuery) await ctx.answerCbQuery().catch(() => {});
+    await this.ackCallback(ctx);
   }
 
   private async pickWriteOffReason(ctx: any, user: AuthenticatedUser, writeOffReason: WriteOffReason) {
@@ -418,7 +434,7 @@ export class TelegramBotService implements OnModuleInit {
       "Комментарий (необязательно). Отправьте текст или нажмите «Пропустить».",
       Markup.inlineKeyboard([[Markup.button.callback("Пропустить", "s:w:sk")]]),
     );
-    if (ctx.answerCbQuery) await ctx.answerCbQuery().catch(() => {});
+    await this.ackCallback(ctx);
   }
 
   private async finishStockWizard(
@@ -467,12 +483,12 @@ export class TelegramBotService implements OnModuleInit {
     const claim = await this.pendingActions.claim(actionId);
     if (claim.status === "not_found") {
       await this.editOrReply(ctx, "Операция не найдена.");
-      if (ctx.answerCbQuery) await ctx.answerCbQuery().catch(() => {});
+      await this.ackCallback(ctx);
       return;
     }
     if (claim.status === "expired") {
       await this.editOrReply(ctx, "⏱ Время подтверждения истекло. Начните заново.");
-      if (ctx.answerCbQuery) await ctx.answerCbQuery().catch(() => {});
+      await this.ackCallback(ctx);
       return;
     }
     if (claim.status === "already") {
@@ -483,7 +499,7 @@ export class TelegramBotService implements OnModuleInit {
             ? "Операция отменена."
             : "Операция уже обрабатывается.";
       await this.editOrReply(ctx, already);
-      if (ctx.answerCbQuery) await ctx.answerCbQuery().catch(() => {});
+      await this.ackCallback(ctx);
       return;
     }
 
@@ -491,7 +507,7 @@ export class TelegramBotService implements OnModuleInit {
     if (claim.action.userId !== user.id) {
       await this.pendingActions.markFailed(actionId);
       await this.editOrReply(ctx, "⚠️ Операция принадлежит другому пользователю.");
-      if (ctx.answerCbQuery) await ctx.answerCbQuery().catch(() => {});
+      await this.ackCallback(ctx);
       return;
     }
 
@@ -528,7 +544,7 @@ export class TelegramBotService implements OnModuleInit {
       const message = err instanceof Error ? err.message : "Не удалось выполнить операцию.";
       await this.editOrReply(ctx, `⚠️ Ошибка: ${escapeHtml(message)}`);
     }
-    if (ctx.answerCbQuery) await ctx.answerCbQuery().catch(() => {});
+    await this.ackCallback(ctx);
   }
 
   private async cancelAction(ctx: any, user: AuthenticatedUser, actionId: string) {
@@ -537,7 +553,7 @@ export class TelegramBotService implements OnModuleInit {
       await this.pendingActions.markFailed(actionId);
     }
     await this.editOrReply(ctx, "Отменено.");
-    if (ctx.answerCbQuery) await ctx.answerCbQuery().catch(() => {});
+    await this.ackCallback(ctx);
   }
 
   // ---- sales: read ------------------------------------------------------------
@@ -551,7 +567,7 @@ export class TelegramBotService implements OnModuleInit {
       `Выручка за 7 дней: ${formatMoney(summary.last7DaysRevenue)}\n` +
       `Средний чек: ${formatMoney(summary.averageTicket)}`;
     await this.reply(ctx, text);
-    if (ctx.answerCbQuery) await ctx.answerCbQuery().catch(() => {});
+    await this.ackCallback(ctx);
   }
 
   private async showSalesPeriod(ctx: any, user: AuthenticatedUser, days: number) {
@@ -571,7 +587,7 @@ export class TelegramBotService implements OnModuleInit {
       `Чеков: ${report.totalCount}` +
       (lines.length > 0 ? `\n\n<b>По точкам:</b>\n${lines.join("\n")}` : "");
     await this.reply(ctx, text);
-    if (ctx.answerCbQuery) await ctx.answerCbQuery().catch(() => {});
+    await this.ackCallback(ctx);
   }
 
   private async showSalesLocationPicker(ctx: any, user: AuthenticatedUser) {
@@ -579,7 +595,7 @@ export class TelegramBotService implements OnModuleInit {
     const rows = locations.slice(0, MAX_LIST_ITEMS).map((l) => [Markup.button.callback(l.name, `l:tl:${l.id}`)]);
     rows.push([Markup.button.callback("⬅️ Назад", "l:m")]);
     await this.reply(ctx, "Выберите точку:", Markup.inlineKeyboard(rows));
-    if (ctx.answerCbQuery) await ctx.answerCbQuery().catch(() => {});
+    await this.ackCallback(ctx);
   }
 
   // ---- low-level helpers --------------------------------------------------------
