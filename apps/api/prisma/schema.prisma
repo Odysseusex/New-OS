@@ -329,6 +329,11 @@ model User {
   // never affects permissions, which are still entirely driven by role.
   title        String?
   isActive     Boolean @default(true)
+  // Set once the user completes the one-time linking flow from
+  // Settings → Telegram. Looked up on every incoming bot update to resolve
+  // the same AuthenticatedUser shape the web JWT flow produces — there is no
+  // separate "Telegram identity" or permission model, just this pointer.
+  telegramId   String? @unique
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -356,6 +361,10 @@ model User {
   employee               Employee?
   compensationsCreated   EmployeeCompensation[]
   plannedFixedCostsCreated PlannedFixedCost[]
+  telegramLinkTokens        TelegramLinkToken[]
+  telegramPendingActions    TelegramPendingAction[]
+  telegramChatState         TelegramChatState?
+  telegramNotificationLogs  TelegramNotificationLog[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -1164,4 +1173,81 @@ model CashMovement {
   @@index([organizationId, accountId])
   @@index([occurredAt])
   @@map("cash_movements")
+}
+
+// One-time code a logged-in web user generates from Settings → Telegram to
+// prove ownership of their ArAmir account to the bot. Linking is always
+// initiated from an authenticated web session and consumed by the bot on
+// /start <code> — the bot never collects a password, so this token is the
+// entire trust boundary. Single-use (consumedAt) and short-lived
+// (expiresAt); the code itself is stored hashed, same reasoning as a
+// password reset token.
+model TelegramLinkToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash   String    @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@map("telegram_link_tokens")
+}
+
+// A write action shown to a Telegram user as a "Подтвердить/Отмена" card,
+// staged before execution so a duplicate callback (double-tap, Telegram's
+// own retry on a slow response) can be detected and no-opped instead of
+// calling the underlying ArAmir service twice. `actionType` + `payload`
+// describe the call to make (e.g. InventoryService.writeOff args);
+// `resultId` records what was actually created so a duplicate callback can
+// be told "already done" with the concrete outcome. Claimed via a single
+// conditional UPDATE (status PENDING -> EXECUTING) — see TelegramPendingActionService.
+model TelegramPendingAction {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chatId      String
+  actionType  String
+  payload     Json
+  status      String    @default("PENDING")
+  resultId    String?
+  createdAt   DateTime  @default(now())
+  executedAt  DateTime?
+
+  @@index([userId])
+  @@map("telegram_pending_actions")
+}
+
+// Tracks which step of a multi-step reply flow (e.g. Списание: товар ->
+// количество -> причина -> подтверждение) a given Telegram chat is
+// currently in, plus the answers collected so far. One row per chat — a
+// fresh /start or a completed/cancelled flow clears it. This is UI-wizard
+// bookkeeping only, not a business entity.
+model TelegramChatState {
+  id        String   @id @default(cuid())
+  chatId    String   @unique
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  step      String?
+  data      Json?
+  updatedAt DateTime @updatedAt
+
+  @@map("telegram_chat_states")
+}
+
+// Dedup log for push notifications sent to Telegram — mirrors
+// NotificationDismissal's `key` convention (same {prefix}:{entityId}:{date}
+// shape as NotificationsService already produces) so a low-stock condition
+// that's still true tomorrow sends again, but doesn't repeat within the
+// same day just because the push job runs more than once.
+model TelegramNotificationLog {
+  id     String   @id @default(cuid())
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key    String
+  sentAt DateTime @default(now())
+
+  @@unique([userId, key])
+  @@map("telegram_notification_logs")
 }
