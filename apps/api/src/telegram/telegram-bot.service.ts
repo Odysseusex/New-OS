@@ -187,6 +187,13 @@ export class TelegramBotService implements OnModuleInit {
     bot.action("fn:ar", async (ctx) => this.withAuth(ctx, (user) => this.showAccountsReceivablePayable(ctx, user)));
     bot.action("fn:be", async (ctx) => this.withAuth(ctx, (user) => this.showBreakEven(ctx, user)));
 
+    bot.command("analytics", async (ctx) => this.withAuth(ctx, (user) => this.showAnalyticsMenu(ctx, user)));
+    bot.action("an:m", async (ctx) => this.withAuth(ctx, (user) => this.showAnalyticsMenu(ctx, user)));
+    bot.action(/^an:d:(\d+)$/, async (ctx) =>
+      this.withAuth(ctx, (user) => this.showDemandAnalysis(ctx, user, Number(ctx.match[1]))),
+    );
+    bot.action("an:lw", async (ctx) => this.withAuth(ctx, (user) => this.showStockLevels(ctx, user, true)));
+
     bot.action(/^c:(.+)$/, async (ctx) => this.withAuth(ctx, (user) => this.confirmAction(ctx, user, ctx.match[1])));
     bot.action(/^x:(.+)$/, async (ctx) => this.withAuth(ctx, (user) => this.cancelAction(ctx, user, ctx.match[1])));
 
@@ -283,6 +290,7 @@ export class TelegramBotService implements OnModuleInit {
       "/sales — раздел «Продажи»\n" +
       "/customers — раздел «Клиенты»\n" +
       "/finance — раздел «Финансы»\n" +
+      "/analytics — раздел «Аналитика»\n" +
       "/help — эта справка"
     );
   }
@@ -300,6 +308,7 @@ export class TelegramBotService implements OnModuleInit {
     if (FINANCE_VIEW_ROLES.includes(user.role)) {
       rows.push([Markup.button.callback("💵 Финансы", "fn:m")]);
     }
+    rows.push([Markup.button.callback("📊 Аналитика", "an:m")]);
     await this.replyOrEdit(
       ctx,
       `Здравствуйте, <b>${escapeHtml(user.fullName)}</b>. Выберите раздел:`,
@@ -987,6 +996,56 @@ export class TelegramBotService implements OnModuleInit {
         `<b>Факт (30 дней)</b>\n${factBlock}\n\n` +
         `<b>План (месяц)</b>\n${planBlock}`,
     );
+    await this.ackCallback(ctx);
+  }
+
+  // ---- analytics ------------------------------------------------------------------
+
+  private async showAnalyticsMenu(ctx: any, user: AuthenticatedUser) {
+    await this.replyOrEdit(
+      ctx,
+      "📊 <b>Аналитика</b>",
+      Markup.inlineKeyboard([
+        [Markup.button.callback("📦 Средние продажи (7 дн.)", "an:d:7")],
+        [Markup.button.callback("📦 Средние продажи (30 дн.)", "an:d:30")],
+        [Markup.button.callback("⚠️ Низкие остатки", "an:lw")],
+        [Markup.button.callback("⬅️ Назад", "m")],
+      ]),
+    );
+    await this.ackCallback(ctx);
+  }
+
+  // Reuses SalesService.demandAnalysis — the exact same calculation the web
+  // Reports page's "Анализ спроса" block shows, no separate logic here.
+  private async showDemandAnalysis(ctx: any, user: AuthenticatedUser, days: number) {
+    const to = new Date();
+    const from = new Date();
+    from.setDate(from.getDate() - days);
+    from.setHours(0, 0, 0, 0);
+
+    const analysis = await this.salesService.demandAnalysis(user, from, to, {});
+    const { summary } = analysis;
+
+    const lines = [
+      `📊 <b>Средние продажи за ${days} дн.</b>`,
+      "",
+      `Продано: ${formatQuantity(summary.quantity)} шт. в ${summary.salesCount} чек.`,
+      `Выручка: ${formatMoney(summary.revenue)}`,
+      `В среднем в день: ${summary.avgPerDay !== null ? formatQuantity(summary.avgPerDay) : "—"} шт. / ${summary.avgRevenuePerDay !== null ? formatMoney(summary.avgRevenuePerDay) : "—"}`,
+      `Средний чек: ${summary.avgPerSale !== null ? formatQuantity(summary.avgPerSale) : "—"} шт.`,
+    ];
+
+    const topProducts = [...analysis.byProduct].sort((a, b) => b.revenue - a.revenue).slice(0, 10);
+    if (topProducts.length > 0) {
+      lines.push("", "<b>Топ товаров по выручке:</b>");
+      for (const p of topProducts) {
+        lines.push(
+          `• ${escapeHtml(p.productName)}: ${formatQuantity(p.quantity)} шт. (${formatMoney(p.revenue)})`,
+        );
+      }
+    }
+
+    await this.reply(ctx, lines.join("\n"));
     await this.ackCallback(ctx);
   }
 
