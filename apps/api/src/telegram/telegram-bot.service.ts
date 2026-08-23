@@ -13,7 +13,14 @@ import {
   FINANCE_VIEW_ROLES,
   INVENTORY_MANAGE_ROLES,
   ORG_WIDE_ROLES,
+  PAYMENT_METHOD_LABELS_RU,
   PAYMENT_RECORD_ROLES,
+  PaymentMethod,
+  PRODUCTION_BATCH_STATUS_LABELS_RU,
+  PRODUCTION_MANAGE_ROLES,
+  ProductionBatchStatus,
+  ProductType,
+  SALE_CREATE_ROLES,
   WriteOffReason,
   WRITE_OFF_REASON_LABELS_RU,
 } from "@bakery-os/shared";
@@ -23,6 +30,8 @@ import { SalesService } from "../sales/sales.service";
 import { LocationsService } from "../locations/locations.service";
 import { ProductsService } from "../products/products.service";
 import { CustomersService } from "../customers/customers.service";
+import { ProductionService } from "../production/production.service";
+import { RecipesService } from "../recipes/recipes.service";
 import { FinanceService } from "../finance/finance.service";
 import { CashAccountsService } from "../finance/cash-accounts.service";
 import { CashMovementsService } from "../finance/cash-movements.service";
@@ -49,6 +58,41 @@ interface PaymentActionPayload {
   customerName: string;
 }
 
+interface ProductionCreatePayload {
+  locationId: string;
+  recipeId: string;
+  productName: string;
+  plannedQuantity: number;
+  unit: string;
+}
+
+interface ProductionBatchPayload {
+  batchId: string;
+  productName: string;
+  // Set for "complete" only — the real produced quantity, which drives
+  // ingredient consumption inside ProductionService.complete().
+  actualQuantity?: number;
+}
+
+interface SaleItemDraft {
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+interface SaleCreatePayload {
+  locationId: string;
+  customerId: string | null;
+  customerName: string;
+  paymentMethod: PaymentMethod;
+  // Only meaningful for a customer sale — a retail sale is always settled in
+  // full (SalesService.create forces it), so the bot never asks.
+  paidInFull: boolean;
+  items: SaleItemDraft[];
+  totalAmount: number;
+}
+
 // The one place the bot talks to Telegram. Every write action funnels
 // through InventoryService/SalesService — this class only builds menus,
 // walks a chat through a short wizard, and stages+confirms the resulting
@@ -73,6 +117,8 @@ export class TelegramBotService implements OnModuleInit {
     private financeService: FinanceService,
     private cashAccountsService: CashAccountsService,
     private cashMovementsService: CashMovementsService,
+    private productionService: ProductionService,
+    private recipesService: RecipesService,
   ) {}
 
   async onModuleInit() {
@@ -163,6 +209,49 @@ export class TelegramBotService implements OnModuleInit {
     bot.action("l:lm", async (ctx) => this.withAuth(ctx, (user) => this.showSalesLocationPicker(ctx, user)));
     bot.action(/^l:tl:(.+)$/, async (ctx) =>
       this.withAuth(ctx, (user) => this.showSalesToday(ctx, user, ctx.match[1])),
+    );
+
+    // New-sale wizard — the only multi-item ("cart") flow in the bot: every
+    // other wizard collects one row, this one loops товар -> количество
+    // until the user says Готово.
+    bot.action("l:n", async (ctx) => this.withAuth(ctx, (user) => this.startSaleWizard(ctx, user)));
+    bot.action(/^l:n:l:(.+)$/, async (ctx) =>
+      this.withAuth(ctx, (user) => this.pickSaleLocation(ctx, user, ctx.match[1])),
+    );
+    bot.action(/^l:n:c:(.+)$/, async (ctx) =>
+      this.withAuth(ctx, (user) => this.pickSaleCustomer(ctx, user, ctx.match[1])),
+    );
+    bot.action("l:n:add", async (ctx) => this.withAuth(ctx, (user) => this.showSaleProductPicker(ctx, user)));
+    bot.action(/^l:n:p:(.+)$/, async (ctx) =>
+      this.withAuth(ctx, (user) => this.pickSaleProduct(ctx, user, ctx.match[1])),
+    );
+    bot.action("l:n:done", async (ctx) => this.withAuth(ctx, (user) => this.showSalePaymentMethodPicker(ctx, user)));
+    bot.action(/^l:n:pm:(.+)$/, async (ctx) =>
+      this.withAuth(ctx, (user) => this.pickSalePaymentMethod(ctx, user, ctx.match[1] as PaymentMethod)),
+    );
+    bot.action(/^l:n:pd:([01])$/, async (ctx) =>
+      this.withAuth(ctx, (user) => this.finishSaleWizard(ctx, user, ctx.match[1] === "1")),
+    );
+
+    bot.command("production", async (ctx) => this.withAuth(ctx, (user) => this.showProductionMenu(ctx, user)));
+    bot.action("pr:m", async (ctx) => this.withAuth(ctx, (user) => this.showProductionMenu(ctx, user)));
+    bot.action("pr:l", async (ctx) => this.withAuth(ctx, (user) => this.showActiveBatches(ctx, user)));
+    bot.action("pr:t", async (ctx) => this.withAuth(ctx, (user) => this.showTodayProduced(ctx, user)));
+    bot.action(/^pr:d:(.+)$/, async (ctx) =>
+      this.withAuth(ctx, (user) => this.showBatchDetail(ctx, user, ctx.match[1])),
+    );
+    bot.action("pr:n", async (ctx) => this.withAuth(ctx, (user) => this.startBatchWizard(ctx, user)));
+    bot.action(/^pr:n:l:(.+)$/, async (ctx) =>
+      this.withAuth(ctx, (user) => this.pickBatchLocation(ctx, user, ctx.match[1])),
+    );
+    bot.action(/^pr:n:r:(.+)$/, async (ctx) =>
+      this.withAuth(ctx, (user) => this.pickBatchRecipe(ctx, user, ctx.match[1])),
+    );
+    bot.action(/^pr:s:(.+)$/, async (ctx) =>
+      this.withAuth(ctx, (user) => this.stageBatchStart(ctx, user, ctx.match[1])),
+    );
+    bot.action(/^pr:c:(.+)$/, async (ctx) =>
+      this.withAuth(ctx, (user) => this.askBatchActualQuantity(ctx, user, ctx.match[1])),
     );
 
     bot.command("customers", async (ctx) => this.withAuth(ctx, (user) => this.showCustomersMenu(ctx, user)));
@@ -290,6 +379,7 @@ export class TelegramBotService implements OnModuleInit {
       "/sales — раздел «Продажи»\n" +
       "/customers — раздел «Клиенты»\n" +
       "/finance — раздел «Финансы»\n" +
+      "/production — раздел «Производство»\n" +
       "/analytics — раздел «Аналитика»\n" +
       "/help — эта справка"
     );
@@ -307,6 +397,9 @@ export class TelegramBotService implements OnModuleInit {
     }
     if (FINANCE_VIEW_ROLES.includes(user.role)) {
       rows.push([Markup.button.callback("💵 Финансы", "fn:m")]);
+    }
+    if (PRODUCTION_MANAGE_ROLES.includes(user.role) || ORG_WIDE_ROLES.includes(user.role)) {
+      rows.push([Markup.button.callback("🏭 Производство", "pr:m")]);
     }
     rows.push([Markup.button.callback("📊 Аналитика", "an:m")]);
     await this.replyOrEdit(
@@ -338,6 +431,9 @@ export class TelegramBotService implements OnModuleInit {
     ];
     if (ORG_WIDE_ROLES.includes(user.role)) {
       rows.push([Markup.button.callback("🏬 По точке", "l:lm")]);
+    }
+    if (SALE_CREATE_ROLES.includes(user.role)) {
+      rows.push([Markup.button.callback("➕ Новая продажа", "l:n")]);
     }
     rows.push([Markup.button.callback("⬅️ Назад", "m")]);
     await this.replyOrEdit(ctx, "💰 <b>Продажи</b>", Markup.inlineKeyboard(rows));
@@ -479,6 +575,68 @@ export class TelegramBotService implements OnModuleInit {
       return;
     }
 
+    if (state.step === "batch_qty" || state.step === "batch_complete_qty") {
+      const quantity = Number(text.replace(",", "."));
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        await this.reply(ctx, "Введите положительное число, например 40");
+        return;
+      }
+      await this.chatState.clear(chatId);
+
+      if (state.step === "batch_qty") {
+        const payload: ProductionCreatePayload = {
+          locationId: String(data.locationId),
+          recipeId: String(data.recipeId),
+          productName: String(data.productName),
+          plannedQuantity: quantity,
+          unit: String(data.unit),
+        };
+        await this.stageAction(ctx, user, "production.create", payload as unknown as Record<string, unknown>, [
+          "<b>Новое производственное задание</b>",
+          `Продукт: ${escapeHtml(payload.productName)}`,
+          `План: ${formatQuantity(payload.plannedQuantity)} ${escapeHtml(payload.unit)}`,
+        ]);
+      } else {
+        const payload: ProductionBatchPayload = {
+          batchId: String(data.batchId),
+          productName: String(data.productName),
+          actualQuantity: quantity,
+        };
+        await this.stageAction(ctx, user, "production.complete", payload as unknown as Record<string, unknown>, [
+          "<b>Завершение производства</b>",
+          `Продукт: ${escapeHtml(payload.productName)}`,
+          `Фактически произведено: ${formatQuantity(quantity)}`,
+          "",
+          "Сырьё по рецепту будет списано со склада автоматически.",
+        ]);
+      }
+      return;
+    }
+
+    if (state.step === "sale_item_qty") {
+      const quantity = Number(text.replace(",", "."));
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        await this.reply(ctx, "Введите положительное количество, например 3");
+        return;
+      }
+      const items = (data.items as SaleItemDraft[] | undefined) ?? [];
+      const pending = data.pendingItem as SaleItemDraft | undefined;
+      if (!pending) {
+        await this.chatState.clear(chatId);
+        await this.reply(ctx, "Не удалось определить товар. Начните продажу заново.");
+        return;
+      }
+      const nextItems = [...items, { ...pending, quantity }];
+      await this.chatState.set(chatId, user.id, "sale_cart", {
+        locationId: data.locationId,
+        customerId: data.customerId ?? null,
+        customerName: data.customerName,
+        items: nextItems,
+      });
+      await this.showSaleCart(ctx, nextItems);
+      return;
+    }
+
     if (state.step === "payment_amount") {
       const amount = Number(text.replace(",", "."));
       const balanceDue = Number(data.balanceDue);
@@ -576,6 +734,31 @@ export class TelegramBotService implements OnModuleInit {
 
   // ---- confirm / cancel -----------------------------------------------------
 
+  // Shared tail of every write wizard: persist what's about to happen as a
+  // PENDING action, then show it for confirmation. The action id (not the
+  // data) rides in the callback, since Telegram caps callback_data at 64
+  // bytes — and claiming that row is what makes a double-tap safe.
+  private async stageAction(
+    ctx: any,
+    user: AuthenticatedUser,
+    actionType: string,
+    payload: Record<string, unknown>,
+    summaryLines: string[],
+  ): Promise<void> {
+    const chatId = String(ctx.chat.id);
+    const action = await this.pendingActions.create({ userId: user.id, chatId, actionType, payload });
+    await this.reply(
+      ctx,
+      `${summaryLines.join("\n")}\n\nПодтвердить операцию?`,
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback("✅ Подтвердить", `c:${action.id}`),
+          Markup.button.callback("❌ Отмена", `x:${action.id}`),
+        ],
+      ]),
+    );
+  }
+
   private async confirmAction(ctx: any, user: AuthenticatedUser, actionId: string) {
     const claim = await this.pendingActions.claim(actionId);
     if (claim.status === "not_found") {
@@ -652,6 +835,57 @@ export class TelegramBotService implements OnModuleInit {
         const sale = await this.salesService.recordPayment(user, payload.saleId, { amount: payload.amount });
         resultId = sale.id;
         resultMessage = `✅ Оплата принята: ${escapeHtml(payload.customerName)} — ${formatMoney(payload.amount)}`;
+      } else if (claim.action.actionType.startsWith("production.")) {
+        if (!PRODUCTION_MANAGE_ROLES.includes(user.role)) {
+          throw new Error("У вас нет прав на эту операцию.");
+        }
+        if (claim.action.actionType === "production.create") {
+          const payload = claim.action.payload as unknown as ProductionCreatePayload;
+          const batch = await this.productionService.create(user, {
+            locationId: payload.locationId,
+            recipeId: payload.recipeId,
+            plannedQuantity: payload.plannedQuantity,
+          });
+          resultId = batch.id;
+          resultMessage = `✅ Задание создано: ${escapeHtml(payload.productName)} — ${formatQuantity(payload.plannedQuantity)} ${escapeHtml(payload.unit)}`;
+        } else if (claim.action.actionType === "production.start") {
+          const payload = claim.action.payload as unknown as ProductionBatchPayload;
+          const batch = await this.productionService.start(user, payload.batchId);
+          resultId = batch.id;
+          resultMessage = `▶️ Производство начато: ${escapeHtml(payload.productName)}`;
+        } else if (claim.action.actionType === "production.complete") {
+          const payload = claim.action.payload as unknown as ProductionBatchPayload;
+          const batch = await this.productionService.complete(user, payload.batchId, {
+            actualQuantity: payload.actualQuantity!,
+          });
+          resultId = batch.id;
+          resultMessage =
+            `✅ Производство завершено: ${escapeHtml(payload.productName)} — ${formatQuantity(payload.actualQuantity ?? 0)}\n` +
+            `Сырьё списано со склада, готовая продукция оприходована.`;
+        } else {
+          throw new Error("Неизвестный тип операции.");
+        }
+      } else if (claim.action.actionType === "sales.create") {
+        if (!SALE_CREATE_ROLES.includes(user.role)) {
+          throw new Error("У вас нет прав на эту операцию.");
+        }
+        const payload = claim.action.payload as unknown as SaleCreatePayload;
+        const sale = await this.salesService.create(user, {
+          locationId: payload.locationId,
+          customerId: payload.customerId ?? undefined,
+          paymentMethod: payload.paymentMethod,
+          // Retail sales ignore this (always settled in full); for a customer
+          // sale it's either the whole amount or nothing, matching the two
+          // buttons the wizard offers.
+          amountPaid: payload.paidInFull ? payload.totalAmount : 0,
+          items: payload.items.map((i) => ({
+            productId: i.productId,
+            quantity: i.quantity,
+            unitPrice: i.unitPrice,
+          })),
+        });
+        resultId = sale.id;
+        resultMessage = `✅ Продажа оформлена: ${escapeHtml(payload.customerName)} — ${formatMoney(sale.totalAmount)}`;
       } else {
         throw new Error("Неизвестный тип операции.");
       }
@@ -996,6 +1230,441 @@ export class TelegramBotService implements OnModuleInit {
         `<b>Факт (30 дней)</b>\n${factBlock}\n\n` +
         `<b>План (месяц)</b>\n${planBlock}`,
     );
+    await this.ackCallback(ctx);
+  }
+
+  // ---- production ------------------------------------------------------------------
+
+  private async assertProductionAccess(ctx: any, user: AuthenticatedUser): Promise<boolean> {
+    if (PRODUCTION_MANAGE_ROLES.includes(user.role)) return true;
+    await this.reply(ctx, "У вас нет прав на управление производством.");
+    await this.ackCallback(ctx);
+    return false;
+  }
+
+  private async showProductionMenu(ctx: any, user: AuthenticatedUser) {
+    const rows = [
+      [Markup.button.callback("📋 Активные задания", "pr:l")],
+      [Markup.button.callback("✅ Произведено сегодня", "pr:t")],
+    ];
+    if (PRODUCTION_MANAGE_ROLES.includes(user.role)) {
+      rows.push([Markup.button.callback("➕ Новое задание", "pr:n")]);
+    }
+    rows.push([Markup.button.callback("⬅️ Назад", "m")]);
+    await this.replyOrEdit(ctx, "🏭 <b>Производство</b>", Markup.inlineKeyboard(rows));
+    await this.ackCallback(ctx);
+  }
+
+  // ProductionService.findAll has no status filter (it returns the 100 most
+  // recently scheduled batches), so "активные" is filtered here — same as
+  // the web Production page's own default "Активные" filter does.
+  private async showActiveBatches(ctx: any, user: AuthenticatedUser) {
+    const batches = await this.productionService.findAll(user);
+    const active = batches.filter(
+      (b) => b.status === ProductionBatchStatus.PLANNED || b.status === ProductionBatchStatus.IN_PROGRESS,
+    );
+    if (active.length === 0) {
+      await this.reply(ctx, "Активных заданий нет.");
+      await this.ackCallback(ctx);
+      return;
+    }
+    const rows = active
+      .slice(0, MAX_LIST_ITEMS)
+      .map((b) => [
+        Markup.button.callback(
+          `${b.status === ProductionBatchStatus.IN_PROGRESS ? "▶️" : "🕒"} ${b.productName} — ${formatQuantity(b.plannedQuantity)} ${b.unit}`,
+          `pr:d:${b.id}`,
+        ),
+      ]);
+    rows.push([Markup.button.callback("⬅️ Назад", "pr:m")]);
+    await this.reply(ctx, "Выберите задание:", Markup.inlineKeyboard(rows));
+    await this.ackCallback(ctx);
+  }
+
+  private async showTodayProduced(ctx: any, user: AuthenticatedUser) {
+    const batches = await this.productionService.findAll(user);
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const done = batches.filter(
+      (b) =>
+        b.status === ProductionBatchStatus.COMPLETED &&
+        b.completedAt !== null &&
+        new Date(b.completedAt) >= startOfToday,
+    );
+    if (done.length === 0) {
+      await this.reply(ctx, "Сегодня ничего не произведено.");
+      await this.ackCallback(ctx);
+      return;
+    }
+    const lines = done.map(
+      (b) =>
+        `${escapeHtml(b.productName)} — ${formatQuantity(b.actualQuantity ?? 0)} ${escapeHtml(b.unit)} (${escapeHtml(b.locationName)})`,
+    );
+    await this.reply(ctx, `✅ <b>Произведено сегодня</b>\n\n${lines.join("\n")}`);
+    await this.ackCallback(ctx);
+  }
+
+  private async showBatchDetail(ctx: any, user: AuthenticatedUser, batchId: string) {
+    const batches = await this.productionService.findAll(user);
+    const batch = batches.find((b) => b.id === batchId);
+    if (!batch) {
+      await this.reply(ctx, "Задание не найдено.");
+      await this.ackCallback(ctx);
+      return;
+    }
+
+    const lines = [
+      `🏭 <b>${escapeHtml(batch.productName)}</b>`,
+      `Точка: ${escapeHtml(batch.locationName)}`,
+      `Статус: ${PRODUCTION_BATCH_STATUS_LABELS_RU[batch.status]}`,
+      `План: ${formatQuantity(batch.plannedQuantity)} ${escapeHtml(batch.unit)}`,
+      `Запланировано на: ${formatDateTime(batch.scheduledFor)}`,
+    ];
+    if (batch.actualQuantity !== null) {
+      lines.push(`Фактически: ${formatQuantity(batch.actualQuantity)} ${escapeHtml(batch.unit)}`);
+    }
+
+    const rows: ReturnType<typeof Markup.inlineKeyboard>["reply_markup"]["inline_keyboard"] = [];
+    if (PRODUCTION_MANAGE_ROLES.includes(user.role)) {
+      if (batch.status === ProductionBatchStatus.PLANNED) {
+        rows.push([Markup.button.callback("▶️ Начать", `pr:s:${batch.id}`)]);
+      }
+      // complete() requires IN_PROGRESS — a PLANNED batch must be started
+      // first, so the button only appears once it actually can be used.
+      if (batch.status === ProductionBatchStatus.IN_PROGRESS) {
+        rows.push([Markup.button.callback("✅ Завершить", `pr:c:${batch.id}`)]);
+      }
+    }
+    rows.push([Markup.button.callback("⬅️ Назад", "pr:l")]);
+
+    await this.reply(ctx, lines.join("\n"), Markup.inlineKeyboard(rows));
+    await this.ackCallback(ctx);
+  }
+
+  private async startBatchWizard(ctx: any, user: AuthenticatedUser) {
+    if (!(await this.assertProductionAccess(ctx, user))) return;
+    const chatId = String(ctx.chat.id);
+    if (ORG_WIDE_ROLES.includes(user.role)) {
+      await this.chatState.set(chatId, user.id, "batch_location", {});
+      const locations = await this.locationsService.findAllForOrganization(user.organizationId);
+      const rows = locations.slice(0, MAX_LIST_ITEMS).map((l) => [Markup.button.callback(l.name, `pr:n:l:${l.id}`)]);
+      rows.push([Markup.button.callback("⬅️ Назад", "pr:m")]);
+      await this.reply(ctx, "Выберите точку:", Markup.inlineKeyboard(rows));
+    } else {
+      await this.chatState.set(chatId, user.id, "batch_recipe", { locationId: user.locationId });
+      await this.showRecipePicker(ctx, user);
+    }
+    await this.ackCallback(ctx);
+  }
+
+  private async pickBatchLocation(ctx: any, user: AuthenticatedUser, locationId: string) {
+    if (!(await this.assertProductionAccess(ctx, user))) return;
+    const chatId = String(ctx.chat.id);
+    await this.chatState.set(chatId, user.id, "batch_recipe", { locationId });
+    await this.showRecipePicker(ctx, user);
+    await this.ackCallback(ctx);
+  }
+
+  private async showRecipePicker(ctx: any, user: AuthenticatedUser) {
+    const recipes = await this.recipesService.findAllForOrganization(user.organizationId);
+    if (recipes.length === 0) {
+      await this.reply(ctx, "Рецептов пока нет — сначала добавьте рецепт в ArAmir OS.");
+      return;
+    }
+    const rows = recipes
+      .slice(0, MAX_LIST_ITEMS)
+      .map((r) => [Markup.button.callback(`${r.productName} (выход ${formatQuantity(r.yieldQuantity)})`, `pr:n:r:${r.id}`)]);
+    rows.push([Markup.button.callback("⬅️ Назад", "pr:m")]);
+    await this.reply(ctx, "Что производим?", Markup.inlineKeyboard(rows));
+  }
+
+  private async pickBatchRecipe(ctx: any, user: AuthenticatedUser, recipeId: string) {
+    if (!(await this.assertProductionAccess(ctx, user))) return;
+    const chatId = String(ctx.chat.id);
+    const state = await this.chatState.get(chatId);
+    const data = (state?.data as Record<string, unknown>) ?? {};
+    const recipes = await this.recipesService.findAllForOrganization(user.organizationId);
+    const recipe = recipes.find((r) => r.id === recipeId);
+    if (!recipe) {
+      await this.reply(ctx, "Рецепт не найден.");
+      await this.ackCallback(ctx);
+      return;
+    }
+    await this.chatState.set(chatId, user.id, "batch_qty", {
+      ...data,
+      recipeId,
+      productName: recipe.productName,
+      unit: recipe.productUnit,
+    });
+    await this.reply(
+      ctx,
+      `Сколько планируем произвести? Укажите количество в «${escapeHtml(recipe.productUnit)}»:`,
+    );
+    await this.ackCallback(ctx);
+  }
+
+  private async stageBatchStart(ctx: any, user: AuthenticatedUser, batchId: string) {
+    if (!(await this.assertProductionAccess(ctx, user))) return;
+    const batches = await this.productionService.findAll(user);
+    const batch = batches.find((b) => b.id === batchId);
+    if (!batch) {
+      await this.reply(ctx, "Задание не найдено.");
+      await this.ackCallback(ctx);
+      return;
+    }
+    const payload: ProductionBatchPayload = { batchId, productName: batch.productName };
+    await this.stageAction(ctx, user, "production.start", payload as unknown as Record<string, unknown>, [
+      "<b>Запуск производства</b>",
+      `Продукт: ${escapeHtml(batch.productName)}`,
+      `План: ${formatQuantity(batch.plannedQuantity)} ${escapeHtml(batch.unit)}`,
+    ]);
+    await this.ackCallback(ctx);
+  }
+
+  private async askBatchActualQuantity(ctx: any, user: AuthenticatedUser, batchId: string) {
+    if (!(await this.assertProductionAccess(ctx, user))) return;
+    const batches = await this.productionService.findAll(user);
+    const batch = batches.find((b) => b.id === batchId);
+    if (!batch) {
+      await this.reply(ctx, "Задание не найдено.");
+      await this.ackCallback(ctx);
+      return;
+    }
+    const chatId = String(ctx.chat.id);
+    await this.chatState.set(chatId, user.id, "batch_complete_qty", {
+      batchId,
+      productName: batch.productName,
+    });
+    await this.reply(
+      ctx,
+      `План был ${formatQuantity(batch.plannedQuantity)} ${escapeHtml(batch.unit)}.\nСколько произвели фактически?`,
+    );
+    await this.ackCallback(ctx);
+  }
+
+  // ---- sales: new sale wizard -------------------------------------------------------
+
+  private async assertSaleCreateAccess(ctx: any, user: AuthenticatedUser): Promise<boolean> {
+    if (SALE_CREATE_ROLES.includes(user.role)) return true;
+    await this.reply(ctx, "У вас нет прав на создание продаж.");
+    await this.ackCallback(ctx);
+    return false;
+  }
+
+  private async startSaleWizard(ctx: any, user: AuthenticatedUser) {
+    if (!(await this.assertSaleCreateAccess(ctx, user))) return;
+    const chatId = String(ctx.chat.id);
+    if (ORG_WIDE_ROLES.includes(user.role)) {
+      await this.chatState.set(chatId, user.id, "sale_location", {});
+      const locations = await this.locationsService.findAllForOrganization(user.organizationId);
+      const rows = locations.slice(0, MAX_LIST_ITEMS).map((l) => [Markup.button.callback(l.name, `l:n:l:${l.id}`)]);
+      rows.push([Markup.button.callback("⬅️ Назад", "l:m")]);
+      await this.reply(ctx, "Выберите точку:", Markup.inlineKeyboard(rows));
+    } else {
+      await this.chatState.set(chatId, user.id, "sale_customer", { locationId: user.locationId });
+      await this.showSaleCustomerPicker(ctx, user);
+    }
+    await this.ackCallback(ctx);
+  }
+
+  private async pickSaleLocation(ctx: any, user: AuthenticatedUser, locationId: string) {
+    if (!(await this.assertSaleCreateAccess(ctx, user))) return;
+    const chatId = String(ctx.chat.id);
+    await this.chatState.set(chatId, user.id, "sale_customer", { locationId });
+    await this.showSaleCustomerPicker(ctx, user);
+    await this.ackCallback(ctx);
+  }
+
+  private async showSaleCustomerPicker(ctx: any, user: AuthenticatedUser) {
+    // "_" is the sentinel for a walk-in retail sale (no Customer row) — the
+    // same "Розница" concept the web sale form uses for a null customerId.
+    const rows = [[Markup.button.callback("🧍 Розница (без клиента)", "l:n:c:_")]];
+    if (CUSTOMER_VIEW_ROLES.includes(user.role)) {
+      const customers = await this.customersService.findAllForOrganization(user.organizationId);
+      for (const c of customers.slice(0, MAX_LIST_ITEMS)) {
+        rows.push([Markup.button.callback(c.name, `l:n:c:${c.id}`)]);
+      }
+    }
+    rows.push([Markup.button.callback("⬅️ Назад", "l:m")]);
+    await this.reply(ctx, "Кому продаём?", Markup.inlineKeyboard(rows));
+  }
+
+  private async pickSaleCustomer(ctx: any, user: AuthenticatedUser, customerIdOrRetail: string) {
+    if (!(await this.assertSaleCreateAccess(ctx, user))) return;
+    const chatId = String(ctx.chat.id);
+    const state = await this.chatState.get(chatId);
+    const data = (state?.data as Record<string, unknown>) ?? {};
+
+    let customerId: string | null = null;
+    let customerName = "Розница";
+    if (customerIdOrRetail !== "_") {
+      const customers = await this.customersService.findAllForOrganization(user.organizationId);
+      const customer = customers.find((c) => c.id === customerIdOrRetail);
+      if (!customer) {
+        await this.reply(ctx, "Клиент не найден.");
+        await this.ackCallback(ctx);
+        return;
+      }
+      customerId = customer.id;
+      customerName = customer.name;
+    }
+
+    await this.chatState.set(chatId, user.id, "sale_cart", {
+      locationId: data.locationId,
+      customerId,
+      customerName,
+      items: [],
+    });
+    await this.showSaleProductPicker(ctx, user);
+    await this.ackCallback(ctx);
+  }
+
+  private async showSaleProductPicker(ctx: any, user: AuthenticatedUser) {
+    // Only finished goods are ever sold — raw materials are consumed through
+    // recipes, never sold directly (same filter as the web sale form).
+    const products = (await this.productsService.findAllForOrganization(user.organizationId)).filter(
+      (p) => p.type === ProductType.FINISHED_GOOD,
+    );
+    if (products.length === 0) {
+      await this.reply(ctx, "Готовой продукции пока нет.");
+      await this.ackCallback(ctx);
+      return;
+    }
+    const rows = products
+      .slice(0, MAX_LIST_ITEMS)
+      .map((p) => [Markup.button.callback(`${p.name} — ${formatMoney(p.price)}`, `l:n:p:${p.id}`)]);
+    rows.push([Markup.button.callback("⬅️ Отмена", "l:m")]);
+    await this.reply(ctx, "Выберите товар:", Markup.inlineKeyboard(rows));
+    await this.ackCallback(ctx);
+  }
+
+  private async pickSaleProduct(ctx: any, user: AuthenticatedUser, productId: string) {
+    if (!(await this.assertSaleCreateAccess(ctx, user))) return;
+    const chatId = String(ctx.chat.id);
+    const state = await this.chatState.get(chatId);
+    const data = (state?.data as Record<string, unknown>) ?? {};
+    const products = await this.productsService.findAllForOrganization(user.organizationId);
+    const product = products.find((p) => p.id === productId);
+    if (!product) {
+      await this.reply(ctx, "Товар не найден.");
+      await this.ackCallback(ctx);
+      return;
+    }
+    // CreateSaleDto requires an explicit unitPrice per item (the backend
+    // never falls back to Product.price), so the current catalog price is
+    // captured here and shown in the confirmation before anything is written.
+    await this.chatState.set(chatId, user.id, "sale_item_qty", {
+      ...data,
+      pendingItem: {
+        productId: product.id,
+        productName: product.name,
+        quantity: 0,
+        unitPrice: product.price,
+      } as unknown as Record<string, unknown>,
+    });
+    await this.reply(
+      ctx,
+      `«${escapeHtml(product.name)}» — ${formatMoney(product.price)} за ${escapeHtml(product.unit)}.\nСколько продаём?`,
+    );
+    await this.ackCallback(ctx);
+  }
+
+  private async showSaleCart(ctx: any, items: SaleItemDraft[]) {
+    const total = items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
+    const lines = items.map(
+      (i) => `• ${escapeHtml(i.productName)} — ${formatQuantity(i.quantity)} × ${formatMoney(i.unitPrice)} = ${formatMoney(i.quantity * i.unitPrice)}`,
+    );
+    await this.reply(
+      ctx,
+      `🧾 <b>Продажа</b>\n\n${lines.join("\n")}\n\n<b>Итого: ${formatMoney(total)}</b>`,
+      Markup.inlineKeyboard([
+        [Markup.button.callback("➕ Ещё товар", "l:n:add")],
+        [Markup.button.callback("✅ Готово", "l:n:done")],
+        [Markup.button.callback("❌ Отмена", "l:m")],
+      ]),
+    );
+  }
+
+  private async showSalePaymentMethodPicker(ctx: any, user: AuthenticatedUser) {
+    if (!(await this.assertSaleCreateAccess(ctx, user))) return;
+    const chatId = String(ctx.chat.id);
+    const state = await this.chatState.get(chatId);
+    const data = (state?.data as Record<string, unknown>) ?? {};
+    const items = (data.items as SaleItemDraft[] | undefined) ?? [];
+    if (items.length === 0) {
+      await this.reply(ctx, "Добавьте хотя бы один товар.");
+      await this.ackCallback(ctx);
+      return;
+    }
+    const rows = Object.values(PaymentMethod).map((m) => [
+      Markup.button.callback(PAYMENT_METHOD_LABELS_RU[m], `l:n:pm:${m}`),
+    ]);
+    await this.reply(ctx, "Способ оплаты:", Markup.inlineKeyboard(rows));
+    await this.ackCallback(ctx);
+  }
+
+  private async pickSalePaymentMethod(ctx: any, user: AuthenticatedUser, method: PaymentMethod) {
+    if (!(await this.assertSaleCreateAccess(ctx, user))) return;
+    const chatId = String(ctx.chat.id);
+    const state = await this.chatState.get(chatId);
+    const data = (state?.data as Record<string, unknown>) ?? {};
+    await this.chatState.set(chatId, user.id, "sale_cart", { ...data, paymentMethod: method });
+
+    // A retail sale is always settled in full (SalesService.create enforces
+    // it), so only a customer sale is asked about payment — and only as
+    // "полностью / в долг": a partial payment is recorded afterwards through
+    // Клиенты → Записать оплату rather than complicating this wizard.
+    if (!data.customerId) {
+      await this.finishSaleWizard(ctx, user, true);
+      return;
+    }
+    await this.reply(
+      ctx,
+      "Оплата по этой продаже:",
+      Markup.inlineKeyboard([
+        [Markup.button.callback("💵 Оплачено полностью", "l:n:pd:1")],
+        [Markup.button.callback("🧾 В долг", "l:n:pd:0")],
+      ]),
+    );
+    await this.ackCallback(ctx);
+  }
+
+  private async finishSaleWizard(ctx: any, user: AuthenticatedUser, paidInFull: boolean) {
+    if (!(await this.assertSaleCreateAccess(ctx, user))) return;
+    const chatId = String(ctx.chat.id);
+    const state = await this.chatState.get(chatId);
+    const data = (state?.data as Record<string, unknown>) ?? {};
+    const items = (data.items as SaleItemDraft[] | undefined) ?? [];
+    if (items.length === 0) {
+      await this.reply(ctx, "Добавьте хотя бы один товар.");
+      await this.ackCallback(ctx);
+      return;
+    }
+
+    const totalAmount = items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
+    const payload: SaleCreatePayload = {
+      locationId: String(data.locationId),
+      customerId: (data.customerId as string | null) ?? null,
+      customerName: String(data.customerName ?? "Розница"),
+      paymentMethod: (data.paymentMethod as PaymentMethod) ?? PaymentMethod.CASH,
+      paidInFull,
+      items,
+      totalAmount,
+    };
+    await this.chatState.clear(chatId);
+
+    const itemLines = items.map(
+      (i) => `• ${escapeHtml(i.productName)} — ${formatQuantity(i.quantity)} × ${formatMoney(i.unitPrice)}`,
+    );
+    await this.stageAction(ctx, user, "sales.create", payload as unknown as Record<string, unknown>, [
+      "<b>Новая продажа</b>",
+      `Клиент: ${escapeHtml(payload.customerName)}`,
+      `Оплата: ${PAYMENT_METHOD_LABELS_RU[payload.paymentMethod]}${payload.customerId ? (paidInFull ? " (оплачено)" : " (в долг)") : ""}`,
+      "",
+      ...itemLines,
+      "",
+      `<b>Итого: ${formatMoney(totalAmount)}</b>`,
+    ]);
     await this.ackCallback(ctx);
   }
 

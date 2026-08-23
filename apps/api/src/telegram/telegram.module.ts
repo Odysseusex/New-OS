@@ -6,6 +6,8 @@ import { ProductsModule } from "../products/products.module";
 import { NotificationsModule } from "../notifications/notifications.module";
 import { CustomersModule } from "../customers/customers.module";
 import { FinanceModule } from "../finance/finance.module";
+import { ProductionModule } from "../production/production.module";
+import { RecipesModule } from "../recipes/recipes.module";
 import { TelegramController } from "./telegram.controller";
 import { TelegramBotService } from "./telegram-bot.service";
 import { TelegramAuthResolver } from "./telegram-auth.resolver";
@@ -23,6 +25,8 @@ import { TelegramNotificationsCron } from "./telegram-notifications.cron";
     NotificationsModule,
     CustomersModule,
     FinanceModule,
+    ProductionModule,
+    RecipesModule,
   ],
   controllers: [TelegramController],
   providers: [

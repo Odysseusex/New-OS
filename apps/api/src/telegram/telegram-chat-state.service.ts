@@ -14,16 +14,20 @@ export class TelegramChatStateService {
     return this.prisma.telegramChatState.findUnique({ where: { chatId } });
   }
 
+  // Takes a plain object rather than Prisma.InputJsonValue: wizard state is
+  // always a bag of collected answers, and the stricter Prisma type rejects
+  // ordinary Record<string, unknown> shapes at every call site.
   async set(
     chatId: string,
     userId: string,
     step: string,
-    data: Prisma.InputJsonValue = {},
+    data: Record<string, unknown> = {},
   ): Promise<void> {
+    const json = data as Prisma.InputJsonValue;
     await this.prisma.telegramChatState.upsert({
       where: { chatId },
-      create: { chatId, userId, step, data },
-      update: { step, data },
+      create: { chatId, userId, step, data: json },
+      update: { step, data: json },
     });
   }
 
