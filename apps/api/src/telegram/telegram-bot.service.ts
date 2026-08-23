@@ -2,8 +2,18 @@ import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { Telegraf, Markup } from "telegraf";
 import type { Update } from "telegraf/types";
 import {
+  BREAK_EVEN_STATUS_LABELS_RU,
+  BreakEvenStatus,
+  CASH_ACCOUNT_TYPE_LABELS_RU,
+  CASH_MOVEMENT_INFLOW_TYPES,
+  CASH_MOVEMENT_TYPE_LABELS_RU,
+  CashMovementType,
+  CUSTOMER_VIEW_ROLES,
+  EXPENSE_STATUS_LABELS_RU,
+  FINANCE_VIEW_ROLES,
   INVENTORY_MANAGE_ROLES,
   ORG_WIDE_ROLES,
+  PAYMENT_RECORD_ROLES,
   WriteOffReason,
   WRITE_OFF_REASON_LABELS_RU,
 } from "@bakery-os/shared";
@@ -12,11 +22,15 @@ import { InventoryService } from "../inventory/inventory.service";
 import { SalesService } from "../sales/sales.service";
 import { LocationsService } from "../locations/locations.service";
 import { ProductsService } from "../products/products.service";
+import { CustomersService } from "../customers/customers.service";
+import { FinanceService } from "../finance/finance.service";
+import { CashAccountsService } from "../finance/cash-accounts.service";
+import { CashMovementsService } from "../finance/cash-movements.service";
 import { TelegramAuthResolver } from "./telegram-auth.resolver";
 import { TelegramLinkService } from "./telegram-link.service";
 import { TelegramPendingActionService } from "./telegram-pending-action.service";
 import { TelegramChatStateService } from "./telegram-chat-state.service";
-import { escapeHtml, formatDateTime, formatMoney, formatQuantity } from "./telegram-format";
+import { escapeHtml, formatDate, formatDateTime, formatMoney, formatQuantity } from "./telegram-format";
 
 const MAX_LIST_ITEMS = 40;
 
@@ -27,6 +41,12 @@ interface StockActionPayload {
   quantity: number;
   reason?: string;
   writeOffReason?: WriteOffReason;
+}
+
+interface PaymentActionPayload {
+  saleId: string;
+  amount: number;
+  customerName: string;
 }
 
 // The one place the bot talks to Telegram. Every write action funnels
@@ -49,6 +69,10 @@ export class TelegramBotService implements OnModuleInit {
     private salesService: SalesService,
     private locationsService: LocationsService,
     private productsService: ProductsService,
+    private customersService: CustomersService,
+    private financeService: FinanceService,
+    private cashAccountsService: CashAccountsService,
+    private cashMovementsService: CashMovementsService,
   ) {}
 
   async onModuleInit() {
@@ -140,6 +164,28 @@ export class TelegramBotService implements OnModuleInit {
     bot.action(/^l:tl:(.+)$/, async (ctx) =>
       this.withAuth(ctx, (user) => this.showSalesToday(ctx, user, ctx.match[1])),
     );
+
+    bot.command("customers", async (ctx) => this.withAuth(ctx, (user) => this.showCustomersMenu(ctx, user)));
+    bot.action("cl:m", async (ctx) => this.withAuth(ctx, (user) => this.showCustomersMenu(ctx, user)));
+    bot.action("cl:l", async (ctx) => this.withAuth(ctx, (user) => this.showCustomerList(ctx, user)));
+    bot.action(/^cl:d:(.+)$/, async (ctx) =>
+      this.withAuth(ctx, (user) => this.showCustomerDetail(ctx, user, ctx.match[1])),
+    );
+    bot.action(/^cl:pm:(.+)$/, async (ctx) =>
+      this.withAuth(ctx, (user) => this.showPaymentSalePicker(ctx, user, ctx.match[1])),
+    );
+    bot.action(/^cl:p:(.+)$/, async (ctx) =>
+      this.withAuth(ctx, (user) => this.pickSaleForPayment(ctx, user, ctx.match[1])),
+    );
+
+    bot.command("finance", async (ctx) => this.withAuth(ctx, (user) => this.showFinanceMenu(ctx, user)));
+    bot.action("fn:m", async (ctx) => this.withAuth(ctx, (user) => this.showFinanceMenu(ctx, user)));
+    bot.action("fn:acc", async (ctx) => this.withAuth(ctx, (user) => this.showAccounts(ctx, user)));
+    bot.action("fn:cf", async (ctx) => this.withAuth(ctx, (user) => this.showCashFlow(ctx, user)));
+    bot.action("fn:exp", async (ctx) => this.withAuth(ctx, (user) => this.showExpenses(ctx, user)));
+    bot.action("fn:pnl", async (ctx) => this.withAuth(ctx, (user) => this.showPnl(ctx, user)));
+    bot.action("fn:ar", async (ctx) => this.withAuth(ctx, (user) => this.showAccountsReceivablePayable(ctx, user)));
+    bot.action("fn:be", async (ctx) => this.withAuth(ctx, (user) => this.showBreakEven(ctx, user)));
 
     bot.action(/^c:(.+)$/, async (ctx) => this.withAuth(ctx, (user) => this.confirmAction(ctx, user, ctx.match[1])));
     bot.action(/^x:(.+)$/, async (ctx) => this.withAuth(ctx, (user) => this.cancelAction(ctx, user, ctx.match[1])));
@@ -235,6 +281,8 @@ export class TelegramBotService implements OnModuleInit {
       "/start — главное меню\n" +
       "/stock — раздел «Склад»\n" +
       "/sales — раздел «Продажи»\n" +
+      "/customers — раздел «Клиенты»\n" +
+      "/finance — раздел «Финансы»\n" +
       "/help — эта справка"
     );
   }
@@ -242,13 +290,20 @@ export class TelegramBotService implements OnModuleInit {
   // ---- menus ---------------------------------------------------------------
 
   private async showMainMenu(ctx: any, user: AuthenticatedUser) {
+    const rows = [
+      [Markup.button.callback("📦 Склад", "s:m")],
+      [Markup.button.callback("💰 Продажи", "l:m")],
+    ];
+    if (CUSTOMER_VIEW_ROLES.includes(user.role)) {
+      rows.push([Markup.button.callback("👥 Клиенты", "cl:m")]);
+    }
+    if (FINANCE_VIEW_ROLES.includes(user.role)) {
+      rows.push([Markup.button.callback("💵 Финансы", "fn:m")]);
+    }
     await this.replyOrEdit(
       ctx,
       `Здравствуйте, <b>${escapeHtml(user.fullName)}</b>. Выберите раздел:`,
-      Markup.inlineKeyboard([
-        [Markup.button.callback("📦 Склад", "s:m")],
-        [Markup.button.callback("💰 Продажи", "l:m")],
-      ]),
+      Markup.inlineKeyboard(rows),
     );
     await this.ackCallback(ctx);
   }
@@ -414,6 +469,39 @@ export class TelegramBotService implements OnModuleInit {
       await this.finishStockWizard(ctx, user, "writeoff", { ...data, reason: text });
       return;
     }
+
+    if (state.step === "payment_amount") {
+      const amount = Number(text.replace(",", "."));
+      const balanceDue = Number(data.balanceDue);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        await this.reply(ctx, "Введите положительную сумму, например 5000");
+        return;
+      }
+      if (amount > balanceDue) {
+        await this.reply(ctx, `Сумма больше долга (${formatMoney(balanceDue)}). Введите сумму не больше долга.`);
+        return;
+      }
+      await this.chatState.clear(chatId);
+      const payload: PaymentActionPayload = {
+        saleId: String(data.saleId),
+        amount,
+        customerName: String(data.customerName),
+      };
+      const action = await this.pendingActions.create({
+        userId: user.id,
+        chatId,
+        actionType: "sales.recordPayment",
+        payload: payload as unknown as Record<string, unknown>,
+      });
+      await this.reply(
+        ctx,
+        `<b>Оплата</b>\nКлиент: ${escapeHtml(payload.customerName)}\nСумма: ${formatMoney(payload.amount)}\n\nПодтвердить операцию?`,
+        Markup.inlineKeyboard([
+          [Markup.button.callback("✅ Подтвердить", `c:${action.id}`), Markup.button.callback("❌ Отмена", `x:${action.id}`)],
+        ]),
+      );
+      return;
+    }
   }
 
   private async skipComment(ctx: any, user: AuthenticatedUser, kind: "receive" | "writeoff") {
@@ -511,38 +599,67 @@ export class TelegramBotService implements OnModuleInit {
       return;
     }
 
+    // Executing the write and reporting the result to the chat are
+    // deliberately separate try/catches: once the underlying service call
+    // (and markExecuted) succeeds, that's the real, permanent outcome — a
+    // failure only in sending the confirmation message (e.g. the same
+    // Telegram hiccup that could hit any reply) must never roll the pending
+    // action back to FAILED, or a retry could re-run an already-completed
+    // payment/stock movement.
+    let resultId: string | null = null;
+    let resultMessage: string;
     try {
-      const payload = claim.action.payload as unknown as StockActionPayload;
-      if (!INVENTORY_MANAGE_ROLES.includes(user.role)) {
-        throw new Error("У вас нет прав на эту операцию.");
-      }
+      if (claim.action.actionType === "inventory.receive" || claim.action.actionType === "inventory.writeOff") {
+        if (!INVENTORY_MANAGE_ROLES.includes(user.role)) {
+          throw new Error("У вас нет прав на эту операцию.");
+        }
+        const payload = claim.action.payload as unknown as StockActionPayload;
 
-      if (claim.action.actionType === "inventory.receive") {
-        const movement = await this.inventoryService.receive(user, {
-          locationId: payload.locationId,
-          productId: payload.productId,
-          quantity: payload.quantity,
-          reason: payload.reason,
-        });
-        await this.pendingActions.markExecuted(actionId, movement.id);
-        await this.editOrReply(ctx, `✅ Приход оформлен: ${escapeHtml(payload.productName)} +${formatQuantity(payload.quantity)}`);
-      } else if (claim.action.actionType === "inventory.writeOff") {
-        const movement = await this.inventoryService.writeOff(user, {
-          locationId: payload.locationId,
-          productId: payload.productId,
-          quantity: payload.quantity,
-          writeOffReason: payload.writeOffReason!,
-          reason: payload.reason,
-        });
-        await this.pendingActions.markExecuted(actionId, movement.id);
-        await this.editOrReply(ctx, `✅ Списание оформлено: ${escapeHtml(payload.productName)} −${formatQuantity(payload.quantity)}`);
+        if (claim.action.actionType === "inventory.receive") {
+          const movement = await this.inventoryService.receive(user, {
+            locationId: payload.locationId,
+            productId: payload.productId,
+            quantity: payload.quantity,
+            reason: payload.reason,
+          });
+          resultId = movement.id;
+          resultMessage = `✅ Приход оформлен: ${escapeHtml(payload.productName)} +${formatQuantity(payload.quantity)}`;
+        } else {
+          const movement = await this.inventoryService.writeOff(user, {
+            locationId: payload.locationId,
+            productId: payload.productId,
+            quantity: payload.quantity,
+            writeOffReason: payload.writeOffReason!,
+            reason: payload.reason,
+          });
+          resultId = movement.id;
+          resultMessage = `✅ Списание оформлено: ${escapeHtml(payload.productName)} −${formatQuantity(payload.quantity)}`;
+        }
+      } else if (claim.action.actionType === "sales.recordPayment") {
+        if (!PAYMENT_RECORD_ROLES.includes(user.role)) {
+          throw new Error("У вас нет прав на эту операцию.");
+        }
+        const payload = claim.action.payload as unknown as PaymentActionPayload;
+        const sale = await this.salesService.recordPayment(user, payload.saleId, { amount: payload.amount });
+        resultId = sale.id;
+        resultMessage = `✅ Оплата принята: ${escapeHtml(payload.customerName)} — ${formatMoney(payload.amount)}`;
       } else {
         throw new Error("Неизвестный тип операции.");
       }
+      await this.pendingActions.markExecuted(actionId, resultId);
     } catch (err) {
       await this.pendingActions.markFailed(actionId);
       const message = err instanceof Error ? err.message : "Не удалось выполнить операцию.";
-      await this.editOrReply(ctx, `⚠️ Ошибка: ${escapeHtml(message)}`);
+      resultMessage = `⚠️ Ошибка: ${escapeHtml(message)}`;
+    }
+
+    try {
+      await this.editOrReply(ctx, resultMessage);
+    } catch (err) {
+      this.logger.error(
+        "Failed to send confirmation result (operation outcome above is still final)",
+        err instanceof Error ? err.stack : String(err),
+      );
     }
     await this.ackCallback(ctx);
   }
@@ -595,6 +712,253 @@ export class TelegramBotService implements OnModuleInit {
     const rows = locations.slice(0, MAX_LIST_ITEMS).map((l) => [Markup.button.callback(l.name, `l:tl:${l.id}`)]);
     rows.push([Markup.button.callback("⬅️ Назад", "l:m")]);
     await this.reply(ctx, "Выберите точку:", Markup.inlineKeyboard(rows));
+    await this.ackCallback(ctx);
+  }
+
+  // ---- customers --------------------------------------------------------------
+
+  // Unlike Склад/Продажи reads (open to any authenticated role on the web
+  // too), CustomersController is class-level gated by CUSTOMER_VIEW_ROLES —
+  // so every Клиенты handler re-checks it, same as the write-side role
+  // checks elsewhere in this file.
+  private async assertCustomerAccess(ctx: any, user: AuthenticatedUser): Promise<boolean> {
+    if (CUSTOMER_VIEW_ROLES.includes(user.role)) return true;
+    await this.reply(ctx, "У вас нет доступа к этому разделу.");
+    await this.ackCallback(ctx);
+    return false;
+  }
+
+  private async showCustomersMenu(ctx: any, user: AuthenticatedUser) {
+    if (!(await this.assertCustomerAccess(ctx, user))) return;
+    await this.replyOrEdit(
+      ctx,
+      "👥 <b>Клиенты</b>",
+      Markup.inlineKeyboard([
+        [Markup.button.callback("📋 Список", "cl:l")],
+        [Markup.button.callback("⬅️ Назад", "m")],
+      ]),
+    );
+    await this.ackCallback(ctx);
+  }
+
+  private async showCustomerList(ctx: any, user: AuthenticatedUser) {
+    if (!(await this.assertCustomerAccess(ctx, user))) return;
+    const customers = await this.customersService.findAllForOrganization(user.organizationId);
+    if (customers.length === 0) {
+      await this.reply(ctx, "Клиентов пока нет.");
+      await this.ackCallback(ctx);
+      return;
+    }
+    const rows = customers.slice(0, MAX_LIST_ITEMS).map((c) => [
+      Markup.button.callback(
+        c.outstandingBalance > 0 ? `${c.name} (долг ${formatMoney(c.outstandingBalance)})` : c.name,
+        `cl:d:${c.id}`,
+      ),
+    ]);
+    rows.push([Markup.button.callback("⬅️ Назад", "cl:m")]);
+    await this.reply(ctx, "Выберите клиента:", Markup.inlineKeyboard(rows));
+    await this.ackCallback(ctx);
+  }
+
+  private async showCustomerDetail(ctx: any, user: AuthenticatedUser, customerId: string) {
+    if (!(await this.assertCustomerAccess(ctx, user))) return;
+    const customer = await this.customersService.findOne(user.organizationId, customerId);
+
+    const lines = [
+      `👤 <b>${escapeHtml(customer.name)}</b>`,
+      customer.phone ? `Телефон: ${escapeHtml(customer.phone)}` : null,
+      `Задолженность: ${formatMoney(customer.outstandingBalance)}`,
+    ].filter((line): line is string => line !== null);
+
+    const recentOrders = customer.orders.slice(0, 5);
+    if (recentOrders.length > 0) {
+      lines.push("", "<b>Последние продажи:</b>");
+      for (const o of recentOrders) {
+        lines.push(`${formatDate(o.soldAt)} — ${formatMoney(o.totalAmount)} (долг ${formatMoney(o.balanceDue)})`);
+      }
+    }
+
+    const rows: ReturnType<typeof Markup.inlineKeyboard>["reply_markup"]["inline_keyboard"] = [];
+    if (PAYMENT_RECORD_ROLES.includes(user.role) && customer.orders.some((o) => o.balanceDue > 0)) {
+      rows.push([Markup.button.callback("💳 Записать оплату", `cl:pm:${customerId}`)]);
+    }
+    rows.push([Markup.button.callback("⬅️ Назад", "cl:l")]);
+
+    await this.reply(ctx, lines.join("\n"), Markup.inlineKeyboard(rows));
+    await this.ackCallback(ctx);
+  }
+
+  private async showPaymentSalePicker(ctx: any, user: AuthenticatedUser, customerId: string) {
+    if (!PAYMENT_RECORD_ROLES.includes(user.role)) {
+      await this.reply(ctx, "У вас нет прав на эту операцию.");
+      await this.ackCallback(ctx);
+      return;
+    }
+    const customer = await this.customersService.findOne(user.organizationId, customerId);
+    const unpaid = customer.orders.filter((o) => o.balanceDue > 0);
+    if (unpaid.length === 0) {
+      await this.reply(ctx, "Неоплаченных продаж нет.");
+      await this.ackCallback(ctx);
+      return;
+    }
+    const rows = unpaid
+      .slice(0, MAX_LIST_ITEMS)
+      .map((o) => [Markup.button.callback(`${formatDate(o.soldAt)} — долг ${formatMoney(o.balanceDue)}`, `cl:p:${o.saleId}`)]);
+    rows.push([Markup.button.callback("⬅️ Назад", `cl:d:${customerId}`)]);
+    await this.reply(ctx, "Выберите продажу для оплаты:", Markup.inlineKeyboard(rows));
+    await this.ackCallback(ctx);
+  }
+
+  // Sets up the wizard's one remaining step (free-text amount) — onText's
+  // "payment_amount" branch stages and confirms the actual write, same
+  // idempotent pending-action pattern the stock wizards use.
+  private async pickSaleForPayment(ctx: any, user: AuthenticatedUser, saleId: string) {
+    if (!PAYMENT_RECORD_ROLES.includes(user.role)) {
+      await this.reply(ctx, "У вас нет прав на эту операцию.");
+      await this.ackCallback(ctx);
+      return;
+    }
+    const sale = await this.salesService.findOne(user, saleId);
+    const chatId = String(ctx.chat.id);
+    await this.chatState.set(chatId, user.id, "payment_amount", {
+      saleId: sale.id,
+      customerName: sale.customerName ?? "Розница",
+      balanceDue: sale.balanceDue,
+    });
+    await this.reply(ctx, `Долг по продаже: ${formatMoney(sale.balanceDue)}\nВведите сумму оплаты:`);
+    await this.ackCallback(ctx);
+  }
+
+  // ---- finance ------------------------------------------------------------------
+
+  private async assertFinanceAccess(ctx: any, user: AuthenticatedUser): Promise<boolean> {
+    if (FINANCE_VIEW_ROLES.includes(user.role)) return true;
+    await this.reply(ctx, "У вас нет доступа к этому разделу.");
+    await this.ackCallback(ctx);
+    return false;
+  }
+
+  private async showFinanceMenu(ctx: any, user: AuthenticatedUser) {
+    if (!(await this.assertFinanceAccess(ctx, user))) return;
+    await this.replyOrEdit(
+      ctx,
+      "💵 <b>Финансы</b>",
+      Markup.inlineKeyboard([
+        [Markup.button.callback("💰 Баланс счетов", "fn:acc")],
+        [Markup.button.callback("💵 Cash Flow", "fn:cf")],
+        [Markup.button.callback("📄 Расходы", "fn:exp")],
+        [Markup.button.callback("📊 P&L", "fn:pnl")],
+        [Markup.button.callback("📈 ДЗ/КЗ", "fn:ar")],
+        [Markup.button.callback("⚖️ Точка безубыточности", "fn:be")],
+        [Markup.button.callback("⬅️ Назад", "m")],
+      ]),
+    );
+    await this.ackCallback(ctx);
+  }
+
+  private async showAccounts(ctx: any, user: AuthenticatedUser) {
+    if (!(await this.assertFinanceAccess(ctx, user))) return;
+    const accounts = await this.cashAccountsService.findAll(user.organizationId);
+    if (accounts.length === 0) {
+      await this.reply(ctx, "Счетов пока нет.");
+      await this.ackCallback(ctx);
+      return;
+    }
+    const lines = accounts.map(
+      (a) => `${CASH_ACCOUNT_TYPE_LABELS_RU[a.type]} «${escapeHtml(a.name)}»: ${formatMoney(a.currentBalance)}`,
+    );
+    await this.reply(ctx, `💰 <b>Баланс счетов</b>\n\n${lines.join("\n")}`);
+    await this.ackCallback(ctx);
+  }
+
+  private async showCashFlow(ctx: any, user: AuthenticatedUser) {
+    if (!(await this.assertFinanceAccess(ctx, user))) return;
+    const movements = await this.cashMovementsService.findAll(user.organizationId, { limit: 15 });
+    if (movements.length === 0) {
+      await this.reply(ctx, "Движений пока нет.");
+      await this.ackCallback(ctx);
+      return;
+    }
+    const lines = movements.map((m) => {
+      const isInflow = CASH_MOVEMENT_INFLOW_TYPES.includes(m.type);
+      const displayAmount = m.type === CashMovementType.ADJUSTMENT ? m.amount : isInflow ? m.amount : -m.amount;
+      const sign = displayAmount >= 0 ? "+" : "";
+      return `${formatDateTime(m.occurredAt)} — ${CASH_MOVEMENT_TYPE_LABELS_RU[m.type]} (${escapeHtml(m.accountName)}): ${sign}${formatMoney(displayAmount)}`;
+    });
+    await this.reply(ctx, `💵 <b>Cash Flow — последние движения</b>\n\n${lines.join("\n")}`);
+    await this.ackCallback(ctx);
+  }
+
+  private async showExpenses(ctx: any, user: AuthenticatedUser) {
+    if (!(await this.assertFinanceAccess(ctx, user))) return;
+    const expenses = await this.financeService.listExpenses(user.organizationId);
+    const shown = expenses.slice(0, 15);
+    if (shown.length === 0) {
+      await this.reply(ctx, "Расходов пока нет.");
+      await this.ackCallback(ctx);
+      return;
+    }
+    const lines = shown.map(
+      (e) =>
+        `${formatDate(e.incurredOn)} — ${escapeHtml(e.categoryName ?? "Без категории")}: ${formatMoney(e.amount)} (${EXPENSE_STATUS_LABELS_RU[e.status]})`,
+    );
+    await this.reply(ctx, `📄 <b>Расходы</b>\n\n${lines.join("\n")}`);
+    await this.ackCallback(ctx);
+  }
+
+  private async showPnl(ctx: any, user: AuthenticatedUser) {
+    if (!(await this.assertFinanceAccess(ctx, user))) return;
+    const now = new Date();
+    const from7 = new Date(now);
+    from7.setDate(from7.getDate() - 7);
+    from7.setHours(0, 0, 0, 0);
+    const from30 = new Date(now);
+    from30.setDate(from30.getDate() - 30);
+    from30.setHours(0, 0, 0, 0);
+
+    const [pnl7, pnl30] = await Promise.all([
+      this.financeService.getProfitAndLoss(user.organizationId, from7, now),
+      this.financeService.getProfitAndLoss(user.organizationId, from30, now),
+    ]);
+
+    const block = (label: string, p: typeof pnl7) =>
+      `<b>${label}</b>\nВыручка: ${formatMoney(p.revenue)}\nСебестоимость: ${formatMoney(p.cogs)}\nВаловая прибыль: ${formatMoney(p.grossProfit)}\nРасходы: ${formatMoney(p.expensesTotal)}\nОперационная прибыль: ${formatMoney(p.operatingProfit)}`;
+
+    await this.reply(ctx, `📊 <b>P&L</b>\n\n${block("За 7 дней", pnl7)}\n\n${block("За 30 дней", pnl30)}`);
+    await this.ackCallback(ctx);
+  }
+
+  private async showAccountsReceivablePayable(ctx: any, user: AuthenticatedUser) {
+    if (!(await this.assertFinanceAccess(ctx, user))) return;
+    const dashboard = await this.financeService.getDashboard(user.organizationId);
+    await this.reply(
+      ctx,
+      `📈 <b>ДЗ/КЗ</b>\n\nДебиторская задолженность: ${formatMoney(dashboard.accountsReceivable)}\nКредиторская задолженность: ${formatMoney(dashboard.accountsPayable)}`,
+    );
+    await this.ackCallback(ctx);
+  }
+
+  private async showBreakEven(ctx: any, user: AuthenticatedUser) {
+    if (!(await this.assertFinanceAccess(ctx, user))) return;
+    const now = new Date();
+    const from = new Date(now);
+    from.setDate(from.getDate() - 30);
+    from.setHours(0, 0, 0, 0);
+    const be = await this.financeService.getBreakEven(user.organizationId, from, now);
+
+    if (be.status !== BreakEvenStatus.OK) {
+      await this.reply(ctx, `⚖️ <b>Точка безубыточности (30 дней)</b>\n\n${BREAK_EVEN_STATUS_LABELS_RU[be.status]}`);
+      await this.ackCallback(ctx);
+      return;
+    }
+
+    await this.reply(
+      ctx,
+      `⚖️ <b>Точка безубыточности (30 дней)</b>\n\n` +
+        `Выручка нужна: ${formatMoney(be.breakEvenRevenue ?? 0)}\n` +
+        `Маржинальная прибыль: ${formatMoney(be.contributionMargin)} (${be.contributionMarginPercent !== null ? be.contributionMarginPercent.toFixed(1) : "—"}%)\n` +
+        `Постоянные затраты: ${formatMoney(be.fixedExpensesTotal)}`,
+    );
     await this.ackCallback(ctx);
   }
 

@@ -4,6 +4,8 @@ import { SalesModule } from "../sales/sales.module";
 import { LocationsModule } from "../locations/locations.module";
 import { ProductsModule } from "../products/products.module";
 import { NotificationsModule } from "../notifications/notifications.module";
+import { CustomersModule } from "../customers/customers.module";
+import { FinanceModule } from "../finance/finance.module";
 import { TelegramController } from "./telegram.controller";
 import { TelegramBotService } from "./telegram-bot.service";
 import { TelegramAuthResolver } from "./telegram-auth.resolver";
@@ -13,7 +15,15 @@ import { TelegramChatStateService } from "./telegram-chat-state.service";
 import { TelegramNotificationsCron } from "./telegram-notifications.cron";
 
 @Module({
-  imports: [InventoryModule, SalesModule, LocationsModule, ProductsModule, NotificationsModule],
+  imports: [
+    InventoryModule,
+    SalesModule,
+    LocationsModule,
+    ProductsModule,
+    NotificationsModule,
+    CustomersModule,
+    FinanceModule,
+  ],
   controllers: [TelegramController],
   providers: [
     TelegramBotService,
