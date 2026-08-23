@@ -938,26 +938,54 @@ export class TelegramBotService implements OnModuleInit {
     await this.ackCallback(ctx);
   }
 
+  // Mirrors the web Finance page's Факт/План split for this metric (see
+  // apps/web .../finance/page.tsx's breakEvenMode toggle) — same two
+  // figures, same terminology, just both shown at once instead of behind a
+  // tab switch. "Точка безубыточности" names the value itself; never
+  // paraphrase it (see CLAUDE.md's non-negotiable terminology rule).
   private async showBreakEven(ctx: any, user: AuthenticatedUser) {
     if (!(await this.assertFinanceAccess(ctx, user))) return;
     const now = new Date();
     const from = new Date(now);
     from.setDate(from.getDate() - 30);
     from.setHours(0, 0, 0, 0);
-    const be = await this.financeService.getBreakEven(user.organizationId, from, now);
 
-    if (be.status !== BreakEvenStatus.OK) {
-      await this.reply(ctx, `⚖️ <b>Точка безубыточности (30 дней)</b>\n\n${BREAK_EVEN_STATUS_LABELS_RU[be.status]}`);
-      await this.ackCallback(ctx);
-      return;
+    const [fact, plan] = await Promise.all([
+      this.financeService.getBreakEven(user.organizationId, from, now),
+      this.financeService.getPlannedBreakEven(user.organizationId, from, now),
+    ]);
+
+    const factBlock =
+      fact.status !== BreakEvenStatus.OK
+        ? BREAK_EVEN_STATUS_LABELS_RU[fact.status]
+        : `Выручка: ${formatMoney(fact.revenue)}\n` +
+          `Переменные затраты: ${formatMoney(fact.cogs + fact.variableExpensesTotal)}\n` +
+          `Постоянные затраты: ${formatMoney(fact.fixedExpensesTotal)}\n` +
+          `Маржинальная прибыль: ${formatMoney(fact.contributionMargin)}\n` +
+          `Маржинальность: ${fact.contributionMarginPercent !== null ? fact.contributionMarginPercent.toFixed(1) : "—"}%\n` +
+          `<b>Точка безубыточности: ${formatMoney(fact.breakEvenRevenue ?? 0)}</b>`;
+
+    let planBlock: string;
+    if (plan.status !== BreakEvenStatus.OK) {
+      planBlock = BREAK_EVEN_STATUS_LABELS_RU[plan.status];
+    } else {
+      planBlock =
+        `Плановый ФЗП: ${formatMoney(plan.payroll.total)}/мес.\n` +
+        `Прочие постоянные затраты: ${formatMoney(plan.plannedOtherFixedTotal)}/мес.\n` +
+        `Постоянные затраты, всего: ${formatMoney(plan.plannedFixedTotal)}/мес.\n` +
+        `Маржинальность: ${plan.contributionMarginPercent !== null ? plan.contributionMarginPercent.toFixed(1) : "—"}%\n` +
+        `<b>Точка безубыточности: ${formatMoney(plan.breakEvenRevenue ?? 0)}/мес.</b>`;
+      if (plan.payroll.exclusions.length > 0) {
+        const excludedCount = plan.payroll.exclusions.reduce((sum, ex) => sum + ex.employeeCount, 0);
+        planBlock += `\n\n⚠️ Не учтено в плановом ФЗП: ${excludedCount} сотр.`;
+      }
     }
 
     await this.reply(
       ctx,
-      `⚖️ <b>Точка безубыточности (30 дней)</b>\n\n` +
-        `Выручка нужна: ${formatMoney(be.breakEvenRevenue ?? 0)}\n` +
-        `Маржинальная прибыль: ${formatMoney(be.contributionMargin)} (${be.contributionMarginPercent !== null ? be.contributionMarginPercent.toFixed(1) : "—"}%)\n` +
-        `Постоянные затраты: ${formatMoney(be.fixedExpensesTotal)}`,
+      `⚖️ <b>Точка безубыточности</b>\n\n` +
+        `<b>Факт (30 дней)</b>\n${factBlock}\n\n` +
+        `<b>План (месяц)</b>\n${planBlock}`,
     );
     await this.ackCallback(ctx);
   }
