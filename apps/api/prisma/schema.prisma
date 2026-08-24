@@ -1231,7 +1231,15 @@ model TelegramChatState {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   step      String?
   data      Json?
-  updatedAt DateTime @updatedAt
+  // The bot's single "current screen" message in this chat — every reply
+  // edits this message in place instead of sending a new one, so old,
+  // superseded prompts stop existing as live, still-tappable buttons rather
+  // than needing a runtime guard against them. Survives step/data being
+  // cleared between wizards (menu navigation between wizards should still
+  // edit the same message), so `clear()` never deletes this row, only
+  // resets step/data.
+  lastMessageId String?
+  updatedAt     DateTime @updatedAt
 
   @@map("telegram_chat_states")
 }

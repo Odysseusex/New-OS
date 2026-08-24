@@ -325,8 +325,7 @@ export class TelegramBotService implements OnModuleInit {
 
       const user = await this.authResolver.resolve(chatId);
       if (!user) return;
-      await this.reply(ctx, `✅ Аккаунт привязан: <b>${escapeHtml(user.fullName)}</b>`);
-      await this.showMainMenu(ctx, user);
+      await this.showMainMenu(ctx, user, `✅ Аккаунт привязан: <b>${escapeHtml(user.fullName)}</b>`);
     } catch (err) {
       this.logger.error("Telegram /start error", err instanceof Error ? err.stack : String(err));
       await this.reply(ctx, "⚠️ Произошла ошибка. Попробуйте ещё раз чуть позже.").catch(() => {});
@@ -410,7 +409,7 @@ export class TelegramBotService implements OnModuleInit {
 
   // ---- menus ---------------------------------------------------------------
 
-  private async showMainMenu(ctx: any, user: AuthenticatedUser) {
+  private async showMainMenu(ctx: any, user: AuthenticatedUser, banner?: string): Promise<void> {
     const rows = [
       [Markup.button.callback("📦 Склад", "s:m")],
       [Markup.button.callback("💰 Продажи", "l:m")],
@@ -425,11 +424,8 @@ export class TelegramBotService implements OnModuleInit {
       rows.push([Markup.button.callback("🏭 Производство", "pr:m")]);
     }
     rows.push([Markup.button.callback("📊 Аналитика", "an:m")]);
-    await this.replyOrEdit(
-      ctx,
-      `Здравствуйте, <b>${escapeHtml(user.fullName)}</b>. Выберите раздел:`,
-      Markup.inlineKeyboard(rows),
-    );
+    const greeting = `Здравствуйте, <b>${escapeHtml(user.fullName)}</b>. Выберите раздел:`;
+    await this.reply(ctx, banner ? `${banner}\n\n${greeting}` : greeting, Markup.inlineKeyboard(rows));
     await this.ackCallback(ctx);
   }
 
@@ -443,7 +439,7 @@ export class TelegramBotService implements OnModuleInit {
       rows.push([Markup.button.callback("➕ Приход", "s:r:0"), Markup.button.callback("➖ Списание", "s:w:0")]);
     }
     rows.push([Markup.button.callback("⬅️ Назад", "m")]);
-    await this.replyOrEdit(ctx, "📦 <b>Склад</b>", Markup.inlineKeyboard(rows));
+    await this.reply(ctx, "📦 <b>Склад</b>", Markup.inlineKeyboard(rows));
     await this.ackCallback(ctx);
   }
 
@@ -459,7 +455,7 @@ export class TelegramBotService implements OnModuleInit {
       rows.push([Markup.button.callback("➕ Новая продажа", "l:n")]);
     }
     rows.push([Markup.button.callback("⬅️ Назад", "m")]);
-    await this.replyOrEdit(ctx, "💰 <b>Продажи</b>", Markup.inlineKeyboard(rows));
+    await this.reply(ctx, "💰 <b>Продажи</b>", Markup.inlineKeyboard(rows));
     await this.ackCallback(ctx);
   }
 
@@ -798,12 +794,12 @@ export class TelegramBotService implements OnModuleInit {
   private async confirmAction(ctx: any, user: AuthenticatedUser, actionId: string) {
     const claim = await this.pendingActions.claim(actionId);
     if (claim.status === "not_found") {
-      await this.editOrReply(ctx, "Операция не найдена.");
+      await this.reply(ctx, "Операция не найдена.");
       await this.ackCallback(ctx);
       return;
     }
     if (claim.status === "expired") {
-      await this.editOrReply(ctx, "⏱ Время подтверждения истекло. Начните заново.");
+      await this.reply(ctx, "⏱ Время подтверждения истекло. Начните заново.");
       await this.ackCallback(ctx);
       return;
     }
@@ -814,7 +810,7 @@ export class TelegramBotService implements OnModuleInit {
           : claim.action.status === "CANCELLED"
             ? "Операция отменена."
             : "Операция уже обрабатывается.";
-      await this.editOrReply(ctx, already);
+      await this.reply(ctx, already);
       await this.ackCallback(ctx);
       return;
     }
@@ -822,7 +818,7 @@ export class TelegramBotService implements OnModuleInit {
     // claim.status === "claimed" — only this request executes the write.
     if (claim.action.userId !== user.id) {
       await this.pendingActions.markFailed(actionId);
-      await this.editOrReply(ctx, "⚠️ Операция принадлежит другому пользователю.");
+      await this.reply(ctx, "⚠️ Операция принадлежит другому пользователю.");
       await this.ackCallback(ctx);
       return;
     }
@@ -933,7 +929,7 @@ export class TelegramBotService implements OnModuleInit {
     }
 
     try {
-      await this.editOrReply(ctx, resultMessage);
+      await this.reply(ctx, resultMessage);
     } catch (err) {
       this.logger.error(
         "Failed to send confirmation result (operation outcome above is still final)",
@@ -948,7 +944,7 @@ export class TelegramBotService implements OnModuleInit {
     if (claim.status === "claimed") {
       await this.pendingActions.markFailed(actionId);
     }
-    await this.editOrReply(ctx, "Отменено.");
+    await this.reply(ctx, "Отменено.");
     await this.ackCallback(ctx);
   }
 
@@ -1009,7 +1005,7 @@ export class TelegramBotService implements OnModuleInit {
 
   private async showCustomersMenu(ctx: any, user: AuthenticatedUser) {
     if (!(await this.assertCustomerAccess(ctx, user))) return;
-    await this.replyOrEdit(
+    await this.reply(
       ctx,
       "👥 <b>Клиенты</b>",
       Markup.inlineKeyboard([
@@ -1119,7 +1115,7 @@ export class TelegramBotService implements OnModuleInit {
 
   private async showFinanceMenu(ctx: any, user: AuthenticatedUser) {
     if (!(await this.assertFinanceAccess(ctx, user))) return;
-    await this.replyOrEdit(
+    await this.reply(
       ctx,
       "💵 <b>Финансы</b>",
       Markup.inlineKeyboard([
@@ -1287,7 +1283,7 @@ export class TelegramBotService implements OnModuleInit {
       rows.push([Markup.button.callback("➕ Новое задание", "pr:n")]);
     }
     rows.push([Markup.button.callback("⬅️ Назад", "m")]);
-    await this.replyOrEdit(ctx, "🏭 <b>Производство</b>", Markup.inlineKeyboard(rows));
+    await this.reply(ctx, "🏭 <b>Производство</b>", Markup.inlineKeyboard(rows));
     await this.ackCallback(ctx);
   }
 
@@ -1727,7 +1723,7 @@ export class TelegramBotService implements OnModuleInit {
   // ---- analytics ------------------------------------------------------------------
 
   private async showAnalyticsMenu(ctx: any, user: AuthenticatedUser) {
-    await this.replyOrEdit(
+    await this.reply(
       ctx,
       "📊 <b>Аналитика</b>",
       Markup.inlineKeyboard([
@@ -1776,34 +1772,43 @@ export class TelegramBotService implements OnModuleInit {
 
   // ---- low-level helpers --------------------------------------------------------
 
-  private async reply(ctx: any, text: string, extra?: ReturnType<typeof Markup.inlineKeyboard>) {
-    await ctx.reply(text, { parse_mode: "HTML", ...(extra ?? {}) });
-  }
+  // Every interactive reply — menus, wizard prompts, confirm cards, reports
+  // — goes through here, and keeps ONE evolving "screen" message per chat
+  // rather than sending a new message on every step. That's not just
+  // tidiness: Telegram never disables old inline keyboards, so a chat full
+  // of past steps is a chat full of live, still-tappable buttons pointing
+  // at stale state (see requireStep() — this is what makes it rarely
+  // trigger in practice instead of being the everyday experience).
+  //
+  // Works uniformly whether `ctx` is a callback (button tap) or a plain
+  // message (typed text) — unlike Telegraf's own ctx.editMessageText, which
+  // only knows how to edit "the message this callback's button is on" and
+  // is useless when the current update is a typed reply instead of a tap.
+  //
+  // Push notifications (see sendMessage()) deliberately do NOT go through
+  // this — they're unsolicited and can arrive mid-wizard, so folding one
+  // into the tracked "current screen" would silently swap out whatever the
+  // person was in the middle of doing.
+  private async reply(ctx: any, text: string, extra?: ReturnType<typeof Markup.inlineKeyboard>): Promise<void> {
+    if (!this.bot) return;
+    const chatId = String(ctx.chat?.id ?? ctx.from?.id);
+    const payload = { parse_mode: "HTML" as const, ...(extra ?? {}) };
 
-  // Menu navigation edits the existing card in place when possible (nicer
-  // UX, avoids a growing wall of duplicate menu messages); falls back to a
-  // new message when there's nothing to edit (e.g. after /start).
-  private async replyOrEdit(ctx: any, text: string, extra: ReturnType<typeof Markup.inlineKeyboard>) {
-    if (ctx.callbackQuery) {
+    const state = await this.chatState.get(chatId);
+    if (state?.lastMessageId) {
       try {
-        await ctx.editMessageText(text, { parse_mode: "HTML", ...extra });
+        await this.bot.telegram.editMessageText(chatId, Number(state.lastMessageId), undefined, text, payload);
         return;
-      } catch {
-        // fall through to a fresh message (e.g. message too old to edit)
+      } catch (err) {
+        if (err instanceof Error && err.message.includes("message is not modified")) return;
+        // message too old / deleted / never existed — fall through to a fresh send
       }
     }
-    await ctx.reply(text, { parse_mode: "HTML", ...extra });
-  }
 
-  private async editOrReply(ctx: any, text: string) {
-    if (ctx.callbackQuery) {
-      try {
-        await ctx.editMessageText(text, { parse_mode: "HTML" });
-        return;
-      } catch {
-        // fall through
-      }
+    const user = await this.authResolver.resolve(chatId);
+    const sent = await this.bot.telegram.sendMessage(chatId, text, payload);
+    if (user) {
+      await this.chatState.trackMessage(chatId, user.id, String(sent.message_id));
     }
-    await ctx.reply(text, { parse_mode: "HTML" });
   }
 }

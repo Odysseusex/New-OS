@@ -31,7 +31,22 @@ export class TelegramChatStateService {
     });
   }
 
+  // Resets the wizard step/data only — deliberately NOT a delete. The row's
+  // lastMessageId must survive a finished/cancelled wizard, since the very
+  // next interaction (e.g. tapping the main menu) should still edit that
+  // same "current screen" message rather than starting a fresh one.
   async clear(chatId: string): Promise<void> {
-    await this.prisma.telegramChatState.deleteMany({ where: { chatId } });
+    await this.prisma.telegramChatState.updateMany({ where: { chatId }, data: { step: null } });
+  }
+
+  // Records which message is this chat's current "screen" to edit next
+  // time. Upserts because the very first message a chat ever receives has
+  // no row yet (nothing has called set() for it).
+  async trackMessage(chatId: string, userId: string, messageId: string): Promise<void> {
+    await this.prisma.telegramChatState.upsert({
+      where: { chatId },
+      create: { chatId, userId, lastMessageId: messageId },
+      update: { lastMessageId: messageId },
+    });
   }
 }
