@@ -285,6 +285,10 @@ export class TelegramBotService implements OnModuleInit {
 
     bot.action(/^c:(.+)$/, async (ctx) => this.withAuth(ctx, (user) => this.confirmAction(ctx, user, ctx.match[1])));
     bot.action(/^x:(.+)$/, async (ctx) => this.withAuth(ctx, (user) => this.cancelAction(ctx, user, ctx.match[1])));
+    // A free-text prompt (enter a quantity/amount) has nothing else to tap —
+    // this is its escape hatch, so someone who changes their mind mid-wizard
+    // isn't stuck either typing something or hunting for a slash command.
+    bot.action("wz:x", async (ctx) => this.withAuth(ctx, (user) => this.showMainMenu(ctx, user, "Отменено.")));
 
     bot.on("text", async (ctx) => this.withAuth(ctx, (user) => this.onText(ctx, user, ctx.message.text)));
   }
@@ -339,6 +343,13 @@ export class TelegramBotService implements OnModuleInit {
   // Context.assert), before a Promise even exists to attach `.catch()` to —
   // so that guard-and-catch pattern silently didn't protect anything. The
   // only correct check is the update's actual `callbackQuery` field.
+  // Attached to every bare free-text prompt (enter a quantity/amount) —
+  // those have no other button, so this is the only way out besides typing
+  // a valid answer.
+  private cancelKeyboard() {
+    return Markup.inlineKeyboard([[Markup.button.callback("❌ Отмена", "wz:x")]]);
+  }
+
   private async ackCallback(ctx: any): Promise<void> {
     if (!ctx.callbackQuery) return;
     try {
@@ -365,7 +376,11 @@ export class TelegramBotService implements OnModuleInit {
   ): Promise<Record<string, unknown> | null> {
     const state = await this.chatState.get(chatId);
     if (!state?.step || !expectedSteps.includes(state.step)) {
-      await this.reply(ctx, "Этот шаг уже не актуален — сценарий завершён или начат заново. Начните действие заново из меню.");
+      await this.reply(
+        ctx,
+        "Этот шаг уже не актуален — сценарий завершён или начат заново.",
+        Markup.inlineKeyboard([[Markup.button.callback("🏠 Главное меню", "m")]]),
+      );
       return null;
     }
     return (state.data as Record<string, unknown>) ?? {};
@@ -410,6 +425,11 @@ export class TelegramBotService implements OnModuleInit {
   // ---- menus ---------------------------------------------------------------
 
   private async showMainMenu(ctx: any, user: AuthenticatedUser, banner?: string): Promise<void> {
+    // Landing on any top-level menu means abandoning whatever wizard step
+    // (if any) was in progress — without this, a stray text message sent
+    // later for an unrelated reason could silently be swallowed into an
+    // old, forgotten flow still waiting for a number.
+    await this.chatState.clear(String(ctx.chat?.id ?? ctx.from?.id));
     const rows = [
       [Markup.button.callback("📦 Склад", "s:m")],
       [Markup.button.callback("💰 Продажи", "l:m")],
@@ -430,6 +450,7 @@ export class TelegramBotService implements OnModuleInit {
   }
 
   private async showStockMenu(ctx: any, user: AuthenticatedUser) {
+    await this.chatState.clear(String(ctx.chat?.id ?? ctx.from?.id));
     const rows = [
       [Markup.button.callback("📋 Остатки", "s:lv")],
       [Markup.button.callback("⚠️ Низкие остатки", "s:lw")],
@@ -444,6 +465,7 @@ export class TelegramBotService implements OnModuleInit {
   }
 
   private async showSalesMenu(ctx: any, user: AuthenticatedUser) {
+    await this.chatState.clear(String(ctx.chat?.id ?? ctx.from?.id));
     const rows = [
       [Markup.button.callback("📅 Сегодня", "l:t")],
       [Markup.button.callback("🗓 7 дней", "l:p:7"), Markup.button.callback("🗓 30 дней", "l:p:30")],
@@ -556,7 +578,7 @@ export class TelegramBotService implements OnModuleInit {
       return;
     }
     await this.chatState.set(chatId, user.id, `${kind}_qty`, { ...data, productId, productName: product.name });
-    await this.reply(ctx, `Введите количество (${product.unit}) для «${escapeHtml(product.name)}»:`);
+    await this.reply(ctx, `Введите количество (${product.unit}) для «${escapeHtml(product.name)}»:`, this.cancelKeyboard());
     await this.ackCallback(ctx);
   }
 
@@ -1005,6 +1027,7 @@ export class TelegramBotService implements OnModuleInit {
 
   private async showCustomersMenu(ctx: any, user: AuthenticatedUser) {
     if (!(await this.assertCustomerAccess(ctx, user))) return;
+    await this.chatState.clear(String(ctx.chat?.id ?? ctx.from?.id));
     await this.reply(
       ctx,
       "👥 <b>Клиенты</b>",
@@ -1100,7 +1123,7 @@ export class TelegramBotService implements OnModuleInit {
       customerName: sale.customerName ?? "Розница",
       balanceDue: sale.balanceDue,
     });
-    await this.reply(ctx, `Долг по продаже: ${formatMoney(sale.balanceDue)}\nВведите сумму оплаты:`);
+    await this.reply(ctx, `Долг по продаже: ${formatMoney(sale.balanceDue)}\nВведите сумму оплаты:`, this.cancelKeyboard());
     await this.ackCallback(ctx);
   }
 
@@ -1115,6 +1138,7 @@ export class TelegramBotService implements OnModuleInit {
 
   private async showFinanceMenu(ctx: any, user: AuthenticatedUser) {
     if (!(await this.assertFinanceAccess(ctx, user))) return;
+    await this.chatState.clear(String(ctx.chat?.id ?? ctx.from?.id));
     await this.reply(
       ctx,
       "💵 <b>Финансы</b>",
@@ -1275,6 +1299,7 @@ export class TelegramBotService implements OnModuleInit {
   }
 
   private async showProductionMenu(ctx: any, user: AuthenticatedUser) {
+    await this.chatState.clear(String(ctx.chat?.id ?? ctx.from?.id));
     const rows = [
       [Markup.button.callback("📋 Активные задания", "pr:l")],
       [Markup.button.callback("✅ Произведено сегодня", "pr:t")],
@@ -1438,6 +1463,7 @@ export class TelegramBotService implements OnModuleInit {
     await this.reply(
       ctx,
       `Сколько планируем произвести? Укажите количество в «${escapeHtml(recipe.productUnit)}»:`,
+      this.cancelKeyboard(),
     );
     await this.ackCallback(ctx);
   }
@@ -1477,6 +1503,7 @@ export class TelegramBotService implements OnModuleInit {
     await this.reply(
       ctx,
       `План был ${formatQuantity(batch.plannedQuantity)} ${escapeHtml(batch.unit)}.\nСколько произвели фактически?`,
+      this.cancelKeyboard(),
     );
     await this.ackCallback(ctx);
   }
@@ -1614,6 +1641,7 @@ export class TelegramBotService implements OnModuleInit {
     await this.reply(
       ctx,
       `«${escapeHtml(product.name)}» — ${formatMoney(product.price)} за ${escapeHtml(product.unit)}.\nСколько продаём?`,
+      this.cancelKeyboard(),
     );
     await this.ackCallback(ctx);
   }
@@ -1723,6 +1751,7 @@ export class TelegramBotService implements OnModuleInit {
   // ---- analytics ------------------------------------------------------------------
 
   private async showAnalyticsMenu(ctx: any, user: AuthenticatedUser) {
+    await this.chatState.clear(String(ctx.chat?.id ?? ctx.from?.id));
     await this.reply(
       ctx,
       "📊 <b>Аналитика</b>",
