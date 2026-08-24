@@ -349,6 +349,29 @@ export class TelegramBotService implements OnModuleInit {
     }
   }
 
+  // Telegram never disables old inline keyboards — every button a wizard
+  // ever sent stays tappable forever, even after that wizard finished or
+  // was abandoned. Chat state is single-slot per chat (one "current step"),
+  // so tapping a stale button from an earlier flow resumes with whatever
+  // (possibly unrelated, possibly empty) data currently sits there instead
+  // of what that button's own flow originally collected. Every callback
+  // handler that continues a wizard from chat state must go through this —
+  // it's what turned a stale "Что производим?" tap into a batch created
+  // with locationId literally the string "undefined" (Prisma FK violation)
+  // instead of a clean "start over" message.
+  private async requireStep(
+    ctx: any,
+    chatId: string,
+    ...expectedSteps: string[]
+  ): Promise<Record<string, unknown> | null> {
+    const state = await this.chatState.get(chatId);
+    if (!state?.step || !expectedSteps.includes(state.step)) {
+      await this.reply(ctx, "Этот шаг уже не актуален — сценарий завершён или начат заново. Начните действие заново из меню.");
+      return null;
+    }
+    return (state.data as Record<string, unknown>) ?? {};
+  }
+
   private async withAuth(ctx: any, handler: (user: AuthenticatedUser) => Promise<void>) {
     try {
       const chatId = String(ctx.chat?.id ?? ctx.from?.id);
@@ -503,6 +526,10 @@ export class TelegramBotService implements OnModuleInit {
 
   private async pickStockLocation(ctx: any, user: AuthenticatedUser, kind: "receive" | "writeoff", locationId: string) {
     const chatId = String(ctx.chat.id);
+    if (!(await this.requireStep(ctx, chatId, `${kind}_location`))) {
+      await this.ackCallback(ctx);
+      return;
+    }
     await this.chatState.set(chatId, user.id, `${kind}_product`, { locationId });
     await this.showProductPicker(ctx, user, kind);
     await this.ackCallback(ctx);
@@ -520,8 +547,11 @@ export class TelegramBotService implements OnModuleInit {
 
   private async pickStockProduct(ctx: any, user: AuthenticatedUser, kind: "receive" | "writeoff", productId: string) {
     const chatId = String(ctx.chat.id);
-    const state = await this.chatState.get(chatId);
-    const data = (state?.data as Record<string, unknown>) ?? {};
+    const data = await this.requireStep(ctx, chatId, `${kind}_product`);
+    if (!data) {
+      await this.ackCallback(ctx);
+      return;
+    }
     const products = await this.productsService.findAllForOrganization(user.organizationId);
     const product = products.find((p) => p.id === productId);
     if (!product) {
@@ -673,16 +703,22 @@ export class TelegramBotService implements OnModuleInit {
 
   private async skipComment(ctx: any, user: AuthenticatedUser, kind: "receive" | "writeoff") {
     const chatId = String(ctx.chat.id);
-    const state = await this.chatState.get(chatId);
-    const data = (state?.data as Record<string, unknown>) ?? {};
+    const data = await this.requireStep(ctx, chatId, `${kind}_comment`);
+    if (!data) {
+      await this.ackCallback(ctx);
+      return;
+    }
     await this.finishStockWizard(ctx, user, kind, data);
     await this.ackCallback(ctx);
   }
 
   private async pickWriteOffReason(ctx: any, user: AuthenticatedUser, writeOffReason: WriteOffReason) {
     const chatId = String(ctx.chat.id);
-    const state = await this.chatState.get(chatId);
-    const data = (state?.data as Record<string, unknown>) ?? {};
+    const data = await this.requireStep(ctx, chatId, "writeoff_reason");
+    if (!data) {
+      await this.ackCallback(ctx);
+      return;
+    }
     await this.chatState.set(chatId, user.id, "writeoff_comment", { ...data, writeOffReason });
     await this.reply(
       ctx,
@@ -1360,6 +1396,10 @@ export class TelegramBotService implements OnModuleInit {
   private async pickBatchLocation(ctx: any, user: AuthenticatedUser, locationId: string) {
     if (!(await this.assertProductionAccess(ctx, user))) return;
     const chatId = String(ctx.chat.id);
+    if (!(await this.requireStep(ctx, chatId, "batch_location"))) {
+      await this.ackCallback(ctx);
+      return;
+    }
     await this.chatState.set(chatId, user.id, "batch_recipe", { locationId });
     await this.showRecipePicker(ctx, user);
     await this.ackCallback(ctx);
@@ -1381,8 +1421,11 @@ export class TelegramBotService implements OnModuleInit {
   private async pickBatchRecipe(ctx: any, user: AuthenticatedUser, recipeId: string) {
     if (!(await this.assertProductionAccess(ctx, user))) return;
     const chatId = String(ctx.chat.id);
-    const state = await this.chatState.get(chatId);
-    const data = (state?.data as Record<string, unknown>) ?? {};
+    const data = await this.requireStep(ctx, chatId, "batch_recipe");
+    if (!data) {
+      await this.ackCallback(ctx);
+      return;
+    }
     const recipes = await this.recipesService.findAllForOrganization(user.organizationId);
     const recipe = recipes.find((r) => r.id === recipeId);
     if (!recipe) {
@@ -1470,6 +1513,10 @@ export class TelegramBotService implements OnModuleInit {
   private async pickSaleLocation(ctx: any, user: AuthenticatedUser, locationId: string) {
     if (!(await this.assertSaleCreateAccess(ctx, user))) return;
     const chatId = String(ctx.chat.id);
+    if (!(await this.requireStep(ctx, chatId, "sale_location"))) {
+      await this.ackCallback(ctx);
+      return;
+    }
     await this.chatState.set(chatId, user.id, "sale_customer", { locationId });
     await this.showSaleCustomerPicker(ctx, user);
     await this.ackCallback(ctx);
@@ -1492,8 +1539,11 @@ export class TelegramBotService implements OnModuleInit {
   private async pickSaleCustomer(ctx: any, user: AuthenticatedUser, customerIdOrRetail: string) {
     if (!(await this.assertSaleCreateAccess(ctx, user))) return;
     const chatId = String(ctx.chat.id);
-    const state = await this.chatState.get(chatId);
-    const data = (state?.data as Record<string, unknown>) ?? {};
+    const data = await this.requireStep(ctx, chatId, "sale_customer");
+    if (!data) {
+      await this.ackCallback(ctx);
+      return;
+    }
 
     let customerId: string | null = null;
     let customerName = "Розница";
@@ -1541,8 +1591,11 @@ export class TelegramBotService implements OnModuleInit {
   private async pickSaleProduct(ctx: any, user: AuthenticatedUser, productId: string) {
     if (!(await this.assertSaleCreateAccess(ctx, user))) return;
     const chatId = String(ctx.chat.id);
-    const state = await this.chatState.get(chatId);
-    const data = (state?.data as Record<string, unknown>) ?? {};
+    const data = await this.requireStep(ctx, chatId, "sale_cart");
+    if (!data) {
+      await this.ackCallback(ctx);
+      return;
+    }
     const products = await this.productsService.findAllForOrganization(user.organizationId);
     const product = products.find((p) => p.id === productId);
     if (!product) {
@@ -1606,8 +1659,11 @@ export class TelegramBotService implements OnModuleInit {
   private async pickSalePaymentMethod(ctx: any, user: AuthenticatedUser, method: PaymentMethod) {
     if (!(await this.assertSaleCreateAccess(ctx, user))) return;
     const chatId = String(ctx.chat.id);
-    const state = await this.chatState.get(chatId);
-    const data = (state?.data as Record<string, unknown>) ?? {};
+    const data = await this.requireStep(ctx, chatId, "sale_cart");
+    if (!data) {
+      await this.ackCallback(ctx);
+      return;
+    }
     await this.chatState.set(chatId, user.id, "sale_cart", { ...data, paymentMethod: method });
 
     // A retail sale is always settled in full (SalesService.create enforces
