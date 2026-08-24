@@ -350,6 +350,32 @@ export class TelegramBotService implements OnModuleInit {
     return Markup.inlineKeyboard([[Markup.button.callback("❌ Отмена", "wz:x")]]);
   }
 
+  // Where "🔁 Ещё раз" should send the user for each action type — the
+  // entry point of the same wizard (or, for start/complete, back to the
+  // active-batches list, since there's no single "next" batch to repeat).
+  private static readonly REPEAT_ACTION: Record<string, string> = {
+    "inventory.receive": "s:r:0",
+    "inventory.writeOff": "s:w:0",
+    "sales.recordPayment": "cl:l",
+    "production.create": "pr:n",
+    "production.start": "pr:l",
+    "production.complete": "pr:l",
+    "sales.create": "l:n",
+  };
+
+  // Attached to every confirm/cancel outcome message so the chat never
+  // dead-ends into "type /start to continue" — the exact friction the user
+  // reported after each production/stock/sale confirmation.
+  private resultKeyboard(actionType?: string) {
+    const rows: ReturnType<typeof Markup.button.callback>[][] = [];
+    const repeat = actionType ? TelegramBotService.REPEAT_ACTION[actionType] : undefined;
+    if (repeat) {
+      rows.push([Markup.button.callback("🔁 Ещё раз", repeat)]);
+    }
+    rows.push([Markup.button.callback("🏠 Главное меню", "m")]);
+    return Markup.inlineKeyboard(rows);
+  }
+
   private async ackCallback(ctx: any): Promise<void> {
     if (!ctx.callbackQuery) return;
     try {
@@ -816,12 +842,12 @@ export class TelegramBotService implements OnModuleInit {
   private async confirmAction(ctx: any, user: AuthenticatedUser, actionId: string) {
     const claim = await this.pendingActions.claim(actionId);
     if (claim.status === "not_found") {
-      await this.reply(ctx, "Операция не найдена.");
+      await this.reply(ctx, "Операция не найдена.", this.resultKeyboard());
       await this.ackCallback(ctx);
       return;
     }
     if (claim.status === "expired") {
-      await this.reply(ctx, "⏱ Время подтверждения истекло. Начните заново.");
+      await this.reply(ctx, "⏱ Время подтверждения истекло. Начните заново.", this.resultKeyboard());
       await this.ackCallback(ctx);
       return;
     }
@@ -832,7 +858,7 @@ export class TelegramBotService implements OnModuleInit {
           : claim.action.status === "CANCELLED"
             ? "Операция отменена."
             : "Операция уже обрабатывается.";
-      await this.reply(ctx, already);
+      await this.reply(ctx, already, this.resultKeyboard(claim.action.actionType));
       await this.ackCallback(ctx);
       return;
     }
@@ -840,7 +866,7 @@ export class TelegramBotService implements OnModuleInit {
     // claim.status === "claimed" — only this request executes the write.
     if (claim.action.userId !== user.id) {
       await this.pendingActions.markFailed(actionId);
-      await this.reply(ctx, "⚠️ Операция принадлежит другому пользователю.");
+      await this.reply(ctx, "⚠️ Операция принадлежит другому пользователю.", this.resultKeyboard());
       await this.ackCallback(ctx);
       return;
     }
@@ -951,7 +977,7 @@ export class TelegramBotService implements OnModuleInit {
     }
 
     try {
-      await this.reply(ctx, resultMessage);
+      await this.reply(ctx, resultMessage, this.resultKeyboard(claim.action.actionType));
     } catch (err) {
       this.logger.error(
         "Failed to send confirmation result (operation outcome above is still final)",
@@ -966,7 +992,8 @@ export class TelegramBotService implements OnModuleInit {
     if (claim.status === "claimed") {
       await this.pendingActions.markFailed(actionId);
     }
-    await this.reply(ctx, "Отменено.");
+    const actionType = claim.status === "claimed" || claim.status === "already" ? claim.action.actionType : undefined;
+    await this.reply(ctx, "Отменено.", this.resultKeyboard(actionType));
     await this.ackCallback(ctx);
   }
 
