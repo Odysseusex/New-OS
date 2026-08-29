@@ -1,3 +1,4 @@
+import { Unit } from "./catalog";
 import { PaymentStatus } from "./customers";
 import { PaymentMethod } from "./finance";
 
@@ -127,4 +128,63 @@ export interface SalesDemandAnalysisDto {
   // Breakdown by customer — meaningful whenever no single customerId filter
   // is active (i.e. "Все клиенты").
   byCustomer: SalesDemandByCustomerRowDto[];
+}
+
+// ---- Динамика продаж по клиенту ---------------------------------------------
+
+// One calendar day of shipments to a single customer. Days with no sales are
+// still present with zeros — a gap in the series would read as "no data" on a
+// chart when it actually means "ничего не отгружали".
+export interface SalesCustomerTrendPointDto {
+  // Calendar date in the reporting time zone, YYYY-MM-DD.
+  date: string;
+  quantity: number;
+  revenue: number;
+  salesCount: number;
+}
+
+// Best/worst are picked among days that actually had a shipment. Including
+// the zero-filled days would make "худший день" almost always a 0 — true but
+// useless, and the zeros are already visible on the chart itself.
+export interface SalesCustomerTrendExtremeDto {
+  date: string;
+  quantity: number;
+  revenue: number;
+}
+
+// The immediately preceding window of the same length. deltaPct is null when
+// the previous window has no baseline to divide by (see deltaPct()).
+export interface SalesCustomerTrendComparisonDto {
+  from: string;
+  to: string;
+  quantity: number;
+  revenue: number;
+  quantityDeltaPct: number | null;
+  revenueDeltaPct: number | null;
+}
+
+export interface SalesCustomerTrendDto {
+  customerId: string;
+  customerName: string;
+  from: string;
+  to: string;
+  // IANA zone the calendar days are bucketed by — the server runs in UTC, so
+  // without this the day boundaries would not match the owner's own day.
+  timeZone: string;
+  points: SalesCustomerTrendPointDto[];
+  totalQuantity: number;
+  totalRevenue: number;
+  salesCount: number;
+  // Denominator behind both averages: days in the range, excluding today when
+  // the range reaches it (same rule as SalesService.demandAnalysis).
+  completedDays: number;
+  avgQuantityPerDay: number | null;
+  avgRevenuePerDay: number | null;
+  bestDay: SalesCustomerTrendExtremeDto | null;
+  worstDay: SalesCustomerTrendExtremeDto | null;
+  // Distinct units across everything shipped in the range. More than one
+  // means totalQuantity adds up different units (шт + кг) and the "Шт."
+  // metric must be shown with a warning — revenue is always sound.
+  units: Unit[];
+  previous: SalesCustomerTrendComparisonDto;
 }

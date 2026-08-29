@@ -32,6 +32,16 @@ export function currentAndPreviousPeriod(days: number, endingAt: Date = new Date
   return { current: { from, to }, previous: { from: previousFrom, to: previousTo } };
 }
 
+// The window of the same length ending immediately before `from`. Unlike
+// currentAndPreviousPeriod above, this takes an arbitrary range rather than a
+// day count, for reports where the user picks their own from/to.
+export function previousRangeOf({ from, to }: PeriodRange): PeriodRange {
+  const spanMs = to.getTime() - from.getTime();
+  const previousTo = new Date(from.getTime() - 1);
+  const previousFrom = new Date(previousTo.getTime() - spanMs);
+  return { from: previousFrom, to: previousTo };
+}
+
 // Null instead of a number when the previous period has no baseline
 // (previous === 0) — reporting "+∞%" or silently treating it as 0% would
 // both be misleading. Callers must render "нет данных для сравнения".

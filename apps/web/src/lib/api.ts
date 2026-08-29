@@ -75,6 +75,7 @@ import type {
   RegionDto,
   SaleDetailDto,
   SaleDto,
+  SalesCustomerTrendDto,
   SalesDemandAnalysisDto,
   SalesReportDto,
   SalesSummaryDto,
@@ -245,6 +246,10 @@ export const api = {
           categoryId: opts?.categoryId,
           productId: opts?.productId,
         }),
+      ),
+    customerTrend: (customerId: string, from: string, to: string, locationId?: string) =>
+      request<SalesCustomerTrendDto>(
+        withQuery("/sales/customer-trend", { customerId, from, to, locationId }),
       ),
     findOne: (id: string) => request<SaleDetailDto>(`/sales/${id}`),
     create: (dto: CreateSaleRequestDto) =>

@@ -45,6 +45,15 @@ export function formatDate(date: Date | string): string {
   return dateFormatter.format(typeof date === "string" ? new Date(date) : date);
 }
 
+// For a bare "YYYY-MM-DD" that the server already resolved to a calendar day
+// (e.g. report buckets). Split by parts rather than через new Date(), which
+// would read it as UTC midnight and land on the previous day for any viewer
+// west of Greenwich.
+export function formatDayKey(isoDay: string): string {
+  const [year, month, day] = isoDay.split("-");
+  return `${day}.${month}.${year}`;
+}
+
 export function formatQuantity(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(3).replace(/\.?0+$/, "");
 }

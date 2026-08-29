@@ -11,22 +11,26 @@ import type {
   ProductDto,
   ProfitAndLossDto,
   QualitySummaryDto,
+  SalesCustomerTrendDto,
   SalesDemandAnalysisDto,
   SalesReportDto,
   StockLevelDto,
 } from "@bakery-os/shared";
 import {
+  CUSTOMER_VIEW_ROLES,
   FINANCE_VIEW_ROLES,
   HR_MANAGE_ROLES,
   ORG_WIDE_ROLES,
   ProductType,
   QUALITY_VIEW_ROLES,
+  UNIT_LABELS_RU,
   WRITE_OFF_REASON_LABELS_RU,
 } from "@bakery-os/shared";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { downloadCsv } from "@/lib/csv";
-import { formatAverage, formatMoney, formatQuantity } from "@/lib/format";
+import { formatAverage, formatDayKey, formatMoney, formatQuantity } from "@/lib/format";
+import { SalesTrendChart, type TrendMetric } from "@/components/sales-trend-chart";
 
 type ReportKey = "finance" | "sales" | "quality" | "hr" | "stock";
 type Period = "today" | "7d" | "30d" | "month";
@@ -271,6 +275,8 @@ function SalesReport({
   locationId: string;
   isOrgWide: boolean;
 }) {
+  const { user } = useAuth();
+  const canViewCustomers = user ? CUSTOMER_VIEW_ROLES.includes(user.role) : false;
   const [report, setReport] = useState<SalesReportDto | null>(null);
 
   useEffect(() => {
@@ -330,6 +336,11 @@ function SalesReport({
       </ReportCard>
 
       <SalesDemandCard period={period} locationId={locationId} />
+
+      {/* Requires a customer to be picked, and the customer list itself is
+          gated on CUSTOMER_VIEW_ROLES — without them the card could only ever
+          show an empty dropdown, so hide it rather than render a dead control. */}
+      {canViewCustomers && <CustomerSalesTrendCard locationId={locationId} />}
     </div>
   );
 }
@@ -475,6 +486,238 @@ function SalesDemandCard({ period, locationId }: { period: Period; locationId: s
           formatMoney(r.revenue),
         ])}
       />
+    </ReportCard>
+  );
+}
+
+// How far back the trend chart looks. Deliberately its own control rather than
+// the tab-level period switcher: that one is shared by all five report tabs,
+// and this card is the only place that needs 3 months / a custom range.
+type TrendPeriod = "today" | "7d" | "30d" | "month" | "3m" | "custom";
+
+const TREND_PERIOD_LABELS: Record<TrendPeriod, string> = {
+  today: "Сегодня",
+  "7d": "7 дней",
+  "30d": "30 дней",
+  month: "Этот месяц",
+  "3m": "3 месяца",
+  custom: "Период",
+};
+
+function trendRange(period: TrendPeriod, customFrom: string, customTo: string): { from: Date; to: Date } | null {
+  if (period === "custom") {
+    if (!customFrom || !customTo) return null;
+    const from = new Date(`${customFrom}T00:00:00`);
+    const to = new Date(`${customTo}T23:59:59.999`);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to) return null;
+    return { from, to };
+  }
+  const to = new Date();
+  const from = new Date();
+  from.setHours(0, 0, 0, 0);
+  if (period === "7d") from.setDate(from.getDate() - 6);
+  if (period === "30d") from.setDate(from.getDate() - 29);
+  if (period === "month") from.setDate(1);
+  if (period === "3m") from.setMonth(from.getMonth() - 3);
+  return { from, to };
+}
+
+function DeltaBadge({ pct }: { pct: number | null }) {
+  if (pct === null) return <span className="text-xs text-muted">нет базы для сравнения</span>;
+  const rounded = Math.round(pct * 10) / 10;
+  const tone = rounded > 0 ? "text-emerald-600" : rounded < 0 ? "text-red-600" : "text-muted";
+  const sign = rounded > 0 ? "+" : "";
+  return (
+    <span className={clsx("text-xs font-medium", tone)}>
+      {sign}
+      {rounded.toFixed(1).replace(".", ",")}%
+    </span>
+  );
+}
+
+// Динамика отгрузок ОДНОМУ клиенту. Deliberately requires picking a customer —
+// with an "все клиенты" option this line would silently fold in walk-in retail
+// (sales with no customer), which is a different question entirely.
+function CustomerSalesTrendCard({ locationId }: { locationId: string }) {
+  const [customers, setCustomers] = useState<CustomerDto[]>([]);
+  const [customerId, setCustomerId] = useState("");
+  const [period, setPeriod] = useState<TrendPeriod>("30d");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const [metric, setMetric] = useState<TrendMetric>("quantity");
+  const [trend, setTrend] = useState<SalesCustomerTrendDto | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    api.customers.list().then(setCustomers).catch(() => {});
+  }, []);
+
+  const range = trendRange(period, customFrom, customTo);
+  const rangeFrom = range?.from.toISOString() ?? "";
+  const rangeTo = range?.to.toISOString() ?? "";
+
+  useEffect(() => {
+    if (!customerId || !rangeFrom || !rangeTo) {
+      setTrend(null);
+      return;
+    }
+    let cancelled = false;
+    setIsLoading(true);
+    api.sales
+      .customerTrend(customerId, rangeFrom, rangeTo, locationId || undefined)
+      // Ignore a response that lost the race with a newer filter change,
+      // otherwise a slow earlier request can overwrite fresher data.
+      .then((data) => !cancelled && setTrend(data))
+      .catch(() => !cancelled && setTrend(null))
+      .finally(() => !cancelled && setIsLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [customerId, rangeFrom, rangeTo, locationId]);
+
+  const isQuantity = metric === "quantity";
+  // Summing quantity across products measured in different units (шт + кг)
+  // produces a number that means nothing. Money never has this problem.
+  const hasMixedUnits = (trend?.units.length ?? 0) > 1;
+
+  return (
+    <ReportCard
+      title="Динамика продаж по клиенту"
+      onExport={
+        trend
+          ? () =>
+              downloadCsv(
+                `customer-trend-${trend.customerName}-${period}.csv`,
+                ["Дата", "Отгружено", "Сумма", "Продаж"],
+                trend.points.map((p) => [p.date, formatQuantity(p.quantity), p.revenue.toFixed(2), p.salesCount]),
+              )
+          : undefined
+      }
+    >
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-4">
+        <select
+          value={customerId}
+          onChange={(e) => setCustomerId(e.target.value)}
+          className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+        >
+          <option value="">Выберите клиента</option>
+          {customers.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+
+        <div className="flex flex-wrap items-center gap-1 rounded-xl bg-surface-muted p-1">
+          {(Object.keys(TREND_PERIOD_LABELS) as TrendPeriod[]).map((p) => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={clsx(
+                "rounded-lg px-3 py-1.5 text-sm font-medium transition",
+                period === p ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground",
+              )}
+            >
+              {TREND_PERIOD_LABELS[p]}
+            </button>
+          ))}
+        </div>
+
+        {period === "custom" && (
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={customFrom}
+              max={customTo || undefined}
+              onChange={(e) => setCustomFrom(e.target.value)}
+              className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+            <span className="text-sm text-muted">—</span>
+            <input
+              type="date"
+              value={customTo}
+              min={customFrom || undefined}
+              onChange={(e) => setCustomTo(e.target.value)}
+              className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+          </div>
+        )}
+
+        <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
+          {(["quantity", "revenue"] as TrendMetric[]).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMetric(m)}
+              className={clsx(
+                "rounded-lg px-3 py-1.5 text-sm font-medium transition",
+                metric === m ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground",
+              )}
+            >
+              {m === "quantity" ? "Шт." : "₸"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {!customerId ? (
+        <p className="px-5 py-12 text-center text-sm text-muted">Выберите клиента, чтобы увидеть динамику отгрузок</p>
+      ) : !range ? (
+        <p className="px-5 py-12 text-center text-sm text-muted">Укажите начало и конец периода</p>
+      ) : !trend ? (
+        <p className="px-5 py-12 text-center text-sm text-muted">{isLoading ? "Загрузка…" : "Нет данных за период"}</p>
+      ) : (
+        <>
+          <StatRow
+            items={[
+              { label: "Итого отгружено", value: formatQuantity(trend.totalQuantity) },
+              { label: "Итого продаж", value: formatMoney(trend.totalRevenue) },
+              {
+                label: "Среднее в день",
+                value: isQuantity
+                  ? trend.avgQuantityPerDay != null
+                    ? formatAverage(trend.avgQuantityPerDay)
+                    : "—"
+                  : trend.avgRevenuePerDay != null
+                    ? formatMoney(trend.avgRevenuePerDay)
+                    : "—",
+              },
+              {
+                label: "Лучший день",
+                value: trend.bestDay
+                  ? `${formatQuantity(trend.bestDay.quantity)} · ${formatDayKey(trend.bestDay.date)}`
+                  : "—",
+              },
+            ]}
+          />
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted">Худший день отгрузки:</span>
+              <span className="text-xs font-medium text-foreground">
+                {trend.worstDay
+                  ? `${formatQuantity(trend.worstDay.quantity)} · ${formatDayKey(trend.worstDay.date)}`
+                  : "—"}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted">К прошлому периоду:</span>
+              <DeltaBadge pct={isQuantity ? trend.previous.quantityDeltaPct : trend.previous.revenueDeltaPct} />
+              <span className="text-xs text-muted">
+                (было {isQuantity ? formatQuantity(trend.previous.quantity) : formatMoney(trend.previous.revenue)})
+              </span>
+            </div>
+          </div>
+
+          {hasMixedUnits && (
+            <div className="border-b border-border bg-amber-50 px-5 py-2.5 text-xs text-amber-800">
+              Клиент берёт товары в разных единицах ({trend.units.map((u) => UNIT_LABELS_RU[u]).join(", ")}) — «Итого
+              отгружено» складывает их в одно число. Для этого клиента опирайтесь на ₸.
+            </div>
+          )}
+
+          <SalesTrendChart points={trend.points} metric={metric} />
+        </>
+      )}
     </ReportCard>
   );
 }

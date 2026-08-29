@@ -13,15 +13,25 @@ import {
   SalesDemandByCustomerRowDto,
   SalesDemandByProductRowDto,
   SalesDemandSummaryDto,
+  SalesCustomerTrendDto,
+  SalesCustomerTrendPointDto,
   SalesReportDto,
   SalesSummaryDto,
+  Unit,
 } from "@bakery-os/shared";
 import { StockMovementType } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
+import { deltaPct, previousRangeOf } from "../common/period-range";
 import { CashMovementsService } from "../finance/cash-movements.service";
 import { CreateSaleDto } from "./dto/create-sale.dto";
 import { RecordPaymentDto } from "./dto/record-payment.dto";
+
+// Calendar days in reports are the owner's days, not the server's. Render runs
+// in UTC, so without this an early-morning delivery in Almaty (UTC+5) would be
+// charted on the previous day. Invisible in a monthly total, obvious the moment
+// the same data is plotted per day.
+const REPORTING_TIME_ZONE = "Asia/Almaty";
 
 const SALE_INCLUDE = { location: true, customer: true, createdBy: true, items: true };
 const SALE_DETAIL_INCLUDE = {
@@ -352,6 +362,162 @@ export class SalesService {
     const totalDays = Math.floor((toDate.getTime() - fromDate.getTime()) / 86_400_000) + 1;
     const includesToday = toDate.getTime() === dateOnly(new Date()).getTime();
     return Math.max(0, includesToday ? totalDays - 1 : totalDays);
+  }
+
+  // Day-by-day volume shipped to ONE customer, for the sales-dynamics chart.
+  //
+  // This answers "сколько нашей продукции мы отгрузили клиенту" — it is not,
+  // and cannot be, what that customer then resold to their own end buyers:
+  // ArAmir OS has no visibility into a customer's own till. A Sale carries
+  // both `locationId` (our point that shipped it) and `customerId` (who
+  // received it), and only the latter is filtered on here.
+  //
+  // Money figures are shipped value (Σ SaleItem.subtotal, the same basis
+  // demandAnalysis uses), NOT cash collected — an unpaid order still counts
+  // the day it left us. Cash actually received lives in CashMovement.
+  async customerTrend(
+    user: AuthenticatedUser,
+    customerId: string,
+    from: Date,
+    to: Date,
+    opts: { locationId?: string } = {},
+  ): Promise<SalesCustomerTrendDto> {
+    const locationId = resolveLocationScope(user, opts.locationId);
+
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: customerId, organizationId: user.organizationId },
+    });
+    if (!customer) {
+      throw new NotFoundException("Клиент не найден");
+    }
+
+    const previous = previousRangeOf({ from, to });
+
+    // Both windows in one round trip — they're aggregated separately below.
+    const sales = await this.prisma.sale.findMany({
+      where: {
+        organizationId: user.organizationId,
+        customerId,
+        soldAt: { gte: previous.from, lte: to },
+        ...(locationId ? { locationId } : {}),
+      },
+      include: { items: { include: { product: true } } },
+    });
+
+    const units = new Set<Unit>();
+    let previousQuantity = 0;
+    let previousRevenue = 0;
+
+    // Keyed by Almaty calendar date, so a 01:00 delivery belongs to the day
+    // the owner would call it — not to the previous UTC day the server is in.
+    const byDate = new Map<string, { quantity: number; revenue: number; saleIds: Set<string> }>();
+
+    for (const sale of sales) {
+      const isCurrent = sale.soldAt >= from;
+      const dateKey = isCurrent ? this.zonedDateKey(sale.soldAt) : null;
+
+      for (const item of sale.items) {
+        const quantity = item.quantity.toNumber();
+        const revenue = item.subtotal.toNumber();
+
+        if (!isCurrent) {
+          previousQuantity += quantity;
+          previousRevenue += revenue;
+          continue;
+        }
+
+        units.add(item.product.unit as Unit);
+        const entry = byDate.get(dateKey!) ?? { quantity: 0, revenue: 0, saleIds: new Set<string>() };
+        entry.quantity += quantity;
+        entry.revenue += revenue;
+        entry.saleIds.add(sale.id);
+        byDate.set(dateKey!, entry);
+      }
+    }
+
+    // Every day in the range gets a point, including the empty ones: a gap in
+    // the line would read as "нет данных" when it means "не отгружали".
+    const points: SalesCustomerTrendPointDto[] = this.zonedDateKeysBetween(from, to).map((date) => {
+      const entry = byDate.get(date);
+      return {
+        date,
+        quantity: entry?.quantity ?? 0,
+        revenue: entry?.revenue ?? 0,
+        salesCount: entry?.saleIds.size ?? 0,
+      };
+    });
+
+    const totalQuantity = points.reduce((sum, p) => sum + p.quantity, 0);
+    const totalRevenue = points.reduce((sum, p) => sum + p.revenue, 0);
+    const salesCount = points.reduce((sum, p) => sum + p.salesCount, 0);
+
+    // Only days that actually had a shipment compete for best/worst — with
+    // the zero-filled days in the running, "худший день" would almost always
+    // be some idle day at 0, which the chart already shows anyway.
+    const activeDays = points.filter((p) => p.salesCount > 0);
+    const sortedByQuantity = [...activeDays].sort((a, b) => a.quantity - b.quantity);
+    const extreme = (p?: SalesCustomerTrendPointDto) =>
+      p ? { date: p.date, quantity: p.quantity, revenue: p.revenue } : null;
+
+    // Same "today doesn't count yet" rule as demandAnalysis, so the two cards
+    // on this tab can't disagree about what an average day is.
+    const todayKey = this.zonedDateKey(new Date());
+    const completedDays = points.filter((p) => p.date !== todayKey).length;
+    const perDay = (total: number) => (completedDays > 0 ? total / completedDays : null);
+
+    return {
+      customerId,
+      customerName: customer.name,
+      from: from.toISOString(),
+      to: to.toISOString(),
+      timeZone: REPORTING_TIME_ZONE,
+      points,
+      totalQuantity,
+      totalRevenue,
+      salesCount,
+      completedDays,
+      avgQuantityPerDay: perDay(totalQuantity),
+      avgRevenuePerDay: perDay(totalRevenue),
+      bestDay: extreme(sortedByQuantity[sortedByQuantity.length - 1]),
+      worstDay: extreme(sortedByQuantity[0]),
+      units: Array.from(units),
+      previous: {
+        from: previous.from.toISOString(),
+        to: previous.to.toISOString(),
+        quantity: previousQuantity,
+        revenue: previousRevenue,
+        quantityDeltaPct: deltaPct(totalQuantity, previousQuantity),
+        revenueDeltaPct: deltaPct(totalRevenue, previousRevenue),
+      },
+    };
+  }
+
+  // "YYYY-MM-DD" as it reads on a wall clock in REPORTING_TIME_ZONE. en-CA
+  // formats as ISO, and Intl resolves the zone's real offset rather than
+  // hardcoding +5, so this stays correct if the rules ever change.
+  private zonedDateKey(date: Date): string {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: REPORTING_TIME_ZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+  }
+
+  // Inclusive list of calendar dates between two instants. Stepping happens in
+  // UTC on plain calendar dates (never on the zoned instants), so a day can be
+  // neither skipped nor repeated around an offset change.
+  private zonedDateKeysBetween(from: Date, to: Date): string[] {
+    const parse = (key: string) => {
+      const [y, m, d] = key.split("-").map(Number);
+      return Date.UTC(y, m - 1, d);
+    };
+    const endMs = parse(this.zonedDateKey(to));
+    const keys: string[] = [];
+    for (let ms = parse(this.zonedDateKey(from)); ms <= endMs; ms += 86_400_000) {
+      keys.push(new Date(ms).toISOString().slice(0, 10));
+    }
+    return keys;
   }
 
   async findOne(user: AuthenticatedUser, saleId: string): Promise<SaleDetailDto> {
