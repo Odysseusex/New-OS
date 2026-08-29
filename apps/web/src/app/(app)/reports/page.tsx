@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { Download, Printer } from "lucide-react";
 import type {
@@ -552,7 +552,11 @@ function CustomerSalesTrendCard({ locationId }: { locationId: string }) {
     api.customers.list().then(setCustomers).catch(() => {});
   }, []);
 
-  const range = trendRange(period, customFrom, customTo);
+  // Must be memoised: trendRange() calls new Date() for the relative periods,
+  // so computing it plainly during render produced a different `to` on every
+  // single render — which the fetch effect below depends on, so it re-fetched
+  // in a tight loop and never left the "Загрузка…" state.
+  const range = useMemo(() => trendRange(period, customFrom, customTo), [period, customFrom, customTo]);
   const rangeFrom = range?.from.toISOString() ?? "";
   const rangeTo = range?.to.toISOString() ?? "";
 
