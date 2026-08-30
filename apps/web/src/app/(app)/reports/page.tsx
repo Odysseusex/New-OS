@@ -32,7 +32,7 @@ import { downloadCsv } from "@/lib/csv";
 import { formatAverage, formatDayKey, formatMoney, formatQuantity } from "@/lib/format";
 import { SalesTrendChart, type TrendMetric } from "@/components/sales-trend-chart";
 
-type ReportKey = "finance" | "sales" | "quality" | "hr" | "stock";
+type ReportKey = "finance" | "sales" | "trend" | "quality" | "hr" | "stock";
 type Period = "today" | "7d" | "30d" | "month";
 
 const PERIOD_LABELS: Record<Period, string> = {
@@ -59,6 +59,10 @@ export default function ReportsPage() {
   const availableReports: { key: ReportKey; label: string }[] = [
     ...(user && FINANCE_VIEW_ROLES.includes(user.role) ? [{ key: "finance" as const, label: "Финансы (P&L)" }] : []),
     { key: "sales" as const, label: "Продажи" },
+    // Needs a customer to be picked, and the customer list is gated on
+    // CUSTOMER_VIEW_ROLES — without them the tab could only ever show an
+    // empty dropdown.
+    ...(user && CUSTOMER_VIEW_ROLES.includes(user.role) ? [{ key: "trend" as const, label: "Динамика" }] : []),
     ...(user && QUALITY_VIEW_ROLES.includes(user.role)
       ? [{ key: "quality" as const, label: "Качество и списания" }]
       : []),
@@ -101,7 +105,10 @@ export default function ReportsPage() {
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          {activeReport !== "stock" && (
+          {/* Динамика carries its own period control (it needs 3 месяца and a
+              custom range, which the other tabs don't), so the shared one
+              would just contradict it. */}
+          {activeReport !== "stock" && activeReport !== "trend" && (
             <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
               {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
                 <button
@@ -148,6 +155,7 @@ export default function ReportsPage() {
         {activeReport === "sales" && (
           <SalesReport period={period} locationId={locationFilter} isOrgWide={isOrgWide} />
         )}
+        {activeReport === "trend" && <CustomerSalesTrendCard locationId={locationFilter} />}
         {activeReport === "quality" && <QualityReport period={period} locationId={locationFilter} />}
         {activeReport === "hr" && <HrReport period={period} locationId={locationFilter} />}
         {activeReport === "stock" && <StockReport locationId={locationFilter} isOrgWide={isOrgWide} />}
@@ -275,8 +283,6 @@ function SalesReport({
   locationId: string;
   isOrgWide: boolean;
 }) {
-  const { user } = useAuth();
-  const canViewCustomers = user ? CUSTOMER_VIEW_ROLES.includes(user.role) : false;
   const [report, setReport] = useState<SalesReportDto | null>(null);
 
   useEffect(() => {
@@ -336,11 +342,6 @@ function SalesReport({
       </ReportCard>
 
       <SalesDemandCard period={period} locationId={locationId} />
-
-      {/* Requires a customer to be picked, and the customer list itself is
-          gated on CUSTOMER_VIEW_ROLES — without them the card could only ever
-          show an empty dropdown, so hide it rather than render a dead control. */}
-      {canViewCustomers && <CustomerSalesTrendCard locationId={locationId} />}
     </div>
   );
 }
