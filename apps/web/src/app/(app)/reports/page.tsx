@@ -26,7 +26,7 @@ import {
   UNIT_LABELS_RU,
   WRITE_OFF_REASON_LABELS_RU,
 } from "@bakery-os/shared";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { downloadCsv } from "@/lib/csv";
 import { formatAverage, formatDayKey, formatMoney, formatQuantity } from "@/lib/format";
@@ -548,6 +548,7 @@ function CustomerSalesTrendCard({ locationId }: { locationId: string }) {
   const [metric, setMetric] = useState<TrendMetric>("quantity");
   const [trend, setTrend] = useState<SalesCustomerTrendDto | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     api.customers.list().then(setCustomers).catch(() => {});
@@ -564,16 +565,26 @@ function CustomerSalesTrendCard({ locationId }: { locationId: string }) {
   useEffect(() => {
     if (!customerId || !rangeFrom || !rangeTo) {
       setTrend(null);
+      setLoadError(null);
       return;
     }
     let cancelled = false;
     setIsLoading(true);
+    setLoadError(null);
     api.sales
       .customerTrend(customerId, rangeFrom, rangeTo, locationId || undefined)
       // Ignore a response that lost the race with a newer filter change,
       // otherwise a slow earlier request can overwrite fresher data.
       .then((data) => !cancelled && setTrend(data))
-      .catch(() => !cancelled && setTrend(null))
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setTrend(null);
+        // A failed request must never look like "честный ноль продаж" — that
+        // was the actual bug behind an earlier report: a real server error
+        // rendered the exact same "Нет данных за период" as a customer with
+        // no sales, so a broken request was invisible.
+        setLoadError(err instanceof ApiError ? err.message : "Не удалось загрузить данные");
+      })
       .finally(() => !cancelled && setIsLoading(false));
     return () => {
       cancelled = true;
@@ -668,8 +679,12 @@ function CustomerSalesTrendCard({ locationId }: { locationId: string }) {
         <p className="px-5 py-12 text-center text-sm text-muted">Выберите клиента, чтобы увидеть динамику отгрузок</p>
       ) : !range ? (
         <p className="px-5 py-12 text-center text-sm text-muted">Укажите начало и конец периода</p>
+      ) : isLoading ? (
+        <p className="px-5 py-12 text-center text-sm text-muted">Загрузка…</p>
+      ) : loadError ? (
+        <p className="px-5 py-12 text-center text-sm text-red-600">⚠️ {loadError}</p>
       ) : !trend ? (
-        <p className="px-5 py-12 text-center text-sm text-muted">{isLoading ? "Загрузка…" : "Нет данных за период"}</p>
+        <p className="px-5 py-12 text-center text-sm text-muted">Нет данных за период</p>
       ) : (
         <>
           <StatRow
