@@ -261,6 +261,40 @@ also said "Владелец" in `users.service.ts` and `row-actions.tsx`). The
 `OWNER` enum value and every permission array are untouched; only the
 Russian label changed. Don't revert this without being asked.
 
+**Reports charts (recharts).** `recharts` sat in `package.json` unused for a
+long time — the customer-sales-trend line chart (`Отчёты → Динамика`) is the
+first real chart in the app, so treat it as the established pattern rather
+than a one-off: `SalesTrendChart` component
+(`apps/web/src/components/sales-trend-chart.tsx`) mounts the chart only after
+`useEffect` marks the client hydrated (recharts measures the DOM, so SSR
+would otherwise produce a hydration mismatch), and reads CSS custom
+properties (`var(--accent)`, `var(--border)`, `var(--muted)`) for styling
+rather than hardcoded colors, matching the brand-color rule above. Backend
+day-by-day bucketing (`SalesService.customerTrend()`) always emits one point
+per calendar day in the range, zero-filled — a gap in a time series reads as
+"no data" when it should read as "genuinely zero" — via `zonedDateKey()` /
+`zonedDateKeysBetween()`, bucketed in `Asia/Almaty` (`REPORTING_TIME_ZONE`
+constant), not the server's UTC. Period-over-period comparison reuses
+`deltaPct()` from `apps/api/src/common/period-range.ts` (new sibling helper
+`previousRangeOf()` added alongside the existing `currentAndPreviousPeriod()`
+for endpoints that take an arbitrary `from`/`to` instead of a day count).
+
+**Client-side searchable pickers.** Established pattern, used twice
+(`stock-movement-modal.tsx`'s `ProductSelect`, and the search box on
+`Склад → Номенклатура`): the full list is already loaded client-side
+(`api.products.list()` has no pagination), so filtering is a plain
+case-insensitive substring match (`name.toLowerCase().includes(query)`) —
+matching anywhere in the string, not just a prefix — with **no debounce and
+no new request**. Reuse this pattern for the next searchable list rather than
+reaching for a library or a backend search endpoint. A custom dropdown
+rendered inside a `Modal` must intercept `Escape` in the **capture phase**
+(`document.addEventListener("keydown", handler, true)`), not a plain React
+`onKeyDown` — Next.js App Router hydrates React's own event delegation on
+`document` too, so a bubble-phase `stopPropagation()` inside the dropdown
+cannot stop the Modal's sibling `document` listener from also firing and
+closing the whole form. Hit and fixed once in `stock-movement-modal.tsx`;
+check for it in any future custom-dropdown-inside-Modal.
+
 **Brand color is one CSS custom property.** `--accent` in
 `apps/web/src/app/globals.css` (consumed everywhere via Tailwind's
 `accent`/`accent-foreground` tokens — never hardcoded hex in components)
@@ -270,6 +304,97 @@ plus the matching PWA `theme_color` in `manifest.ts` and
 categorical palette (STORE/PRODUCTION/WAREHOUSE/CUSTOMER) — don't touch
 those for a brand color change just because one of them happens to reuse
 the same old hex.
+
+## Telegram bot (additional interface, not primary nav)
+
+A fully non-AI (zero LLM cost) Telegram bot at `apps/api/src/telegram/`,
+webhook-based (`POST /api/telegram/webhook`, via Telegraf), covering all six
+sections (Склад, Продажи, Клиенты, Финансы, Аналитика, Производство) plus
+account linking and low-stock push notifications. It is **shipped and
+stable**, not a work-in-progress — don't re-propose building any of this.
+Deliberately excluded per explicit user decision: invoices/накладные,
+print/PDF.
+
+**Core design, don't relitigate:**
+- **RBAC reuse, not duplication.** `telegram-bot.service.ts` calls the same
+  NestJS services in-process (DI, not HTTP) and manually re-checks each
+  route's `@Roles(...)` via the same shared arrays from
+  `packages/shared/src/roles.ts` — a Telegram user can never exceed their web
+  account's permissions.
+- **Idempotent writes via `TelegramPendingAction`**: stage → confirm →
+  execute, with `claim()`'s single conditional `UPDATE ... WHERE status =
+  'PENDING'` as the only real correctness guarantee (only the request that
+  flips the row wins). Every write goes through `stageAction()` /
+  `confirmAction()` / `cancelAction()`. This same staged-write pattern is
+  worth reusing for the fiscalization work below.
+- **One evolving screen per chat**, not a message per step —
+  `TelegramChatState.lastMessageId` tracks the single message `reply()`
+  edits in place; push notifications (`sendMessage()`) deliberately bypass
+  this since they're unsolicited and must not overwrite an in-progress
+  wizard. `TelegramChatState.clear()` resets only `step`, never
+  `lastMessageId`.
+- **Every confirm/cancel outcome carries navigation buttons** ("🔁 Ещё раз" /
+  "🏠 Главное меню") — added specifically because early versions left the
+  user stuck retyping `/start` after every operation. `resultKeyboard()` maps
+  each `actionType` to its own "repeat" callback.
+- **`requireStep()` guards every continuation callback** against a stale
+  inline button from an already-finished/abandoned wizard resuming with
+  corrupted state (this caused a real FK-violation bug once — a stale button
+  sent the literal string `"undefined"` as a `locationId`).
+
+Known-fixed bug classes worth re-checking if you touch this file: Telegraf's
+lazy internal `getMe()` call happens *before* any app-level try/catch (fix:
+warm `botInfo` in `onModuleInit`, wrap `handleUpdate()`); `ctx.answerCbQuery`
+throws synchronously so a bare `if (ctx.answerCbQuery)` guard is useless (use
+the `ackCallback()` helper, which checks `ctx.callbackQuery` instead); and
+`confirmAction`'s write-execution and its result-message `reply()` **must be
+in separate try/catch blocks** — combining them means a reply failure (e.g. a
+Telegram hiccup) incorrectly rolls an already-successful write back to
+FAILED.
+
+## Fiscal cash register (ККМ) integration — research done, code NOT started
+
+Real legal requirement for retail sales in Kazakhstan (fiscal receipts via a
+certified online cash register + ОФД), not a nice-to-have — first real point
+of sale is the wholesale customer "Мерей". Provider chosen after comparing
+Webkassa / E-Kassa / re:Kassa: **re:Kassa**, mainly because it's the only one
+with public confirmation of state ККМ-registry registration (№253) and a
+short, explicit path to API docs. **Do not re-run that comparison** — see
+this session's transcript if the reasoning is needed again.
+
+**Current blocker: their API documentation**, which is closed until
+requested. The user is emailing them; a self-service path may also exist at
+`app.rekassa.kz/access-api` ("Сторонние приложения") — check there first.
+**Also unresolved and asked in the same email: what hardware is actually
+required.** re:Kassa's own docs call it an "аппаратно-программный комплекс,"
+which could mean an ordinary Android tablet + receipt printer is enough, or
+could mean a specific certified device is mandatory — this is not yet known
+and must not be guessed. If it turns out a specific certified device is
+required, that changes the whole shape of the integration (a device-bound
+kассa can't just be "our backend calls their cloud API"), so this is the
+single highest-risk open question, above every code question.
+
+**Architectural conclusion already reached (do not redo this analysis):**
+the risky part is not writing an adapter, it's that `SalesService.create()`
+currently writes `Sale` + `CashMovement` + `StockMovement` as one
+inseparable transaction (see its code) — fiscalization requires flipping the
+order so a confirmed fiscal receipt comes *first*, and money/stock movements
+only happen after. That reordering touches `prisma.sale`/`tx.sale` call
+sites across six modules (sales, customers, locations, finance, ai,
+hr — confirmed by `grep`), which is why it should not be attempted blind.
+
+**Safe to build now, independent of their API shape** (already scoped in
+detail in this session's transcript if the exact task list is needed): a
+`FiscalProvider` interface + staged-state schema modeled on
+`TelegramPendingAction` above, a null/fake provider to develop and test
+against, the ИКПУ code field on `Product` (pure addition), and UI states for
+"чек пробивается / ошибка / готово". **Do not build**: the actual retry
+policy on timeout, a shift (смена) lifecycle, reconciliation, or — most
+importantly — **do not flip `SalesService.create()` to the two-phase order**
+until a working adapter exists against a real test/sandbox environment.
+Getting this wrong is expensive (it's the core sales-creation path); getting
+it right requires knowing whether re:Kassa supports idempotency keys and
+receipt lookup-by-external-id, which is currently unknown.
 
 ## Prisma migration workflow (this sandbox has no direct prod DB access)
 
@@ -357,6 +482,35 @@ deploying.
   directory even though it looks like it should. Don't chain a `cd` into
   a backgrounded command and then assume later commands in the same
   session inherited that directory — check `pwd` if unsure.
+- **A failed request must never render identically to a genuine empty
+  result.** A `.catch()` that just sets the data state to `null` makes a real
+  500/network error look exactly like "this customer has zero sales this
+  month" — which is exactly what happened with the customer-trend card: a
+  stale-backend 404 (see the Render bullet below) rendered as the same
+  quiet "Нет данных за период" a real zero would, so the actual failure was
+  invisible until directly investigated. Track loading / error / empty as
+  three distinct states, and show the real server message on error.
+- **A date range computed with `new Date()` plainly during render is a new
+  object on every render**, and if a `useEffect`'s dependency array derives
+  from it (e.g. `range.to.toISOString()`), the effect re-fires every render
+  — including the request it just started, before it can resolve. This
+  produced a genuine 1000+ requests/10s loop in the customer-trend card that
+  a fast localhost response masked entirely (the chart still appeared before
+  the next re-render fired) — it only became visible against a slower real
+  network. Wrap any render-time "now"-derived range in `useMemo`.
+- **A 401 on an authenticated route proves the route exists no more than a
+  404 would disprove it, when a `:id`-catchall route shares a controller
+  with a named one.** `GET /sales/:id` and `GET /sales/customer-trend` sit
+  behind the same `JwtAuthGuard`, so an unauthenticated probe against either
+  returns 401 regardless of whether `customer-trend` is actually registered
+  — a stale-deploy 404-via-catchall and a real 404 are indistinguishable
+  without a valid token. The actual tell, once authenticated, was the error
+  message itself: "Продажа не найдена" is `findOne()`'s NotFoundException,
+  and it only appears if the literal string `"customer-trend"` got matched
+  as a Sale id — i.e. the newer named route wasn't registered on whatever
+  code Render was actually running (a stale/failed auto-deploy), not a code
+  bug. When a route that should exist behaves like a sibling `:id` route
+  instead, suspect a stale backend deploy before suspecting the new code.
 
 ## Module status
 
@@ -371,3 +525,10 @@ One deferred design decision, not yet revisited: `DeliveryRoute`/`RouteStop`
 only reference own Locations, not Customers directly — a sale to a
 wholesale customer goes through the source location rather than a
 route stop. Revisit only if asked.
+
+Beyond the web app's own nav, there's a second shipped interface: the
+**Telegram bot** (see its own section above) — fully live, not a
+placeholder. **Fiscal cash register (ККМ) integration is the one active,
+not-yet-started thread** — research and architecture are done (own section
+above), code has not begun, blocked on re:Kassa's API docs and a hardware
+question. Don't start writing it without checking that section first.
