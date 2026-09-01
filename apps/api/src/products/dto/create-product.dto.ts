@@ -11,6 +11,10 @@ export class CreateProductDto {
   @MinLength(2)
   sku?: string;
 
+  @IsOptional()
+  @IsString()
+  barcode?: string;
+
   @IsEnum(Unit)
   unit!: Unit;
 

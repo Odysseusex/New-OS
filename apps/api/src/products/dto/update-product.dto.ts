@@ -12,6 +12,13 @@ export class UpdateProductDto {
   @MinLength(2)
   sku?: string;
 
+  // Nullable, unlike sku: clearing a barcode is a legitimate edit (the
+  // product stopped being a resold packaged item), so the form must be able
+  // to send an explicit null rather than only omitting the field.
+  @IsOptional()
+  @IsString()
+  barcode?: string | null;
+
   @IsOptional()
   @IsEnum(Unit)
   unit?: Unit;

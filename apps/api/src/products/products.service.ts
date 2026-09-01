@@ -11,6 +11,14 @@ const SKU_PREFIX_BY_TYPE: Record<ProductType, string> = {
   [ProductType.FINISHED_GOOD]: "PRD",
 };
 
+// A blank barcode is stored as null, never "". Scanners also tend to append
+// stray whitespace/newlines, and a value that only differs by a trailing
+// space would silently never match a scan.
+function normalizeBarcode(barcode?: string | null): string | null {
+  const trimmed = barcode?.trim();
+  return trimmed ? trimmed : null;
+}
+
 @Injectable()
 export class ProductsService {
   constructor(private prisma: PrismaService) {}
@@ -54,7 +62,10 @@ export class ProductsService {
     }
 
     const product = await this.prisma.product.create({
-      data: { ...dto, sku, organizationId },
+      // An empty barcode from the form is stored as null, never "": a blank
+      // string would otherwise match every barcode-less product when the
+      // till looks one up by scan.
+      data: { ...dto, sku, barcode: normalizeBarcode(dto.barcode), organizationId },
       include: PRODUCT_INCLUDE,
     });
 
@@ -85,6 +96,7 @@ export class ProductsService {
       data: {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
         ...(dto.sku !== undefined ? { sku: dto.sku } : {}),
+        ...(dto.barcode !== undefined ? { barcode: normalizeBarcode(dto.barcode) } : {}),
         ...(dto.unit !== undefined ? { unit: dto.unit } : {}),
         ...(dto.type !== undefined ? { type: dto.type } : {}),
         ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
@@ -217,6 +229,7 @@ export class ProductsService {
     id: string;
     name: string;
     sku: string;
+    barcode: string | null;
     unit: string;
     type: string;
     categoryId: string | null;
@@ -230,6 +243,7 @@ export class ProductsService {
       id: product.id,
       name: product.name,
       sku: product.sku,
+      barcode: product.barcode,
       unit: product.unit as ProductDto["unit"],
       type: product.type as ProductDto["type"],
       categoryId: product.categoryId,

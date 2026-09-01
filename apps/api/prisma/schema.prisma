@@ -410,6 +410,12 @@ model Product {
   //     hand. Finished-goods valuation must go through recipe cost (or
   //     average purchase cost as a fallback), never this field.
   price          Decimal     @db.Decimal(12, 2)
+  // The barcode physically printed on the packaging (EAN-13 and friends) —
+  // what a scanner reads at the till. Distinct from `sku`, which this system
+  // generates itself and which never appears on a package. Optional because
+  // own fresh production (bread, cakes) carries no barcode at all and is
+  // rung up by tapping a tile instead; only resold packaged goods have one.
+  barcode        String?
   // False for resources with no physical stock to track (e.g. tap water) —
   // still usable in recipes and cost calculations, but excluded from stock
   // levels, low-stock alerts, and receiving/write-off/adjustment operations.
@@ -437,6 +443,11 @@ model Product {
   @@unique([organizationId, sku])
   @@index([organizationId])
   @@index([categoryId])
+  // Deliberately an index, not a unique constraint: two products legitimately
+  // sharing a barcode is a data-entry problem to surface, not a write to
+  // reject — and a unique constraint over a nullable column would also have
+  // to reason about the many rows that have no barcode at all.
+  @@index([organizationId, barcode])
   @@map("products")
 }
 

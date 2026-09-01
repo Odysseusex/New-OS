@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
   Sparkles,
+  ScanLine,
   TrendingUp,
   Factory,
   Package,
@@ -41,6 +42,13 @@ export const primaryNav: NavItem[] = [
     icon: Sparkles,
     status: "live",
     description: "Приоритеты, отклонения и сравнение точек — аналитика без LLM (Этап 1)",
+  },
+  {
+    href: "/pos",
+    label: "Касса",
+    icon: ScanLine,
+    status: "live",
+    description: "Рабочее место кассира: сканирование, корзина, оплата",
   },
   {
     href: "/sales",

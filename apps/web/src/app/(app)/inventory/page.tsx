@@ -62,7 +62,8 @@ export default function InventoryPage() {
     ? products.filter(
         (p) =>
           p.name.toLowerCase().includes(productQuery) ||
-          (p.sku ?? "").toLowerCase().includes(productQuery),
+          (p.sku ?? "").toLowerCase().includes(productQuery) ||
+          (p.barcode ?? "").toLowerCase().includes(productQuery),
       )
     : products;
 
@@ -262,7 +263,7 @@ export default function InventoryPage() {
                 type="text"
                 value={productSearch}
                 onChange={(e) => setProductSearch(e.target.value)}
-                placeholder="Поиск по названию или артикулу…"
+                placeholder="Поиск по названию, артикулу или штрихкоду…"
                 className="w-64 rounded-xl border border-border bg-surface py-2 pl-9 pr-9 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
               />
               {productSearch && (
@@ -436,6 +437,7 @@ export default function InventoryPage() {
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
                 <th className="px-5 py-3 font-medium">Название</th>
                 <th className="px-5 py-3 font-medium">Артикул</th>
+                <th className="px-5 py-3 font-medium">Штрихкод</th>
                 <th className="px-5 py-3 font-medium">Тип</th>
                 <th className="px-5 py-3 font-medium">Категория</th>
                 <th className="px-5 py-3 font-medium">Единица</th>
@@ -459,6 +461,7 @@ export default function InventoryPage() {
                     </div>
                   </td>
                   <td className="px-5 py-3 text-muted">{p.sku}</td>
+                  <td className="px-5 py-3 text-muted">{p.barcode ?? "—"}</td>
                   <td className="px-5 py-3 text-muted">{PRODUCT_TYPE_LABELS_RU[p.type]}</td>
                   <td className="px-5 py-3 text-muted">{p.categoryName ?? "—"}</td>
                   <td className="px-5 py-3 text-muted">{UNIT_LABELS_RU[p.unit]}</td>
@@ -490,7 +493,7 @@ export default function InventoryPage() {
                   the same text for both hides which one you're looking at. */}
               {visibleProducts.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-5 py-8 text-center text-sm text-muted">
+                  <td colSpan={9} className="px-5 py-8 text-center text-sm text-muted">
                     {productQuery ? `Ничего не найдено по запросу «${productSearch.trim()}»` : "Товаров пока нет"}
                   </td>
                 </tr>

@@ -100,6 +100,9 @@ export interface ProductDto {
   id: string;
   name: string;
   sku: string;
+  // The barcode printed on the packaging, read by a scanner at the till.
+  // Null for own fresh production, which has none — see Product.barcode.
+  barcode: string | null;
   unit: Unit;
   type: ProductType;
   categoryId: string | null;
@@ -119,6 +122,7 @@ export interface ProductDto {
 export interface CreateProductRequestDto {
   name: string;
   sku?: string;
+  barcode?: string;
   unit: Unit;
   type: ProductType;
   categoryId?: string;
@@ -130,6 +134,7 @@ export interface CreateProductRequestDto {
 export interface UpdateProductRequestDto {
   name?: string;
   sku?: string;
+  barcode?: string | null;
   unit?: Unit;
   type?: ProductType;
   categoryId?: string | null;
