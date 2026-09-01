@@ -19,11 +19,13 @@ import {
   SalesSummaryDto,
   Unit,
 } from "@bakery-os/shared";
-import { StockMovementType } from "@prisma/client";
+import { FiscalReceipt, FiscalReceiptStatus, StockMovementType } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
 import { deltaPct, previousRangeOf } from "../common/period-range";
 import { CashMovementsService } from "../finance/cash-movements.service";
+import { buildFiscalSaleRequest, FiscalService } from "../fiscal/fiscal.service";
+import { FiscalSettings } from "../fiscal/fiscal.settings";
 import { CreateSaleDto } from "./dto/create-sale.dto";
 import { RecordPaymentDto } from "./dto/record-payment.dto";
 
@@ -46,6 +48,8 @@ export class SalesService {
   constructor(
     private prisma: PrismaService,
     private cashMovementsService: CashMovementsService,
+    private fiscalService: FiscalService,
+    private fiscalSettings: FiscalSettings,
   ) {}
 
   // CASH sales land in the selling location's own till, auto-created the
@@ -558,6 +562,22 @@ export class SalesService {
     const amountPaid = dto.customerId ? Math.min(dto.amountPaid ?? 0, totalAmount) : totalAmount;
     const paymentMethod = dto.paymentMethod ?? PaymentMethod.CASH;
 
+    // --- Fiscalisation, when switched on ---------------------------------
+    //
+    // The receipt is punched BEFORE anything is written. The alternative —
+    // record the sale, then fiscalise — would mean a Sale row can exist that
+    // isn't a real sale yet, and every revenue query in the app would have to
+    // learn to exclude it. This way the rule stays simple: a Sale in the
+    // database is a completed sale, always.
+    //
+    // The cost is a narrow window where a receipt is punched but the sale
+    // then fails to record. That leaves a registered receipt with no saleId,
+    // which needsAttention() surfaces on purpose rather than hiding.
+    const soldAt = new Date();
+    const receipt = this.fiscalSettings.isEnabled()
+      ? await this.fiscalizeBeforeSale(user, locationId, items, totalAmount, paymentMethod, soldAt)
+      : null;
+
     return this.prisma.$transaction(async (tx) => {
       const products = await tx.product.findMany({
         where: { id: { in: productIds }, organizationId: user.organizationId },
@@ -591,9 +611,17 @@ export class SalesService {
           paymentMethod,
           createdById: user.id,
           items: { create: items },
+          // Stamped explicitly only when a receipt was punched, so the sale
+          // and the fiscal document carry the same moment. Otherwise the
+          // column default stands, exactly as before.
+          ...(receipt ? { soldAt } : {}),
         },
         include: SALE_DETAIL_INCLUDE,
       });
+
+      if (receipt) {
+        await this.fiscalService.linkSale(tx, receipt.id, sale.id);
+      }
 
       if (amountPaid > 0) {
         const accountId = await this.resolveSaleAccountId(tx, user.organizationId, locationId, paymentMethod);
@@ -633,6 +661,83 @@ export class SalesService {
 
       return this.toSaleDetailDto(sale);
     });
+  }
+
+  // Punches the fiscal receipt for a cart that has not been sold yet, and
+  // returns it only if the operator registered it. Every other outcome throws
+  // in Russian, before a single row of the sale is written.
+  private async fiscalizeBeforeSale(
+    user: AuthenticatedUser,
+    locationId: string,
+    items: { productId: string; quantity: number; unitPrice: number; subtotal: number }[],
+    totalAmount: number,
+    paymentMethod: PaymentMethod,
+    soldAt: Date,
+  ): Promise<FiscalReceipt> {
+    const productIds = items.map((i) => i.productId);
+    const [products, location, stockLevels] = await Promise.all([
+      this.prisma.product.findMany({
+        where: { id: { in: productIds }, organizationId: user.organizationId },
+      }),
+      this.prisma.location.findUnique({ where: { id: locationId } }),
+      this.prisma.stockLevel.findMany({ where: { locationId, productId: { in: productIds } } }),
+    ]);
+
+    const productById = new Map(products.map((p) => [p.id, p]));
+    if (productById.size !== new Set(productIds).size) {
+      throw new BadRequestException("Один или несколько товаров не найдены");
+    }
+    if (!location) {
+      throw new NotFoundException("Точка продаж не найдена");
+    }
+
+    // The transaction below checks stock again; this earlier check exists so
+    // we never punch a legally binding receipt for goods the system says we
+    // do not have.
+    const stockByProduct = new Map(stockLevels.map((s) => [s.productId, s.quantity.toNumber()]));
+    for (const item of items) {
+      if ((stockByProduct.get(item.productId) ?? 0) < item.quantity) {
+        const name = productById.get(item.productId)?.name ?? item.productId;
+        throw new BadRequestException(`Недостаточно товара «${name}» на складе точки`);
+      }
+    }
+
+    const draft = buildFiscalSaleRequest({
+      occurredAt: soldAt,
+      paymentMethod,
+      location: { name: location.name, lat: location.lat, lng: location.lng },
+      total: totalAmount,
+      lines: items.map((item) => {
+        const product = productById.get(item.productId)!;
+        return {
+          product: { name: product.name, unit: product.unit, ntin: product.ntin },
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          subtotal: item.subtotal,
+        };
+      }),
+    });
+
+    const prepared = await this.fiscalService.prepare(user.organizationId, draft);
+    const receipt = await this.fiscalService.attempt(prepared.id);
+
+    if (receipt.status === FiscalReceiptStatus.REGISTERED) {
+      return receipt;
+    }
+
+    if (receipt.status === FiscalReceiptStatus.UNKNOWN) {
+      // We genuinely do not know whether a receipt exists. Ringing the same
+      // cart up again could punch a second one, so the cashier is told to
+      // check rather than simply invited to retry.
+      throw new BadRequestException(
+        "Связь с кассой прервана — не удалось подтвердить чек. Продажа не проведена. " +
+          "Не пробивайте заново: сначала проверьте раздел «Требует внимания».",
+      );
+    }
+
+    throw new BadRequestException(
+      `Чек не пробит: ${receipt.errorMessage ?? "касса отклонила чек"}. Продажа не проведена.`,
+    );
   }
 
   async recordPayment(user: AuthenticatedUser, saleId: string, dto: RecordPaymentDto): Promise<SaleDetailDto> {

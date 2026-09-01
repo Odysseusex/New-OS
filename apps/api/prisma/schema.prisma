@@ -565,13 +565,25 @@ model Sale {
 model FiscalReceipt {
   id             String              @id @default(cuid())
   organizationId String
-  saleId         String              @unique
-  sale           Sale                @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  // Null until the sale row exists. The receipt is punched FIRST and the
+  // sale is written only once it is registered, so that a Sale in this
+  // database is always a complete, real sale — never a half-finished one
+  // that reports would have to learn to exclude. A receipt still sitting
+  // here with no saleId is therefore a receipt that was punched but whose
+  // sale did not get recorded: rare, and deliberately visible.
+  saleId         String?             @unique
+  sale           Sale?               @relation(fields: [saleId], references: [id], onDelete: Cascade)
   status         FiscalReceiptStatus @default(PENDING)
 
   // Our idempotency key (a UUID), sent as X-Request-ID. Unique per
   // organization so a collision can never silently merge two sales.
   externalId String @unique
+
+  // Exactly what we asked the operator to punch, stored before the first
+  // call. A retry must resend byte-identical content under the same
+  // externalId, and after a timeout there may be no sale row to rebuild it
+  // from — so it is kept rather than re-derived.
+  requestPayload Json?
 
   // --- Filled in from the provider's answer once registered. ---
   // Everything below is also what a later RETURN receipt must quote back

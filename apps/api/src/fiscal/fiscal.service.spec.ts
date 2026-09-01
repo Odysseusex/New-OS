@@ -1,6 +1,6 @@
 import { FiscalReceiptStatus } from "@prisma/client";
-import { FiscalService } from "./fiscal.service";
-import { FiscalProvider, FiscalSaleOutcome, FiscalSaleRequest } from "./fiscal-provider";
+import { buildFiscalSaleRequest, FiscalSaleDraft, FiscalService } from "./fiscal.service";
+import { FiscalProvider, FiscalSaleOutcome, FiscalSaleRequest, FiscalSaleResult } from "./fiscal-provider";
 import { FakeFiscalProvider } from "./fake-fiscal.provider";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -9,10 +9,7 @@ import { PrismaService } from "../prisma/prisma.service";
 const prisma = new PrismaService();
 
 const ORG = "demo-org";
-let saleId: string;
-let locationId: string;
-let productId: string;
-let userId: string;
+const createdReceiptIds: string[] = [];
 
 // A provider whose outcome each test dictates, for the paths the fake can't
 // produce on demand (timeouts, rejections).
@@ -29,71 +26,123 @@ class ScriptedProvider implements FiscalProvider {
   }
 }
 
-beforeAll(async () => {
-  await prisma.$connect();
+const registered = (ticketNumber: string): FiscalSaleResult => ({
+  providerTicketId: "1",
+  ticketNumber,
+  offlineTicketNumber: null,
+  isOffline: false,
+  qrCode: null,
+  kgdKkmId: null,
+  shiftNumber: 1,
+  raw: {},
+});
 
-  const location = await prisma.location.findFirst({ where: { organizationId: ORG, lat: { not: null } } });
-  const user = await prisma.user.findFirst({ where: { organizationId: ORG } });
-  if (!location || !user) throw new Error("Demo data missing — seed the local database first");
-  locationId = location.id;
-  userId = user.id;
-
-  const product = await prisma.product.create({
-    data: {
-      organizationId: ORG,
-      name: `Тестовый товар ${Date.now()}`,
-      sku: `FISCAL-TEST-${Date.now()}`,
-      unit: "PCS",
-      type: "FINISHED_GOOD",
-      price: 590,
-      ntin: "0200000000001",
-    },
+const draft = (): FiscalSaleDraft =>
+  buildFiscalSaleRequest({
+    occurredAt: new Date("2026-08-22T05:00:00.000Z"),
+    paymentMethod: "CASH",
+    location: { name: "Точка", lat: 43.2389, lng: 76.8897 },
+    total: 1180,
+    lines: [
+      {
+        product: { name: "Хлеб", unit: "PCS", ntin: "0200000000001" },
+        quantity: 2,
+        unitPrice: 590,
+        subtotal: 1180,
+      },
+    ],
   });
-  productId = product.id;
-});
 
-beforeEach(async () => {
-  const sale = await prisma.sale.create({
-    data: {
-      organizationId: ORG,
-      locationId,
-      soldAt: new Date(),
-      totalAmount: 1180,
-      amountPaid: 1180,
-      paymentMethod: "CASH",
-      createdById: userId,
-      items: { create: [{ productId, quantity: 2, unitPrice: 590, subtotal: 1180 }] },
-    },
-  });
-  saleId = sale.id;
-});
+// Records every receipt a test creates so the demo database is left as found.
+async function prepare(service: FiscalService) {
+  const receipt = await service.prepare(ORG, draft());
+  createdReceiptIds.push(receipt.id);
+  return receipt;
+}
 
-afterEach(async () => {
-  await prisma.fiscalReceipt.deleteMany({ where: { saleId } });
-  await prisma.saleItem.deleteMany({ where: { saleId } });
-  await prisma.sale.deleteMany({ where: { id: saleId } });
-});
+beforeAll(() => prisma.$connect());
 
 afterAll(async () => {
-  await prisma.product.deleteMany({ where: { id: productId } });
+  await prisma.fiscalReceipt.deleteMany({ where: { id: { in: createdReceiptIds } } });
   await prisma.$disconnect();
 });
 
-describe("FiscalService", () => {
-  it("mints the external id once and reuses it on a second prepare", async () => {
-    const service = new FiscalService(prisma, new FakeFiscalProvider());
-    const first = await service.prepare(saleId, ORG);
-    const second = await service.prepare(saleId, ORG);
+describe("buildFiscalSaleRequest", () => {
+  it("refuses a cart whose product has no ИКПУ", () => {
+    // Legally required per line since 01.01.2026 — refused here, before any
+    // receipt row exists and long before anything is sent.
+    expect(() =>
+      buildFiscalSaleRequest({
+        occurredAt: new Date(),
+        paymentMethod: "CASH",
+        location: { name: "Точка", lat: 43.2, lng: 76.8 },
+        total: 100,
+        lines: [
+          { product: { name: "Без ИКПУ", unit: "PCS", ntin: null }, quantity: 1, unitPrice: 100, subtotal: 100 },
+        ],
+      }),
+    ).toThrow("Не заполнен код ИКПУ у товаров: Без ИКПУ");
+  });
 
-    expect(second.id).toBe(first.id);
-    expect(second.externalId).toBe(first.externalId);
+  it("refuses a point of sale with no coordinates", () => {
+    // Mandatory since protocol 2.0.3.
+    expect(() =>
+      buildFiscalSaleRequest({
+        occurredAt: new Date(),
+        paymentMethod: "CASH",
+        location: { name: "Ларёк", lat: null, lng: null },
+        total: 100,
+        lines: [
+          { product: { name: "Хлеб", unit: "PCS", ntin: "0200000000001" }, quantity: 1, unitPrice: 100, subtotal: 100 },
+        ],
+      }),
+    ).toThrow("Не указаны координаты точки «Ларёк»");
+  });
+
+  it("reports a bank transfer as a non-cash settlement", () => {
+    // TRANSFER is not a till payment type in the protocol.
+    const request = buildFiscalSaleRequest({
+      occurredAt: new Date(),
+      paymentMethod: "TRANSFER",
+      location: { name: "Точка", lat: 43.2, lng: 76.8 },
+      total: 500,
+      lines: [
+        { product: { name: "Хлеб", unit: "PCS", ntin: "0200000000001" }, quantity: 1, unitPrice: 500, subtotal: 500 },
+      ],
+    });
+    expect(request.payments[0].type).toBe("CARD");
+    // Nothing was handed over in cash, so there is no "taken" amount.
+    expect(request.taken).toBe(0);
+  });
+
+  it("carries the unit code the classifier expects for weight goods", () => {
+    const request = buildFiscalSaleRequest({
+      occurredAt: new Date(),
+      paymentMethod: "CASH",
+      location: { name: "Точка", lat: 43.2, lng: 76.8 },
+      total: 900,
+      lines: [
+        { product: { name: "Мука", unit: "KG", ntin: "0200000000002" }, quantity: 1.5, unitPrice: 600, subtotal: 900 },
+      ],
+    });
+    expect(request.lines[0].measureUnitCode).toBe("166");
+  });
+});
+
+describe("FiscalService", () => {
+  it("mints a fresh external id for every prepared receipt", async () => {
+    const service = new FiscalService(prisma, new FakeFiscalProvider());
+    const first = await prepare(service);
+    const second = await prepare(service);
+
+    expect(first.externalId).not.toBe(second.externalId);
     expect(first.status).toBe(FiscalReceiptStatus.PENDING);
+    expect(first.saleId).toBeNull();
   });
 
   it("records a registered receipt with its number and QR", async () => {
     const service = new FiscalService(prisma, new FakeFiscalProvider());
-    const prepared = await service.prepare(saleId, ORG);
-    const result = await service.attempt(prepared.id);
+    const result = await service.attempt((await prepare(service)).id);
 
     expect(result.status).toBe(FiscalReceiptStatus.REGISTERED);
     expect(result.ticketNumber).toBeTruthy();
@@ -110,40 +159,31 @@ describe("FiscalService", () => {
     provider.outcome = { kind: "unknown", message: "Соединение прервано" };
     const service = new FiscalService(prisma, provider);
 
-    const prepared = await service.prepare(saleId, ORG);
-    const result = await service.attempt(prepared.id);
+    const result = await service.attempt((await prepare(service)).id);
 
     expect(result.status).toBe(FiscalReceiptStatus.UNKNOWN);
     expect(result.errorMessage).toContain("Соединение");
   });
 
-  it("retrying after a timeout reuses the same external id", async () => {
+  it("retrying after a timeout resends the identical request under the same id", async () => {
     // If a retry invented a new id, re:Kassa would have no way to recognise
     // it as the same receipt and would punch a second one.
     const provider = new ScriptedProvider();
     provider.outcome = { kind: "unknown", message: "таймаут" };
     const service = new FiscalService(prisma, provider);
 
-    const prepared = await service.prepare(saleId, ORG);
+    const prepared = await prepare(service);
     await service.attempt(prepared.id);
-    provider.outcome = {
-      kind: "ok",
-      result: {
-        providerTicketId: "1",
-        ticketNumber: "123",
-        offlineTicketNumber: null,
-        isOffline: false,
-        qrCode: "https://example.invalid/1",
-        kgdKkmId: null,
-        shiftNumber: 1,
-        raw: {},
-      },
-    };
+    provider.outcome = { kind: "ok", result: registered("123") };
     const retried = await service.attempt(prepared.id);
 
     expect(provider.seen).toHaveLength(2);
-    expect(provider.seen[0].externalId).toBe(provider.seen[1].externalId);
     expect(provider.seen[0].externalId).toBe(prepared.externalId);
+    expect(provider.seen[1]).toEqual(provider.seen[0]);
+    // The timestamp survived the round trip through JSON as a Date, not the
+    // string it was stored as.
+    expect(provider.seen[1].occurredAt).toBeInstanceOf(Date);
+    expect(provider.seen[1].occurredAt.toISOString()).toBe("2026-08-22T05:00:00.000Z");
     expect(retried.status).toBe(FiscalReceiptStatus.REGISTERED);
     expect(retried.attempts).toBe(2);
   });
@@ -155,8 +195,7 @@ describe("FiscalService", () => {
     provider.outcome = { kind: "rejected", code: "DUPLICATE_EXTERNAL_ID", message: "" };
     const service = new FiscalService(prisma, provider);
 
-    const prepared = await service.prepare(saleId, ORG);
-    const result = await service.attempt(prepared.id);
+    const result = await service.attempt((await prepare(service)).id);
 
     expect(result.status).toBe(FiscalReceiptStatus.UNKNOWN);
     expect(result.status).not.toBe(FiscalReceiptStatus.FAILED);
@@ -167,72 +206,20 @@ describe("FiscalService", () => {
     provider.outcome = { kind: "rejected", code: "PROTOCOL_ERROR", message: "Неверный формат" };
     const service = new FiscalService(prisma, provider);
 
-    const prepared = await service.prepare(saleId, ORG);
-    const result = await service.attempt(prepared.id);
+    const result = await service.attempt((await prepare(service)).id);
 
     expect(result.status).toBe(FiscalReceiptStatus.FAILED);
     expect(result.errorCode).toBe("PROTOCOL_ERROR");
     expect(result.errorMessage).toBe("Неверный формат");
   });
 
-  it("refuses a sale whose product has no ИКПУ, before calling the provider", async () => {
-    const noNtin = await prisma.product.create({
-      data: {
-        organizationId: ORG,
-        name: "Без ИКПУ",
-        sku: `NO-NTIN-${Date.now()}`,
-        unit: "PCS",
-        type: "FINISHED_GOOD",
-        price: 100,
-      },
-    });
-    const sale = await prisma.sale.create({
-      data: {
-        organizationId: ORG,
-        locationId,
-        soldAt: new Date(),
-        totalAmount: 100,
-        amountPaid: 100,
-        paymentMethod: "CASH",
-        createdById: userId,
-        items: { create: [{ productId: noNtin.id, quantity: 1, unitPrice: 100, subtotal: 100 }] },
-      },
-    });
-
-    const provider = new ScriptedProvider();
-    const service = new FiscalService(prisma, provider);
-    const prepared = await service.prepare(sale.id, ORG);
-    const result = await service.attempt(prepared.id);
-
-    expect(provider.seen).toHaveLength(0);
-    expect(result.status).toBe(FiscalReceiptStatus.FAILED);
-    expect(result.errorMessage).toContain("Без ИКПУ");
-
-    await prisma.fiscalReceipt.deleteMany({ where: { saleId: sale.id } });
-    await prisma.saleItem.deleteMany({ where: { saleId: sale.id } });
-    await prisma.sale.deleteMany({ where: { id: sale.id } });
-    await prisma.product.deleteMany({ where: { id: noNtin.id } });
-  });
-
   it("lets only one of two simultaneous attempts reach the provider", async () => {
     // Two tabs, or a retry racing a background job: the conditional UPDATE is
     // the only thing standing between that and two receipts.
     const provider = new ScriptedProvider();
-    provider.outcome = {
-      kind: "ok",
-      result: {
-        providerTicketId: "1",
-        ticketNumber: "555",
-        offlineTicketNumber: null,
-        isOffline: false,
-        qrCode: null,
-        kgdKkmId: null,
-        shiftNumber: 1,
-        raw: {},
-      },
-    };
+    provider.outcome = { kind: "ok", result: registered("555") };
     const service = new FiscalService(prisma, provider);
-    const prepared = await service.prepare(saleId, ORG);
+    const prepared = await prepare(service);
 
     await Promise.all([service.attempt(prepared.id), service.attempt(prepared.id)]);
 
@@ -241,21 +228,9 @@ describe("FiscalService", () => {
 
   it("does not re-send a receipt that is already registered", async () => {
     const provider = new ScriptedProvider();
-    provider.outcome = {
-      kind: "ok",
-      result: {
-        providerTicketId: "1",
-        ticketNumber: "777",
-        offlineTicketNumber: null,
-        isOffline: false,
-        qrCode: null,
-        kgdKkmId: null,
-        shiftNumber: 1,
-        raw: {},
-      },
-    };
+    provider.outcome = { kind: "ok", result: registered("777") };
     const service = new FiscalService(prisma, provider);
-    const prepared = await service.prepare(saleId, ORG);
+    const prepared = await prepare(service);
 
     await service.attempt(prepared.id);
     const again = await service.attempt(prepared.id);
@@ -269,7 +244,22 @@ describe("FiscalService", () => {
     provider.outcome = { kind: "rejected", code: "PROTOCOL_ERROR", message: "плохо" };
     const service = new FiscalService(prisma, provider);
 
-    const prepared = await service.prepare(saleId, ORG);
+    const prepared = await prepare(service);
+    await service.attempt(prepared.id);
+
+    const attention = await service.needsAttention(ORG);
+    expect(attention.some((r) => r.id === prepared.id)).toBe(true);
+  });
+
+  it("flags a receipt that was punched but never reached a sale", async () => {
+    // The one hole the two-phase order can leave: the operator registered the
+    // receipt, then writing the sale failed. Money was taken against a fiscal
+    // document with nothing behind it, so it must not stay invisible.
+    const provider = new ScriptedProvider();
+    provider.outcome = { kind: "ok", result: registered("888") };
+    const service = new FiscalService(prisma, provider);
+
+    const prepared = await prepare(service);
     await service.attempt(prepared.id);
 
     const attention = await service.needsAttention(ORG);

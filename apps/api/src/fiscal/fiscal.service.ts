@@ -29,6 +29,65 @@ const PAYMENT_TYPE_BY_METHOD: Record<string, FiscalPaymentType> = {
   TRANSFER: "CARD",
 };
 
+// Everything needed to punch a receipt, in our own terms. Deliberately NOT a
+// Sale row: the receipt is registered before the sale is written, so this has
+// to be buildable from the cart alone.
+export interface FiscalSaleSource {
+  occurredAt: Date;
+  paymentMethod: string;
+  location: { name: string; lat: number | null; lng: number | null };
+  total: number;
+  lines: {
+    product: { name: string; unit: string; ntin: string | null };
+    quantity: number;
+    unitPrice: number;
+    subtotal: number;
+  }[];
+}
+
+// The externalId is minted later, by prepare() — it is the one field a caller
+// must never choose for itself.
+export type FiscalSaleDraft = Omit<FiscalSaleRequest, "externalId">;
+
+// Translates a cart into the provider-neutral request. Refuses, in Russian,
+// rather than guessing when something legally required is missing — and does
+// so before anything at all has been written or sent.
+export function buildFiscalSaleRequest(source: FiscalSaleSource): FiscalSaleDraft {
+  const missingNtin = source.lines.filter((l) => !l.product.ntin).map((l) => l.product.name);
+  if (missingNtin.length > 0) {
+    // A receipt line without an ИКПУ has been illegal since 01.01.2026, and
+    // the operator would reject it anyway.
+    throw new BadRequestException(`Не заполнен код ИКПУ у товаров: ${missingNtin.join(", ")}`);
+  }
+
+  if (source.location.lat === null || source.location.lng === null) {
+    // Coordinates became mandatory in protocol 2.0.3.
+    throw new BadRequestException(`Не указаны координаты точки «${source.location.name}»`);
+  }
+
+  const paymentType = PAYMENT_TYPE_BY_METHOD[source.paymentMethod] ?? "CASH";
+
+  return {
+    occurredAt: source.occurredAt,
+    lines: source.lines.map((line) => ({
+      name: line.product.name,
+      quantity: line.quantity,
+      unitPrice: line.unitPrice,
+      total: line.subtotal,
+      ntin: line.product.ntin as string,
+      measureUnitCode: MEASURE_UNIT_CODE_BY_UNIT[line.product.unit] ?? DEFAULT_MEASURE_UNIT_CODE,
+    })),
+    payments: [{ type: paymentType, amount: source.total }],
+    total: source.total,
+    // Cash handed over and change are only meaningful for a till that tracks
+    // them; the POS settles the exact amount, so they mirror total.
+    taken: paymentType === "CASH" ? source.total : 0,
+    change: 0,
+    latitude: source.location.lat,
+    longitude: source.location.lng,
+  };
+}
+
 @Injectable()
 export class FiscalService {
   private readonly logger = new Logger(FiscalService.name);
@@ -38,16 +97,27 @@ export class FiscalService {
     @Inject(FISCAL_PROVIDER) private provider: FiscalProvider,
   ) {}
 
-  // Creates (or returns) the fiscal receipt row for a sale. The externalId is
-  // minted exactly once here and never regenerated: it is the idempotency key
-  // that makes every later retry safe.
-  async prepare(saleId: string, organizationId: string): Promise<FiscalReceipt> {
-    const existing = await this.prisma.fiscalReceipt.findUnique({ where: { saleId } });
-    if (existing) return existing;
-
+  // Creates the fiscal receipt row for a cart that has not been sold yet.
+  //
+  // The externalId is minted exactly once here and never regenerated: it is
+  // the idempotency key that makes every later retry safe. The request is
+  // stored alongside it because a retry must resend byte-identical content,
+  // and after a timeout there is no sale row to rebuild it from.
+  async prepare(organizationId: string, draft: FiscalSaleDraft): Promise<FiscalReceipt> {
     return this.prisma.fiscalReceipt.create({
-      data: { saleId, organizationId, externalId: randomUUID() },
+      data: {
+        organizationId,
+        externalId: randomUUID(),
+        requestPayload: draft as unknown as Prisma.InputJsonValue,
+      },
     });
+  }
+
+  // Attaches a registered receipt to the sale it paid for. Called inside the
+  // sale's own transaction, so the link either lands with the sale or not at
+  // all.
+  async linkSale(tx: Prisma.TransactionClient, receiptId: string, saleId: string): Promise<void> {
+    await tx.fiscalReceipt.update({ where: { id: receiptId }, data: { saleId } });
   }
 
   // Tries to register the receipt with the fiscal operator.
@@ -76,22 +146,17 @@ export class FiscalService {
       return receipt;
     }
 
+    const request = this.restoreRequest(receipt);
+    if (!request) {
+      return this.recordRejected(receiptId, "INVALID_PAYLOAD", "Не сохранён состав чека");
+    }
+
     const claimed = await this.prisma.fiscalReceipt.updateMany({
       where: { id: receiptId, status: { in: retryable } },
       data: { status: FiscalReceiptStatus.SENDING, attempts: { increment: 1 }, lastAttemptAt: new Date() },
     });
     if (claimed.count === 0) {
       return (await this.prisma.fiscalReceipt.findUnique({ where: { id: receiptId } })) ?? receipt;
-    }
-
-    let request: FiscalSaleRequest;
-    try {
-      request = await this.buildRequest(receipt);
-    } catch (err) {
-      // A payload we cannot even build (missing ИКПУ, missing coordinates) is
-      // a rejection before anything left the building — nothing is in doubt.
-      const message = err instanceof Error ? err.message : "Не удалось собрать чек";
-      return this.recordRejected(receiptId, "INVALID_PAYLOAD", message);
     }
 
     const outcome = await this.provider.registerSale(request);
@@ -135,15 +200,28 @@ export class FiscalService {
     return this.recordUnknown(receiptId, outcome.message);
   }
 
-  // Sales whose fiscal side needs a human: rejected outright, or in doubt.
+  // Receipts whose fiscal side needs a human: rejected outright, in doubt, or
+  // registered without ever reaching a sale (punched, then the sale itself
+  // failed to record — the one case the two-phase order can leave behind).
   async needsAttention(organizationId: string): Promise<FiscalReceipt[]> {
     return this.prisma.fiscalReceipt.findMany({
       where: {
         organizationId,
-        status: { in: [FiscalReceiptStatus.FAILED, FiscalReceiptStatus.UNKNOWN] },
+        OR: [
+          { status: { in: [FiscalReceiptStatus.FAILED, FiscalReceiptStatus.UNKNOWN] } },
+          { status: FiscalReceiptStatus.REGISTERED, saleId: null },
+        ],
       },
       orderBy: { createdAt: "desc" },
     });
+  }
+
+  // JSON has no Date, so the timestamp comes back as a string and has to be
+  // revived — sending it on as a string would encode the wrong receipt time.
+  private restoreRequest(receipt: FiscalReceipt): FiscalSaleRequest | null {
+    if (!receipt.requestPayload) return null;
+    const draft = receipt.requestPayload as unknown as FiscalSaleDraft;
+    return { ...draft, occurredAt: new Date(draft.occurredAt), externalId: receipt.externalId };
   }
 
   private async recordRejected(receiptId: string, code: string, message: string): Promise<FiscalReceipt> {
@@ -158,51 +236,5 @@ export class FiscalService {
       where: { id: receiptId },
       data: { status: FiscalReceiptStatus.UNKNOWN, errorCode: "UNKNOWN", errorMessage: message },
     });
-  }
-
-  // Translates our own sale into the provider-neutral request. Throws rather
-  // than guessing when something legally required is missing.
-  private async buildRequest(receipt: FiscalReceipt): Promise<FiscalSaleRequest> {
-    const sale = await this.prisma.sale.findUnique({
-      where: { id: receipt.saleId },
-      include: { items: { include: { product: true } }, location: true },
-    });
-    if (!sale) throw new Error("Продажа не найдена");
-
-    const missingNtin = sale.items.filter((item) => !item.product.ntin).map((item) => item.product.name);
-    if (missingNtin.length > 0) {
-      // Refused before any call: a receipt line without an ИКПУ has been
-      // illegal since 01.01.2026, and the operator would reject it anyway.
-      throw new Error(`Не заполнен код ИКПУ у товаров: ${missingNtin.join(", ")}`);
-    }
-
-    if (sale.location.lat === null || sale.location.lng === null) {
-      // Coordinates became mandatory in protocol 2.0.3.
-      throw new Error(`Не указаны координаты точки «${sale.location.name}»`);
-    }
-
-    const total = sale.totalAmount.toNumber();
-    const paymentType = PAYMENT_TYPE_BY_METHOD[sale.paymentMethod] ?? "CASH";
-
-    return {
-      externalId: receipt.externalId,
-      occurredAt: sale.soldAt,
-      lines: sale.items.map((item) => ({
-        name: item.product.name,
-        quantity: item.quantity.toNumber(),
-        unitPrice: item.unitPrice.toNumber(),
-        total: item.subtotal.toNumber(),
-        ntin: item.product.ntin as string,
-        measureUnitCode: MEASURE_UNIT_CODE_BY_UNIT[item.product.unit] ?? DEFAULT_MEASURE_UNIT_CODE,
-      })),
-      payments: [{ type: paymentType, amount: total }],
-      total,
-      // Cash handed over and change are only meaningful for a cash till that
-      // tracks them; the POS settles the exact amount, so they mirror total.
-      taken: paymentType === "CASH" ? total : 0,
-      change: 0,
-      latitude: sale.location.lat,
-      longitude: sale.location.lng,
-    };
   }
 }

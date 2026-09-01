@@ -3,6 +3,7 @@ import { FISCAL_PROVIDER } from "./fiscal-provider";
 import { ReKassaProvider } from "./rekassa.provider";
 import { FakeFiscalProvider } from "./fake-fiscal.provider";
 import { FiscalService } from "./fiscal.service";
+import { FiscalSettings } from "./fiscal.settings";
 
 // Which provider is live is decided once, here, from configuration — the rest
 // of the app only ever sees FISCAL_PROVIDER. Without re:Kassa credentials the
@@ -11,6 +12,7 @@ import { FiscalService } from "./fiscal.service";
 @Module({
   providers: [
     FiscalService,
+    FiscalSettings,
     ReKassaProvider,
     FakeFiscalProvider,
     {
@@ -27,6 +29,6 @@ import { FiscalService } from "./fiscal.service";
       },
     },
   ],
-  exports: [FISCAL_PROVIDER, FiscalService],
+  exports: [FISCAL_PROVIDER, FiscalService, FiscalSettings],
 })
 export class FiscalModule {}

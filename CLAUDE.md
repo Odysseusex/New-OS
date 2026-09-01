@@ -374,27 +374,45 @@ required, that changes the whole shape of the integration (a device-bound
 kассa can't just be "our backend calls their cloud API"), so this is the
 single highest-risk open question, above every code question.
 
-**Architectural conclusion already reached (do not redo this analysis):**
-the risky part is not writing an adapter, it's that `SalesService.create()`
-currently writes `Sale` + `CashMovement` + `StockMovement` as one
-inseparable transaction (see its code) — fiscalization requires flipping the
-order so a confirmed fiscal receipt comes *first*, and money/stock movements
-only happen after. That reordering touches `prisma.sale`/`tx.sale` call
-sites across six modules (sales, customers, locations, finance, ai,
-hr — confirmed by `grep`), which is why it should not be attempted blind.
+**The two-phase sale order is BUILT, behind an off-by-default switch.**
+`FISCALIZATION_ENABLED` (env, must be exactly the string `"true"`) is the
+whole of the deployment step and the whole of the rollback. While off,
+`SalesService.create()` runs the original single transaction untouched and
+no fiscal code is reached at all — there is a test asserting exactly that,
+including that a half-set flag (`"1"`, `"yes"`) fails safe to off.
 
-**Safe to build now, independent of their API shape** (already scoped in
-detail in this session's transcript if the exact task list is needed): a
-`FiscalProvider` interface + staged-state schema modeled on
-`TelegramPendingAction` above, a null/fake provider to develop and test
-against, the ИКПУ code field on `Product` (pure addition), and UI states for
-"чек пробивается / ошибка / готово". **Do not build**: the actual retry
-policy on timeout, a shift (смена) lifecycle, reconciliation, or — most
-importantly — **do not flip `SalesService.create()` to the two-phase order**
-until a working adapter exists against a real test/sandbox environment.
-Getting this wrong is expensive (it's the core sales-creation path); getting
-it right requires knowing whether re:Kassa supports idempotency keys and
-receipt lookup-by-external-id, which is currently unknown.
+**Receipt first, then the sale — not the other way round.** The obvious
+design (write the `Sale`, then fiscalise, then cash/stock) was rejected: it
+needs a `Sale` that isn't a real sale yet, and then every revenue query
+across the six modules that touch `prisma.sale`/`tx.sale` (sales, customers,
+locations, finance, ai, hr) has to learn to exclude it. Instead
+`fiscalizeBeforeSale()` validates, punches the receipt, and only then runs
+the existing transaction unchanged. The invariant stays trivial: **a `Sale`
+row in this database is always a completed sale.** Consequences to keep in
+mind before changing this:
+- `FiscalReceipt.saleId` is nullable *because* the receipt predates the sale.
+  A REGISTERED receipt with `saleId = null` means it was punched and the sale
+  then failed to record — the one hole this order leaves, deliberately
+  surfaced by `needsAttention()` rather than hidden.
+- `FiscalReceipt.requestPayload` stores what was sent. A retry must resend
+  byte-identical content under the same `externalId`, and after a timeout
+  there is no sale row to rebuild it from. JSON has no `Date`, so
+  `restoreRequest()` revives `occurredAt` — sending it on as a string would
+  stamp the receipt wrong.
+- Stock is checked *before* fiscalising as well as inside the transaction, so
+  a legally binding receipt is never issued for goods the stock check is
+  about to refuse a moment later.
+- An UNKNOWN outcome tells the cashier **not** to ring the cart up again
+  ("Не пробивайте заново"), because a second attempt could punch a second
+  receipt. That wording is load-bearing, not decoration.
+
+**Still not built, and still needs their live environment**: a shift (смена)
+lifecycle, reconciliation/lookup-by-external-id to resolve UNKNOWN rows
+automatically, return receipts, and the «Требует внимания» screen +
+showing the receipt number/QR on the POS after payment. **Do not switch
+`FISCALIZATION_ENABLED` on** until a real receipt has been punched against a
+live test cash register — the fake provider proves the wiring, not that the
+operator accepts our payload. This was promised to the user explicitly.
 
 ## Prisma migration workflow (this sandbox has no direct prod DB access)
 
