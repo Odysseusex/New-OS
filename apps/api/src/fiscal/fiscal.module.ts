@@ -2,6 +2,7 @@ import { Logger, Module } from "@nestjs/common";
 import { FISCAL_PROVIDER } from "./fiscal-provider";
 import { ReKassaProvider } from "./rekassa.provider";
 import { FakeFiscalProvider } from "./fake-fiscal.provider";
+import { FiscalService } from "./fiscal.service";
 
 // Which provider is live is decided once, here, from configuration — the rest
 // of the app only ever sees FISCAL_PROVIDER. Without re:Kassa credentials the
@@ -9,6 +10,7 @@ import { FakeFiscalProvider } from "./fake-fiscal.provider";
 // production while fiscalisation is still switched off.
 @Module({
   providers: [
+    FiscalService,
     ReKassaProvider,
     FakeFiscalProvider,
     {
@@ -25,6 +27,6 @@ import { FakeFiscalProvider } from "./fake-fiscal.provider";
       },
     },
   ],
-  exports: [FISCAL_PROVIDER],
+  exports: [FISCAL_PROVIDER, FiscalService],
 })
 export class FiscalModule {}
