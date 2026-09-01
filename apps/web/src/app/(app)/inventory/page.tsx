@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
-import { AlertTriangle, ArrowDownCircle, ArrowLeft, ArrowUpCircle, Plus, Wrench } from "lucide-react";
+import { AlertTriangle, ArrowDownCircle, ArrowLeft, ArrowUpCircle, Plus, Search, Wrench, X } from "lucide-react";
 import type { CategoryDto, LocationDto, ProductDto, StockLevelDto, StockMovementDto } from "@bakery-os/shared";
 import {
   HARD_DELETE_ROLES,
@@ -51,7 +51,20 @@ export default function InventoryPage() {
   const [editingCategory, setEditingCategory] = useState<CategoryDto | undefined>(undefined);
   const [newProductCategoryId, setNewProductCategoryId] = useState<string | undefined>(undefined);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [productSearch, setProductSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  // Matches anywhere in the name or the SKU, not just from the start, so
+  // "шок" finds «Белый шоколад». Filtering is local — the catalogue is already
+  // fully loaded — so there's no request per keystroke and no debounce needed.
+  const productQuery = productSearch.trim().toLowerCase();
+  const visibleProducts = productQuery
+    ? products.filter(
+        (p) =>
+          p.name.toLowerCase().includes(productQuery) ||
+          (p.sku ?? "").toLowerCase().includes(productQuery),
+      )
+    : products;
 
   const selectedCategory = selectedCategoryId
     ? categories.find((c) => c.id === selectedCategoryId) ?? null
@@ -239,6 +252,31 @@ export default function InventoryPage() {
             </select>
           )}
 
+          {tab === "catalog" && (
+            <div className="relative">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
+                strokeWidth={1.75}
+              />
+              <input
+                type="text"
+                value={productSearch}
+                onChange={(e) => setProductSearch(e.target.value)}
+                placeholder="Поиск по названию или артикулу…"
+                className="w-64 rounded-xl border border-border bg-surface py-2 pl-9 pr-9 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+              />
+              {productSearch && (
+                <button
+                  onClick={() => setProductSearch("")}
+                  aria-label="Очистить поиск"
+                  className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" strokeWidth={1.75} />
+                </button>
+              )}
+            </div>
+          )}
+
           {tab === "catalog" && canManageProducts && (
             <ArchivedToggle checked={showArchivedProducts} onChange={setShowArchivedProducts} />
           )}
@@ -407,7 +445,7 @@ export default function InventoryPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {products.map((p) => (
+              {visibleProducts.map((p) => (
                 <tr key={p.id} className={clsx(!p.isActive && "opacity-60")}>
                   <td className="px-5 py-3 font-medium text-foreground">
                     <div className="flex items-center gap-2">
@@ -447,10 +485,13 @@ export default function InventoryPage() {
                   )}
                 </tr>
               ))}
-              {products.length === 0 && (
+              {/* Kept distinct from "Товаров пока нет": an empty search result
+                  and an empty catalogue are different situations, and showing
+                  the same text for both hides which one you're looking at. */}
+              {visibleProducts.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-5 py-8 text-center text-sm text-muted">
-                    Товаров пока нет
+                    {productQuery ? `Ничего не найдено по запросу «${productSearch.trim()}»` : "Товаров пока нет"}
                   </td>
                 </tr>
               )}
