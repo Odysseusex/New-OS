@@ -11,11 +11,11 @@ const SKU_PREFIX_BY_TYPE: Record<ProductType, string> = {
   [ProductType.FINISHED_GOOD]: "PRD",
 };
 
-// A blank barcode is stored as null, never "". Scanners also tend to append
-// stray whitespace/newlines, and a value that only differs by a trailing
-// space would silently never match a scan.
-function normalizeBarcode(barcode?: string | null): string | null {
-  const trimmed = barcode?.trim();
+// A blank code is stored as null, never "" — used for both the barcode and
+// the ИКПУ. Scanners tend to append stray whitespace, and a value differing
+// only by a trailing space would silently never match a scan.
+function normalizeBarcode(code?: string | null): string | null {
+  const trimmed = code?.trim();
   return trimmed ? trimmed : null;
 }
 
@@ -65,7 +65,13 @@ export class ProductsService {
       // An empty barcode from the form is stored as null, never "": a blank
       // string would otherwise match every barcode-less product when the
       // till looks one up by scan.
-      data: { ...dto, sku, barcode: normalizeBarcode(dto.barcode), organizationId },
+      data: {
+        ...dto,
+        sku,
+        barcode: normalizeBarcode(dto.barcode),
+        ntin: normalizeBarcode(dto.ntin),
+        organizationId,
+      },
       include: PRODUCT_INCLUDE,
     });
 
@@ -97,6 +103,7 @@ export class ProductsService {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
         ...(dto.sku !== undefined ? { sku: dto.sku } : {}),
         ...(dto.barcode !== undefined ? { barcode: normalizeBarcode(dto.barcode) } : {}),
+        ...(dto.ntin !== undefined ? { ntin: normalizeBarcode(dto.ntin) } : {}),
         ...(dto.unit !== undefined ? { unit: dto.unit } : {}),
         ...(dto.type !== undefined ? { type: dto.type } : {}),
         ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
@@ -230,6 +237,7 @@ export class ProductsService {
     name: string;
     sku: string;
     barcode: string | null;
+    ntin: string | null;
     unit: string;
     type: string;
     categoryId: string | null;
@@ -244,6 +252,7 @@ export class ProductsService {
       name: product.name,
       sku: product.sku,
       barcode: product.barcode,
+      ntin: product.ntin,
       unit: product.unit as ProductDto["unit"],
       type: product.type as ProductDto["type"],
       categoryId: product.categoryId,

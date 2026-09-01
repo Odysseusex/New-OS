@@ -103,6 +103,10 @@ export interface ProductDto {
   // The barcode printed on the packaging, read by a scanner at the till.
   // Null for own fresh production, which has none — see Product.barcode.
   barcode: string | null;
+  // Код ИКПУ из НКТ. Required on every fiscal receipt line by law since
+  // 01.01.2026, so a product without one cannot be legally rung up once
+  // fiscalisation is switched on.
+  ntin: string | null;
   unit: Unit;
   type: ProductType;
   categoryId: string | null;
@@ -123,6 +127,7 @@ export interface CreateProductRequestDto {
   name: string;
   sku?: string;
   barcode?: string;
+  ntin?: string;
   unit: Unit;
   type: ProductType;
   categoryId?: string;
@@ -135,6 +140,7 @@ export interface UpdateProductRequestDto {
   name?: string;
   sku?: string;
   barcode?: string | null;
+  ntin?: string | null;
   unit?: Unit;
   type?: ProductType;
   categoryId?: string | null;

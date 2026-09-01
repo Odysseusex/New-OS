@@ -26,6 +26,7 @@ import { QualityModule } from "./quality/quality.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { AiModule } from "./ai/ai.module";
 import { TelegramModule } from "./telegram/telegram.module";
+import { FiscalModule } from "./fiscal/fiscal.module";
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { TelegramModule } from "./telegram/telegram.module";
     NotificationsModule,
     AiModule,
     TelegramModule,
+    FiscalModule,
   ],
   controllers: [AppController],
 })

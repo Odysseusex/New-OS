@@ -15,6 +15,10 @@ export class CreateProductDto {
   @IsString()
   barcode?: string;
 
+  @IsOptional()
+  @IsString()
+  ntin?: string;
+
   @IsEnum(Unit)
   unit!: Unit;
 

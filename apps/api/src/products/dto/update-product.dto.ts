@@ -20,6 +20,10 @@ export class UpdateProductDto {
   barcode?: string | null;
 
   @IsOptional()
+  @IsString()
+  ntin?: string | null;
+
+  @IsOptional()
   @IsEnum(Unit)
   unit?: Unit;
 

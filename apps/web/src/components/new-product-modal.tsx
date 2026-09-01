@@ -22,6 +22,7 @@ export function NewProductModal({
   const [name, setName] = useState(product?.name ?? "");
   const [sku, setSku] = useState(product?.sku ?? "");
   const [barcode, setBarcode] = useState(product?.barcode ?? "");
+  const [ntin, setNtin] = useState(product?.ntin ?? "");
   const [unit, setUnit] = useState<Unit>(product?.unit ?? Unit.PCS);
   const [type, setType] = useState<ProductType>(product?.type ?? ProductType.FINISHED_GOOD);
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? defaultCategoryId ?? "");
@@ -47,12 +48,21 @@ export function NewProductModal({
         minQuantity: Number(minQuantity),
       };
       const trimmedBarcode = barcode.trim();
+      const trimmedNtin = ntin.trim();
       if (product) {
         // Explicit null, not undefined, so clearing the field actually erases
         // the stored barcode instead of leaving the old value untouched.
-        await api.products.update(product.id, { ...dto, barcode: trimmedBarcode || null });
+        await api.products.update(product.id, {
+          ...dto,
+          barcode: trimmedBarcode || null,
+          ntin: trimmedNtin || null,
+        });
       } else {
-        await api.products.create({ ...dto, barcode: trimmedBarcode || undefined });
+        await api.products.create({
+          ...dto,
+          barcode: trimmedBarcode || undefined,
+          ntin: trimmedNtin || undefined,
+        });
       }
       onSaved();
     } catch (err) {
@@ -99,6 +109,18 @@ export function NewProductModal({
               value={barcode}
               onChange={(e) => setBarcode(e.target.value)}
               placeholder="Отсканируйте или введите вручную"
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+          </div>
+          <div className="col-span-2">
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
+              Код ИКПУ <span className="text-muted">(необязательно)</span>
+            </label>
+            <input
+              type="text"
+              value={ntin}
+              onChange={(e) => setNtin(e.target.value)}
+              placeholder="17 знаков из Национального каталога товаров"
               className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
             />
           </div>

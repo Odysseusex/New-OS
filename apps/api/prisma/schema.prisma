@@ -203,6 +203,26 @@ enum PaymentMethod {
   TRANSFER
 }
 
+// Where a sale stands with the fiscal operator (ККМ/ОФД).
+//   PENDING   — staged, not sent yet.
+//   SENDING   — claimed by one attempt; only that attempt may call the API.
+//   REGISTERED— the provider confirmed a fiscal receipt. Terminal, and the
+//               only state in which money/stock may move (see the fiscal
+//               section in CLAUDE.md).
+//   FAILED    — the provider rejected it for a stated reason. Retryable
+//               after the cause is fixed; the SAME externalId is reused so a
+//               retry can never double-punch.
+//   UNKNOWN   — the call timed out or the connection dropped, so we do NOT
+//               know whether a receipt exists. Never auto-retried blindly:
+//               it must first be resolved against the provider by externalId.
+enum FiscalReceiptStatus {
+  PENDING
+  SENDING
+  REGISTERED
+  FAILED
+  UNKNOWN
+}
+
 // A tenant of the platform — one bakery network / company.
 model Organization {
   id        String   @id @default(cuid())
@@ -416,6 +436,13 @@ model Product {
   // own fresh production (bread, cakes) carries no barcode at all and is
   // rung up by tapping a tile instead; only resold packaged goods have one.
   barcode        String?
+  // Код ИКПУ из Национального каталога товаров — re:Kassa's `ntin` field.
+  // Every receipt line has been legally required to carry it since
+  // 01.01.2026, so a sale can't be fiscalised until the products in it have
+  // one. Not validated here: the fiscal operator is the authority and
+  // rejects a wrong code, so a local format check would only invent a second
+  // opinion that can drift out of date.
+  ntin           String?
   // False for resources with no physical stock to track (e.g. tap water) —
   // still usable in recipes and cost calculations, but excluded from stock
   // levels, low-stock alerts, and receiving/write-off/adjustment operations.
@@ -520,10 +547,62 @@ model Sale {
   items          SaleItem[]
   stockMovements StockMovement[]
   cashMovements  CashMovement[]
+  fiscalReceipt  FiscalReceipt?
 
   @@index([organizationId, locationId])
   @@index([soldAt])
   @@map("sales")
+}
+
+// The fiscal side of a Sale: one receipt per sale, tracked separately so the
+// sale row itself stays the plain commercial document it has always been.
+//
+// This table is the retry-safety mechanism, in the same spirit as
+// TelegramPendingAction: `externalId` is generated once, sent as re:Kassa's
+// X-Request-ID, and REUSED on every retry of that same sale. re:Kassa treats a
+// repeat of the same external id within a shift as the same request, so a
+// retry after a timeout cannot punch a second receipt. Never regenerate it.
+model FiscalReceipt {
+  id             String              @id @default(cuid())
+  organizationId String
+  saleId         String              @unique
+  sale           Sale                @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  status         FiscalReceiptStatus @default(PENDING)
+
+  // Our idempotency key (a UUID), sent as X-Request-ID. Unique per
+  // organization so a collision can never silently merge two sales.
+  externalId String @unique
+
+  // --- Filled in from the provider's answer once registered. ---
+  // Everything below is also what a later RETURN receipt must quote back
+  // about the original (re:Kassa's `parentTicket` block), which is why the
+  // response is preserved rather than reduced to a number.
+  providerTicketId    String?
+  ticketNumber        String?
+  offlineTicketNumber String?
+  // True when the provider registered it in offline mode — the return
+  // receipt has to carry this flag back verbatim.
+  isOffline           Boolean  @default(false)
+  qrCode              String?
+  kgdKkmId            String?
+  shiftNumber         Int?
+  registeredAt        DateTime?
+  // The raw provider response, kept whole: the return payload needs fields
+  // we don't model individually, and a fiscal answer is evidence worth
+  // keeping verbatim rather than re-deriving later.
+  providerResponse    Json?
+
+  // Last failure reason, shown to the cashier as-is. Cleared on success.
+  errorCode    String?
+  errorMessage String?
+  attempts     Int      @default(0)
+  lastAttemptAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, status])
+  @@map("fiscal_receipts")
 }
 
 model SaleItem {

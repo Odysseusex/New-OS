@@ -1,0 +1,85 @@
+// The boundary between ArAmir OS and whichever fiscal operator is in use.
+//
+// Everything here is expressed in OUR terms — plain tenge, plain quantities,
+// our own payment methods. No re:Kassa field names, no bills/coins, no
+// thousandths. Swapping provider (or moving from their test server to the
+// live one) must not reach past this file.
+//
+// What an interface CANNOT abstract away is capability: the retry design in
+// FiscalReceiptStatus assumes the provider supports an idempotency key and
+// treats a repeat of it as the same request. re:Kassa does (X-Request-ID).
+// A provider that did not would need the state machine rethought, not just a
+// new adapter.
+
+export interface FiscalReceiptLine {
+  name: string;
+  quantity: number;
+  // Per-unit price in tenge.
+  unitPrice: number;
+  // Line total in tenge. Passed explicitly rather than multiplied here so the
+  // figure on the fiscal receipt is always the one the sale actually charged,
+  // including any rounding already applied to it.
+  total: number;
+  // Код ИКПУ from the national catalogue. Legally required per line since
+  // 01.01.2026, hence not optional at this boundary — the caller must refuse
+  // to fiscalise a product that lacks one rather than send a blank.
+  ntin: string;
+  // Unit code from the fiscal classifier (796 = piece, and so on).
+  measureUnitCode: string;
+}
+
+export type FiscalPaymentType = "CASH" | "CARD" | "MOBILE";
+
+export interface FiscalSaleRequest {
+  // Our idempotency key. The SAME value must be reused for every retry of
+  // this sale — that is what makes a retry safe after a timeout.
+  externalId: string;
+  lines: FiscalReceiptLine[];
+  payments: { type: FiscalPaymentType; amount: number }[];
+  // Total in tenge, and what the customer handed over (equal for card).
+  total: number;
+  taken: number;
+  change: number;
+  occurredAt: Date;
+  // Coordinates of the till. Mandatory since protocol 2.0.3.
+  latitude: number;
+  longitude: number;
+}
+
+export interface FiscalSaleResult {
+  providerTicketId: string;
+  // Null while the receipt is still only registered offline — the offline
+  // number is then the one that identifies it.
+  ticketNumber: string | null;
+  offlineTicketNumber: string | null;
+  isOffline: boolean;
+  qrCode: string | null;
+  kgdKkmId: string | null;
+  shiftNumber: number | null;
+  // Kept whole: a return receipt has to quote the original back, and a
+  // fiscal answer is evidence worth preserving verbatim.
+  raw: unknown;
+}
+
+// Distinguishes the three outcomes that must be handled differently.
+//   ok       — registered.
+//   rejected — the provider said no, for a stated reason. Safe to fix and
+//              retry with the same externalId.
+//   unknown  — timeout or dropped connection. We do NOT know whether a
+//              receipt exists; must be resolved before any retry.
+export type FiscalSaleOutcome =
+  | { kind: "ok"; result: FiscalSaleResult }
+  | { kind: "rejected"; code: string; message: string }
+  | { kind: "unknown"; message: string };
+
+export interface FiscalProvider {
+  readonly name: string;
+  // True once the provider has everything it needs to be called at all
+  // (credentials configured). Lets the app run normally with fiscalisation
+  // switched off, which is the current state.
+  isConfigured(): boolean;
+  registerSale(request: FiscalSaleRequest): Promise<FiscalSaleOutcome>;
+}
+
+// Injection token — NestJS cannot inject a TypeScript interface.
+export const FISCAL_PROVIDER = Symbol("FISCAL_PROVIDER");
