@@ -5,8 +5,10 @@ import { PrismaService } from "../prisma/prisma.service";
 import { FiscalStatusDto } from "@bakery-os/shared";
 import {
   FISCAL_PROVIDER,
+  FiscalParentReceipt,
   FiscalPaymentType,
   FiscalProvider,
+  FiscalReturnRequest,
   FiscalSaleRequest,
 } from "./fiscal-provider";
 import { FiscalSettings } from "./fiscal.settings";
@@ -50,6 +52,14 @@ export interface FiscalSaleSource {
 // The externalId is minted later, by prepare() — it is the one field a caller
 // must never choose for itself.
 export type FiscalSaleDraft = Omit<FiscalSaleRequest, "externalId">;
+export type FiscalReturnDraft = Omit<FiscalReturnRequest, "externalId">;
+// A prepared receipt is one or the other; which it is decides whether the
+// provider is asked for a sale or a return.
+export type FiscalDraft = FiscalSaleDraft | FiscalReturnDraft;
+
+function isReturnDraft(draft: FiscalDraft): draft is FiscalReturnDraft {
+  return "parent" in draft;
+}
 
 // Translates a cart into the provider-neutral request. Refuses, in Russian,
 // rather than guessing when something legally required is missing — and does
@@ -108,7 +118,7 @@ export class FiscalService {
   // the idempotency key that makes every later retry safe. The request is
   // stored alongside it because a retry must resend byte-identical content,
   // and after a timeout there is no sale row to rebuild it from.
-  async prepare(organizationId: string, draft: FiscalSaleDraft): Promise<FiscalReceipt> {
+  async prepare(organizationId: string, draft: FiscalDraft): Promise<FiscalReceipt> {
     return this.prisma.fiscalReceipt.create({
       data: {
         organizationId,
@@ -123,6 +133,12 @@ export class FiscalService {
   // all.
   async linkSale(tx: Prisma.TransactionClient, receiptId: string, saleId: string): Promise<void> {
     await tx.fiscalReceipt.update({ where: { id: receiptId }, data: { saleId } });
+  }
+
+  // Attaches a registered return receipt to the return it refunded. Same
+  // reasoning as linkSale: the receipt is punched before the document exists.
+  async linkSaleReturn(tx: Prisma.TransactionClient, receiptId: string, saleReturnId: string): Promise<void> {
+    await tx.fiscalReceipt.update({ where: { id: receiptId }, data: { saleReturnId } });
   }
 
   // Tries to register the receipt with the fiscal operator.
@@ -164,7 +180,9 @@ export class FiscalService {
       return (await this.prisma.fiscalReceipt.findUnique({ where: { id: receiptId } })) ?? receipt;
     }
 
-    const outcome = await this.provider.registerSale(request);
+    const outcome = isReturnDraft(request)
+      ? await this.provider.registerReturn(request)
+      : await this.provider.registerSale(request);
 
     if (outcome.kind === "ok") {
       return this.prisma.fiscalReceipt.update({
@@ -289,10 +307,16 @@ export class FiscalService {
 
   // JSON has no Date, so the timestamp comes back as a string and has to be
   // revived — sending it on as a string would encode the wrong receipt time.
-  private restoreRequest(receipt: FiscalReceipt): FiscalSaleRequest | null {
+  private restoreRequest(receipt: FiscalReceipt): FiscalSaleRequest | FiscalReturnRequest | null {
     if (!receipt.requestPayload) return null;
-    const draft = receipt.requestPayload as unknown as FiscalSaleDraft;
-    return { ...draft, occurredAt: new Date(draft.occurredAt), externalId: receipt.externalId };
+    const draft = receipt.requestPayload as unknown as FiscalDraft;
+    const revived = { ...draft, occurredAt: new Date(draft.occurredAt), externalId: receipt.externalId };
+    if (!isReturnDraft(draft)) return revived as FiscalSaleRequest;
+
+    // The parent's timestamp went through JSON as well, and the return is
+    // rejected outright if it arrives as a string.
+    const parent: FiscalParentReceipt = { ...draft.parent, occurredAt: new Date(draft.parent.occurredAt) };
+    return { ...revived, parent } as FiscalReturnRequest;
   }
 
   private async recordRejected(receiptId: string, code: string, message: string): Promise<FiscalReceipt> {

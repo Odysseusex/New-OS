@@ -47,6 +47,22 @@ export interface FiscalSaleRequest {
   longitude: number;
 }
 
+// What a return receipt must quote about the sale it reverses. re:Kassa
+// rejects the return outright without all of it — established against their
+// sandbox, which answered an empty parentTicket by listing exactly these
+// required fields. The cash register's own KGD id is deliberately absent:
+// it belongs to the till, not to the receipt, so the provider supplies it.
+export interface FiscalParentReceipt {
+  ticketNumber: string;
+  occurredAt: Date;
+  total: number;
+  isOffline: boolean;
+}
+
+export interface FiscalReturnRequest extends FiscalSaleRequest {
+  parent: FiscalParentReceipt;
+}
+
 export interface FiscalSaleResult {
   providerTicketId: string;
   // Null while the receipt is still only registered offline — the offline
@@ -92,6 +108,9 @@ export interface FiscalProvider {
   // switched off, which is the current state.
   isConfigured(): boolean;
   registerSale(request: FiscalSaleRequest): Promise<FiscalSaleOutcome>;
+  // Same three outcomes and the same idempotency contract as a sale — a
+  // return that times out must never be blind-retried into a second refund.
+  registerReturn(request: FiscalReturnRequest): Promise<FiscalSaleOutcome>;
   // Null when the state could not be read — a shift we cannot see is not the
   // same as a shift that is fine, and the caller has to tell them apart.
   getShiftState(): Promise<FiscalShiftState | null>;

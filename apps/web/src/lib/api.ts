@@ -88,6 +88,8 @@ import type {
   FiscalStatusDto,
   FiscalReceiptDto,
   FiscalReconcileResultDto,
+  SaleReturnDto,
+  CreateSaleReturnRequestDto,
   TimeEntryDto,
   UpdateCashAccountRequestDto,
   UpdateCategoryRequestDto,
@@ -223,6 +225,11 @@ export const api = {
   },
 
   sales: {
+    returns: {
+      list: (saleId: string) => request<SaleReturnDto[]>(`/sales/${saleId}/returns`),
+      create: (saleId: string, dto: CreateSaleReturnRequestDto) =>
+        request<SaleReturnDto>(`/sales/${saleId}/returns`, { method: "POST", body: JSON.stringify(dto) }),
+    },
     list: (locationId?: string, limit?: number, offset?: number) =>
       request<SaleDto[]>(
         withQuery("/sales", {

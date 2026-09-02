@@ -205,3 +205,40 @@ export interface SalesCustomerTrendDto {
   units: Unit[];
   previous: SalesCustomerTrendComparisonDto;
 }
+
+export interface SaleReturnItemDto {
+  id: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+}
+
+export interface SaleReturnDto {
+  id: string;
+  saleId: string;
+  locationId: string;
+  locationName: string;
+  returnedAt: string;
+  totalAmount: number;
+  reason: string | null;
+  // False when the goods were written off instead of going back on the shelf.
+  restocked: boolean;
+  createdByName: string;
+  items: SaleReturnItemDto[];
+  fiscalReceipt: SaleFiscalReceiptDto | null;
+}
+
+export interface CreateSaleReturnItemRequestDto {
+  productId: string;
+  quantity: number;
+}
+
+export interface CreateSaleReturnRequestDto {
+  // Only the lines actually coming back, with their own quantities — a buyer
+  // returning one loaf out of three is the normal case.
+  items: CreateSaleReturnItemRequestDto[];
+  reason?: string;
+  restocked?: boolean;
+}

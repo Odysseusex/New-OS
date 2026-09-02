@@ -3,6 +3,7 @@ import { Unit } from "./catalog";
 export enum StockMovementType {
   RECEIPT = "RECEIPT",
   SALE = "SALE",
+  SALE_RETURN = "SALE_RETURN",
   WRITE_OFF = "WRITE_OFF",
   ADJUSTMENT = "ADJUSTMENT",
   PRODUCTION_CONSUMPTION = "PRODUCTION_CONSUMPTION",
@@ -12,6 +13,7 @@ export enum StockMovementType {
 export const STOCK_MOVEMENT_TYPE_LABELS_RU: Record<StockMovementType, string> = {
   [StockMovementType.RECEIPT]: "Приёмка",
   [StockMovementType.SALE]: "Продажа",
+  [StockMovementType.SALE_RETURN]: "Возврат от покупателя",
   [StockMovementType.WRITE_OFF]: "Списание",
   [StockMovementType.ADJUSTMENT]: "Корректировка",
   [StockMovementType.PRODUCTION_CONSUMPTION]: "Расход на производство",

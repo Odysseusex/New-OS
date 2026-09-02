@@ -518,7 +518,41 @@ that really existed showed as «Ответ не получен», and the button
 into «Пробит» with the exact ticket number already issued — while still
 flagging «Чек пробит, но продажа не записалась», which was true.
 
-Also still missing: return receipts.
+**Returns (возвраты) are BUILT and verified against the live test kassa.**
+A `SaleReturn` is a separate append-only document referencing its `Sale`,
+never an edit of it — the sale stays immutable like every other confirmed
+document. Money and goods go through the same single ledgers as everything
+else (`CashMovement.SALE_REFUND`, `StockMovement.SALE_RETURN`), reached via
+nullable `saleReturnId` FKs rather than tables of their own. Partial and
+repeated returns are the normal case: `create()` subtracts what earlier
+returns already took back, so the same loaf can never be refunded twice, and
+it refuses to refund more than the buyer actually paid.
+
+`SaleReturn.restocked` decides whether the goods go back on the shelf or are
+written off (`WRITE_OFF` + `OTHER`) — bread a buyer carried home cannot be
+resold, and stock must not claim otherwise. Gated by `SALE_RETURN_ROLES`
+(OWNER/ADMIN/STORE_MANAGER), deliberately *narrower* than SALE_CREATE_ROLES:
+a cashier can sell but not refund, since a refund is money leaving the till.
+Widen only if the owner asks.
+
+**The re:Kassa return payload, established empirically** (their docs were not
+to hand, so this came from their own error messages — an empty `parentTicket`
+makes them list the required fields by name):
+- `operation: "OPERATION_SELL_RETURN"` plus a `parentTicket` block with
+  `parentTicketNumber`, `parentTicketDataTime` (their spelling — "data", not
+  "date"; renaming it fails), `kgdKkmId`, `parentTicketTotal`,
+  `parentTicketIsOffline`.
+- `amounts.taken` **must be 0** — nothing is handed over by a buyer being
+  refunded; a non-zero value is rejected outright.
+- `kgdKkmId` is the cash register's own `registrationNumber` from
+  `GET /api/crs/{id}`, NOT a field of the ticket — this is why the receipt's
+  own `kgdKkmId` column comes back null and why `ReKassaProvider` fetches and
+  caches it instead. The earlier note that it was "harmless, not worth
+  chasing" is what this turned out to need.
+- A return is punched BEFORE the document is written, exactly like a sale, so
+  a `SaleReturn` row always means money really went back. A sale with no
+  registered receipt cannot be returned fiscally at all (nothing to quote) —
+  refused with a plain Russian message rather than inventing a parent.
 **Do not switch `FISCALIZATION_ENABLED` on in production** — a sandbox
 receipt is not a production one, and the org on the test kassa is
 re:Kassa's own ("TOO COMRUN"), not the user's ИП. Production needs its own

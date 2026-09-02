@@ -1,20 +1,48 @@
 import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
-import { CUSTOMER_VIEW_ROLES, PAYMENT_RECORD_ROLES, SALE_CREATE_ROLES } from "@bakery-os/shared";
+import {
+  CUSTOMER_VIEW_ROLES,
+  PAYMENT_RECORD_ROLES,
+  SALE_CREATE_ROLES,
+  SALE_RETURN_ROLES,
+} from "@bakery-os/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
 import { Roles } from "../common/decorators/roles.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { SalesService } from "./sales.service";
+import { SaleReturnsService } from "./sale-returns.service";
 import { CreateSaleDto } from "./dto/create-sale.dto";
 import { GetCustomerTrendQueryDto } from "./dto/get-customer-trend-query.dto";
 import { GetDemandQueryDto } from "./dto/get-demand-query.dto";
+import { CreateSaleReturnDto } from "./dto/create-sale-return.dto";
 import { RecordPaymentDto } from "./dto/record-payment.dto";
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("sales")
 export class SalesController {
-  constructor(private salesService: SalesService) {}
+  constructor(
+    private salesService: SalesService,
+    private saleReturnsService: SaleReturnsService,
+  ) {}
+
+  // Returns live under their sale: there is no such thing as a return that
+  // isn't reversing a specific one.
+  @Get(":id/returns")
+  findReturns(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
+    return this.saleReturnsService.findBySale(user, id);
+  }
+
+  // Narrower than selling on purpose — see SALE_RETURN_ROLES.
+  @Post(":id/returns")
+  @Roles(...SALE_RETURN_ROLES)
+  createReturn(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id") id: string,
+    @Body() dto: CreateSaleReturnDto,
+  ) {
+    return this.saleReturnsService.create(user, id, dto);
+  }
 
   @Get()
   findAll(

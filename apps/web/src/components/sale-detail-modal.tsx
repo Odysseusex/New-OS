@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CreditCard, Printer } from "lucide-react";
+import { CreditCard, Printer, Undo2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import type { SaleDetailDto, SaleFiscalReceiptDto } from "@bakery-os/shared";
-import { FiscalReceiptStatus } from "@bakery-os/shared";
+import type { SaleDetailDto, SaleFiscalReceiptDto, SaleReturnDto } from "@bakery-os/shared";
+import { FiscalReceiptStatus, SALE_RETURN_ROLES } from "@bakery-os/shared";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { Modal } from "@/components/modal";
 import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
 import { RecordSalePaymentModal } from "@/components/record-sale-payment-modal";
+import { SaleReturnModal } from "@/components/sale-return-modal";
 
 export function SaleDetailModal({
   saleId,
@@ -26,12 +27,19 @@ export function SaleDetailModal({
   const [sale, setSale] = useState<SaleDetailDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPaying, setIsPaying] = useState(false);
+  const [returns, setReturns] = useState<SaleReturnDto[]>([]);
+  const [isReturning, setIsReturning] = useState(false);
+  const canReturn = user ? SALE_RETURN_ROLES.includes(user.role) : false;
 
   function load() {
     api.sales
       .findOne(saleId)
       .then(setSale)
       .catch(() => setError("Не удалось загрузить накладную"));
+    api.sales.returns
+      .list(saleId)
+      .then(setReturns)
+      .catch(() => {});
   }
 
   useEffect(() => {
@@ -113,6 +121,8 @@ export function SaleDetailModal({
                 be shown the receipt their purchase was registered under. */}
             {sale.fiscalReceipt && <SaleFiscalReceipt fiscal={sale.fiscalReceipt} />}
 
+            {returns.length > 0 && <SaleReturns returns={returns} />}
+
             <div className="mb-2 grid grid-cols-2 gap-6 pt-6 text-sm text-muted">
               <div>
                 <p className="mb-6">Сдал: {sale.createdByName}</p>
@@ -135,6 +145,15 @@ export function SaleDetailModal({
                 Получить оплату
               </button>
             )}
+            {canReturn && (
+              <button
+                onClick={() => setIsReturning(true)}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+              >
+                <Undo2 className="h-4 w-4" strokeWidth={1.75} />
+                Возврат
+              </button>
+            )}
             <button
               onClick={() => window.print()}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
@@ -144,6 +163,18 @@ export function SaleDetailModal({
             </button>
           </div>
         </>
+      )}
+
+      {isReturning && sale && (
+        <SaleReturnModal
+          sale={sale}
+          previousReturns={returns}
+          onClose={() => setIsReturning(false)}
+          onReturned={() => {
+            load();
+            onPaid?.();
+          }}
+        />
       )}
 
       {isPaying && sale && (
@@ -211,6 +242,36 @@ function SaleFiscalReceipt({ fiscal }: { fiscal: SaleFiscalReceiptDto }) {
           <p className="mt-1 text-amber-700">Пробит офлайн — проверка по QR заработает после синхронизации</p>
         )}
       </div>
+    </div>
+  );
+}
+
+// Returns already made against this sale. Shown on the document itself so the
+// накладная tells the whole story — what was sold and what came back.
+function SaleReturns({ returns }: { returns: SaleReturnDto[] }) {
+  const total = returns.reduce((sum, r) => sum + r.totalAmount, 0);
+
+  return (
+    <div className="mb-5 rounded-xl border border-border px-4 py-3">
+      <div className="mb-2 flex items-baseline justify-between text-sm">
+        <span className="font-medium text-foreground">Возвраты</span>
+        <span className="font-semibold text-foreground">−{formatMoney(total)}</span>
+      </div>
+      <ul className="space-y-2 text-sm">
+        {returns.map((r) => (
+          <li key={r.id} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+            <span className="text-muted">
+              {formatDateTime(r.returnedAt)} ·{" "}
+              {r.items.map((i) => `${i.productName} ${formatQuantity(i.quantity)}`).join(", ")}
+              {!r.restocked && <span className="text-amber-700"> · списан</span>}
+              {r.fiscalReceipt?.ticketNumber && (
+                <span className="font-mono"> · чек № {r.fiscalReceipt.ticketNumber}</span>
+              )}
+            </span>
+            <span className="text-foreground">−{formatMoney(r.totalAmount)}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

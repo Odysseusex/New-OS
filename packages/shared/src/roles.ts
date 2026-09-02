@@ -52,6 +52,12 @@ export const SALE_CREATE_ROLES: Role[] = [
   Role.OPERATOR,
 ];
 
+// Refunds are money leaving the till against goods coming back, which is the
+// classic till-fraud shape — so this is deliberately NARROWER than
+// SALE_CREATE_ROLES: a cashier can sell but not refund. Widen it only if the
+// owner decides a lone cashier on shift needs to handle returns unsupervised.
+export const SALE_RETURN_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.STORE_MANAGER];
+
 export const INVENTORY_MANAGE_ROLES: Role[] = [
   Role.OWNER,
   Role.ADMIN,

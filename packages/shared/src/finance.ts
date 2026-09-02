@@ -113,6 +113,7 @@ export interface SetFinanceCategoryCostBehaviorRequestDto {
 export enum CashMovementType {
   OPENING_BALANCE = "OPENING_BALANCE",
   SALE_RECEIPT = "SALE_RECEIPT",
+  SALE_REFUND = "SALE_REFUND",
   CUSTOMER_PAYMENT = "CUSTOMER_PAYMENT",
   SUPPLIER_PAYMENT = "SUPPLIER_PAYMENT",
   EXPENSE_PAYMENT = "EXPENSE_PAYMENT",
@@ -128,6 +129,7 @@ export enum CashMovementType {
 export const CASH_MOVEMENT_TYPE_LABELS_RU: Record<CashMovementType, string> = {
   [CashMovementType.OPENING_BALANCE]: "Начальный остаток",
   [CashMovementType.SALE_RECEIPT]: "Оплата от покупателя",
+  [CashMovementType.SALE_REFUND]: "Возврат покупателю",
   [CashMovementType.CUSTOMER_PAYMENT]: "Погашение долга клиентом",
   [CashMovementType.SUPPLIER_PAYMENT]: "Оплата поставщику",
   [CashMovementType.EXPENSE_PAYMENT]: "Оплата расхода",

@@ -39,6 +39,9 @@ class ScriptedProvider implements FiscalProvider {
     this.seen.push(request);
     return this.outcome;
   }
+  async registerReturn(request: FiscalSaleRequest): Promise<FiscalSaleOutcome> {
+    return this.registerSale(request);
+  }
   async getShiftState() {
     return null;
   }

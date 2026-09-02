@@ -3,6 +3,7 @@ import {
   FiscalPaymentType,
   FiscalProvider,
   FiscalSaleOutcome,
+  FiscalReturnRequest,
   FiscalSaleRequest,
   FiscalShiftState,
 } from "./fiscal-provider";
@@ -42,6 +43,11 @@ export class ReKassaProvider implements FiscalProvider {
   private token: string | null = null;
   private tokenExpiresAt = 0;
   private cashRegisterId: number | null = null;
+  // The KGD's own id for this cash register (their `registrationNumber`).
+  // Constant per till and required on every return receipt, so it is fetched
+  // once and kept rather than stored on each receipt — it describes the
+  // machine, not the sale.
+  private kgdKkmId: string | null = null;
 
   // All four come from the environment, never from code: moving from their
   // test server to the live one is then a config change, not a release.
@@ -55,6 +61,22 @@ export class ReKassaProvider implements FiscalProvider {
   }
 
   async registerSale(request: FiscalSaleRequest): Promise<FiscalSaleOutcome> {
+    return this.submit(request, (r) => this.buildTicket(r as FiscalSaleRequest));
+  }
+
+  // A return quotes the sale it reverses. Established against their sandbox:
+  // an empty parentTicket made them list the required fields by name, and
+  // `taken` must be 0 — nothing is handed over by a buyer being refunded.
+  async registerReturn(request: FiscalReturnRequest): Promise<FiscalSaleOutcome> {
+    return this.submit(request, (r) => this.buildReturnTicket(r as FiscalReturnRequest));
+  }
+
+  // The shared half of both operations: authenticate, POST the ticket, and
+  // map the answer onto our three outcomes. Only the body differs.
+  private async submit(
+    request: FiscalSaleRequest,
+    buildBody: (request: FiscalSaleRequest) => Record<string, unknown>,
+  ): Promise<FiscalSaleOutcome> {
     if (!this.isConfigured()) {
       return { kind: "rejected", code: "NOT_CONFIGURED", message: "Фискализация не настроена" };
     }
@@ -69,7 +91,18 @@ export class ReKassaProvider implements FiscalProvider {
       return { kind: "rejected", code: "AUTH_FAILED", message };
     }
 
-    const body = this.buildTicket(request);
+    // Needed only by returns, but fetched here so the body builder stays a
+    // pure function of the request.
+    await this.ensureKgdKkmId(auth);
+
+    let body: Record<string, unknown>;
+    try {
+      body = buildBody(request);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Не удалось собрать чек";
+      return { kind: "rejected", code: "INVALID_PAYLOAD", message };
+    }
+
     const url = `${this.baseUrl}/api/crs/${auth.cashRegisterId}/tickets`;
 
     let response: Response;
@@ -168,6 +201,22 @@ export class ReKassaProvider implements FiscalProvider {
     }
   }
 
+  private async ensureKgdKkmId(auth: { token: string; cashRegisterId: number }): Promise<void> {
+    if (this.kgdKkmId) return;
+    try {
+      const response = await fetch(`${this.baseUrl}/api/crs/${auth.cashRegisterId}`, {
+        headers: { Authorization: `Bearer ${auth.token}` },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      if (!response.ok) return;
+      const cr = (await response.json()) as { registrationNumber?: string };
+      this.kgdKkmId = cr.registrationNumber ?? null;
+    } catch {
+      // A sale does not need it; a return will refuse to build without it,
+      // which is the right place for that failure to surface.
+    }
+  }
+
   private async authenticate(): Promise<{ token: string; cashRegisterId: number }> {
     if (this.token && this.cashRegisterId !== null && Date.now() < this.tokenExpiresAt) {
       return { token: this.token, cashRegisterId: this.cashRegisterId };
@@ -221,6 +270,36 @@ export class ReKassaProvider implements FiscalProvider {
         total: toFiscalMoney(request.total),
         taken: toFiscalMoney(request.taken),
         change: toFiscalMoney(request.change),
+      },
+    };
+  }
+
+  // The return reuses the sale's whole body and adds the parentTicket block,
+  // then forces `taken` to zero: their server rejects a return that claims
+  // money was handed over ("amounts taken must be 0").
+  //
+  // Field names are theirs, including `parentTicketDataTime` — that is not a
+  // typo on our side, it is how the field is spelled in their protocol, and
+  // renaming it to something sensible makes the request fail.
+  buildReturnTicket(request: FiscalReturnRequest): Record<string, unknown> {
+    if (!this.kgdKkmId) {
+      throw new Error("Не известен регистрационный номер кассы для возвратного чека");
+    }
+
+    return {
+      ...this.buildTicket(request),
+      operation: "OPERATION_SELL_RETURN",
+      amounts: {
+        total: toFiscalMoney(request.total),
+        taken: toFiscalMoney(0),
+        change: toFiscalMoney(0),
+      },
+      parentTicket: {
+        parentTicketNumber: request.parent.ticketNumber,
+        parentTicketDataTime: toFiscalDateTime(request.parent.occurredAt, RECEIPT_TIME_ZONE),
+        kgdKkmId: this.kgdKkmId,
+        parentTicketTotal: toFiscalMoney(request.parent.total),
+        parentTicketIsOffline: request.parent.isOffline,
       },
     };
   }

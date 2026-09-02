@@ -1,5 +1,11 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { FiscalProvider, FiscalSaleOutcome, FiscalSaleRequest, FiscalShiftState } from "./fiscal-provider";
+import {
+  FiscalProvider,
+  FiscalReturnRequest,
+  FiscalSaleOutcome,
+  FiscalSaleRequest,
+  FiscalShiftState,
+} from "./fiscal-provider";
 
 // Stand-in used whenever re:Kassa credentials are absent — which is the case
 // on every developer machine and, for now, in production too.
@@ -33,6 +39,13 @@ export class FakeFiscalProvider implements FiscalProvider {
       expiresAt,
       isExpired: Date.now() > expiresAt.getTime(),
     };
+  }
+
+  // A return is issued and replayed exactly like a sale — the fake has no
+  // reason to treat them differently, and the retry property under test is
+  // the same one.
+  async registerReturn(request: FiscalReturnRequest): Promise<FiscalSaleOutcome> {
+    return this.registerSale(request);
   }
 
   async registerSale(request: FiscalSaleRequest): Promise<FiscalSaleOutcome> {

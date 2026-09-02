@@ -55,6 +55,9 @@ enum ProductType {
 enum StockMovementType {
   RECEIPT
   SALE
+  // Goods handed back by a buyer. A separate type from RECEIPT so returns
+  // never look like a purchase arriving from a supplier.
+  SALE_RETURN
   WRITE_OFF
   ADJUSTMENT
   PRODUCTION_CONSUMPTION
@@ -185,6 +188,9 @@ enum CostBehavior {
 enum CashMovementType {
   OPENING_BALANCE
   SALE_RECEIPT
+  // Money handed back to a buyer. Stored as a positive magnitude like every
+  // other type except ADJUSTMENT; the type is what makes it an outflow.
+  SALE_REFUND
   CUSTOMER_PAYMENT
   SUPPLIER_PAYMENT
   EXPENSE_PAYMENT
@@ -311,6 +317,7 @@ model Location {
   stockLevels       StockLevel[]
   stockMovements    StockMovement[]
   sales             Sale[]
+  saleReturns       SaleReturn[]
   productionBatches ProductionBatch[]
   purchaseOrders    PurchaseOrder[]
   invoices          Invoice[]
@@ -360,6 +367,7 @@ model User {
 
   stockMovements         StockMovement[]
   sales                  Sale[]
+  saleReturns            SaleReturn[]
   productionBatches      ProductionBatch[]
   purchaseOrders         PurchaseOrder[]
   createdRoutes          DeliveryRoute[]         @relation("RouteCreatedBy")
@@ -463,6 +471,7 @@ model Product {
   stockLevels        StockLevel[]
   stockMovements     StockMovement[]
   saleItems          SaleItem[]
+  saleReturnItems    SaleReturnItem[]
   recipe             Recipe?             @relation("RecipeOutput")
   usedInRecipeItems  RecipeItem[]        @relation("RecipeIngredient")
   purchaseOrderItems PurchaseOrderItem[]
@@ -511,6 +520,8 @@ model StockMovement {
   writeOffReason  WriteOffReason?
   saleId          String?
   sale            Sale?             @relation(fields: [saleId], references: [id])
+  saleReturnId    String?
+  saleReturn      SaleReturn?       @relation(fields: [saleReturnId], references: [id])
   batchId         String?
   batch           ProductionBatch?  @relation(fields: [batchId], references: [id])
   purchaseOrderId String?
@@ -550,6 +561,7 @@ model Sale {
   stockMovements StockMovement[]
   cashMovements  CashMovement[]
   fiscalReceipt  FiscalReceipt?
+  returns        SaleReturn[]
 
   @@index([organizationId, locationId])
   @@index([soldAt])
@@ -575,6 +587,11 @@ model FiscalReceipt {
   // sale did not get recorded: rare, and deliberately visible.
   saleId         String?             @unique
   sale           Sale?               @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  // Exactly one of saleId / saleReturnId is set. A return receipt goes through
+  // the identical staging, retry and reconciliation machinery — the operation
+  // it carries differs, the plumbing does not.
+  saleReturnId   String?             @unique
+  saleReturn     SaleReturn?         @relation(fields: [saleReturnId], references: [id], onDelete: Cascade)
   status         FiscalReceiptStatus @default(PENDING)
 
   // Our idempotency key (a UUID), sent as X-Request-ID. Unique per
@@ -617,6 +634,61 @@ model FiscalReceipt {
 
   @@index([organizationId, status])
   @@map("fiscal_receipts")
+}
+
+// A buyer handing goods back. A separate, append-only document rather than an
+// edit of the Sale: a confirmed sale is immutable (see CLAUDE.md), and the
+// money and stock a return moves belong in the same single ledgers every
+// other flow writes to — hence the nullable saleReturnId on StockMovement and
+// CashMovement rather than tables of their own.
+//
+// Partial returns are the normal case (one loaf out of three), so items carry
+// their own quantities and never have to match the sale line for line.
+model SaleReturn {
+  id             String   @id @default(cuid())
+  organizationId String
+  saleId         String
+  sale           Sale     @relation(fields: [saleId], references: [id])
+  // Where the goods came back to. Always the selling location: a return is
+  // handled at the till that made the sale.
+  locationId     String
+  location       Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  returnedAt     DateTime @default(now())
+  // Money handed back, always positive.
+  totalAmount    Decimal  @db.Decimal(12, 2)
+  reason         String?
+  // Whether the goods went back on the shelf. False for anything a buyer
+  // already carried home and cannot be resold — bread, mostly — in which
+  // case the stock is written off instead of restocked, and the ledger says
+  // so rather than quietly inflating what is on hand.
+  restocked      Boolean  @default(true)
+  createdById    String
+  createdBy      User     @relation(fields: [createdById], references: [id])
+  createdAt      DateTime @default(now())
+
+  items          SaleReturnItem[]
+  stockMovements StockMovement[]
+  cashMovements  CashMovement[]
+  fiscalReceipt  FiscalReceipt?
+
+  @@index([organizationId, saleId])
+  @@index([returnedAt])
+  @@map("sale_returns")
+}
+
+model SaleReturnItem {
+  id           String     @id @default(cuid())
+  saleReturnId String
+  saleReturn   SaleReturn @relation(fields: [saleReturnId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product    @relation(fields: [productId], references: [id])
+  quantity     Decimal    @db.Decimal(12, 3)
+  // Copied from the sale line, never re-read from the product: a buyer is
+  // refunded what they actually paid, not today's price.
+  unitPrice    Decimal    @db.Decimal(12, 2)
+  subtotal     Decimal    @db.Decimal(12, 2)
+
+  @@map("sale_return_items")
 }
 
 model SaleItem {
@@ -1258,6 +1330,8 @@ model CashMovement {
   supplier       Supplier?        @relation(fields: [supplierId], references: [id])
   saleId         String?
   sale           Sale?            @relation(fields: [saleId], references: [id])
+  saleReturnId   String?
+  saleReturn     SaleReturn?      @relation(fields: [saleReturnId], references: [id])
   expenseId      String?
   expense        Expense?         @relation(fields: [expenseId], references: [id])
   invoiceId      String?
