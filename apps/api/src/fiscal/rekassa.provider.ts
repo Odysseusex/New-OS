@@ -4,6 +4,7 @@ import {
   FiscalProvider,
   FiscalSaleOutcome,
   FiscalSaleRequest,
+  FiscalShiftState,
 } from "./fiscal-provider";
 import { toFiscalDateTime, toFiscalMoney, toFiscalQuantity } from "./fiscal-encoding";
 
@@ -130,6 +131,41 @@ export class ReKassaProvider implements FiscalProvider {
         raw: ticket,
       },
     };
+  }
+
+  // Their cash-register endpoint carries the whole shift state, so this is
+  // one plain GET rather than anything clever. Verified against the sandbox:
+  // shiftExpireTime is exactly shiftOpenTime + 24h.
+  async getShiftState(): Promise<FiscalShiftState | null> {
+    if (!this.isConfigured()) return null;
+
+    try {
+      const auth = await this.authenticate();
+      const response = await fetch(`${this.baseUrl}/api/crs/${auth.cashRegisterId}`, {
+        headers: { Authorization: `Bearer ${auth.token}` },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      if (!response.ok) return null;
+
+      const cr = (await response.json()) as {
+        shiftNumber?: number;
+        shiftOpen?: boolean;
+        shiftOpenTime?: string | null;
+        shiftExpireTime?: string | null;
+        shiftExpired?: boolean;
+      };
+
+      return {
+        shiftNumber: typeof cr.shiftNumber === "number" ? cr.shiftNumber : null,
+        isOpen: cr.shiftOpen === true,
+        openedAt: cr.shiftOpenTime ? new Date(cr.shiftOpenTime) : null,
+        expiresAt: cr.shiftExpireTime ? new Date(cr.shiftExpireTime) : null,
+        isExpired: cr.shiftExpired === true,
+      };
+    } catch (err) {
+      this.logger.warn(`Could not read shift state: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
+    }
   }
 
   private async authenticate(): Promise<{ token: string; cashRegisterId: number }> {

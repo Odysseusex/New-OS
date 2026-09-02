@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { FiscalProvider, FiscalSaleOutcome, FiscalSaleRequest } from "./fiscal-provider";
+import { FiscalProvider, FiscalSaleOutcome, FiscalSaleRequest, FiscalShiftState } from "./fiscal-provider";
 
 // Stand-in used whenever re:Kassa credentials are absent — which is the case
 // on every developer machine and, for now, in production too.
@@ -18,6 +18,21 @@ export class FakeFiscalProvider implements FiscalProvider {
 
   isConfigured(): boolean {
     return true;
+  }
+
+  // A shift that opened when this process did and expires 24h later, so the
+  // screen showing it has something truthful-shaped to render locally.
+  private readonly openedAt = new Date();
+
+  async getShiftState(): Promise<FiscalShiftState> {
+    const expiresAt = new Date(this.openedAt.getTime() + 24 * 60 * 60 * 1000);
+    return {
+      shiftNumber: 1,
+      isOpen: true,
+      openedAt: this.openedAt,
+      expiresAt,
+      isExpired: Date.now() > expiresAt.getTime(),
+    };
   }
 
   async registerSale(request: FiscalSaleRequest): Promise<FiscalSaleOutcome> {

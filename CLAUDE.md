@@ -480,11 +480,45 @@ exception to the "no hardcoded colors" rule. In `create()` the receipt is
 attached to the DTO by hand, because it is linked to the sale *after* the
 `sale` row was loaded, so the included relation on that object is null.
 
-**Still not built**: a shift (смена) lifecycle — re:Kassa auto-opens one
-(`shiftNumber` came back as 3 without us asking) and the protocol caps a
-shift at 24h, so this is the next real operational risk, not a polish
-item. Also: return receipts and the «Требует внимания» *screen* (the data
-endpoint exists; no UI reads it yet).
+**Shift (смена) — investigated against the sandbox; closing is BLOCKED on
+one question to re:Kassa.** What is now known for certain:
+
+- `GET /api/crs/{crId}` returns the whole shift state without any extra
+  call: `shiftNumber`, `shiftOpen`, `shiftOpenTime`, `shiftExpireTime`
+  (exactly openTime + 24h), `shiftExpired`, `shiftDocumentNumber`. So
+  *detecting* an expiring shift needs nothing new from them.
+- Their API is HAL and advertises its own operations. `GET
+  /api/crs/{crId}/shifts/{n}` returns `_links` with `close`
+  (`…/shifts/{n}/close?withdrawMoney=false`), `xReport`
+  (`…/reports/x` — an X-отчёт without closing), `operations`, `tickets`,
+  `operatorsReport`, `sectionsReport`. Read those links rather than
+  hardcoding paths.
+- **`POST …/shifts/{n}/close` answers `WRONG_PASSWORD`.** It wants the cash
+  register's own password, which is NOT the integration password. Login
+  returns `cashRegisterPassword: "1111"`, but that value is rejected in the
+  request body (as `password` and as `cashRegisterPassword`) and in
+  `X-Cash-Register-Password` / `X-Password` headers; logging in with it
+  instead of the integration password gives `ACCESS_DENIED`. **Do not keep
+  guessing** — repeatedly posting wrong passwords at a fiscal operator is
+  exactly what credential probing looks like. The open question for
+  re:Kassa is narrow: *how is the cash register password passed to the
+  shift-close endpoint?*
+- Their own sandbox shifts ran **24.1h and 32.3h** before closing, so there
+  is no strict auto-close at the 24h mark, but something does eventually
+  close them. What happens to a receipt punched into an expired shift is
+  still UNKNOWN and must not be assumed benign.
+
+Until closing works, the mitigation is to *show* the state — which is built:
+`FiscalProvider.getShiftState()` reads it, `FiscalService.status()` returns
+it with the needs-attention count, and the «Фискальная касса» card on
+Настройки renders it (OWNER/ADMIN only, matching the endpoints' own gate).
+The card also lists problem receipts and has a «Сверить с кассой» button
+wired to `reconcile()`. Verified live: a hand-made UNKNOWN row for a receipt
+that really existed showed as «Ответ не получен», and the button turned it
+into «Пробит» with the exact ticket number already issued — while still
+flagging «Чек пробит, но продажа не записалась», which was true.
+
+Also still missing: return receipts.
 **Do not switch `FISCALIZATION_ENABLED` on in production** — a sandbox
 receipt is not a production one, and the org on the test kassa is
 re:Kassa's own ("TOO COMRUN"), not the user's ИП. Production needs its own
@@ -542,6 +576,21 @@ deploying.
 
 ## Known bug classes worth checking for when touching similar code
 
+- **Jest runs spec files in parallel workers, and these specs share one real
+  Postgres and one demo org.** `fiscal.service.spec.ts` and
+  `sales-fiscal.spec.ts` were interfering: one suite's `afterAll` deletes
+  receipts org-wide, which yanked rows out from under the other mid-test, and
+  `reconcile()` sweeps the whole org so it picked up the neighbour's
+  fixtures. Symptom is a test that passes alone and fails maybe one run in
+  five, with an error that looks like a code bug ("Record to update not
+  found"). Fixed with `maxWorkers: 1` in the API's jest config — a
+  correctness requirement, not a speed preference, so don't "optimise" it
+  away. Two lessons for new DB-touching specs: assert about *your own*
+  fixture rows rather than org-wide counts, and put fixture cleanup in
+  `finally` so a failing assertion doesn't leave rows in the demo data.
+  Chasing this flake is also what surfaced a real bug: `reconcile()` aborted
+  the whole sweep when a single receipt threw, so one bad row blocked every
+  later one — it now logs and continues.
 - **Modal mount race condition:** a modal that seeds row/field state from
   `parentList[0]?.id ?? ""` at `useState` initializer time breaks silently
   if the parent's async list fetch hasn't resolved yet when the modal

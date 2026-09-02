@@ -2,12 +2,14 @@ import { BadRequestException, Inject, Injectable, Logger, NotFoundException } fr
 import { randomUUID } from "node:crypto";
 import { FiscalReceipt, FiscalReceiptStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { FiscalStatusDto } from "@bakery-os/shared";
 import {
   FISCAL_PROVIDER,
   FiscalPaymentType,
   FiscalProvider,
   FiscalSaleRequest,
 } from "./fiscal-provider";
+import { FiscalSettings } from "./fiscal.settings";
 
 // Unit codes from the fiscal classifier. 796 = штука; weight/volume goods use
 // their own codes. Kept minimal on purpose — extend it when a product that
@@ -97,6 +99,7 @@ export class FiscalService {
   constructor(
     private prisma: PrismaService,
     @Inject(FISCAL_PROVIDER) private provider: FiscalProvider,
+    private settings: FiscalSettings,
   ) {}
 
   // Creates the fiscal receipt row for a cart that has not been sold yet.
@@ -218,6 +221,34 @@ export class FiscalService {
     });
   }
 
+  // Whether fiscalisation is on, which operator is wired up, and the state of
+  // the shift. The shift matters because the operator caps one at 24 hours:
+  // closing it from here is not possible yet (their close endpoint wants a
+  // cash-register password whose transport is still an open question), so the
+  // expiry is shown instead, for a human to act on in the re:Kassa app.
+  async status(organizationId: string): Promise<FiscalStatusDto> {
+    const enabled = this.settings.isEnabled();
+    const [shift, attention] = await Promise.all([
+      enabled ? this.provider.getShiftState() : Promise.resolve(null),
+      this.needsAttention(organizationId),
+    ]);
+
+    return {
+      enabled,
+      provider: this.provider.name,
+      shift: shift
+        ? {
+            shiftNumber: shift.shiftNumber,
+            isOpen: shift.isOpen,
+            openedAt: shift.openedAt?.toISOString() ?? null,
+            expiresAt: shift.expiresAt?.toISOString() ?? null,
+            isExpired: shift.isExpired,
+          }
+        : null,
+      needsAttentionCount: attention.length,
+    };
+  }
+
   // Resolves every UNKNOWN receipt for an organization by retrying it —
   // nothing more exotic than that. Verified against re:Kassa's live test
   // server that this is sound: resending the identical requestPayload under
@@ -240,7 +271,18 @@ export class FiscalService {
 
     const results: FiscalReceipt[] = [];
     for (const receipt of stuck) {
-      results.push(await this.attempt(receipt.id));
+      try {
+        results.push(await this.attempt(receipt.id));
+      } catch (err) {
+        // One receipt must never abort the sweep — the rest still need
+        // resolving, and the whole point of this pass is to unstick as many
+        // as possible. A row can legitimately vanish between the query above
+        // and the attempt (a cancelled sale cascades), which would otherwise
+        // take every later receipt down with it.
+        this.logger.warn(
+          `Reconcile skipped receipt ${receipt.id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
     return results;
   }

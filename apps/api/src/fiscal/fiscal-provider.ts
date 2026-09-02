@@ -73,6 +73,18 @@ export type FiscalSaleOutcome =
   | { kind: "rejected"; code: string; message: string }
   | { kind: "unknown"; message: string };
 
+// A fiscal shift (смена). The operator opens one on its own with the first
+// receipt of the day and caps it at 24 hours; what a receipt punched into an
+// expired shift does is not established, so the expiry is surfaced rather
+// than waited on.
+export interface FiscalShiftState {
+  shiftNumber: number | null;
+  isOpen: boolean;
+  openedAt: Date | null;
+  expiresAt: Date | null;
+  isExpired: boolean;
+}
+
 export interface FiscalProvider {
   readonly name: string;
   // True once the provider has everything it needs to be called at all
@@ -80,6 +92,9 @@ export interface FiscalProvider {
   // switched off, which is the current state.
   isConfigured(): boolean;
   registerSale(request: FiscalSaleRequest): Promise<FiscalSaleOutcome>;
+  // Null when the state could not be read — a shift we cannot see is not the
+  // same as a shift that is fine, and the caller has to tell them apart.
+  getShiftState(): Promise<FiscalShiftState | null>;
 }
 
 // Injection token — NestJS cannot inject a TypeScript interface.

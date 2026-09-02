@@ -85,6 +85,9 @@ import type {
   SupplierDto,
   TelegramLinkTokenDto,
   TelegramStatusDto,
+  FiscalStatusDto,
+  FiscalReceiptDto,
+  FiscalReconcileResultDto,
   TimeEntryDto,
   UpdateCashAccountRequestDto,
   UpdateCategoryRequestDto,
@@ -535,5 +538,11 @@ export const api = {
     status: () => request<TelegramStatusDto>("/telegram/status"),
     linkToken: () => request<TelegramLinkTokenDto>("/telegram/link-token", { method: "POST" }),
     unlink: () => request<{ unlinked: true }>("/telegram/unlink", { method: "POST" }),
+  },
+
+  fiscal: {
+    status: () => request<FiscalStatusDto>("/fiscal/status"),
+    needsAttention: () => request<FiscalReceiptDto[]>("/fiscal/needs-attention"),
+    reconcile: () => request<FiscalReconcileResultDto>("/fiscal/reconcile", { method: "POST" }),
   },
 };

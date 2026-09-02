@@ -14,6 +14,12 @@ import { AuthenticatedUser } from "../auth/auth.types";
 // before and after every attempt, against the real database — the whole risk
 // lives in the interaction between the network call and the transaction, which
 // a mocked Prisma would hide rather than expose.
+//
+// This suite and fiscal.service.spec.ts share one real Postgres and one demo
+// org, so they cannot run in parallel workers: one suite's cleanup would
+// delete rows the other is still using. That is why `maxWorkers: 1` is set in
+// the API's jest config — it is a correctness requirement here, not a
+// performance preference.
 const prisma = new PrismaService();
 
 const ORG = "demo-org";
@@ -33,13 +39,16 @@ class ScriptedProvider implements FiscalProvider {
     this.seen.push(request);
     return this.outcome;
   }
+  async getShiftState() {
+    return null;
+  }
 }
 
 function buildService(provider: FiscalProvider): SalesService {
   return new SalesService(
     prisma,
     new CashMovementsService(prisma),
-    new FiscalService(prisma, provider),
+    new FiscalService(prisma, provider, new FiscalSettings()),
     new FiscalSettings(),
   );
 }
@@ -232,7 +241,6 @@ describe("SalesService.create with fiscalisation ON", () => {
 
     const provider = new ScriptedProvider();
     const service = buildService(provider);
-    const stagedBefore = await prisma.fiscalReceipt.count({ where: { organizationId: ORG } });
 
     // Cleanup in `finally`: a failing assertion must not leave this fixture
     // product behind in the demo data, which is a real shared database.
@@ -246,8 +254,10 @@ describe("SalesService.create with fiscalisation ON", () => {
       ).rejects.toThrow("Не заполнен код NTIN");
 
       expect(provider.seen).toHaveLength(0);
-      // Nothing was even staged: no receipt row, so nothing to reconcile later.
-      expect(await prisma.fiscalReceipt.count({ where: { organizationId: ORG } })).toBe(stagedBefore);
+      // Nothing was written for this cart. Scoped to this test's own product
+      // rather than counting the org's receipts: other spec files run against
+      // the same demo org in parallel and would make that count flap.
+      expect(await prisma.saleItem.count({ where: { productId: noNtin.id } })).toBe(0);
     } finally {
       await prisma.stockLevel.deleteMany({ where: { productId: noNtin.id } });
       await prisma.product.deleteMany({ where: { id: noNtin.id } });

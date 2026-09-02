@@ -3,9 +3,16 @@
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
 import { Plus, Send, ShieldAlert } from "lucide-react";
-import type { LocationDto, UserAccountDto } from "@bakery-os/shared";
-import { ROLE_LABELS_RU, USER_MANAGE_ROLES } from "@bakery-os/shared";
+import type {
+  FiscalReceiptDto,
+  FiscalShiftDto,
+  FiscalStatusDto,
+  LocationDto,
+  UserAccountDto,
+} from "@bakery-os/shared";
+import { FiscalReceiptStatus, HARD_DELETE_ROLES, ROLE_LABELS_RU, USER_MANAGE_ROLES } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
+import { formatDateTime } from "@/lib/format";
 import { useAuth } from "@/lib/auth-context";
 import { UserAccountModal } from "@/components/user-account-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
@@ -13,6 +20,7 @@ import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-acti
 export default function SettingsPage() {
   const { user } = useAuth();
   const canManage = user ? USER_MANAGE_ROLES.includes(user.role) : false;
+  const canSeeFiscal = user ? HARD_DELETE_ROLES.includes(user.role) : false;
 
   const [accounts, setAccounts] = useState<UserAccountDto[]>([]);
   const [locations, setLocations] = useState<LocationDto[]>([]);
@@ -63,8 +71,10 @@ export default function SettingsPage() {
         <p className="mt-1 text-sm text-muted">Сотрудники, роли и доступ к платформе</p>
       </div>
 
-      <div className="mb-8">
+      <div className="mb-8 space-y-5">
         <TelegramCard />
+        {/* Same gate as the endpoints behind it — OWNER/ADMIN only. */}
+        {canSeeFiscal && <FiscalCard />}
       </div>
 
       {!canManage && (
@@ -281,6 +291,169 @@ function TelegramCard() {
             Я подключил(а) — проверить
           </button>
         </div>
+      )}
+    </div>
+  );
+}
+
+// Operational state of the fiscal cash register: is it switched on, is the
+// shift still alive, and are there receipts a human has to deal with.
+//
+// The shift matters because the operator caps one at 24 hours and we cannot
+// close it from here yet — their close endpoint wants a cash-register
+// password whose transport is still an open question with re:Kassa. Until
+// that is answered, showing the expiry is the mitigation: the owner can close
+// the shift in the re:Kassa app before it bites.
+function FiscalCard() {
+  const [status, setStatus] = useState<FiscalStatusDto | null>(null);
+  const [receipts, setReceipts] = useState<FiscalReceiptDto[]>([]);
+  const [state, setState] = useState<"loading" | "error" | "ready">("loading");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    Promise.all([api.fiscal.status(), api.fiscal.needsAttention()])
+      .then(([s, r]) => {
+        setStatus(s);
+        setReceipts(r);
+        setState("ready");
+      })
+      // A failed load must not look like "everything is fine" — that is the
+      // exact confusion an earlier card here caused.
+      .catch(() => setState("error"));
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function handleReconcile() {
+    setBusy(true);
+    setResult(null);
+    try {
+      const r = await api.fiscal.reconcile();
+      setResult(
+        r.checked === 0
+          ? "Нечего сверять — зависших чеков нет"
+          : `Проверено ${r.checked}, подтверждено ${r.resolved}`,
+      );
+      load();
+    } catch (err) {
+      setResult(err instanceof ApiError ? err.message : "Не удалось выполнить сверку");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-border bg-surface p-5 shadow-card">
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <h2 className="text-sm font-semibold text-foreground">Фискальная касса</h2>
+        {state === "ready" && status && (
+          <span
+            className={clsx(
+              "rounded-full px-2.5 py-0.5 text-xs font-medium",
+              status.enabled ? "bg-emerald-50 text-emerald-700" : "bg-surface-muted text-muted",
+            )}
+          >
+            {status.enabled ? "Включена" : "Выключена"}
+          </span>
+        )}
+      </div>
+
+      {state === "loading" && <p className="text-sm text-muted">Загрузка…</p>}
+      {state === "error" && (
+        <p className="text-sm text-red-700">Не удалось получить состояние кассы</p>
+      )}
+
+      {state === "ready" && status && (
+        <>
+          {!status.enabled && (
+            <p className="text-sm text-muted">
+              Продажи проводятся без фискальных чеков.
+              {status.provider === "fake" && " Реквизиты кассы не заданы."}
+            </p>
+          )}
+
+          {status.enabled && <ShiftRow shift={status.shift} />}
+
+          <div className="mt-4 border-t border-border pt-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">Требуют внимания</p>
+                <p className="mt-0.5 text-sm text-muted">
+                  {receipts.length === 0 ? "Нет" : `${receipts.length} чек(ов)`}
+                </p>
+              </div>
+              <button
+                onClick={handleReconcile}
+                disabled={busy}
+                className="rounded-xl border border-border px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted disabled:opacity-50"
+              >
+                {busy ? "Сверка…" : "Сверить с кассой"}
+              </button>
+            </div>
+
+            {result && <p className="mt-3 text-sm text-muted">{result}</p>}
+
+            {receipts.length > 0 && (
+              <ul className="mt-4 space-y-2">
+                {receipts.map((r) => (
+                  <li key={r.id} className="rounded-xl bg-surface-muted px-3 py-2 text-sm">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <span className="font-medium text-foreground">{RECEIPT_STATUS_LABELS[r.status]}</span>
+                      <span className="text-xs text-muted">{formatDateTime(r.createdAt)}</span>
+                    </div>
+                    {r.ticketNumber && (
+                      <p className="mt-0.5 font-mono text-xs text-muted">Чек № {r.ticketNumber}</p>
+                    )}
+                    {r.errorMessage && <p className="mt-0.5 text-muted">{r.errorMessage}</p>}
+                    {!r.saleId && r.status === FiscalReceiptStatus.REGISTERED && (
+                      <p className="mt-0.5 text-amber-700">Чек пробит, но продажа не записалась</p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+const RECEIPT_STATUS_LABELS: Record<FiscalReceiptStatus, string> = {
+  [FiscalReceiptStatus.PENDING]: "Не отправлен",
+  [FiscalReceiptStatus.SENDING]: "Отправляется",
+  [FiscalReceiptStatus.REGISTERED]: "Пробит",
+  [FiscalReceiptStatus.FAILED]: "Отклонён кассой",
+  [FiscalReceiptStatus.UNKNOWN]: "Ответ не получен",
+};
+
+function ShiftRow({ shift }: { shift: FiscalShiftDto | null }) {
+  if (!shift) {
+    return <p className="text-sm text-amber-700">Не удалось связаться с кассой — состояние смены неизвестно</p>;
+  }
+  if (!shift.isOpen) {
+    return <p className="text-sm text-muted">Смена закрыта</p>;
+  }
+
+  // Under three hours left is the point where telling someone is still useful.
+  const hoursLeft = shift.expiresAt ? (new Date(shift.expiresAt).getTime() - Date.now()) / 3600000 : null;
+  const soon = hoursLeft !== null && hoursLeft < 3;
+
+  return (
+    <div className="space-y-1 text-sm">
+      <p className="text-foreground">
+        Смена {shift.shiftNumber !== null ? `№ ${shift.shiftNumber}` : ""} открыта
+        {shift.openedAt ? ` с ${formatDateTime(shift.openedAt)}` : ""}
+      </p>
+      {shift.expiresAt && (
+        <p className={clsx(shift.isExpired || soon ? "text-amber-700" : "text-muted")}>
+          {shift.isExpired
+            ? `Смена просрочена с ${formatDateTime(shift.expiresAt)} — закройте её в приложении re:Kassa`
+            : `Истекает ${formatDateTime(shift.expiresAt)}`}
+        </p>
       )}
     </div>
   );

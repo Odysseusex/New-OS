@@ -4,6 +4,7 @@ import {
   FiscalReceiptDto,
   FiscalReceiptStatus,
   FiscalReconcileResultDto,
+  FiscalStatusDto,
   HARD_DELETE_ROLES,
 } from "@bakery-os/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
@@ -21,6 +22,11 @@ import { FiscalService } from "./fiscal.service";
 @Controller("fiscal")
 export class FiscalController {
   constructor(private fiscalService: FiscalService) {}
+
+  @Get("status")
+  status(@CurrentUser() user: AuthenticatedUser): Promise<FiscalStatusDto> {
+    return this.fiscalService.status(user.organizationId);
+  }
 
   @Get("needs-attention")
   async needsAttention(@CurrentUser() user: AuthenticatedUser): Promise<FiscalReceiptDto[]> {
