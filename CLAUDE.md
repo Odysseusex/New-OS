@@ -422,9 +422,9 @@ the POS screen. What this settled, so it is not re-investigated:
   `data.ticket.service.regInfo.kkm.fnsKkmId`); harmless, not worth chasing
   unless something needs it.
 - **Lookup by ticket id works**: `GET /api/crs/{crId}/tickets/{id}` returns
-  the whole receipt including our `externalId`. That is the missing piece
-  for reconciliation — resolving an UNKNOWN row no longer needs new
-  information from re:Kassa, only the code to be written.
+  the whole receipt including our `externalId`. Not currently used by our
+  own reconciliation (see below) — kept in mind for a future admin
+  "look up this specific ticket" feature, but reconcile() didn't need it.
 - **The test server does NOT validate `ntin` at all** — it accepted invented
   digits and even a non-numeric string. Do not read that as "the code is
   optional": it is a legal requirement and the production operator is a
@@ -433,22 +433,45 @@ the POS screen. What this settled, so it is not re-investigated:
 - Login returns `id` (the cash register id used in the ticket URL) and
   `timeOffset: "+05:00"`, confirming `RECEIPT_TIME_ZONE = "Asia/Almaty"`.
 
-**Terminology bug, not yet fixed:** the UI label and the fiscal error
-messages say «код ИКПУ». ИКПУ is **Uzbekistan's** term (their catalogue is
+**Terminology bug — FIXED.** The UI label and fiscal error messages used to
+say «код ИКПУ». ИКПУ is Uzbekistan's term (their catalogue is
 `tasnif.soliq.uz`). Kazakhstan's is **NTIN**, from the НКТ — Национальный
 каталог товаров (`nationalcatalog.kz`), with **XTIN** as the temporary code
-issued while a product card is still being moderated. The Prisma field is
-already correctly named `ntin`; only the user-facing Russian strings are
-wrong (`new-product-modal.tsx`, `fiscal.service.ts`). The user was told and
-has not yet said whether to rename — ask before doing it.
+issued while a product card is still being moderated. The Prisma field was
+already correctly named `ntin`; only the Russian strings were wrong, now
+read «Код NTIN» / «Не заполнен код NTIN у товаров: …» throughout
+(`new-product-modal.tsx`, `fiscal.service.ts`, plus comments in
+`fiscal-provider.ts`, `schema.prisma`, `catalog.ts`, `products.service.ts`).
+Two comments still say ИКПУ deliberately — they explain the mix-up itself,
+not the field.
 
-**Still not built**: a shift (смена) lifecycle, the reconciliation job that
-uses the lookup above, return receipts, the «Требует внимания» screen, and
-showing the receipt number/QR on the POS after payment. **Do not switch
-`FISCALIZATION_ENABLED` on in production** — a sandbox receipt is not a
-production one, and the org on the test kassa is re:Kassa's own
-("TOO COMRUN"), not the user's ИП. Production needs its own ЗНМ, password
-and base URL, and real NTIN codes on the products being sold.
+**Reconciliation is BUILT and VERIFIED against the live test kassa.**
+`FiscalService.reconcile(organizationId)` retries every UNKNOWN receipt for
+an org via the existing `attempt()` path — nothing more exotic. This works
+*because* re:Kassa's idempotency was already proven live above: resending
+the identical `requestPayload` under the same `externalId` either returns
+the original ticket (the timeout happened after they had already
+registered it) or genuinely tries again (it never reached them).
+Deliberately does NOT touch FAILED (a stated rejection an unchanged retry
+cannot fix) or a REGISTERED receipt with no `saleId` (the fiscal side
+already succeeded; the missing sale needs a human). Exposed at
+`GET /api/fiscal/needs-attention` and `POST /api/fiscal/reconcile`, both
+gated to `HARD_DELETE_ROLES` (OWNER/ADMIN) via `FiscalController` — a
+human-triggered check-in for now, not a cron; add one later once the
+operator's shift cadence is understood. Live-verified end to end: punched
+a real receipt directly, created a matching `UNKNOWN` row by hand
+(simulating "we never saw the response"), called `reconcile()`, and it
+came back `REGISTERED` with the exact ticket number already issued —
+proving the self-heal works against their server, not only against
+`FakeFiscalProvider`.
+
+**Still not built**: a shift (смена) lifecycle, return receipts, the
+«Требует внимания» *screen* (the data endpoint above exists; no UI reads
+it yet), and showing the receipt number/QR on the POS after payment.
+**Do not switch `FISCALIZATION_ENABLED` on in production** — a sandbox
+receipt is not a production one, and the org on the test kassa is
+re:Kassa's own ("TOO COMRUN"), not the user's ИП. Production needs its own
+ЗНМ, password and base URL, and real NTIN codes on the products being sold.
 
 ## Prisma migration workflow (this sandbox has no direct prod DB access)
 

@@ -55,9 +55,11 @@ export type FiscalSaleDraft = Omit<FiscalSaleRequest, "externalId">;
 export function buildFiscalSaleRequest(source: FiscalSaleSource): FiscalSaleDraft {
   const missingNtin = source.lines.filter((l) => !l.product.ntin).map((l) => l.product.name);
   if (missingNtin.length > 0) {
-    // A receipt line without an ИКПУ has been illegal since 01.01.2026, and
-    // the operator would reject it anyway.
-    throw new BadRequestException(`Не заполнен код ИКПУ у товаров: ${missingNtin.join(", ")}`);
+    // A receipt line without an NTIN has been illegal since 01.01.2026, and
+    // the operator would reject it anyway. (NTIN — the National Catalogue
+    // of Goods code, Kazakhstan's own; not to be confused with ИКПУ, which
+    // is the equivalent term in Uzbekistan's tasnif.soliq.uz.)
+    throw new BadRequestException(`Не заполнен код NTIN у товаров: ${missingNtin.join(", ")}`);
   }
 
   if (source.location.lat === null || source.location.lng === null) {
@@ -214,6 +216,33 @@ export class FiscalService {
       },
       orderBy: { createdAt: "desc" },
     });
+  }
+
+  // Resolves every UNKNOWN receipt for an organization by retrying it —
+  // nothing more exotic than that. Verified against re:Kassa's live test
+  // server that this is sound: resending the identical requestPayload under
+  // the same externalId either returns the original ticket (the timeout
+  // happened after they had already registered it) or genuinely tries again
+  // (it never reached them at all). Both outcomes are safe because the
+  // payload never changes between attempts.
+  //
+  // Deliberately does NOT touch FAILED — that is a definite "no" for a
+  // stated reason (e.g. a missing NTIN), and retrying an unchanged payload
+  // against an unchanged reason cannot resolve it; only editing the product
+  // or the order can. Also does not touch a REGISTERED receipt with no
+  // saleId: the fiscal side already succeeded, so calling the provider again
+  // would do nothing — the missing sale needs a human, not a retry.
+  async reconcile(organizationId: string): Promise<FiscalReceipt[]> {
+    const stuck = await this.prisma.fiscalReceipt.findMany({
+      where: { organizationId, status: FiscalReceiptStatus.UNKNOWN },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const results: FiscalReceipt[] = [];
+    for (const receipt of stuck) {
+      results.push(await this.attempt(receipt.id));
+    }
+    return results;
   }
 
   // JSON has no Date, so the timestamp comes back as a string and has to be

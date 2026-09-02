@@ -12,7 +12,7 @@ const SKU_PREFIX_BY_TYPE: Record<ProductType, string> = {
 };
 
 // A blank code is stored as null, never "" — used for both the barcode and
-// the ИКПУ. Scanners tend to append stray whitespace, and a value differing
+// the NTIN. Scanners tend to append stray whitespace, and a value differing
 // only by a trailing space would silently never match a scan.
 function normalizeBarcode(code?: string | null): string | null {
   const trimmed = code?.trim();

@@ -20,7 +20,8 @@ export interface FiscalReceiptLine {
   // figure on the fiscal receipt is always the one the sale actually charged,
   // including any rounding already applied to it.
   total: number;
-  // Код ИКПУ from the national catalogue. Legally required per line since
+  // NTIN from Kazakhstan's National Catalogue of Goods (НКТ). Legally
+  // required per line since
   // 01.01.2026, hence not optional at this boundary — the caller must refuse
   // to fiscalise a product that lacks one rather than send a blank.
   ntin: string;

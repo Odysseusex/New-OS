@@ -114,7 +114,7 @@ export function NewProductModal({
           </div>
           <div className="col-span-2">
             <label className="mb-1.5 block text-sm font-medium text-foreground">
-              Код ИКПУ <span className="text-muted">(необязательно)</span>
+              Код NTIN <span className="text-muted">(необязательно)</span>
             </label>
             <input
               type="text"

@@ -436,7 +436,9 @@ model Product {
   // own fresh production (bread, cakes) carries no barcode at all and is
   // rung up by tapping a tile instead; only resold packaged goods have one.
   barcode        String?
-  // Код ИКПУ из Национального каталога товаров — re:Kassa's `ntin` field.
+  // NTIN — code from Kazakhstan's National Catalogue of Goods (НКТ), also
+  // re:Kassa's `ntin` field. Not to be confused with ИКПУ, the equivalent
+  // term used in Uzbekistan — a mix-up this codebase made once already.
   // Every receipt line has been legally required to carry it since
   // 01.01.2026, so a sale can't be fiscalised until the products in it have
   // one. Not validated here: the fiscal operator is the authority and

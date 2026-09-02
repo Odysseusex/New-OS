@@ -4,12 +4,14 @@ import { ReKassaProvider } from "./rekassa.provider";
 import { FakeFiscalProvider } from "./fake-fiscal.provider";
 import { FiscalService } from "./fiscal.service";
 import { FiscalSettings } from "./fiscal.settings";
+import { FiscalController } from "./fiscal.controller";
 
 // Which provider is live is decided once, here, from configuration — the rest
 // of the app only ever sees FISCAL_PROVIDER. Without re:Kassa credentials the
 // fake is used, so the app runs identically on a developer machine and in
 // production while fiscalisation is still switched off.
 @Module({
+  controllers: [FiscalController],
   providers: [
     FiscalService,
     FiscalSettings,

@@ -217,11 +217,11 @@ describe("SalesService.create with fiscalisation ON", () => {
     expect(await cashMovementCount()).toBe(before.cash);
   });
 
-  it("refuses before calling the operator when a product has no ИКПУ", async () => {
+  it("refuses before calling the operator when a product has no NTIN", async () => {
     const noNtin = await prisma.product.create({
       data: {
         organizationId: ORG,
-        name: "Без ИКПУ",
+        name: "Без NTIN",
         sku: `SALE-NO-NTIN-${Date.now()}`,
         unit: "PCS",
         type: "FINISHED_GOOD",
@@ -240,7 +240,7 @@ describe("SalesService.create with fiscalisation ON", () => {
         paymentMethod: PaymentMethod.CASH,
         items: [{ productId: noNtin.id, quantity: 1, unitPrice: 100 }],
       }),
-    ).rejects.toThrow("Не заполнен код ИКПУ");
+    ).rejects.toThrow("Не заполнен код NTIN");
 
     expect(provider.seen).toHaveLength(0);
     // Nothing was even staged: no receipt row, so nothing to reconcile later.

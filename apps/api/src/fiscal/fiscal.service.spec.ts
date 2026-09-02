@@ -68,7 +68,7 @@ afterAll(async () => {
 });
 
 describe("buildFiscalSaleRequest", () => {
-  it("refuses a cart whose product has no ИКПУ", () => {
+  it("refuses a cart whose product has no NTIN", () => {
     // Legally required per line since 01.01.2026 — refused here, before any
     // receipt row exists and long before anything is sent.
     expect(() =>
@@ -78,10 +78,10 @@ describe("buildFiscalSaleRequest", () => {
         location: { name: "Точка", lat: 43.2, lng: 76.8 },
         total: 100,
         lines: [
-          { product: { name: "Без ИКПУ", unit: "PCS", ntin: null }, quantity: 1, unitPrice: 100, subtotal: 100 },
+          { product: { name: "Без NTIN", unit: "PCS", ntin: null }, quantity: 1, unitPrice: 100, subtotal: 100 },
         ],
       }),
-    ).toThrow("Не заполнен код ИКПУ у товаров: Без ИКПУ");
+    ).toThrow("Не заполнен код NTIN у товаров: Без NTIN");
   });
 
   it("refuses a point of sale with no coordinates", () => {
@@ -264,5 +264,69 @@ describe("FiscalService", () => {
 
     const attention = await service.needsAttention(ORG);
     expect(attention.some((r) => r.id === prepared.id)).toBe(true);
+  });
+
+  describe("reconcile", () => {
+    it("resolves an UNKNOWN receipt once the provider is reachable again", async () => {
+      const provider = new ScriptedProvider();
+      provider.outcome = { kind: "unknown", message: "оборвалась связь" };
+      const service = new FiscalService(prisma, provider);
+
+      const prepared = await prepare(service);
+      await service.attempt(prepared.id);
+      expect((await service.needsAttention(ORG)).map((r) => r.id)).toContain(prepared.id);
+
+      provider.outcome = { kind: "ok", result: registered("999") };
+      // reconcile() sweeps every UNKNOWN receipt for the org, and earlier
+      // tests in this file leave some behind — find this test's own receipt
+      // in the results rather than assuming it is the only, or the first.
+      const results = await service.reconcile(ORG);
+      const resolved = results.find((r) => r.id === prepared.id);
+
+      expect(resolved?.status).toBe(FiscalReceiptStatus.REGISTERED);
+      expect(resolved?.ticketNumber).toBe("999");
+      // A second pass has nothing left to do for THIS receipt specifically.
+      const secondPass = await service.reconcile(ORG);
+      expect(secondPass.some((r) => r.id === prepared.id)).toBe(false);
+    });
+
+    it("leaves FAILED receipts alone — a retry cannot fix a stated rejection", async () => {
+      const provider = new ScriptedProvider();
+      provider.outcome = { kind: "rejected", code: "PROTOCOL_ERROR", message: "плохо" };
+      const service = new FiscalService(prisma, provider);
+
+      const prepared = await prepare(service);
+      await service.attempt(prepared.id);
+      expect(provider.seen).toHaveLength(1);
+
+      // reconcile() sweeps the whole org, and other spec files run against
+      // this same demo org concurrently — so this only checks that OUR
+      // receipt is absent from the sweep, not that the sweep found nothing
+      // at all.
+      const result = await service.reconcile(ORG);
+
+      expect(result.some((r) => r.id === prepared.id)).toBe(false);
+      expect(provider.seen).toHaveLength(1); // never called again
+      const stillFailed = await prisma.fiscalReceipt.findUnique({ where: { id: prepared.id } });
+      expect(stillFailed?.status).toBe(FiscalReceiptStatus.FAILED);
+    });
+
+    it("converges: a resolved receipt is not picked up by a second pass", async () => {
+      // Other spec files touch UNKNOWN receipts in this same demo org
+      // concurrently, so this can only assert about OUR receipt, not that
+      // reconcile() finds nothing at all for the whole org.
+      const provider = new ScriptedProvider();
+      provider.outcome = { kind: "unknown", message: "оборвалась связь" };
+      const service = new FiscalService(prisma, provider);
+
+      const prepared = await prepare(service);
+      await service.attempt(prepared.id);
+
+      provider.outcome = { kind: "ok", result: registered("convergence") };
+      await service.reconcile(ORG);
+
+      const secondPass = await service.reconcile(ORG);
+      expect(secondPass.some((r) => r.id === prepared.id)).toBe(false);
+    });
   });
 });

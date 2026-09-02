@@ -103,7 +103,8 @@ export interface ProductDto {
   // The barcode printed on the packaging, read by a scanner at the till.
   // Null for own fresh production, which has none — see Product.barcode.
   barcode: string | null;
-  // Код ИКПУ из НКТ. Required on every fiscal receipt line by law since
+  // NTIN from Kazakhstan's National Catalogue of Goods (НКТ). Required on
+  // every fiscal receipt line by law since
   // 01.01.2026, so a product without one cannot be legally rung up once
   // fiscalisation is switched on.
   ntin: string | null;
