@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { CreditCard, Printer } from "lucide-react";
-import type { SaleDetailDto } from "@bakery-os/shared";
+import { QRCodeSVG } from "qrcode.react";
+import type { SaleDetailDto, SaleFiscalReceiptDto } from "@bakery-os/shared";
+import { FiscalReceiptStatus } from "@bakery-os/shared";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { Modal } from "@/components/modal";
@@ -106,6 +108,11 @@ export function SaleDetailModal({
               </div>
             </div>
 
+            {/* Only present once fiscalisation is on. Kept here rather than
+                only on the till so a buyer coming back days later can still
+                be shown the receipt their purchase was registered under. */}
+            {sale.fiscalReceipt && <SaleFiscalReceipt fiscal={sale.fiscalReceipt} />}
+
             <div className="mb-2 grid grid-cols-2 gap-6 pt-6 text-sm text-muted">
               <div>
                 <p className="mb-6">Сдал: {sale.createdByName}</p>
@@ -174,5 +181,36 @@ export function SaleDetailModal({
         }
       `}</style>
     </Modal>
+  );
+}
+
+// The fiscal side of a recorded sale, shown on the накладная so the receipt
+// number outlives the few seconds it is on the till screen. Renders nothing
+// unless a receipt exists, which is every sale while fiscalisation is off.
+function SaleFiscalReceipt({ fiscal }: { fiscal: SaleFiscalReceiptDto }) {
+  const registered = fiscal.status === FiscalReceiptStatus.REGISTERED;
+
+  return (
+    <div className="mb-5 flex items-start gap-4 rounded-xl border border-border px-4 py-3">
+      {fiscal.qrCode && (
+        // Black-on-white on purpose: a QR has to survive a phone camera, so
+        // it does not follow the theme tokens.
+        <div className="shrink-0 rounded-lg bg-white p-2">
+          <QRCodeSVG value={fiscal.qrCode} size={80} fgColor="#000000" bgColor="#ffffff" />
+        </div>
+      )}
+      <div className="min-w-0 flex-1 text-sm">
+        <p className="text-muted">Фискальный чек</p>
+        {fiscal.ticketNumber ? (
+          <p className="font-mono text-base font-semibold text-foreground">№ {fiscal.ticketNumber}</p>
+        ) : (
+          <p className="font-medium text-foreground">Номер не получен</p>
+        )}
+        {!registered && <p className="mt-1 text-amber-700">Чек не подтверждён кассой</p>}
+        {registered && fiscal.isOffline && (
+          <p className="mt-1 text-amber-700">Пробит офлайн — проверка по QR заработает после синхронизации</p>
+        )}
+      </div>
+    </div>
   );
 }
