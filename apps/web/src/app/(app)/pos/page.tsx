@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
-import { Banknote, CreditCard, Minus, Plus, ScanLine, Trash2, X } from "lucide-react";
+import { Banknote, CreditCard, Minus, Plus, Printer, ScanLine, Trash2, X } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import type { CategoryDto, LocationDto, ProductDto, SaleFiscalReceiptDto } from "@bakery-os/shared";
+import type { CategoryDto, LocationDto, ProductDto, SaleDetailDto, SaleFiscalReceiptDto } from "@bakery-os/shared";
 import {
   FiscalReceiptStatus,
   ORG_WIDE_ROLES,
@@ -49,6 +49,12 @@ export default function PosPage() {
   // NOT time out: the buyer may want to scan the QR, and a receipt number
   // that vanishes after four seconds is worse than none at all.
   const [receipt, setReceipt] = useState<{ amount: number; fiscal: SaleFiscalReceiptDto } | null>(null);
+  // The full sale just rung up, kept regardless of fiscalisation state — a
+  // printed slip for the buyer is a separate capability from a fiscal
+  // receipt, and useful even with FISCALIZATION_ENABLED off (which is every
+  // sale so far). Feeds the print-only block below; the on-screen flash/
+  // ReceiptPanel above it stay exactly as they were.
+  const [lastSale, setLastSale] = useState<SaleDetailDto | null>(null);
 
   const scanRef = useRef<HTMLInputElement>(null);
 
@@ -194,6 +200,7 @@ export default function PosPage() {
       } else {
         setFlash(`Продажа проведена — ${formatMoney(total)}`);
       }
+      setLastSale(sale);
       setCart([]);
       setQuery("");
     } catch (err) {
@@ -217,7 +224,8 @@ export default function PosPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl">
+    <>
+    <div className="mx-auto max-w-7xl print:hidden">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-foreground">Касса</h1>
@@ -239,9 +247,27 @@ export default function PosPage() {
       </div>
 
       {flash && (
-        <div className="mb-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{flash}</div>
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+          <span>{flash}</span>
+          {lastSale && (
+            <button
+              onClick={() => window.print()}
+              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50"
+            >
+              <Printer className="h-3.5 w-3.5" strokeWidth={1.75} />
+              Печать
+            </button>
+          )}
+        </div>
       )}
-      {receipt && <ReceiptPanel amount={receipt.amount} fiscal={receipt.fiscal} onClose={() => setReceipt(null)} />}
+      {receipt && (
+        <ReceiptPanel
+          amount={receipt.amount}
+          fiscal={receipt.fiscal}
+          onClose={() => setReceipt(null)}
+          onPrint={() => window.print()}
+        />
+      )}
       {error && (
         <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
           <span>{error}</span>
@@ -388,6 +414,58 @@ export default function PosPage() {
         </div>
       </div>
     </div>
+    {lastSale && <PrintableReceipt sale={lastSale} />}
+    </>
+  );
+}
+
+// Print-only: invisible on screen (`hidden print:block`), rendered instead of
+// the interactive till when the browser's print dialog fires — a slip
+// shaped like an actual receipt rather than a screenshot of the whole page
+// with buttons and a sidebar in it.
+function PrintableReceipt({ sale }: { sale: SaleDetailDto }) {
+  return (
+    <div className="hidden print:block print:mx-auto print:max-w-xs print:text-black">
+      <p className="text-center text-sm font-semibold">{sale.locationName}</p>
+      <p className="text-center text-xs">{new Date(sale.soldAt).toLocaleString("ru-RU")}</p>
+      <div className="my-3 border-t border-dashed border-black" />
+      <table className="w-full text-xs">
+        <tbody>
+          {sale.items.map((item) => (
+            <Fragment key={item.id}>
+              <tr>
+                <td colSpan={2} className="pt-2">
+                  {item.productName}
+                </td>
+              </tr>
+              <tr>
+                <td className="pt-0.5">
+                  {formatQuantity(item.quantity)} × {formatMoney(item.unitPrice)}
+                </td>
+                <td className="pt-0.5 text-right">{formatMoney(item.subtotal)}</td>
+              </tr>
+            </Fragment>
+          ))}
+        </tbody>
+      </table>
+      <div className="my-3 border-t border-dashed border-black" />
+      <div className="flex justify-between text-sm font-semibold">
+        <span>Итого</span>
+        <span>{formatMoney(sale.totalAmount)}</span>
+      </div>
+      <p className="mt-1 text-xs">{sale.paymentMethod === PaymentMethod.CASH ? "Наличные" : "Карта"}</p>
+      {sale.fiscalReceipt?.ticketNumber && (
+        <>
+          <div className="my-3 border-t border-dashed border-black" />
+          <p className="text-center text-xs">Фискальный чек № {sale.fiscalReceipt.ticketNumber}</p>
+          {sale.fiscalReceipt.qrCode && (
+            <div className="mt-2 flex justify-center">
+              <QRCodeSVG value={sale.fiscalReceipt.qrCode} size={96} fgColor="#000000" bgColor="#ffffff" />
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -397,10 +475,12 @@ function ReceiptPanel({
   amount,
   fiscal,
   onClose,
+  onPrint,
 }: {
   amount: number;
   fiscal: SaleFiscalReceiptDto;
   onClose: () => void;
+  onPrint: () => void;
 }) {
   const registered = fiscal.status === FiscalReceiptStatus.REGISTERED;
 
@@ -432,9 +512,18 @@ function ReceiptPanel({
           </p>
         )}
       </div>
-      <button onClick={onClose} aria-label="Закрыть чек" className="shrink-0 text-emerald-700">
-        <X className="h-4 w-4" strokeWidth={1.75} />
-      </button>
+      <div className="flex shrink-0 items-center gap-2">
+        <button
+          onClick={onPrint}
+          aria-label="Печать чека"
+          className="rounded-lg border border-emerald-200 bg-white p-1.5 text-emerald-700 transition hover:bg-emerald-50"
+        >
+          <Printer className="h-4 w-4" strokeWidth={1.75} />
+        </button>
+        <button onClick={onClose} aria-label="Закрыть чек" className="text-emerald-700">
+          <X className="h-4 w-4" strokeWidth={1.75} />
+        </button>
+      </div>
     </div>
   );
 }
