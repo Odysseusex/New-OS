@@ -1,6 +1,7 @@
 import { Unit } from "./catalog";
 import { PaymentStatus } from "./customers";
 import { PaymentMethod } from "./finance";
+import { FiscalReceiptStatus } from "./fiscal";
 
 export interface SaleItemDto {
   id: string;
@@ -27,8 +28,24 @@ export interface SaleDto {
   createdByName: string;
 }
 
+// What the cashier needs to see about the fiscal side of a sale: the number
+// the buyer can check the receipt by, and the QR that checks it for them.
+export interface SaleFiscalReceiptDto {
+  status: FiscalReceiptStatus;
+  // The fiscal number. Null while a receipt exists but isn't registered.
+  ticketNumber: string | null;
+  // Null unless the operator returned one — offline receipts often don't.
+  qrCode: string | null;
+  // Registered by the till without reaching the operator yet. The receipt is
+  // valid, but the buyer's check will only work once it syncs.
+  isOffline: boolean;
+}
+
 export interface SaleDetailDto extends SaleDto {
   items: SaleItemDto[];
+  // Null when the sale was made with fiscalisation switched off — which is
+  // every sale so far.
+  fiscalReceipt: SaleFiscalReceiptDto | null;
 }
 
 export interface CreateSaleItemRequestDto {

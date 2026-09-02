@@ -465,9 +465,26 @@ came back `REGISTERED` with the exact ticket number already issued —
 proving the self-heal works against their server, not only against
 `FakeFiscalProvider`.
 
-**Still not built**: a shift (смена) lifecycle, return receipts, the
-«Требует внимания» *screen* (the data endpoint above exists; no UI reads
-it yet), and showing the receipt number/QR on the POS after payment.
+**The receipt number and QR are shown on the POS after payment.**
+`SaleDetailDto.fiscalReceipt` is null when fiscalisation is off, so the
+till keeps its original four-second green flash and nothing else changes;
+with a receipt, `ReceiptPanel` renders the number plus a scannable QR and
+**does not auto-dismiss** — it clears when the cashier closes it or starts
+the next order, because a number that vanishes after four seconds is worse
+than none. `SALE_DETAIL_INCLUDE` carries the receipt too, so the number
+stays findable later rather than only in the seconds after payment.
+`qrcode.react` is the QR library (first use in this repo); the QR is
+deliberately hardcoded black-on-white rather than themed — it has to stay
+high-contrast to survive a phone camera, and that is the one documented
+exception to the "no hardcoded colors" rule. In `create()` the receipt is
+attached to the DTO by hand, because it is linked to the sale *after* the
+`sale` row was loaded, so the included relation on that object is null.
+
+**Still not built**: a shift (смена) lifecycle — re:Kassa auto-opens one
+(`shiftNumber` came back as 3 without us asking) and the protocol caps a
+shift at 24h, so this is the next real operational risk, not a polish
+item. Also: return receipts and the «Требует внимания» *screen* (the data
+endpoint exists; no UI reads it yet).
 **Do not switch `FISCALIZATION_ENABLED` on in production** — a sandbox
 receipt is not a production one, and the org on the test kassa is
 re:Kassa's own ("TOO COMRUN"), not the user's ИП. Production needs its own

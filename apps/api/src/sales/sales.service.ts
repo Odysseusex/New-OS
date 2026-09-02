@@ -18,6 +18,7 @@ import {
   SalesReportDto,
   SalesSummaryDto,
   Unit,
+  FiscalReceiptStatus as FiscalReceiptStatusDto,
 } from "@bakery-os/shared";
 import { FiscalReceipt, FiscalReceiptStatus, StockMovementType } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
@@ -41,6 +42,9 @@ const SALE_DETAIL_INCLUDE = {
   customer: true,
   createdBy: true,
   items: { include: { product: true } },
+  // So a receipt number stays findable later, not just in the seconds after
+  // payment — the buyer may come back with a question about it.
+  fiscalReceipt: true,
 };
 
 @Injectable()
@@ -659,7 +663,10 @@ export class SalesService {
         })),
       });
 
-      return this.toSaleDetailDto(sale);
+      // The receipt is attached by hand rather than read back: it was linked
+      // to this sale a moment ago, after `sale` was loaded, so the included
+      // relation on that object is still null.
+      return this.toSaleDetailDto({ ...sale, fiscalReceipt: receipt });
     });
   }
 
@@ -855,6 +862,13 @@ export class SalesService {
       unitPrice: { toNumber: () => number };
       subtotal: { toNumber: () => number };
     }[];
+    fiscalReceipt?: {
+      status: string;
+      ticketNumber: string | null;
+      offlineTicketNumber: string | null;
+      qrCode: string | null;
+      isOffline: boolean;
+    } | null;
   }): SaleDetailDto => ({
     ...this.toSaleDto(sale),
     items: sale.items.map((item) => ({
@@ -865,5 +879,16 @@ export class SalesService {
       unitPrice: item.unitPrice.toNumber(),
       subtotal: item.subtotal.toNumber(),
     })),
+    fiscalReceipt: sale.fiscalReceipt
+      ? {
+          status: sale.fiscalReceipt.status as FiscalReceiptStatusDto,
+          // An offline receipt has no fiscal number yet — its own offline
+          // number is what identifies it until it syncs, so show that
+          // rather than nothing.
+          ticketNumber: sale.fiscalReceipt.ticketNumber ?? sale.fiscalReceipt.offlineTicketNumber,
+          qrCode: sale.fiscalReceipt.qrCode,
+          isOffline: sale.fiscalReceipt.isOffline,
+        }
+      : null,
   });
 }

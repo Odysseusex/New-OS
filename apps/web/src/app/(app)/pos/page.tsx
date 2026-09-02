@@ -3,8 +3,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { Banknote, CreditCard, Minus, Plus, ScanLine, Trash2, X } from "lucide-react";
-import type { CategoryDto, LocationDto, ProductDto } from "@bakery-os/shared";
-import { ORG_WIDE_ROLES, PaymentMethod, ProductType, SALE_CREATE_ROLES, UNIT_LABELS_RU } from "@bakery-os/shared";
+import { QRCodeSVG } from "qrcode.react";
+import type { CategoryDto, LocationDto, ProductDto, SaleFiscalReceiptDto } from "@bakery-os/shared";
+import {
+  FiscalReceiptStatus,
+  ORG_WIDE_ROLES,
+  PaymentMethod,
+  ProductType,
+  SALE_CREATE_ROLES,
+  UNIT_LABELS_RU,
+} from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatMoney, formatQuantity } from "@/lib/format";
@@ -37,6 +45,10 @@ export default function PosPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
+  // The fiscal receipt for the sale just rung up. Unlike `flash` this does
+  // NOT time out: the buyer may want to scan the QR, and a receipt number
+  // that vanishes after four seconds is worse than none at all.
+  const [receipt, setReceipt] = useState<{ amount: number; fiscal: SaleFiscalReceiptDto } | null>(null);
 
   const scanRef = useRef<HTMLInputElement>(null);
 
@@ -114,6 +126,9 @@ export default function PosPage() {
       );
     });
     setError(null);
+    // The previous buyer's receipt must not still be on screen while the
+    // next order is being rung up.
+    setReceipt(null);
   }
 
   function setLineQuantity(productId: string, quantity: number) {
@@ -163,7 +178,7 @@ export default function PosPage() {
     setIsSubmitting(true);
     setError(null);
     try {
-      await api.sales.create({
+      const sale = await api.sales.create({
         locationId,
         paymentMethod: method,
         items: cart.map((line) => ({
@@ -172,7 +187,13 @@ export default function PosPage() {
           unitPrice: line.product.price,
         })),
       });
-      setFlash(`Продажа проведена — ${formatMoney(total)}`);
+      // With fiscalisation off there is no receipt, and the short green
+      // flash is the whole confirmation — exactly as before.
+      if (sale.fiscalReceipt) {
+        setReceipt({ amount: total, fiscal: sale.fiscalReceipt });
+      } else {
+        setFlash(`Продажа проведена — ${formatMoney(total)}`);
+      }
       setCart([]);
       setQuery("");
     } catch (err) {
@@ -220,6 +241,7 @@ export default function PosPage() {
       {flash && (
         <div className="mb-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{flash}</div>
       )}
+      {receipt && <ReceiptPanel amount={receipt.amount} fiscal={receipt.fiscal} onClose={() => setReceipt(null)} />}
       {error && (
         <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
           <span>{error}</span>
@@ -365,6 +387,54 @@ export default function PosPage() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Shown after a fiscalised sale. Stays until the cashier closes it or starts
+// the next order — the buyer needs long enough to scan the QR.
+function ReceiptPanel({
+  amount,
+  fiscal,
+  onClose,
+}: {
+  amount: number;
+  fiscal: SaleFiscalReceiptDto;
+  onClose: () => void;
+}) {
+  const registered = fiscal.status === FiscalReceiptStatus.REGISTERED;
+
+  return (
+    <div className="mb-4 flex items-start gap-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+      {fiscal.qrCode && (
+        // Fixed black-on-white regardless of theme: a QR has to stay
+        // high-contrast to be readable by a phone camera, so this is the one
+        // place that deliberately does not follow the theme tokens.
+        <div className="shrink-0 rounded-lg bg-white p-2">
+          <QRCodeSVG value={fiscal.qrCode} size={104} fgColor="#000000" bgColor="#ffffff" />
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-emerald-800">Продажа проведена — {formatMoney(amount)}</p>
+        {fiscal.ticketNumber && (
+          <p className="mt-1 font-mono text-lg font-semibold tracking-tight text-emerald-900">
+            Чек № {fiscal.ticketNumber}
+          </p>
+        )}
+        {!registered && (
+          <p className="mt-1 text-sm text-amber-700">
+            Чек не подтверждён кассой. Проверьте раздел «Требует внимания».
+          </p>
+        )}
+        {registered && fiscal.isOffline && (
+          <p className="mt-1 text-sm text-amber-700">
+            Чек пробит офлайн. Проверка по QR заработает после синхронизации кассы.
+          </p>
+        )}
+      </div>
+      <button onClick={onClose} aria-label="Закрыть чек" className="shrink-0 text-emerald-700">
+        <X className="h-4 w-4" strokeWidth={1.75} />
+      </button>
     </div>
   );
 }

@@ -234,20 +234,24 @@ describe("SalesService.create with fiscalisation ON", () => {
     const service = buildService(provider);
     const stagedBefore = await prisma.fiscalReceipt.count({ where: { organizationId: ORG } });
 
-    await expect(
-      service.create(user, {
-        locationId,
-        paymentMethod: PaymentMethod.CASH,
-        items: [{ productId: noNtin.id, quantity: 1, unitPrice: 100 }],
-      }),
-    ).rejects.toThrow("Не заполнен код NTIN");
+    // Cleanup in `finally`: a failing assertion must not leave this fixture
+    // product behind in the demo data, which is a real shared database.
+    try {
+      await expect(
+        service.create(user, {
+          locationId,
+          paymentMethod: PaymentMethod.CASH,
+          items: [{ productId: noNtin.id, quantity: 1, unitPrice: 100 }],
+        }),
+      ).rejects.toThrow("Не заполнен код NTIN");
 
-    expect(provider.seen).toHaveLength(0);
-    // Nothing was even staged: no receipt row, so nothing to reconcile later.
-    expect(await prisma.fiscalReceipt.count({ where: { organizationId: ORG } })).toBe(stagedBefore);
-
-    await prisma.stockLevel.deleteMany({ where: { productId: noNtin.id } });
-    await prisma.product.deleteMany({ where: { id: noNtin.id } });
+      expect(provider.seen).toHaveLength(0);
+      // Nothing was even staged: no receipt row, so nothing to reconcile later.
+      expect(await prisma.fiscalReceipt.count({ where: { organizationId: ORG } })).toBe(stagedBefore);
+    } finally {
+      await prisma.stockLevel.deleteMany({ where: { productId: noNtin.id } });
+      await prisma.product.deleteMany({ where: { id: noNtin.id } });
+    }
   });
 
   it("refuses to punch a receipt for goods that are not in stock", async () => {
