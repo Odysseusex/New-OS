@@ -406,13 +406,49 @@ mind before changing this:
   ("Не пробивайте заново"), because a second attempt could punch a second
   receipt. That wording is load-bearing, not decoration.
 
-**Still not built, and still needs their live environment**: a shift (смена)
-lifecycle, reconciliation/lookup-by-external-id to resolve UNKNOWN rows
-automatically, return receipts, and the «Требует внимания» screen +
+**VERIFIED against re:Kassa's live test environment** (test ЗНМ, sandbox at
+`app-test.rekassa.kz/partner`; credentials live in the gitignored
+`apps/api/.env`, never in code). Real receipts were punched end-to-end from
+the POS screen. What this settled, so it is not re-investigated:
+
+- **Idempotency is real.** Two calls with the same `X-Request-ID` returned
+  the identical `ticketNumber` and ticket id — no second receipt. This is
+  the assumption the whole UNKNOWN-retry design rests on, and it now holds
+  against their server rather than only against `FakeFiscalProvider`.
+- **`ReKassaProvider` parses their real response correctly** — `ticketNumber`,
+  `qrCode`, `shiftNumber`, `offline` all landed; money and quantity encoding
+  round-trip exactly (`1 шт × 590.00 = 590.00 ₸` came back verbatim).
+  `kgdKkmId` comes back null at top level (it sits at
+  `data.ticket.service.regInfo.kkm.fnsKkmId`); harmless, not worth chasing
+  unless something needs it.
+- **Lookup by ticket id works**: `GET /api/crs/{crId}/tickets/{id}` returns
+  the whole receipt including our `externalId`. That is the missing piece
+  for reconciliation — resolving an UNKNOWN row no longer needs new
+  information from re:Kassa, only the code to be written.
+- **The test server does NOT validate `ntin` at all** — it accepted invented
+  digits and even a non-numeric string. Do not read that as "the code is
+  optional": it is a legal requirement and the production operator is a
+  different question. It does mean integration work is not blocked on НКТ
+  registration.
+- Login returns `id` (the cash register id used in the ticket URL) and
+  `timeOffset: "+05:00"`, confirming `RECEIPT_TIME_ZONE = "Asia/Almaty"`.
+
+**Terminology bug, not yet fixed:** the UI label and the fiscal error
+messages say «код ИКПУ». ИКПУ is **Uzbekistan's** term (their catalogue is
+`tasnif.soliq.uz`). Kazakhstan's is **NTIN**, from the НКТ — Национальный
+каталог товаров (`nationalcatalog.kz`), with **XTIN** as the temporary code
+issued while a product card is still being moderated. The Prisma field is
+already correctly named `ntin`; only the user-facing Russian strings are
+wrong (`new-product-modal.tsx`, `fiscal.service.ts`). The user was told and
+has not yet said whether to rename — ask before doing it.
+
+**Still not built**: a shift (смена) lifecycle, the reconciliation job that
+uses the lookup above, return receipts, the «Требует внимания» screen, and
 showing the receipt number/QR on the POS after payment. **Do not switch
-`FISCALIZATION_ENABLED` on** until a real receipt has been punched against a
-live test cash register — the fake provider proves the wiring, not that the
-operator accepts our payload. This was promised to the user explicitly.
+`FISCALIZATION_ENABLED` on in production** — a sandbox receipt is not a
+production one, and the org on the test kassa is re:Kassa's own
+("TOO COMRUN"), not the user's ИП. Production needs its own ЗНМ, password
+and base URL, and real NTIN codes on the products being sold.
 
 ## Prisma migration workflow (this sandbox has no direct prod DB access)
 
