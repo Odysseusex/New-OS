@@ -1,6 +1,6 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import { FiscalReceipt, FiscalReceiptStatus, Prisma } from "@prisma/client";
+import { FiscalReceipt, FiscalReceiptStatus, Prisma, ProductType } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { FiscalStatusDto } from "@bakery-os/shared";
 import {
@@ -64,16 +64,18 @@ function isReturnDraft(draft: FiscalDraft): draft is FiscalReturnDraft {
 // Translates a cart into the provider-neutral request. Refuses, in Russian,
 // rather than guessing when something legally required is missing — and does
 // so before anything at all has been written or sent.
+//
+// NTIN (the National Catalogue of Goods code — Kazakhstan's own; not to be
+// confused with ИКПУ, Uzbekistan's equivalent term) has been legally
+// required on every line since 01.01.2026, but a line missing it does NOT
+// block the sale: there is a fines moratorium until 01.01.2027, and
+// re:Kassa's own operator does not validate the field at all (confirmed
+// live against their test server — it accepted garbage values without
+// complaint). A missing code is sent through as an empty string; the gap is
+// surfaced to the owner instead, via FiscalService.status()'s
+// productsWithoutNtinCount, so it gets closed over time without ever
+// stopping a real sale.
 export function buildFiscalSaleRequest(source: FiscalSaleSource): FiscalSaleDraft {
-  const missingNtin = source.lines.filter((l) => !l.product.ntin).map((l) => l.product.name);
-  if (missingNtin.length > 0) {
-    // A receipt line without an NTIN has been illegal since 01.01.2026, and
-    // the operator would reject it anyway. (NTIN — the National Catalogue
-    // of Goods code, Kazakhstan's own; not to be confused with ИКПУ, which
-    // is the equivalent term in Uzbekistan's tasnif.soliq.uz.)
-    throw new BadRequestException(`Не заполнен код NTIN у товаров: ${missingNtin.join(", ")}`);
-  }
-
   if (source.location.lat === null || source.location.lng === null) {
     // Coordinates became mandatory in protocol 2.0.3.
     throw new BadRequestException(`Не указаны координаты точки «${source.location.name}»`);
@@ -88,7 +90,7 @@ export function buildFiscalSaleRequest(source: FiscalSaleSource): FiscalSaleDraf
       quantity: line.quantity,
       unitPrice: line.unitPrice,
       total: line.subtotal,
-      ntin: line.product.ntin as string,
+      ntin: line.product.ntin ?? "",
       measureUnitCode: MEASURE_UNIT_CODE_BY_UNIT[line.product.unit] ?? DEFAULT_MEASURE_UNIT_CODE,
     })),
     payments: [{ type: paymentType, amount: source.total }],
@@ -246,9 +248,14 @@ export class FiscalService {
   // expiry is shown instead, for a human to act on in the re:Kassa app.
   async status(organizationId: string): Promise<FiscalStatusDto> {
     const enabled = this.settings.isEnabled();
-    const [shift, attention] = await Promise.all([
+    const [shift, attention, productsWithoutNtinCount] = await Promise.all([
       enabled ? this.provider.getShiftState() : Promise.resolve(null),
       this.needsAttention(organizationId),
+      // Only finished goods ever appear on a receipt line — a raw material
+      // missing its code is not a fiscal gap.
+      this.prisma.product.count({
+        where: { organizationId, isActive: true, type: ProductType.FINISHED_GOOD, ntin: null },
+      }),
     ]);
 
     return {
@@ -264,6 +271,7 @@ export class FiscalService {
           }
         : null,
       needsAttentionCount: attention.length,
+      productsWithoutNtinCount,
     };
   }
 

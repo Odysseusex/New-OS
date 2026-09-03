@@ -27,6 +27,10 @@ let user: AuthenticatedUser;
 let locationId: string;
 let productId: string;
 const createdSaleIds: string[] = [];
+// Set only by the no-NTIN test below. Cleaned up in the shared afterAll,
+// AFTER createdSaleIds' sale/saleItem rows are gone — SaleItem.productId has
+// no cascade, so deleting the product first would fail its FK constraint.
+let noNtinProductId: string | null = null;
 
 class ScriptedProvider implements FiscalProvider {
   readonly name = "scripted";
@@ -115,6 +119,11 @@ afterAll(async () => {
   await prisma.sale.deleteMany({ where: { id: { in: createdSaleIds } } });
   await prisma.stockLevel.deleteMany({ where: { productId } });
   await prisma.product.deleteMany({ where: { id: productId } });
+  if (noNtinProductId) {
+    await prisma.stockMovement.deleteMany({ where: { productId: noNtinProductId } });
+    await prisma.stockLevel.deleteMany({ where: { productId: noNtinProductId } });
+    await prisma.product.deleteMany({ where: { id: noNtinProductId } });
+  }
   await prisma.$disconnect();
 });
 
@@ -229,7 +238,7 @@ describe("SalesService.create with fiscalisation ON", () => {
     expect(await cashMovementCount()).toBe(before.cash);
   });
 
-  it("refuses before calling the operator when a product has no NTIN", async () => {
+  it("sells a product with no NTIN — the code is required by law but not enforced by re:Kassa, and there is a fines moratorium until 01.01.2027", async () => {
     const noNtin = await prisma.product.create({
       data: {
         organizationId: ORG,
@@ -241,30 +250,36 @@ describe("SalesService.create with fiscalisation ON", () => {
       },
     });
     await prisma.stockLevel.create({ data: { organizationId: ORG, locationId, productId: noNtin.id, quantity: 10, minQuantity: 0 } });
+    // Recorded so the shared afterAll cleans it up once — after, not before,
+    // the sale/saleItem rows created below are gone. See the field's comment.
+    noNtinProductId = noNtin.id;
 
     const provider = new ScriptedProvider();
+    provider.outcome = {
+      kind: "ok",
+      result: {
+        providerTicketId: "no-ntin-1",
+        ticketNumber: "99",
+        offlineTicketNumber: null,
+        isOffline: false,
+        qrCode: null,
+        kgdKkmId: null,
+        shiftNumber: 1,
+        raw: {},
+      },
+    };
     const service = buildService(provider);
 
-    // Cleanup in `finally`: a failing assertion must not leave this fixture
-    // product behind in the demo data, which is a real shared database.
-    try {
-      await expect(
-        service.create(user, {
-          locationId,
-          paymentMethod: PaymentMethod.CASH,
-          items: [{ productId: noNtin.id, quantity: 1, unitPrice: 100 }],
-        }),
-      ).rejects.toThrow("Не заполнен код NTIN");
+    const sale = await service.create(user, {
+      locationId,
+      paymentMethod: PaymentMethod.CASH,
+      items: [{ productId: noNtin.id, quantity: 1, unitPrice: 100 }],
+    });
+    createdSaleIds.push(sale.id);
 
-      expect(provider.seen).toHaveLength(0);
-      // Nothing was written for this cart. Scoped to this test's own product
-      // rather than counting the org's receipts: other spec files run against
-      // the same demo org in parallel and would make that count flap.
-      expect(await prisma.saleItem.count({ where: { productId: noNtin.id } })).toBe(0);
-    } finally {
-      await prisma.stockLevel.deleteMany({ where: { productId: noNtin.id } });
-      await prisma.product.deleteMany({ where: { id: noNtin.id } });
-    }
+    expect(sale).toBeTruthy();
+    expect(provider.seen).toHaveLength(1);
+    expect(provider.seen[0].lines[0].ntin).toBe("");
   });
 
   it("refuses to punch a receipt for goods that are not in stock", async () => {

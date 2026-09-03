@@ -80,20 +80,21 @@ afterAll(async () => {
 });
 
 describe("buildFiscalSaleRequest", () => {
-  it("refuses a cart whose product has no NTIN", () => {
-    // Legally required per line since 01.01.2026 — refused here, before any
-    // receipt row exists and long before anything is sent.
-    expect(() =>
-      buildFiscalSaleRequest({
-        occurredAt: new Date(),
-        paymentMethod: "CASH",
-        location: { name: "Точка", lat: 43.2, lng: 76.8 },
-        total: 100,
-        lines: [
-          { product: { name: "Без NTIN", unit: "PCS", ntin: null }, quantity: 1, unitPrice: 100, subtotal: 100 },
-        ],
-      }),
-    ).toThrow("Не заполнен код NTIN у товаров: Без NTIN");
+  it("does not block a cart whose product has no NTIN", () => {
+    // Legally required per line since 01.01.2026, but NOT enforced by
+    // re:Kassa itself (confirmed live against their test server) and under a
+    // fines moratorium until 01.01.2027 — so this must not stop a real sale.
+    // The gap is surfaced separately via FiscalService.status().
+    const request = buildFiscalSaleRequest({
+      occurredAt: new Date(),
+      paymentMethod: "CASH",
+      location: { name: "Точка", lat: 43.2, lng: 76.8 },
+      total: 100,
+      lines: [
+        { product: { name: "Без NTIN", unit: "PCS", ntin: null }, quantity: 1, unitPrice: 100, subtotal: 100 },
+      ],
+    });
+    expect(request.lines[0].ntin).toBe("");
   });
 
   it("refuses a point of sale with no coordinates", () => {

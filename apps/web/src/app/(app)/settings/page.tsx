@@ -377,6 +377,13 @@ function FiscalCard() {
 
           {status.enabled && <ShiftRow shift={status.shift} />}
 
+          {status.productsWithoutNtinCount > 0 && (
+            <p className="mt-3 text-sm text-amber-700">
+              Товаров без кода NTIN: {status.productsWithoutNtinCount}. Продажу это не блокирует, но
+              заполните коды в Складе — Номенклатура, когда будет время.
+            </p>
+          )}
+
           <div className="mt-4 border-t border-border pt-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>

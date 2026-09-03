@@ -52,4 +52,8 @@ export interface FiscalStatusDto {
   // "no shift open" and must be shown differently.
   shift: FiscalShiftDto | null;
   needsAttentionCount: number;
+  // Active finished goods with no NTIN code. Never blocks a sale — see
+  // buildFiscalSaleRequest — this is just visibility into the gap so it
+  // gets closed over time rather than discovered mid-shift.
+  productsWithoutNtinCount: number;
 }
