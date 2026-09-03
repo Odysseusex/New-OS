@@ -30,12 +30,6 @@ interface CartLine {
   unitPrice: number;
 }
 
-// Remembers the cashier's choice on this device only. Auto-print is on by
-// default — it is what the till is for — but it must be switchable off,
-// because on a machine without silent printing configured every sale would
-// otherwise stop behind a print dialog nobody asked for.
-const AUTO_PRINT_KEY = "aramir_pos_auto_print";
-
 // Payment buttons at the till. Deliberately no "в долг" option: a walk-in
 // sale is settled on the spot, and a credit sale belongs to a named customer,
 // which is what the Продажи form is for.
@@ -74,12 +68,6 @@ export default function PosPage() {
   // failing at payment time.
   const [openPriceProduct, setOpenPriceProduct] = useState<ProductDto | null>(null);
   const [openPriceOpen, setOpenPriceOpen] = useState(false);
-  const [autoPrint, setAutoPrint] = useState(true);
-  // Deliberately a ref, not state: the effect below keys off `lastSale` alone,
-  // so flipping this must not re-run it. As state it did — the effect reset
-  // the flag, React re-ran the effect, and the cleanup cancelled the print
-  // timer before it ever fired. Nothing printed at all.
-  const wantPrintRef = useRef(false);
 
   const scanRef = useRef<HTMLInputElement>(null);
 
@@ -104,14 +92,6 @@ export default function PosPage() {
     // Created on the server the first time any till asks; a failure here just
     // means the button is not offered.
     api.products.openPrice().then(setOpenPriceProduct).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    try {
-      setAutoPrint(localStorage.getItem(AUTO_PRINT_KEY) !== "off");
-    } catch {
-      // Private mode or blocked storage — the default stands.
-    }
   }, []);
 
   useEffect(() => {
@@ -174,9 +154,12 @@ export default function PosPage() {
       );
     });
     setError(null);
-    // The previous buyer's receipt must not still be on screen while the
-    // next order is being rung up.
+    // The previous buyer's confirmation must not still be on screen while the
+    // next order is being rung up. Starting the next order is the main way
+    // it gets cleared — «Без чека» is for when the cashier wants the screen
+    // clean before that.
     setReceipt(null);
+    setFlash(null);
   }
 
   // Its own line every time, never merged with an earlier one: two open-price
@@ -195,6 +178,7 @@ export default function PosPage() {
     ]);
     setError(null);
     setReceipt(null);
+    setFlash(null);
   }
 
   function setLineQuantity(key: string, quantity: number) {
@@ -260,7 +244,6 @@ export default function PosPage() {
       } else {
         setFlash(`Продажа проведена — ${formatMoney(total)}`);
       }
-      wantPrintRef.current = autoPrint;
       setLastSale(sale);
       setCart([]);
       setQuery("");
@@ -270,38 +253,6 @@ export default function PosPage() {
       setIsSubmitting(false);
       focusScan();
     }
-  }
-
-  // Clears itself so the next sale starts on a clean screen without the
-  // cashier having to dismiss anything.
-  useEffect(() => {
-    if (!flash) return;
-    const timer = setTimeout(() => setFlash(null), 4000);
-    return () => clearTimeout(timer);
-  }, [flash]);
-
-  // Printing is deferred to an effect rather than called inside handlePay,
-  // because window.print() captures the DOM as it is at that instant — and at
-  // that instant the just-sold slip has not rendered yet, so it would print
-  // the previous sale (or nothing at all).
-  useEffect(() => {
-    if (!lastSale || !wantPrintRef.current) return;
-    wantPrintRef.current = false;
-    // A beat, so the print-only block below is definitely in the document.
-    const timer = setTimeout(() => window.print(), 50);
-    return () => clearTimeout(timer);
-  }, [lastSale]);
-
-  function toggleAutoPrint() {
-    setAutoPrint((on) => {
-      const next = !on;
-      try {
-        localStorage.setItem(AUTO_PRINT_KEY, next ? "on" : "off");
-      } catch {
-        // Not being able to remember the choice must not break the toggle.
-      }
-      return next;
-    });
   }
 
   if (user && !canSell) {
@@ -331,17 +282,34 @@ export default function PosPage() {
         )}
       </div>
 
+      {/* Deliberately has no timeout. The cashier asks the buyer whether they
+          want a slip, and that conversation routinely outlasts any timer — a
+          confirmation that disappears mid-question is the one thing this bar
+          must not do. It clears when the next order is started, or when the
+          cashier presses «Без чека». Printing does not clear it, so a jammed
+          or empty printer can simply be printed to again. */}
       {flash && (
         <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
           <span>{flash}</span>
           {lastSale && (
-            <button
-              onClick={() => window.print()}
-              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50"
-            >
-              <Printer className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Печать
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                onClick={() => window.print()}
+                className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50"
+              >
+                <Printer className="h-3.5 w-3.5" strokeWidth={1.75} />
+                Печать
+              </button>
+              <button
+                onClick={() => {
+                  setFlash(null);
+                  focusScan();
+                }}
+                className="rounded-lg px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100"
+              >
+                Без чека
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -509,15 +477,6 @@ export default function PosPage() {
                 </button>
               ))}
             </div>
-            <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-muted">
-              <input
-                type="checkbox"
-                checked={autoPrint}
-                onChange={toggleAutoPrint}
-                className="h-3.5 w-3.5 rounded border-border accent-accent"
-              />
-              Печатать чек сразу после оплаты
-            </label>
           </div>
         </div>
       </div>
