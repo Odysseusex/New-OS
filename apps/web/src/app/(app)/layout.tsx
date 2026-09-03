@@ -1,14 +1,23 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
+import { Role } from "@bakery-os/shared";
 import { useAuth } from "@/lib/auth-context";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 
+// CASHIER is locked to the till screen only — no sidebar, no other route.
+// This is a device-lockdown concern (a shop-floor till shouldn't browse
+// Finance/Settings), separate from the API's own @Roles(...) checks, which
+// still gate every write regardless of what the frontend shows.
+const CASHIER_ONLY_ROUTE = "/pos";
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+  const isCashier = user?.role === Role.CASHIER;
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -16,7 +25,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     }
   }, [isLoading, user, router]);
 
-  if (isLoading || !user) {
+  useEffect(() => {
+    if (isCashier && pathname !== CASHIER_ONLY_ROUTE) {
+      router.replace(CASHIER_ONLY_ROUTE);
+    }
+  }, [isCashier, pathname, router]);
+
+  if (isLoading || !user || (isCashier && pathname !== CASHIER_ONLY_ROUTE)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <p className="text-sm text-muted">Загрузка…</p>
@@ -26,9 +41,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen bg-background">
-      <div className="print:hidden">
-        <Sidebar />
-      </div>
+      {!isCashier && (
+        <div className="print:hidden">
+          <Sidebar />
+        </div>
+      )}
       <div className="flex flex-1 flex-col overflow-hidden">
         <div className="print:hidden">
           <Topbar />

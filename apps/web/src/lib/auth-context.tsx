@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CurrentUserDto } from "@bakery-os/shared";
+import { Role, type CurrentUserDto } from "@bakery-os/shared";
 import { api, ApiError } from "./api";
 
 interface AuthContextValue {
@@ -39,7 +39,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await api.login(email, password);
       localStorage.setItem("bakery_token", response.accessToken);
       setUser(response.user);
-      router.push("/dashboard");
+      // Cashier logins land straight on the till — see (app)/layout.tsx,
+      // which also enforces this on every later navigation, not just here.
+      router.push(response.user.role === Role.CASHIER ? "/pos" : "/dashboard");
     },
     [router],
   );
