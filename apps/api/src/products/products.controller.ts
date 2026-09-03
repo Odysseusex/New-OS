@@ -1,5 +1,10 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { HARD_DELETE_ROLES, PRODUCT_FORCE_DELETE_ROLES, PRODUCT_MANAGE_ROLES } from "@bakery-os/shared";
+import {
+  HARD_DELETE_ROLES,
+  PRODUCT_FORCE_DELETE_ROLES,
+  PRODUCT_MANAGE_ROLES,
+  SALE_CREATE_ROLES,
+} from "@bakery-os/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
 import { Roles } from "../common/decorators/roles.decorator";
@@ -17,6 +22,16 @@ export class ProductsController {
   @Get()
   findAll(@CurrentUser() user: AuthenticatedUser, @Query("includeArchived") includeArchived?: string) {
     return this.productsService.findAllForOrganization(user.organizationId, includeArchived === "true");
+  }
+
+  // The till needs this row to ring up an item that is not in the catalogue
+  // yet, so it is gated to whoever may sell — not to PRODUCT_MANAGE_ROLES —
+  // even though it can create a product. It creates exactly one, once, and
+  // returns the same one forever after.
+  @Get("open-price")
+  @Roles(...SALE_CREATE_ROLES)
+  openPrice(@CurrentUser() user: AuthenticatedUser) {
+    return this.productsService.getOrCreateOpenPrice(user.organizationId);
   }
 
   @Post()

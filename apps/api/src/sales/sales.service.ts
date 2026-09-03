@@ -594,8 +594,13 @@ export class SalesService {
         where: { locationId, productId: { in: productIds } },
       });
       const stockByProduct = new Map(stockLevels.map((s) => [s.productId, s.quantity.toNumber()]));
+      const trackedById = new Map(products.map((p) => [p.id, p.trackInventory]));
+      // A product opted out of stock tracking has no StockLevel row to check
+      // or decrement — selling one must not look like selling out of stock.
+      // This is what lets the till's «Произвольная сумма» line work at all.
+      const stockedItems = items.filter((item) => trackedById.get(item.productId));
 
-      for (const item of items) {
+      for (const item of stockedItems) {
         const available = stockByProduct.get(item.productId) ?? 0;
         if (available < item.quantity) {
           const product = products.find((p) => p.id === item.productId);
@@ -643,7 +648,7 @@ export class SalesService {
         }
       }
 
-      for (const item of items) {
+      for (const item of stockedItems) {
         await tx.stockLevel.update({
           where: { locationId_productId: { locationId, productId: item.productId } },
           data: { quantity: { decrement: item.quantity } },
@@ -651,7 +656,7 @@ export class SalesService {
       }
 
       await tx.stockMovement.createMany({
-        data: items.map((item) => ({
+        data: stockedItems.map((item) => ({
           organizationId: user.organizationId,
           locationId,
           productId: item.productId,
@@ -700,9 +705,11 @@ export class SalesService {
 
     // The transaction below checks stock again; this earlier check exists so
     // we never punch a legally binding receipt for goods the system says we
-    // do not have.
+    // do not have. Products opted out of stock tracking are skipped — there
+    // is no stock to be short of.
     const stockByProduct = new Map(stockLevels.map((s) => [s.productId, s.quantity.toNumber()]));
     for (const item of items) {
+      if (!productById.get(item.productId)?.trackInventory) continue;
       if ((stockByProduct.get(item.productId) ?? 0) < item.quantity) {
         const name = productById.get(item.productId)?.name ?? item.productId;
         throw new BadRequestException(`Недостаточно товара «${name}» на складе точки`);

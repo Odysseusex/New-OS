@@ -115,8 +115,14 @@ export interface ProductDto {
   price: number;
   isActive: boolean;
   // False for resources with no physical stock to track (e.g. tap water) —
-  // see inventory.ts / InventoryService for what this suppresses.
+  // see inventory.ts / InventoryService for what this suppresses. Selling
+  // such a product also skips the stock check entirely.
   trackInventory: boolean;
+  // The till's «Произвольная сумма» line: the cashier types the amount and
+  // it becomes the line's unitPrice, so `price` (always 0) means nothing
+  // here. At most one per organization — the POS hides it from the product
+  // grid and offers it as its own button instead.
+  isOpenPrice: boolean;
   // Low-stock threshold: StockLevelDto.isLow is true once quantity drops to
   // or below this. 0 (the default) means "alert only when fully out" —
   // fine for finished goods made to order, but raw materials usually want

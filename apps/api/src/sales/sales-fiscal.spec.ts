@@ -31,6 +31,13 @@ const createdSaleIds: string[] = [];
 // AFTER createdSaleIds' sale/saleItem rows are gone — SaleItem.productId has
 // no cascade, so deleting the product first would fail its FK constraint.
 let noNtinProductId: string | null = null;
+// Same story for the open-price fixture — cleaned up after its sale rows.
+let openPriceProductId: string | null = null;
+// Sales that do NOT contain the shared fixture product live here instead of
+// in createdSaleIds: one test asserts that "sales containing `productId`"
+// equals "sales I created", and that only holds while the two lists mean the
+// same thing.
+const otherSaleIds: string[] = [];
 
 class ScriptedProvider implements FiscalProvider {
   readonly name = "scripted";
@@ -111,18 +118,22 @@ beforeEach(async () => {
 
 afterAll(async () => {
   delete process.env.FISCALIZATION_ENABLED;
-  await prisma.fiscalReceipt.deleteMany({ where: { organizationId: ORG, saleId: { in: createdSaleIds } } });
+  const allSaleIds = [...createdSaleIds, ...otherSaleIds];
+  await prisma.fiscalReceipt.deleteMany({ where: { organizationId: ORG, saleId: { in: allSaleIds } } });
   await prisma.fiscalReceipt.deleteMany({ where: { organizationId: ORG, saleId: null } });
-  await prisma.cashMovement.deleteMany({ where: { saleId: { in: createdSaleIds } } });
+  await prisma.cashMovement.deleteMany({ where: { saleId: { in: allSaleIds } } });
   await prisma.stockMovement.deleteMany({ where: { productId } });
-  await prisma.saleItem.deleteMany({ where: { saleId: { in: createdSaleIds } } });
-  await prisma.sale.deleteMany({ where: { id: { in: createdSaleIds } } });
+  await prisma.saleItem.deleteMany({ where: { saleId: { in: allSaleIds } } });
+  await prisma.sale.deleteMany({ where: { id: { in: allSaleIds } } });
   await prisma.stockLevel.deleteMany({ where: { productId } });
   await prisma.product.deleteMany({ where: { id: productId } });
   if (noNtinProductId) {
     await prisma.stockMovement.deleteMany({ where: { productId: noNtinProductId } });
     await prisma.stockLevel.deleteMany({ where: { productId: noNtinProductId } });
     await prisma.product.deleteMany({ where: { id: noNtinProductId } });
+  }
+  if (openPriceProductId) {
+    await prisma.product.deleteMany({ where: { id: openPriceProductId } });
   }
   await prisma.$disconnect();
 });
@@ -148,6 +159,38 @@ describe("SalesService.create with fiscalisation OFF", () => {
     expect(provider.seen).toHaveLength(0);
     expect(await stockOf()).toBe(98);
     expect(await prisma.fiscalReceipt.findUnique({ where: { saleId: sale.id } })).toBeNull();
+  });
+
+  it("sells an open-price line with no stock at all, and moves no stock for it", async () => {
+    // The till's «Произвольная сумма» row: trackInventory=false, no
+    // StockLevel row anywhere, and an amount typed by the cashier rather
+    // than read off the product. Before stock tracking was honoured here,
+    // this failed with «Недостаточно товара» — which is exactly the sort of
+    // thing that stops a till mid-queue.
+    const openPrice = await prisma.product.create({
+      data: {
+        organizationId: ORG,
+        name: "Произвольная сумма",
+        sku: `OPEN-PRICE-${Date.now()}`,
+        unit: "PCS",
+        type: "FINISHED_GOOD",
+        price: 0,
+        trackInventory: false,
+        isOpenPrice: true,
+      },
+    });
+    openPriceProductId = openPrice.id;
+
+    const sale = await buildService(new ScriptedProvider()).create(user, {
+      locationId,
+      paymentMethod: PaymentMethod.CASH,
+      items: [{ productId: openPrice.id, quantity: 1, unitPrice: 1250 }],
+    });
+    otherSaleIds.push(sale.id);
+
+    expect(sale.totalAmount).toBe(1250);
+    expect(await prisma.stockMovement.count({ where: { productId: openPrice.id } })).toBe(0);
+    expect(await prisma.stockLevel.count({ where: { productId: openPrice.id } })).toBe(0);
   });
 
   it("stays off when the flag is set to anything other than the exact string 'true'", async () => {
@@ -275,7 +318,7 @@ describe("SalesService.create with fiscalisation ON", () => {
       paymentMethod: PaymentMethod.CASH,
       items: [{ productId: noNtin.id, quantity: 1, unitPrice: 100 }],
     });
-    createdSaleIds.push(sale.id);
+    otherSaleIds.push(sale.id);
 
     expect(sale).toBeTruthy();
     expect(provider.seen).toHaveLength(1);

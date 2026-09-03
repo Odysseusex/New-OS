@@ -44,6 +44,41 @@ export class ProductsService {
     return products.map(this.toDto);
   }
 
+  // The till's «Произвольная сумма» line. One per organization, created the
+  // first time a till asks for it rather than seeded, so an existing
+  // organization gets it without a data migration.
+  //
+  // Deliberately trackInventory=false: it stands for goods that have not been
+  // received into the catalogue yet, so there is no stock to check or
+  // decrement (see SalesService.create). Its `price` is 0 and meaningless —
+  // the cashier types the amount, which arrives as the line's unitPrice.
+  //
+  // A race could create two of these; harmless, since findFirst then simply
+  // keeps returning the same one. Not worth a unique index for a row created
+  // once in the lifetime of an organization.
+  async getOrCreateOpenPrice(organizationId: string): Promise<ProductDto> {
+    const existing = await this.prisma.product.findFirst({
+      where: { organizationId, isOpenPrice: true },
+      include: PRODUCT_INCLUDE,
+    });
+    if (existing) return this.toDto(existing);
+
+    const created = await this.prisma.product.create({
+      data: {
+        organizationId,
+        name: "Произвольная сумма",
+        sku: await this.generateSku(organizationId, ProductType.FINISHED_GOOD),
+        unit: "PCS",
+        type: ProductType.FINISHED_GOOD,
+        price: 0,
+        trackInventory: false,
+        isOpenPrice: true,
+      },
+      include: PRODUCT_INCLUDE,
+    });
+    return this.toDto(created);
+  }
+
   async create(organizationId: string, dto: CreateProductDto): Promise<ProductDto> {
     let sku = dto.sku?.trim();
     if (sku) {
@@ -245,6 +280,7 @@ export class ProductsService {
     price: { toNumber: () => number };
     isActive: boolean;
     trackInventory: boolean;
+    isOpenPrice: boolean;
     minQuantity: { toNumber: () => number };
   }): ProductDto {
     return {
@@ -260,6 +296,7 @@ export class ProductsService {
       price: product.price.toNumber(),
       isActive: product.isActive,
       trackInventory: product.trackInventory,
+      isOpenPrice: product.isOpenPrice,
       minQuantity: product.minQuantity.toNumber(),
     };
   }

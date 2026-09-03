@@ -456,7 +456,17 @@ model Product {
   // False for resources with no physical stock to track (e.g. tap water) —
   // still usable in recipes and cost calculations, but excluded from stock
   // levels, low-stock alerts, and receiving/write-off/adjustment operations.
+  // A sale of such a product also skips the stock check and writes no
+  // StockMovement: there is no stock to move.
   trackInventory Boolean     @default(true)
+  // The till's "произвольная сумма" line: a product whose price is typed by
+  // the cashier at the moment of sale instead of coming from `price`. Exists
+  // so an item that has not been received into the catalogue yet cannot stop
+  // the till. There is at most one per organization, created on demand by
+  // ProductsService.getOrCreateOpenPrice(), and it is deliberately
+  // trackInventory=false — it stands for goods the system does not know
+  // about, so it has no stock to check or decrement.
+  isOpenPrice    Boolean     @default(false)
   // The organization's chosen low-stock threshold for this product, copied
   // onto each StockLevel row (see stockLevel.minQuantity) the first time
   // that product is stocked at a given location, and re-propagated to all

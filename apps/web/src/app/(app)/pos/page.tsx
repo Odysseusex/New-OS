@@ -13,14 +13,28 @@ import {
   SALE_CREATE_ROLES,
   UNIT_LABELS_RU,
 } from "@bakery-os/shared";
+import { Modal } from "@/components/modal";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatMoney, formatQuantity } from "@/lib/format";
 
+// A cart line carries its own price rather than reading it off the product,
+// because an open-price line's amount is typed by the cashier and two such
+// lines in one order are different amounts of the same product row. `key` is
+// what identifies a line in the cart — product.id for catalogue items, a
+// minted id for open-price ones, so they never merge into each other.
 interface CartLine {
+  key: string;
   product: ProductDto;
   quantity: number;
+  unitPrice: number;
 }
+
+// Remembers the cashier's choice on this device only. Auto-print is on by
+// default — it is what the till is for — but it must be switchable off,
+// because on a machine without silent printing configured every sale would
+// otherwise stop behind a print dialog nobody asked for.
+const AUTO_PRINT_KEY = "aramir_pos_auto_print";
 
 // Payment buttons at the till. Deliberately no "в долг" option: a walk-in
 // sale is settled on the spot, and a credit sale belongs to a named customer,
@@ -55,6 +69,17 @@ export default function PosPage() {
   // sale so far). Feeds the print-only block below; the on-screen flash/
   // ReceiptPanel above it stay exactly as they were.
   const [lastSale, setLastSale] = useState<SaleDetailDto | null>(null);
+  // The catalogue row behind «Произвольная сумма». Null until it loads (or if
+  // it fails to) — the button is simply not offered in that case rather than
+  // failing at payment time.
+  const [openPriceProduct, setOpenPriceProduct] = useState<ProductDto | null>(null);
+  const [openPriceOpen, setOpenPriceOpen] = useState(false);
+  const [autoPrint, setAutoPrint] = useState(true);
+  // Deliberately a ref, not state: the effect below keys off `lastSale` alone,
+  // so flipping this must not re-run it. As state it did — the effect reset
+  // the flag, React re-ran the effect, and the cleanup cancelled the print
+  // timer before it ever fired. Nothing printed at all.
+  const wantPrintRef = useRef(false);
 
   const scanRef = useRef<HTMLInputElement>(null);
 
@@ -66,12 +91,27 @@ export default function PosPage() {
 
   useEffect(() => {
     // A sale moves finished goods; raw materials are never rung up at a till.
+    // The open-price row is filtered out too — it gets its own button rather
+    // than sitting in the grid as a meaningless 0 ₸ tile.
     api.products
       .list()
-      .then((all) => setProducts(all.filter((p) => p.isActive && p.type === ProductType.FINISHED_GOOD)))
+      .then((all) =>
+        setProducts(all.filter((p) => p.isActive && p.type === ProductType.FINISHED_GOOD && !p.isOpenPrice)),
+      )
       .catch(() => setError("Не удалось загрузить товары"));
     api.categories.list().then(setCategories).catch(() => {});
     api.locations.list().then(setLocations).catch(() => {});
+    // Created on the server the first time any till asks; a failure here just
+    // means the button is not offered.
+    api.products.openPrice().then(setOpenPriceProduct).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    try {
+      setAutoPrint(localStorage.getItem(AUTO_PRINT_KEY) !== "off");
+    } catch {
+      // Private mode or blocked storage — the default stands.
+    }
   }, []);
 
   useEffect(() => {
@@ -120,15 +160,17 @@ export default function PosPage() {
     return list;
   }, [products, categoryId, normalizedQuery]);
 
-  const total = cart.reduce((sum, line) => sum + line.product.price * line.quantity, 0);
+  const total = cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
   const itemCount = cart.reduce((sum, line) => sum + line.quantity, 0);
 
   function addToCart(product: ProductDto, step = 1) {
     setCart((current) => {
-      const existing = current.find((line) => line.product.id === product.id);
-      if (!existing) return [...current, { product, quantity: step }];
+      const existing = current.find((line) => line.key === product.id);
+      if (!existing) {
+        return [...current, { key: product.id, product, quantity: step, unitPrice: product.price }];
+      }
       return current.map((line) =>
-        line.product.id === product.id ? { ...line, quantity: line.quantity + step } : line,
+        line.key === product.id ? { ...line, quantity: line.quantity + step } : line,
       );
     });
     setError(null);
@@ -137,11 +179,29 @@ export default function PosPage() {
     setReceipt(null);
   }
 
-  function setLineQuantity(productId: string, quantity: number) {
+  // Its own line every time, never merged with an earlier one: two open-price
+  // entries in one order are two different goods that happen to share a
+  // catalogue row.
+  function addOpenPriceLine(amount: number) {
+    if (!openPriceProduct) return;
+    setCart((current) => [
+      ...current,
+      {
+        key: `open-${Date.now()}-${current.length}`,
+        product: openPriceProduct,
+        quantity: 1,
+        unitPrice: amount,
+      },
+    ]);
+    setError(null);
+    setReceipt(null);
+  }
+
+  function setLineQuantity(key: string, quantity: number) {
     setCart((current) =>
       quantity <= 0
-        ? current.filter((line) => line.product.id !== productId)
-        : current.map((line) => (line.product.id === productId ? { ...line, quantity } : line)),
+        ? current.filter((line) => line.key !== key)
+        : current.map((line) => (line.key === key ? { ...line, quantity } : line)),
     );
   }
 
@@ -190,7 +250,7 @@ export default function PosPage() {
         items: cart.map((line) => ({
           productId: line.product.id,
           quantity: line.quantity,
-          unitPrice: line.product.price,
+          unitPrice: line.unitPrice,
         })),
       });
       // With fiscalisation off there is no receipt, and the short green
@@ -200,6 +260,7 @@ export default function PosPage() {
       } else {
         setFlash(`Продажа проведена — ${formatMoney(total)}`);
       }
+      wantPrintRef.current = autoPrint;
       setLastSale(sale);
       setCart([]);
       setQuery("");
@@ -218,6 +279,30 @@ export default function PosPage() {
     const timer = setTimeout(() => setFlash(null), 4000);
     return () => clearTimeout(timer);
   }, [flash]);
+
+  // Printing is deferred to an effect rather than called inside handlePay,
+  // because window.print() captures the DOM as it is at that instant — and at
+  // that instant the just-sold slip has not rendered yet, so it would print
+  // the previous sale (or nothing at all).
+  useEffect(() => {
+    if (!lastSale || !wantPrintRef.current) return;
+    wantPrintRef.current = false;
+    // A beat, so the print-only block below is definitely in the document.
+    const timer = setTimeout(() => window.print(), 50);
+    return () => clearTimeout(timer);
+  }, [lastSale]);
+
+  function toggleAutoPrint() {
+    setAutoPrint((on) => {
+      const next = !on;
+      try {
+        localStorage.setItem(AUTO_PRINT_KEY, next ? "on" : "off");
+      } catch {
+        // Not being able to remember the choice must not break the toggle.
+      }
+      return next;
+    });
+  }
 
   if (user && !canSell) {
     return <p className="mx-auto max-w-6xl text-sm text-muted">У вас нет прав на оформление продаж.</p>;
@@ -312,6 +397,15 @@ export default function PosPage() {
           </div>
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+            {openPriceProduct && (
+              <button
+                onClick={() => setOpenPriceOpen(true)}
+                className="flex h-28 flex-col justify-between rounded-2xl border border-dashed border-accent bg-surface p-3 text-left transition hover:shadow-card active:scale-[0.98]"
+              >
+                <span className="line-clamp-3 text-sm font-medium text-foreground">Произвольная сумма</span>
+                <span className="text-sm font-semibold text-accent">Ввести вручную</span>
+              </button>
+            )}
             {visibleProducts.map((p) => (
               <button
                 key={p.id}
@@ -354,11 +448,16 @@ export default function PosPage() {
               <p className="px-5 py-12 text-center text-sm text-muted">Отсканируйте или выберите товар</p>
             ) : (
               cart.map((line) => (
-                <div key={line.product.id} className="border-b border-border px-5 py-3">
+                <div key={line.key} className="border-b border-border px-5 py-3">
                   <div className="flex items-start justify-between gap-2">
-                    <span className="text-sm font-medium text-foreground">{line.product.name}</span>
+                    <span className="text-sm font-medium text-foreground">
+                      {line.product.name}
+                      {line.product.isOpenPrice && (
+                        <span className="ml-1 text-muted">· {formatMoney(line.unitPrice)}</span>
+                      )}
+                    </span>
                     <button
-                      onClick={() => setLineQuantity(line.product.id, 0)}
+                      onClick={() => setLineQuantity(line.key, 0)}
                       aria-label={`Убрать ${line.product.name}`}
                       className="shrink-0 text-muted transition hover:text-red-600"
                     >
@@ -368,7 +467,7 @@ export default function PosPage() {
                   <div className="mt-2 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <QtyButton
-                        onClick={() => setLineQuantity(line.product.id, line.quantity - 1)}
+                        onClick={() => setLineQuantity(line.key, line.quantity - 1)}
                         label={`Меньше ${line.product.name}`}
                       >
                         <Minus className="h-3.5 w-3.5" strokeWidth={2} />
@@ -377,14 +476,14 @@ export default function PosPage() {
                         {formatQuantity(line.quantity)} {UNIT_LABELS_RU[line.product.unit]}
                       </span>
                       <QtyButton
-                        onClick={() => setLineQuantity(line.product.id, line.quantity + 1)}
+                        onClick={() => setLineQuantity(line.key, line.quantity + 1)}
                         label={`Больше ${line.product.name}`}
                       >
                         <Plus className="h-3.5 w-3.5" strokeWidth={2} />
                       </QtyButton>
                     </div>
                     <span className="text-sm font-semibold text-foreground">
-                      {formatMoney(line.product.price * line.quantity)}
+                      {formatMoney(line.unitPrice * line.quantity)}
                     </span>
                   </div>
                 </div>
@@ -410,12 +509,84 @@ export default function PosPage() {
                 </button>
               ))}
             </div>
+            <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-muted">
+              <input
+                type="checkbox"
+                checked={autoPrint}
+                onChange={toggleAutoPrint}
+                className="h-3.5 w-3.5 rounded border-border accent-accent"
+              />
+              Печатать чек сразу после оплаты
+            </label>
           </div>
         </div>
       </div>
     </div>
+    {openPriceOpen && (
+      <OpenPriceModal
+        onClose={() => {
+          setOpenPriceOpen(false);
+          focusScan();
+        }}
+        onSubmit={(amount) => {
+          addOpenPriceLine(amount);
+          setOpenPriceOpen(false);
+          focusScan();
+        }}
+      />
+    )}
     {lastSale && <PrintableReceipt sale={lastSale} />}
     </>
+  );
+}
+
+// Asks for the amount of an open-price line. Autofocused and submittable with
+// Enter, because the cashier's hands are on the keyboard — the same reason the
+// scan box owns focus everywhere else on this screen.
+function OpenPriceModal({
+  onClose,
+  onSubmit,
+}: {
+  onClose: () => void;
+  onSubmit: (amount: number) => void;
+}) {
+  const [value, setValue] = useState("");
+  const amount = Number(value.replace(",", "."));
+  const valid = Number.isFinite(amount) && amount > 0;
+
+  return (
+    <Modal title="Произвольная сумма" onClose={onClose} width="max-w-sm">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (valid) onSubmit(amount);
+        }}
+      >
+        <label className="mb-1.5 block text-sm font-medium text-foreground" htmlFor="open-price-amount">
+          Сумма, ₸
+        </label>
+        <input
+          id="open-price-amount"
+          type="text"
+          inputMode="decimal"
+          autoFocus
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="0"
+          className="w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-lg text-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
+        />
+        <p className="mt-2 text-xs text-muted">
+          Для товара, которого ещё нет в номенклатуре. Склад по такой строке не списывается.
+        </p>
+        <button
+          type="submit"
+          disabled={!valid}
+          className="mt-4 w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-40"
+        >
+          Добавить в чек
+        </button>
+      </form>
+    </Modal>
   );
 }
 

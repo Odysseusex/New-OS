@@ -166,6 +166,9 @@ export const api = {
   products: {
     list: (includeArchived?: boolean) =>
       request<ProductDto[]>(withQuery("/products", { includeArchived: includeArchived ? "true" : undefined })),
+    // The till's «Произвольная сумма» line — created on first call, the same
+    // row on every call after that.
+    openPrice: () => request<ProductDto>("/products/open-price"),
     create: (dto: CreateProductRequestDto) =>
       request<ProductDto>("/products", { method: "POST", body: JSON.stringify(dto) }),
     update: (id: string, dto: UpdateProductRequestDto) =>
