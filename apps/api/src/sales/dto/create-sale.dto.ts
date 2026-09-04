@@ -15,6 +15,15 @@ export class CreateSaleItemDto {
   unitPrice!: number;
 }
 
+export class CreateSalePaymentDto {
+  @IsEnum(PaymentMethod)
+  method!: PaymentMethod;
+
+  @IsNumber()
+  @IsPositive()
+  amount!: number;
+}
+
 export class CreateSaleDto {
   @IsOptional()
   @IsString()
@@ -32,6 +41,15 @@ export class CreateSaleDto {
   @IsOptional()
   @IsEnum(PaymentMethod)
   paymentMethod?: PaymentMethod;
+
+  // Two or more tenders adding up to the sale total. Absent for an ordinary
+  // single-method sale.
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(2)
+  @ValidateNested({ each: true })
+  @Type(() => CreateSalePaymentDto)
+  payments?: CreateSalePaymentDto[];
 
   @IsArray()
   @ArrayMinSize(1)

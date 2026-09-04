@@ -39,6 +39,10 @@ const PAYMENT_TYPE_BY_METHOD: Record<string, FiscalPaymentType> = {
 export interface FiscalSaleSource {
   occurredAt: Date;
   paymentMethod: string;
+  // A split payment, when there was one. The protocol's `payments` is an
+  // array precisely for this, so a mixed sale reports both tenders rather
+  // than collapsing into whichever method happened to be recorded.
+  payments?: { method: string; amount: number }[];
   location: { name: string; lat: number | null; lng: number | null };
   total: number;
   lines: {
@@ -82,6 +86,19 @@ export function buildFiscalSaleRequest(source: FiscalSaleSource): FiscalSaleDraf
   }
 
   const paymentType = PAYMENT_TYPE_BY_METHOD[source.paymentMethod] ?? "CASH";
+  // A split sale reports each tender; an ordinary one reports the whole
+  // amount under its single method, exactly as before.
+  const payments =
+    source.payments && source.payments.length > 0
+      ? source.payments.map((p) => ({
+          type: PAYMENT_TYPE_BY_METHOD[p.method] ?? "CASH",
+          amount: p.amount,
+        }))
+      : [{ type: paymentType, amount: source.total }];
+  // Only the cash part is physically handed over.
+  const takenInCash = payments
+    .filter((p) => p.type === "CASH")
+    .reduce((sum, p) => sum + p.amount, 0);
 
   return {
     occurredAt: source.occurredAt,
@@ -93,11 +110,11 @@ export function buildFiscalSaleRequest(source: FiscalSaleSource): FiscalSaleDraf
       ntin: line.product.ntin ?? "",
       measureUnitCode: MEASURE_UNIT_CODE_BY_UNIT[line.product.unit] ?? DEFAULT_MEASURE_UNIT_CODE,
     })),
-    payments: [{ type: paymentType, amount: source.total }],
+    payments,
     total: source.total,
     // Cash handed over and change are only meaningful for a till that tracks
-    // them; the POS settles the exact amount, so they mirror total.
-    taken: paymentType === "CASH" ? source.total : 0,
+    // them; the POS settles the exact amount, so this is just the cash part.
+    taken: takenInCash,
     change: 0,
     latitude: source.location.lat,
     longitude: source.location.lng,

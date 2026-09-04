@@ -41,8 +41,18 @@ export interface SaleFiscalReceiptDto {
   isOffline: boolean;
 }
 
+// One tender of a split sale. `method` is never MIXED — that value describes
+// the sale, not a payment.
+export interface SalePaymentDto {
+  method: PaymentMethod;
+  amount: number;
+}
+
 export interface SaleDetailDto extends SaleDto {
   items: SaleItemDto[];
+  // Empty for an ordinary single-method sale — `paymentMethod` says it all
+  // there. Populated only when the sale was split.
+  payments: SalePaymentDto[];
   // Null when the sale was made with fiscalisation switched off — which is
   // every sale so far.
   fiscalReceipt: SaleFiscalReceiptDto | null;
@@ -54,11 +64,20 @@ export interface CreateSaleItemRequestDto {
   unitPrice: number;
 }
 
+export interface CreateSalePaymentRequestDto {
+  method: PaymentMethod;
+  amount: number;
+}
+
 export interface CreateSaleRequestDto {
   locationId?: string;
   customerId?: string;
   amountPaid?: number;
   paymentMethod?: PaymentMethod;
+  // A split payment: two or more tenders that must add up to the sale total.
+  // Omit it for an ordinary sale and `paymentMethod` decides everything, as
+  // before — every existing caller keeps working untouched.
+  payments?: CreateSalePaymentRequestDto[];
   items: CreateSaleItemRequestDto[];
 }
 

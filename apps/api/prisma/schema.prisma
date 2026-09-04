@@ -207,6 +207,11 @@ enum PaymentMethod {
   CASH
   CARD
   TRANSFER
+  // Split across more than one method in a single sale — the buyer put part
+  // on a card and paid the rest in cash. Never appears on a SalePayment row
+  // itself (each of those is one real method); only on Sale.paymentMethod,
+  // where it means "see the payments relation for the breakdown".
+  MIXED
 }
 
 // Where a sale stands with the fiscal operator (ККМ/ОФД).
@@ -595,11 +600,16 @@ model Sale {
   amountPaid     Decimal   @default(0) @db.Decimal(12, 2)
   // Which CashAccount a payment lands in: CASH -> the selling location's
   // cash register, CARD/TRANSFER -> the organization's default bank account.
+  // MIXED means the sale was split; the `payments` rows carry the real
+  // methods and amounts, and the money lands in more than one account.
+  // Kept as a column (rather than derived from `payments`) so every existing
+  // group-by-payment-method query keeps working untouched.
   paymentMethod  PaymentMethod @default(CASH)
   createdById    String
   createdBy      User      @relation(fields: [createdById], references: [id])
 
   items          SaleItem[]
+  payments       SalePayment[]
   stockMovements StockMovement[]
   cashMovements  CashMovement[]
   fiscalReceipt  FiscalReceipt?
@@ -608,6 +618,30 @@ model Sale {
   @@index([organizationId, locationId])
   @@index([soldAt])
   @@map("sales")
+}
+
+// One tender of a split sale: «2 000 ₸ картой, остальное наличными».
+//
+// Written ONLY when a sale is actually split — a single-method sale carries
+// everything it needs on Sale.paymentMethod, and inventing a one-row payment
+// for it would mean two places to keep in step for no gain.
+//
+// This is what makes the money land correctly: cash goes to the location's
+// till account and card to the bank account, so a split sale produces two
+// CashMovement rows, not one. Without it the финансы module would show the
+// whole amount in whichever account happened to be picked.
+model SalePayment {
+  id             String        @id @default(cuid())
+  organizationId String
+  saleId         String
+  sale           Sale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  // Never MIXED — that value only ever describes the sale as a whole.
+  method         PaymentMethod
+  amount         Decimal       @db.Decimal(12, 2)
+  createdAt      DateTime      @default(now())
+
+  @@index([organizationId, saleId])
+  @@map("sale_payments")
 }
 
 // The fiscal side of a Sale: one receipt per sale, tracked separately so the

@@ -9,12 +9,16 @@ export enum PaymentMethod {
   CASH = "CASH",
   CARD = "CARD",
   TRANSFER = "TRANSFER",
+  // Only ever on a Sale as a whole, never on an individual payment: the sale
+  // was split across methods, and SaleDto.payments carries the breakdown.
+  MIXED = "MIXED",
 }
 
 export const PAYMENT_METHOD_LABELS_RU: Record<PaymentMethod, string> = {
   [PaymentMethod.CASH]: "Наличные",
   [PaymentMethod.CARD]: "Карта",
   [PaymentMethod.TRANSFER]: "Перевод",
+  [PaymentMethod.MIXED]: "Смешанная",
 };
 
 // ── Cash accounts (bank accounts + cash registers — one entity, two

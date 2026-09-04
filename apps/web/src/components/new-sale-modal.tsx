@@ -175,19 +175,28 @@ export function NewSaleModal({
         <div className="mb-4">
           <label className="mb-1.5 block text-sm font-medium text-foreground">Оплата</label>
           <div className="flex gap-1 rounded-xl bg-surface-muted p-1">
-            {(Object.values(PaymentMethod) as PaymentMethod[]).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setPaymentMethod(m)}
-                className={clsx(
-                  "flex-1 rounded-lg py-1.5 text-sm font-medium transition",
-                  paymentMethod === m ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground",
-                )}
-              >
-                {PAYMENT_METHOD_LABELS_RU[m]}
-              </button>
-            ))}
+            {/* MIXED is not a method anyone picks here: it describes a sale
+                split across two tenders, which only the till can build (and
+                which needs the split itself, not just the label). Offering it
+                would produce a sale marked mixed with no breakdown behind
+                it. */}
+            {(Object.values(PaymentMethod) as PaymentMethod[])
+              .filter((m) => m !== PaymentMethod.MIXED)
+              .map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setPaymentMethod(m)}
+                  className={clsx(
+                    "flex-1 rounded-lg py-1.5 text-sm font-medium transition",
+                    paymentMethod === m
+                      ? "bg-surface text-foreground shadow-sm"
+                      : "text-muted hover:text-foreground",
+                  )}
+                >
+                  {PAYMENT_METHOD_LABELS_RU[m]}
+                </button>
+              ))}
           </div>
         </div>
 

@@ -5,6 +5,7 @@ import {
   CashAccountType,
   CashMovementDto,
   CashMovementType,
+  PAYMENT_METHOD_LABELS_RU,
   PaymentMethod,
   PaymentStatus,
   SaleDetailDto,
@@ -45,6 +46,8 @@ const SALE_DETAIL_INCLUDE = {
   // So a receipt number stays findable later, not just in the seconds after
   // payment — the buyer may come back with a question about it.
   fiscalReceipt: true,
+  // Empty for an ordinary sale; the breakdown of a split one.
+  payments: true,
 };
 
 @Injectable()
@@ -564,7 +567,26 @@ export class SalesService {
     // Walk-in retail sales are always settled immediately. Only a sale tied
     // to a customer account can be placed on credit (partially or fully).
     const amountPaid = dto.customerId ? Math.min(dto.amountPaid ?? 0, totalAmount) : totalAmount;
-    const paymentMethod = dto.paymentMethod ?? PaymentMethod.CASH;
+
+    // A split payment ("2 000 картой, остальное наличными"). Validated here,
+    // before anything is written or any receipt is punched.
+    const split = dto.payments ?? null;
+    if (split) {
+      if (split.some((p) => p.method === PaymentMethod.MIXED)) {
+        throw new BadRequestException("«Смешанная» не может быть способом отдельного платежа");
+      }
+      const paidBySplit = split.reduce((sum, p) => sum + p.amount, 0);
+      // Compared in whole тиын to keep floating-point noise (0.1 + 0.2) from
+      // rejecting a split that is in fact exact.
+      if (Math.round(paidBySplit * 100) !== Math.round(amountPaid * 100)) {
+        throw new BadRequestException(
+          `Сумма частей оплаты (${paidBySplit}) не совпадает с суммой к оплате (${amountPaid})`,
+        );
+      }
+    }
+
+    // MIXED describes the sale as a whole; the parts live in SalePayment.
+    const paymentMethod = split ? PaymentMethod.MIXED : dto.paymentMethod ?? PaymentMethod.CASH;
 
     // --- Fiscalisation, when switched on ---------------------------------
     //
@@ -579,7 +601,7 @@ export class SalesService {
     // which needsAttention() surfaces on purpose rather than hiding.
     const soldAt = new Date();
     const receipt = this.fiscalSettings.isEnabled()
-      ? await this.fiscalizeBeforeSale(user, locationId, items, totalAmount, paymentMethod, soldAt)
+      ? await this.fiscalizeBeforeSale(user, locationId, items, totalAmount, paymentMethod, soldAt, split)
       : null;
 
     return this.prisma.$transaction(async (tx) => {
@@ -620,6 +642,17 @@ export class SalesService {
           paymentMethod,
           createdById: user.id,
           items: { create: items },
+          ...(split
+            ? {
+                payments: {
+                  create: split.map((p) => ({
+                    organizationId: user.organizationId,
+                    method: p.method,
+                    amount: p.amount,
+                  })),
+                },
+              }
+            : {}),
           // Stamped explicitly only when a receipt was punched, so the sale
           // and the fiscal document carry the same moment. Otherwise the
           // column default stands, exactly as before.
@@ -632,17 +665,31 @@ export class SalesService {
         await this.fiscalService.linkSale(tx, receipt.id, sale.id);
       }
 
-      if (amountPaid > 0) {
-        const accountId = await this.resolveSaleAccountId(tx, user.organizationId, locationId, paymentMethod);
+      // One movement per tender, because a split sale genuinely puts money in
+      // two different places: the cash part into the location's till, the card
+      // part into the bank account. Recording it as a single movement would
+      // put the whole amount wherever one method happened to route, and every
+      // figure in Финансы downstream of that would be wrong.
+      const tenders = split ?? [{ method: paymentMethod, amount: amountPaid }];
+      for (const tender of tenders) {
+        if (tender.amount <= 0) continue;
+        const accountId = await this.resolveSaleAccountId(
+          tx,
+          user.organizationId,
+          locationId,
+          tender.method,
+        );
         if (accountId) {
           await this.cashMovementsService.recordMovement(tx, {
             organizationId: user.organizationId,
             accountId,
             type: CashMovementType.SALE_RECEIPT,
-            amount: amountPaid,
+            amount: tender.amount,
             customerId: dto.customerId,
             saleId: sale.id,
-            reason: "Продажа",
+            // Named so a split sale's two movements are tellable apart in the
+            // account history rather than reading as a duplicate.
+            reason: split ? `Продажа (${PAYMENT_METHOD_LABELS_RU[tender.method]})` : "Продажа",
             createdById: user.id,
           });
         }
@@ -685,6 +732,7 @@ export class SalesService {
     totalAmount: number,
     paymentMethod: PaymentMethod,
     soldAt: Date,
+    split: { method: PaymentMethod; amount: number }[] | null,
   ): Promise<FiscalReceipt> {
     const productIds = items.map((i) => i.productId);
     const [products, location, stockLevels] = await Promise.all([
@@ -719,6 +767,7 @@ export class SalesService {
     const draft = buildFiscalSaleRequest({
       occurredAt: soldAt,
       paymentMethod,
+      payments: split ?? undefined,
       location: { name: location.name, lat: location.lat, lng: location.lng },
       total: totalAmount,
       lines: items.map((item) => {
@@ -876,6 +925,7 @@ export class SalesService {
       qrCode: string | null;
       isOffline: boolean;
     } | null;
+    payments?: { method: string; amount: { toNumber: () => number } }[];
   }): SaleDetailDto => ({
     ...this.toSaleDto(sale),
     items: sale.items.map((item) => ({
@@ -885,6 +935,10 @@ export class SalesService {
       quantity: item.quantity.toNumber(),
       unitPrice: item.unitPrice.toNumber(),
       subtotal: item.subtotal.toNumber(),
+    })),
+    payments: (sale.payments ?? []).map((p) => ({
+      method: p.method as PaymentMethod,
+      amount: p.amount.toNumber(),
     })),
     fiscalReceipt: sale.fiscalReceipt
       ? {

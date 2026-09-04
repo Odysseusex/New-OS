@@ -2,12 +2,13 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
-import { Banknote, CreditCard, Minus, Plus, Printer, ScanLine, Trash2, X } from "lucide-react";
+import { Banknote, CreditCard, Minus, Plus, Printer, ScanLine, Split, Trash2, X } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import type { CategoryDto, LocationDto, ProductDto, SaleDetailDto, SaleFiscalReceiptDto } from "@bakery-os/shared";
 import {
   FiscalReceiptStatus,
   ORG_WIDE_ROLES,
+  PAYMENT_METHOD_LABELS_RU,
   PaymentMethod,
   ProductType,
   SALE_CREATE_ROLES,
@@ -34,9 +35,13 @@ interface CartLine {
 // Payment buttons at the till. Deliberately no "в долг" option: a walk-in
 // sale is settled on the spot, and a credit sale belongs to a named customer,
 // which is what the Продажи form is for.
-const PAYMENT_BUTTONS: { method: PaymentMethod; label: string; icon: typeof Banknote }[] = [
-  { method: PaymentMethod.CASH, label: "Наличные", icon: Banknote },
-  { method: PaymentMethod.CARD, label: "Карта", icon: CreditCard },
+// Which payment dialog is open. `null` = none.
+type PayMode = "cash" | "card" | "mixed";
+
+const PAYMENT_BUTTONS: { mode: PayMode; label: string; icon: typeof Banknote }[] = [
+  { mode: "cash", label: "Наличные", icon: Banknote },
+  { mode: "card", label: "Карта", icon: CreditCard },
+  { mode: "mixed", label: "Картой и наличными", icon: Split },
 ];
 
 export default function PosPage() {
@@ -69,7 +74,7 @@ export default function PosPage() {
   // failing at payment time.
   const [openPriceProduct, setOpenPriceProduct] = useState<ProductDto | null>(null);
   const [openPriceOpen, setOpenPriceOpen] = useState(false);
-  const [cashOpen, setCashOpen] = useState(false);
+  const [payMode, setPayMode] = useState<PayMode | null>(null);
   // Cash handed over and change due for the sale just rung up, kept only long
   // enough to print them on the slip. Deliberately not persisted: the server
   // records what the sale cost, not which note the buyer produced.
@@ -128,7 +133,7 @@ export default function PosPage() {
     // While an amount dialog is open the keypad owns the keyboard — pulling
     // focus back to the scan box would send the cashier's digits into the
     // product search instead of into the amount.
-    if (openPriceOpen || cashOpen) return;
+    if (openPriceOpen || payMode !== null) return;
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target && ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
@@ -136,7 +141,7 @@ export default function PosPage() {
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [focusScan, openPriceOpen, cashOpen]);
+  }, [focusScan, openPriceOpen, payMode]);
 
   // Only categories that actually hold something sellable. Without this the
   // till offers chips like «Сырьё», which can only ever show an empty grid,
@@ -246,11 +251,16 @@ export default function PosPage() {
     }
   }
 
-  // `cashGiven` is the note the buyer handed over. It is never sent to the
-  // server — a walk-in sale is always settled in full, so `amountPaid` is the
-  // total either way — it exists only to work out the change and to put both
-  // numbers on the printed slip.
-  async function handlePay(method: PaymentMethod, cashGiven?: number) {
+  // `cashGiven` is the note the buyer handed over — it is never sent to the
+  // server (a walk-in sale is always settled in full, so `amountPaid` is the
+  // total either way); it exists only to work out the change and to put both
+  // numbers on the printed slip. `split` IS sent: it decides which accounts
+  // the money lands in.
+  async function handlePay(
+    method: PaymentMethod,
+    cashGiven?: number,
+    split?: { method: PaymentMethod; amount: number }[],
+  ) {
     if (cart.length === 0 || !locationId) return;
     setIsSubmitting(true);
     setError(null);
@@ -258,6 +268,7 @@ export default function PosPage() {
       const sale = await api.sales.create({
         locationId,
         paymentMethod: method,
+        ...(split ? { payments: split } : {}),
         items: cart.map((line) => ({
           productId: line.product.id,
           quantity: line.quantity,
@@ -497,17 +508,21 @@ export default function PosPage() {
               <span className="text-sm text-muted">Итого{itemCount > 0 ? ` · ${formatQuantity(itemCount)} шт` : ""}</span>
               <span className="text-2xl font-semibold text-foreground">{formatMoney(total)}</span>
             </div>
+            {/* Every button opens a dialog rather than settling on the spot:
+                a stray tap must never be a completed sale, and the cashier
+                gets one place to change their mind. */}
             <div className="grid grid-cols-2 gap-2">
-              {PAYMENT_BUTTONS.map(({ method, label, icon: Icon }) => (
+              {PAYMENT_BUTTONS.map(({ mode, label, icon: Icon }) => (
                 <button
-                  key={method}
-                  // Cash goes through the change dialog; a card settles the
-                  // exact amount, so there is nothing to work out.
-                  onClick={() =>
-                    method === PaymentMethod.CASH ? setCashOpen(true) : handlePay(method)
-                  }
+                  key={mode}
+                  onClick={() => setPayMode(mode)}
                   disabled={cart.length === 0 || isSubmitting || !locationId}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-40"
+                  className={clsx(
+                    "flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition hover:opacity-90 disabled:opacity-40",
+                    mode === "mixed"
+                      ? "col-span-2 border border-border bg-surface text-foreground hover:bg-surface-muted"
+                      : "bg-accent text-accent-foreground",
+                  )}
                 >
                   <Icon className="h-4 w-4" strokeWidth={1.75} />
                   {isSubmitting ? "…" : label}
@@ -518,17 +533,48 @@ export default function PosPage() {
         </div>
       </div>
     </div>
-    {cashOpen && (
+    {payMode === "cash" && (
       <CashPaymentModal
         total={total}
         isSubmitting={isSubmitting}
         onClose={() => {
-          setCashOpen(false);
+          setPayMode(null);
           focusScan();
         }}
         onSubmit={(given) => {
-          setCashOpen(false);
+          setPayMode(null);
           handlePay(PaymentMethod.CASH, given);
+        }}
+      />
+    )}
+    {payMode === "card" && (
+      <CardPaymentModal
+        total={total}
+        isSubmitting={isSubmitting}
+        onClose={() => {
+          setPayMode(null);
+          focusScan();
+        }}
+        onSubmit={() => {
+          setPayMode(null);
+          handlePay(PaymentMethod.CARD);
+        }}
+      />
+    )}
+    {payMode === "mixed" && (
+      <MixedPaymentModal
+        total={total}
+        isSubmitting={isSubmitting}
+        onClose={() => {
+          setPayMode(null);
+          focusScan();
+        }}
+        onSubmit={(card, cashPart, cashGiven) => {
+          setPayMode(null);
+          handlePay(PaymentMethod.MIXED, cashGiven, [
+            { method: PaymentMethod.CARD, amount: card },
+            { method: PaymentMethod.CASH, amount: cashPart },
+          ]);
         }}
       />
     )}
@@ -641,6 +687,165 @@ function CashPaymentModal({
   );
 }
 
+// A card settles the exact amount, so there is nothing to work out — this
+// exists purely so a stray tap on «Карта» cannot complete a sale on its own,
+// and so the cashier has somewhere to back out after the terminal declines.
+function CardPaymentModal({
+  total,
+  isSubmitting,
+  onClose,
+  onSubmit,
+}: {
+  total: number;
+  isSubmitting: boolean;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <Modal title="Оплата картой" onClose={onClose} width="max-w-sm">
+      <div className="rounded-xl border border-border bg-surface-muted px-4 py-5 text-center">
+        <p className="text-sm text-muted">К оплате</p>
+        <p className="mt-1 text-3xl font-semibold tabular-nums text-foreground">{formatMoney(total)}</p>
+      </div>
+      <p className="mt-3 text-xs text-muted">
+        Проведите оплату на терминале, затем подтвердите. Продажа запишется только после подтверждения.
+      </p>
+      <button
+        type="button"
+        onClick={onSubmit}
+        disabled={isSubmitting}
+        className="mt-3 w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-40"
+      >
+        {isSubmitting ? "…" : "Оплата прошла — провести продажу"}
+      </button>
+      <button
+        type="button"
+        onClick={onClose}
+        disabled={isSubmitting}
+        className="mt-2 w-full rounded-xl px-4 py-2.5 text-sm font-medium text-muted transition hover:bg-surface-muted disabled:opacity-40"
+      >
+        Отмена
+      </button>
+    </Modal>
+  );
+}
+
+// Part on a card, the rest in cash — a real request at the counter, and one
+// that has to be recorded as two payments, because the two halves genuinely
+// end up in different accounts.
+//
+// Only ONE number is typed: how much goes on the card. The cash part is
+// whatever is left, so the two can never fail to add up to the total — the
+// cashier cannot produce an unbalanced split at all. Tapping «Получено
+// наличными» switches the keypad to that second number, for when the buyer
+// hands over a bigger note and needs change.
+function MixedPaymentModal({
+  total,
+  isSubmitting,
+  onClose,
+  onSubmit,
+}: {
+  total: number;
+  isSubmitting: boolean;
+  onClose: () => void;
+  // (card part, cash part, cash actually handed over)
+  onSubmit: (card: number, cash: number, cashGiven: number) => void;
+}) {
+  const [field, setField] = useState<"card" | "given">("card");
+  const [cardValue, setCardValue] = useState("");
+  const [givenValue, setGivenValue] = useState("");
+
+  const card = cardValue ? Number(cardValue) : 0;
+  const cashPart = Math.max(0, total - card);
+  // Untouched, the buyer hands over exactly the cash part and there is no
+  // change — the common case needs no second number at all.
+  const given = givenValue ? Number(givenValue) : cashPart;
+  const change = given - cashPart;
+
+  const valid = card > 0 && card < total && given >= cashPart && !isSubmitting;
+  const submit = () => {
+    if (valid) onSubmit(card, cashPart, given);
+  };
+
+  return (
+    <Modal title="Картой и наличными" onClose={onClose} width="max-w-sm">
+      <div className="mb-3 flex items-baseline justify-between">
+        <span className="text-sm text-muted">К оплате</span>
+        <span className="text-xl font-semibold text-foreground">{formatMoney(total)}</span>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setField("card")}
+        className={clsx(
+          "flex w-full items-baseline justify-between rounded-xl border px-4 py-3 text-left transition",
+          field === "card" ? "border-accent bg-surface" : "border-border bg-surface-muted",
+        )}
+      >
+        <span className="text-sm text-muted">Картой</span>
+        <span className="text-2xl font-semibold tabular-nums text-foreground">
+          {cardValue ? formatMoney(card) : "—"}
+        </span>
+      </button>
+
+      <div className="mt-2 flex items-baseline justify-between rounded-xl bg-surface-muted px-4 py-3">
+        <span className="text-sm text-muted">Наличными</span>
+        <span className="text-2xl font-semibold tabular-nums text-foreground">
+          {formatMoney(cashPart)}
+        </span>
+      </div>
+
+      {cashPart > 0 && (
+        <>
+          <button
+            type="button"
+            onClick={() => setField("given")}
+            className={clsx(
+              "mt-2 flex w-full items-baseline justify-between rounded-xl border px-4 py-3 text-left transition",
+              field === "given" ? "border-accent bg-surface" : "border-border bg-surface-muted",
+            )}
+          >
+            <span className="text-sm text-muted">Получено наличными</span>
+            <span className="text-2xl font-semibold tabular-nums text-foreground">
+              {formatMoney(given)}
+            </span>
+          </button>
+          {change > 0 && (
+            <div className="mt-2 flex items-baseline justify-between rounded-xl bg-emerald-50 px-4 py-3">
+              <span className="text-sm text-emerald-700">Сдача</span>
+              <span className="text-2xl font-semibold tabular-nums text-emerald-700">
+                {formatMoney(change)}
+              </span>
+            </div>
+          )}
+        </>
+      )}
+
+      <div className="mt-3">
+        <NumberPad
+          value={field === "card" ? cardValue : givenValue}
+          onChange={field === "card" ? setCardValue : setGivenValue}
+          onSubmit={submit}
+        />
+      </div>
+
+      <button
+        type="button"
+        onClick={submit}
+        disabled={!valid}
+        className="mt-3 w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-40"
+      >
+        {isSubmitting ? "…" : "Провести продажу"}
+      </button>
+      {card >= total && cardValue !== "" && (
+        <p className="mt-2 text-center text-xs text-muted">
+          Вся сумма на карте — используйте кнопку «Карта»
+        </p>
+      )}
+    </Modal>
+  );
+}
+
 // The exact amount, then the next few round notes above it. Anything already
 // smaller than the total is useless as a suggestion, and duplicates are
 // dropped so «Без сдачи» never appears twice.
@@ -743,7 +948,22 @@ function PrintableReceipt({
         <span>Итого</span>
         <span>{formatMoney(sale.totalAmount)}</span>
       </div>
-      <p className="mt-1 text-xs">{sale.paymentMethod === PaymentMethod.CASH ? "Наличные" : "Карта"}</p>
+      {/* A split sale prints each tender; anything else prints its one
+          method. Reading the label off the shared map rather than a
+          CASH-or-else ternary, which printed «Карта» for a transfer and
+          would now print it for a mixed sale too. */}
+      {sale.payments.length > 0 ? (
+        <div className="mt-1 text-xs">
+          {sale.payments.map((p) => (
+            <div key={p.method} className="flex justify-between">
+              <span>{PAYMENT_METHOD_LABELS_RU[p.method]}</span>
+              <span>{formatMoney(p.amount)}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-1 text-xs">{PAYMENT_METHOD_LABELS_RU[sale.paymentMethod]}</p>
+      )}
       {cash && cash.change > 0 && (
         <div className="mt-1 text-xs">
           <div className="flex justify-between">

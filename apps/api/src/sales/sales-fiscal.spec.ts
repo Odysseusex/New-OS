@@ -193,6 +193,55 @@ describe("SalesService.create with fiscalisation OFF", () => {
     expect(await prisma.stockLevel.count({ where: { productId: openPrice.id } })).toBe(0);
   });
 
+  it("splits a mixed payment across two accounts, not one", async () => {
+    // The whole point of storing a split: cash belongs in the location's
+    // till and card money in the bank account. Recording one movement for
+    // the full amount would put it all in whichever account the single
+    // method happened to route to, and every figure in Финансы built on
+    // that would be wrong.
+    const sale = await buildService(new ScriptedProvider()).create(user, {
+      locationId,
+      paymentMethod: PaymentMethod.MIXED,
+      payments: [
+        { method: PaymentMethod.CARD, amount: 800 },
+        { method: PaymentMethod.CASH, amount: 380 },
+      ],
+      items: [{ productId, quantity: 2, unitPrice: 590 }],
+    });
+    createdSaleIds.push(sale.id);
+
+    expect(sale.totalAmount).toBe(1180);
+    expect(sale.paymentMethod).toBe(PaymentMethod.MIXED);
+    expect(sale.payments).toHaveLength(2);
+
+    const movements = await prisma.cashMovement.findMany({ where: { saleId: sale.id } });
+    expect(movements).toHaveLength(2);
+    expect(movements.map((m) => m.amount.toNumber()).sort((a, b) => a - b)).toEqual([380, 800]);
+    // Two different accounts — the till and the bank — not the same one twice.
+    expect(new Set(movements.map((m) => m.accountId)).size).toBe(2);
+  });
+
+  it("refuses a split that does not add up to the total", async () => {
+    const provider = new ScriptedProvider();
+    const service = buildService(provider);
+    const before = await cashMovementCount();
+
+    await expect(
+      service.create(user, {
+        locationId,
+        paymentMethod: PaymentMethod.MIXED,
+        // 1180 due, 1000 offered.
+        payments: [
+          { method: PaymentMethod.CARD, amount: 800 },
+          { method: PaymentMethod.CASH, amount: 200 },
+        ],
+        items: [{ productId, quantity: 2, unitPrice: 590 }],
+      }),
+    ).rejects.toThrow("не совпадает");
+
+    expect(await cashMovementCount()).toBe(before);
+  });
+
   it("stays off when the flag is set to anything other than the exact string 'true'", async () => {
     // A half-set flag ("1", "yes", "TRUE") must not silently start requiring
     // receipts — it fails safe, towards the behaviour that already works.
