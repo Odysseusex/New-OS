@@ -116,14 +116,22 @@ export default function PosPage() {
     setCart([]);
   }, [locationId]);
 
+  // A location-scoped cashier sells at their own point and nowhere else.
+  // They deliberately do NOT fall back to locations[0] when unassigned: that
+  // silently sold at whichever point sorted first alphabetically, using ITS
+  // prices, with no picker on their screen to reveal or correct it. Refusing
+  // to guess turns an invisible wrong price into an obvious blocked till.
   useEffect(() => {
     if (locationId) return;
-    if (!isOrgWide && user?.locationId) {
-      setLocationId(user.locationId);
-    } else if (locations.length > 0) {
-      setLocationId(locations[0].id);
+    if (!isOrgWide) {
+      if (user?.locationId) setLocationId(user.locationId);
+      return;
     }
+    if (locations.length > 0) setLocationId(locations[0].id);
   }, [locations, locationId, isOrgWide, user]);
+
+  const activeLocationName = locations.find((l) => l.id === locationId)?.name ?? null;
+  const missingLocation = !isOrgWide && !user?.locationId;
 
   useEffect(focusScan, [focusScan]);
 
@@ -311,7 +319,12 @@ export default function PosPage() {
           <h1 className="text-xl font-semibold text-foreground">Касса</h1>
           <p className="mt-1 text-sm text-muted">Продажа на точке: сканирование, корзина, оплата</p>
         </div>
-        {isOrgWide && (
+        {/* Which point this till is selling at is shown to EVERYONE, not just
+            to whoever may switch it. Prices differ per point, so a cashier
+            who cannot see the point cannot tell the prices are the wrong
+            ones — which is exactly how a till ended up quietly selling at
+            another shop's prices. */}
+        {isOrgWide ? (
           <select
             value={locationId}
             onChange={(e) => setLocationId(e.target.value)}
@@ -323,8 +336,22 @@ export default function PosPage() {
               </option>
             ))}
           </select>
+        ) : (
+          activeLocationName && (
+            <div className="rounded-xl border border-border bg-surface px-3 py-2 text-sm">
+              <span className="text-muted">Точка: </span>
+              <span className="font-medium text-foreground">{activeLocationName}</span>
+            </div>
+          )
         )}
       </div>
+
+      {missingLocation && (
+        <div className="mb-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Вам не назначена точка продаж, поэтому касса не знает, по каким ценам продавать. Обратитесь к
+          владельцу — точка указывается в Настройках, в карточке сотрудника.
+        </div>
+      )}
 
       {/* Deliberately has no timeout. The cashier asks the buyer whether they
           want a slip, and that conversation routinely outlasts any timer — a
@@ -409,7 +436,10 @@ export default function PosPage() {
           </div>
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-            {openPriceProduct && (
+            {/* Also gated on a location: without one nothing can be sold at
+                all, and an open-price line would only fill a cart whose
+                payment buttons silently do nothing. */}
+            {openPriceProduct && locationId && (
               <button
                 onClick={() => setOpenPriceOpen(true)}
                 className="flex h-28 flex-col justify-between rounded-2xl border border-dashed border-accent bg-surface p-3 text-left transition hover:shadow-card active:scale-[0.98]"

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { CreditCard, Printer, Undo2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import type { SaleDetailDto, SaleFiscalReceiptDto, SaleReturnDto } from "@bakery-os/shared";
-import { FiscalReceiptStatus, SALE_RETURN_ROLES } from "@bakery-os/shared";
+import { FiscalReceiptStatus, PAYMENT_METHOD_LABELS_RU, SALE_RETURN_ROLES } from "@bakery-os/shared";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { Modal } from "@/components/modal";
@@ -114,6 +114,26 @@ export function SaleDetailModal({
                   {formatMoney(sale.balanceDue)}
                 </p>
               </div>
+            </div>
+
+            <div className="mb-5">
+              <p className="mb-1.5 text-sm text-muted">Оплата</p>
+              {sale.payments.length > 0 ? (
+                // A split sale: the parts, because «Смешанная» on its own
+                // does not say how much went where.
+                <div className="space-y-1">
+                  {sale.payments.map((p) => (
+                    <div key={p.method} className="flex justify-between text-sm">
+                      <span className="text-foreground">{PAYMENT_METHOD_LABELS_RU[p.method]}</span>
+                      <span className="font-medium text-foreground">{formatMoney(p.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm font-medium text-foreground">
+                  {PAYMENT_METHOD_LABELS_RU[sale.paymentMethod]}
+                </p>
+              )}
             </div>
 
             {/* Only present once fiscalisation is on. Kept here rather than
