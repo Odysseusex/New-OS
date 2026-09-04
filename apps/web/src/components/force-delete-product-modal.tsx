@@ -53,8 +53,15 @@ export function ForceDeleteProductModal({
 
         <div className="mb-5">
           <label className="mb-1.5 block text-sm font-medium text-foreground">
-            Чтобы подтвердить, введите название товара: <span className="font-semibold">«{product.name}»</span>
+            Чтобы подтвердить, введите название товара ниже — точно как здесь, без добавления кавычек:
           </label>
+          {/* No «» added around the name here — the name itself sometimes
+              already contains them (e.g. «Хлеб «Бородинский»»), and a second,
+              outer pair invited typing characters that were never part of
+              the real name, which made the confirmation impossible to pass. */}
+          <p className="mb-2 rounded-lg bg-surface-muted px-3 py-2 font-mono text-sm text-foreground">
+            {product.name}
+          </p>
           <input
             type="text"
             value={confirmText}

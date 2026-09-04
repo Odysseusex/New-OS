@@ -545,7 +545,9 @@ export default function PosPage() {
         }}
       />
     )}
-    {lastSale && <PrintableReceipt sale={lastSale} cash={cashDetails} />}
+    {lastSale && (
+      <PrintableReceipt sale={lastSale} cash={cashDetails} orgName={user?.organization.name ?? ""} />
+    )}
     </>
   );
 }
@@ -701,13 +703,20 @@ function OpenPriceModal({
 function PrintableReceipt({
   sale,
   cash,
+  orgName,
 }: {
   sale: SaleDetailDto;
   cash: { given: number; change: number } | null;
+  // The brand, not the till: a buyer's slip should say «Ar-Amir», the name
+  // on the storefront, not the internal location name (which for a rented
+  // corner of someone else's supermarket may not even be a shop name at
+  // all — see the Мерей/Фазиза case that prompted this).
+  orgName: string;
 }) {
   return (
     <div className="hidden print:block print:mx-auto print:max-w-xs print:text-black">
-      <p className="text-center text-sm font-semibold">{sale.locationName}</p>
+      <p className="text-center text-sm font-semibold">{orgName}</p>
+      <p className="text-center text-xs">{sale.locationName}</p>
       <p className="text-center text-xs">{new Date(sale.soldAt).toLocaleString("ru-RU")}</p>
       <div className="my-3 border-t border-dashed border-black" />
       <table className="w-full text-xs">
