@@ -14,6 +14,7 @@ import {
   UNIT_LABELS_RU,
 } from "@bakery-os/shared";
 import { Modal } from "@/components/modal";
+import { NumberPad } from "@/components/number-pad";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatMoney, formatQuantity } from "@/lib/format";
@@ -68,6 +69,11 @@ export default function PosPage() {
   // failing at payment time.
   const [openPriceProduct, setOpenPriceProduct] = useState<ProductDto | null>(null);
   const [openPriceOpen, setOpenPriceOpen] = useState(false);
+  const [cashOpen, setCashOpen] = useState(false);
+  // Cash handed over and change due for the sale just rung up, kept only long
+  // enough to print them on the slip. Deliberately not persisted: the server
+  // records what the sale cost, not which note the buyer produced.
+  const [cashDetails, setCashDetails] = useState<{ given: number; change: number } | null>(null);
 
   const scanRef = useRef<HTMLInputElement>(null);
 
@@ -108,6 +114,10 @@ export default function PosPage() {
   // Typing anywhere on the page (including a scan arriving while focus sits on
   // a tile) is redirected into the scan box, so nothing is ever swallowed.
   useEffect(() => {
+    // While an amount dialog is open the keypad owns the keyboard — pulling
+    // focus back to the scan box would send the cashier's digits into the
+    // product search instead of into the amount.
+    if (openPriceOpen || cashOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target && ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
@@ -115,7 +125,7 @@ export default function PosPage() {
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [focusScan]);
+  }, [focusScan, openPriceOpen, cashOpen]);
 
   // Only categories that actually hold something sellable. Without this the
   // till offers chips like «Сырьё», which can only ever show an empty grid,
@@ -223,7 +233,11 @@ export default function PosPage() {
     }
   }
 
-  async function handlePay(method: PaymentMethod) {
+  // `cashGiven` is the note the buyer handed over. It is never sent to the
+  // server — a walk-in sale is always settled in full, so `amountPaid` is the
+  // total either way — it exists only to work out the change and to put both
+  // numbers on the printed slip.
+  async function handlePay(method: PaymentMethod, cashGiven?: number) {
     if (cart.length === 0 || !locationId) return;
     setIsSubmitting(true);
     setError(null);
@@ -242,9 +256,15 @@ export default function PosPage() {
       if (sale.fiscalReceipt) {
         setReceipt({ amount: total, fiscal: sale.fiscalReceipt });
       } else {
-        setFlash(`Продажа проведена — ${formatMoney(total)}`);
+        const change = cashGiven !== undefined ? cashGiven - total : 0;
+        setFlash(
+          change > 0
+            ? `Продажа проведена — ${formatMoney(total)}. Сдача ${formatMoney(change)}`
+            : `Продажа проведена — ${formatMoney(total)}`,
+        );
       }
       setLastSale(sale);
+      setCashDetails(cashGiven !== undefined ? { given: cashGiven, change: cashGiven - total } : null);
       setCart([]);
       setQuery("");
     } catch (err) {
@@ -468,7 +488,11 @@ export default function PosPage() {
               {PAYMENT_BUTTONS.map(({ method, label, icon: Icon }) => (
                 <button
                   key={method}
-                  onClick={() => handlePay(method)}
+                  // Cash goes through the change dialog; a card settles the
+                  // exact amount, so there is nothing to work out.
+                  onClick={() =>
+                    method === PaymentMethod.CASH ? setCashOpen(true) : handlePay(method)
+                  }
                   disabled={cart.length === 0 || isSubmitting || !locationId}
                   className="flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-40"
                 >
@@ -481,6 +505,20 @@ export default function PosPage() {
         </div>
       </div>
     </div>
+    {cashOpen && (
+      <CashPaymentModal
+        total={total}
+        isSubmitting={isSubmitting}
+        onClose={() => {
+          setCashOpen(false);
+          focusScan();
+        }}
+        onSubmit={(given) => {
+          setCashOpen(false);
+          handlePay(PaymentMethod.CASH, given);
+        }}
+      />
+    )}
     {openPriceOpen && (
       <OpenPriceModal
         onClose={() => {
@@ -494,14 +532,113 @@ export default function PosPage() {
         }}
       />
     )}
-    {lastSale && <PrintableReceipt sale={lastSale} />}
+    {lastSale && <PrintableReceipt sale={lastSale} cash={cashDetails} />}
     </>
   );
 }
 
-// Asks for the amount of an open-price line. Autofocused and submittable with
-// Enter, because the cashier's hands are on the keyboard — the same reason the
-// scan box owns focus everywhere else on this screen.
+// Takes the cash handed over and shows the change before the sale is put
+// through, so the cashier never has to reach for a calculator with a queue
+// waiting. The quick buttons cover what actually gets handed over: the exact
+// amount, and the notes just above it.
+function CashPaymentModal({
+  total,
+  isSubmitting,
+  onClose,
+  onSubmit,
+}: {
+  total: number;
+  isSubmitting: boolean;
+  onClose: () => void;
+  onSubmit: (given: number) => void;
+}) {
+  const [value, setValue] = useState("");
+  const given = value ? Number(value) : 0;
+  const change = given - total;
+  // Handing over less than the price is not a sale this screen can settle —
+  // a walk-in sale is paid in full. Exactly the price is fine (no change).
+  const valid = given >= total;
+  const submit = () => {
+    if (valid && !isSubmitting) onSubmit(given);
+  };
+
+  return (
+    <Modal title="Оплата наличными" onClose={onClose} width="max-w-sm">
+      <div className="mb-3 flex items-baseline justify-between">
+        <span className="text-sm text-muted">К оплате</span>
+        <span className="text-xl font-semibold text-foreground">{formatMoney(total)}</span>
+      </div>
+
+      <div className="rounded-xl border border-border bg-surface-muted px-4 py-3">
+        <div className="flex items-baseline justify-between">
+          <span className="text-sm text-muted">Получено</span>
+          {/* Plain text, never an <input>: an input is what makes the
+              моноблок's own on-screen keyboard appear. */}
+          <span className="text-2xl font-semibold tabular-nums text-foreground">
+            {value ? formatMoney(given) : "—"}
+          </span>
+        </div>
+      </div>
+
+      <div
+        className={clsx(
+          "mt-2 flex items-baseline justify-between rounded-xl px-4 py-3",
+          change > 0 ? "bg-emerald-50" : "bg-surface-muted",
+        )}
+      >
+        <span className={clsx("text-sm", change > 0 ? "text-emerald-700" : "text-muted")}>Сдача</span>
+        <span
+          className={clsx(
+            "text-2xl font-semibold tabular-nums",
+            change > 0 ? "text-emerald-700" : "text-muted",
+          )}
+        >
+          {valid ? formatMoney(change) : "—"}
+        </span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-4 gap-2">
+        {quickCashAmounts(total).map((amount) => (
+          <button
+            key={amount}
+            type="button"
+            onClick={() => setValue(String(amount))}
+            className="rounded-xl border border-border px-2 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+          >
+            {amount === total ? "Без сдачи" : amount.toLocaleString("ru-RU")}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-3">
+        <NumberPad value={value} onChange={setValue} onSubmit={submit} />
+      </div>
+
+      <button
+        type="button"
+        onClick={submit}
+        disabled={!valid || isSubmitting}
+        className="mt-3 w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-40"
+      >
+        {isSubmitting ? "…" : "Провести продажу"}
+      </button>
+    </Modal>
+  );
+}
+
+// The exact amount, then the next few round notes above it. Anything already
+// smaller than the total is useless as a suggestion, and duplicates are
+// dropped so «Без сдачи» never appears twice.
+function quickCashAmounts(total: number): number[] {
+  const notes = [500, 1000, 2000, 5000, 10000, 20000];
+  const above = notes.filter((n) => n > total);
+  const rounded = Math.ceil(total / 1000) * 1000;
+  const suggestions = [total, ...(rounded > total ? [rounded] : []), ...above];
+  return suggestions.filter((amount, i) => suggestions.indexOf(amount) === i).slice(0, 4);
+}
+
+// Asks for the amount of an open-price line, on the same keypad as the cash
+// dialog — for the same reason: no <input>, no OS keyboard.
 function OpenPriceModal({
   onClose,
   onSubmit,
@@ -510,41 +647,36 @@ function OpenPriceModal({
   onSubmit: (amount: number) => void;
 }) {
   const [value, setValue] = useState("");
-  const amount = Number(value.replace(",", "."));
-  const valid = Number.isFinite(amount) && amount > 0;
+  const amount = value ? Number(value) : 0;
+  const valid = amount > 0;
+  const submit = () => {
+    if (valid) onSubmit(amount);
+  };
 
   return (
     <Modal title="Произвольная сумма" onClose={onClose} width="max-w-sm">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (valid) onSubmit(amount);
-        }}
+      <div className="mb-3 rounded-xl border border-border bg-surface-muted px-4 py-3">
+        <div className="flex items-baseline justify-between">
+          <span className="text-sm text-muted">Сумма</span>
+          <span className="text-2xl font-semibold tabular-nums text-foreground">
+            {value ? formatMoney(amount) : "—"}
+          </span>
+        </div>
+      </div>
+
+      <NumberPad value={value} onChange={setValue} onSubmit={submit} />
+
+      <p className="mt-3 text-xs text-muted">
+        Для товара, которого ещё нет в номенклатуре. Склад по такой строке не списывается.
+      </p>
+      <button
+        type="button"
+        onClick={submit}
+        disabled={!valid}
+        className="mt-3 w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-40"
       >
-        <label className="mb-1.5 block text-sm font-medium text-foreground" htmlFor="open-price-amount">
-          Сумма, ₸
-        </label>
-        <input
-          id="open-price-amount"
-          type="text"
-          inputMode="decimal"
-          autoFocus
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="0"
-          className="w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-lg text-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
-        />
-        <p className="mt-2 text-xs text-muted">
-          Для товара, которого ещё нет в номенклатуре. Склад по такой строке не списывается.
-        </p>
-        <button
-          type="submit"
-          disabled={!valid}
-          className="mt-4 w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-40"
-        >
-          Добавить в чек
-        </button>
-      </form>
+        Добавить в чек
+      </button>
     </Modal>
   );
 }
@@ -553,7 +685,13 @@ function OpenPriceModal({
 // the interactive till when the browser's print dialog fires — a slip
 // shaped like an actual receipt rather than a screenshot of the whole page
 // with buttons and a sidebar in it.
-function PrintableReceipt({ sale }: { sale: SaleDetailDto }) {
+function PrintableReceipt({
+  sale,
+  cash,
+}: {
+  sale: SaleDetailDto;
+  cash: { given: number; change: number } | null;
+}) {
   return (
     <div className="hidden print:block print:mx-auto print:max-w-xs print:text-black">
       <p className="text-center text-sm font-semibold">{sale.locationName}</p>
@@ -584,6 +722,18 @@ function PrintableReceipt({ sale }: { sale: SaleDetailDto }) {
         <span>{formatMoney(sale.totalAmount)}</span>
       </div>
       <p className="mt-1 text-xs">{sale.paymentMethod === PaymentMethod.CASH ? "Наличные" : "Карта"}</p>
+      {cash && cash.change > 0 && (
+        <div className="mt-1 text-xs">
+          <div className="flex justify-between">
+            <span>Получено</span>
+            <span>{formatMoney(cash.given)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Сдача</span>
+            <span>{formatMoney(cash.change)}</span>
+          </div>
+        </div>
+      )}
       {sale.fiscalReceipt?.ticketNumber && (
         <>
           <div className="my-3 border-t border-dashed border-black" />
