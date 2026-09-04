@@ -61,6 +61,7 @@ import type {
   NotificationDto,
   PlannedBreakEvenDto,
   PlannedFixedCostDto,
+  LocationPriceRowDto,
   ProductDto,
   ProductionBatchDto,
   ProfitAndLossDto,
@@ -164,11 +165,29 @@ export const api = {
   },
 
   products: {
-    list: (includeArchived?: boolean) =>
-      request<ProductDto[]>(withQuery("/products", { includeArchived: includeArchived ? "true" : undefined })),
+    // `locationId` resolves each product's effectivePrice against that point
+    // of sale; without it effectivePrice is just the default price.
+    list: (includeArchived?: boolean, locationId?: string) =>
+      request<ProductDto[]>(
+        withQuery("/products", {
+          includeArchived: includeArchived ? "true" : undefined,
+          locationId: locationId || undefined,
+        }),
+      ),
     // The till's «Произвольная сумма» line — created on first call, the same
     // row on every call after that.
     openPrice: () => request<ProductDto>("/products/open-price"),
+    locationPrices: (locationId: string) =>
+      request<LocationPriceRowDto[]>(`/products/location-prices/${locationId}`),
+    setLocationPrice: (locationId: string, productId: string, price: number) =>
+      request<LocationPriceRowDto>(`/products/location-prices/${locationId}/${productId}`, {
+        method: "PUT",
+        body: JSON.stringify({ price }),
+      }),
+    clearLocationPrice: (locationId: string, productId: string) =>
+      request<{ cleared: true }>(`/products/location-prices/${locationId}/${productId}`, {
+        method: "DELETE",
+      }),
     create: (dto: CreateProductRequestDto) =>
       request<ProductDto>("/products", { method: "POST", body: JSON.stringify(dto) }),
     update: (id: string, dto: UpdateProductRequestDto) =>

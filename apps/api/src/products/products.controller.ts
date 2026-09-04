@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from "@nestjs/common";
 import {
   HARD_DELETE_ROLES,
   PRODUCT_FORCE_DELETE_ROLES,
@@ -13,6 +13,7 @@ import { AuthenticatedUser } from "../auth/auth.types";
 import { ProductsService } from "./products.service";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
+import { SetLocationPriceDto } from "./dto/set-location-price.dto";
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("products")
@@ -20,8 +21,47 @@ export class ProductsController {
   constructor(private productsService: ProductsService) {}
 
   @Get()
-  findAll(@CurrentUser() user: AuthenticatedUser, @Query("includeArchived") includeArchived?: string) {
-    return this.productsService.findAllForOrganization(user.organizationId, includeArchived === "true");
+  findAll(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("includeArchived") includeArchived?: string,
+    // Optional: resolves each product's effectivePrice against this point of
+    // sale. The till always passes it.
+    @Query("locationId") locationId?: string,
+  ) {
+    return this.productsService.findAllForOrganization(
+      user.organizationId,
+      includeArchived === "true",
+      locationId || undefined,
+    );
+  }
+
+  // Prices charged at one point of sale. Read is open to any authenticated
+  // role, like the rest of the catalogue; changing a price is a manage
+  // action.
+  @Get("location-prices/:locationId")
+  locationPrices(@CurrentUser() user: AuthenticatedUser, @Param("locationId") locationId: string) {
+    return this.productsService.locationPrices(user.organizationId, locationId);
+  }
+
+  @Put("location-prices/:locationId/:productId")
+  @Roles(...PRODUCT_MANAGE_ROLES)
+  setLocationPrice(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("locationId") locationId: string,
+    @Param("productId") productId: string,
+    @Body() dto: SetLocationPriceDto,
+  ) {
+    return this.productsService.setLocationPrice(user.organizationId, locationId, productId, dto.price);
+  }
+
+  @Delete("location-prices/:locationId/:productId")
+  @Roles(...PRODUCT_MANAGE_ROLES)
+  clearLocationPrice(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("locationId") locationId: string,
+    @Param("productId") productId: string,
+  ) {
+    return this.productsService.clearLocationPrice(user.organizationId, locationId, productId);
   }
 
   // The till needs this row to ring up an item that is not in the catalogue

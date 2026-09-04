@@ -84,21 +84,32 @@ export default function PosPage() {
   const focusScan = useCallback(() => scanRef.current?.focus(), []);
 
   useEffect(() => {
-    // A sale moves finished goods; raw materials are never rung up at a till.
-    // The open-price row is filtered out too — it gets its own button rather
-    // than sitting in the grid as a meaningless 0 ₸ tile.
-    api.products
-      .list()
-      .then((all) =>
-        setProducts(all.filter((p) => p.isActive && p.type === ProductType.FINISHED_GOOD && !p.isOpenPrice)),
-      )
-      .catch(() => setError("Не удалось загрузить товары"));
     api.categories.list().then(setCategories).catch(() => {});
     api.locations.list().then(setLocations).catch(() => {});
     // Created on the server the first time any till asks; a failure here just
     // means the button is not offered.
     api.products.openPrice().then(setOpenPriceProduct).catch(() => {});
   }, []);
+
+  // Reloaded whenever the point of sale changes, because the price depends on
+  // it: the retail point charges its own prices, everywhere else charges the
+  // organization's default. Waits for a location rather than loading the
+  // defaults first, so the grid never briefly shows the wrong prices.
+  useEffect(() => {
+    if (!locationId) return;
+    // A sale moves finished goods; raw materials are never rung up at a till.
+    // The open-price row is filtered out too — it gets its own button rather
+    // than sitting in the grid as a meaningless 0 ₸ tile.
+    api.products
+      .list(false, locationId)
+      .then((all) =>
+        setProducts(all.filter((p) => p.isActive && p.type === ProductType.FINISHED_GOOD && !p.isOpenPrice)),
+      )
+      .catch(() => setError("Не удалось загрузить товары"));
+    // A part-built order belongs to the point it was priced at. Carrying it
+    // across would keep the old prices while the grid shows new ones.
+    setCart([]);
+  }, [locationId]);
 
   useEffect(() => {
     if (locationId) return;
@@ -157,7 +168,9 @@ export default function PosPage() {
     setCart((current) => {
       const existing = current.find((line) => line.key === product.id);
       if (!existing) {
-        return [...current, { key: product.id, product, quantity: step, unitPrice: product.price }];
+        // effectivePrice, not price: what this point of sale charges, which
+        // for the retail point is not the organization's default.
+        return [...current, { key: product.id, product, quantity: step, unitPrice: product.effectivePrice }];
       }
       return current.map((line) =>
         line.key === product.id ? { ...line, quantity: line.quantity + step } : line,
@@ -404,7 +417,7 @@ export default function PosPage() {
                 className="flex h-28 flex-col justify-between rounded-2xl border border-border bg-surface p-3 text-left transition hover:border-accent hover:shadow-card active:scale-[0.98]"
               >
                 <span className="line-clamp-3 text-sm font-medium text-foreground">{p.name}</span>
-                <span className="text-sm font-semibold text-accent">{formatMoney(p.price)}</span>
+                <span className="text-sm font-semibold text-accent">{formatMoney(p.effectivePrice)}</span>
               </button>
             ))}
             {visibleProducts.length === 0 && (

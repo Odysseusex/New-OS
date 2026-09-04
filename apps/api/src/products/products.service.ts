@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { ProductDto, ProductType } from "@bakery-os/shared";
+import { LocationPriceRowDto, ProductDto, ProductType } from "@bakery-os/shared";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 
@@ -34,14 +34,105 @@ export class ProductsService {
     return `${SKU_PREFIX_BY_TYPE[type]}-${String(org.productSkuSequence).padStart(6, "0")}`;
   }
 
-  async findAllForOrganization(organizationId: string, includeArchived = false): Promise<ProductDto[]> {
-    const products = await this.prisma.product.findMany({
-      where: { organizationId, ...(includeArchived ? {} : { isActive: true }) },
-      include: PRODUCT_INCLUDE,
-      orderBy: { name: "asc" },
+  // `locationId` only affects `effectivePrice`: with it, a product that has
+  // its own price at that point of sale reports that price. Everything else
+  // in the DTO, `price` included, is the same either way.
+  async findAllForOrganization(
+    organizationId: string,
+    includeArchived = false,
+    locationId?: string,
+  ): Promise<ProductDto[]> {
+    const [products, overrides] = await Promise.all([
+      this.prisma.product.findMany({
+        where: { organizationId, ...(includeArchived ? {} : { isActive: true }) },
+        include: PRODUCT_INCLUDE,
+        orderBy: { name: "asc" },
+      }),
+      locationId
+        ? this.prisma.productLocationPrice.findMany({ where: { organizationId, locationId } })
+        : Promise.resolve([]),
+    ]);
+
+    const priceByProduct = new Map(overrides.map((o) => [o.productId, o.price.toNumber()]));
+    return products.map((product) => ({
+      ...this.toDto(product),
+      effectivePrice: priceByProduct.get(product.id) ?? product.price.toNumber(),
+    }));
+  }
+
+  // Every sellable product with this point's own price alongside the default,
+  // including the ones that have no own price — the screen is for spotting
+  // and filling those gaps, so it must show them.
+  async locationPrices(organizationId: string, locationId: string): Promise<LocationPriceRowDto[]> {
+    const location = await this.prisma.location.findFirst({ where: { id: locationId, organizationId } });
+    if (!location) {
+      throw new NotFoundException("Точка не найдена");
+    }
+
+    const [products, overrides] = await Promise.all([
+      this.prisma.product.findMany({
+        // Raw materials are never rung up at a till, so a price for them here
+        // would be a field nobody can ever use.
+        where: { organizationId, isActive: true, type: ProductType.FINISHED_GOOD, isOpenPrice: false },
+        include: PRODUCT_INCLUDE,
+        orderBy: { name: "asc" },
+      }),
+      this.prisma.productLocationPrice.findMany({ where: { organizationId, locationId } }),
+    ]);
+
+    const priceByProduct = new Map(overrides.map((o) => [o.productId, o.price.toNumber()]));
+    return products.map((product) => ({
+      productId: product.id,
+      productName: product.name,
+      sku: product.sku,
+      categoryName: product.categoryRef?.name ?? null,
+      basePrice: product.price.toNumber(),
+      locationPrice: priceByProduct.get(product.id) ?? null,
+    }));
+  }
+
+  async setLocationPrice(
+    organizationId: string,
+    locationId: string,
+    productId: string,
+    price: number,
+  ): Promise<LocationPriceRowDto> {
+    if (price < 0) {
+      throw new BadRequestException("Цена не может быть отрицательной");
+    }
+    const [location, product] = await Promise.all([
+      this.prisma.location.findFirst({ where: { id: locationId, organizationId } }),
+      this.prisma.product.findFirst({ where: { id: productId, organizationId }, include: PRODUCT_INCLUDE }),
+    ]);
+    if (!location) throw new NotFoundException("Точка не найдена");
+    if (!product) throw new NotFoundException("Товар не найден");
+
+    await this.prisma.productLocationPrice.upsert({
+      where: { productId_locationId: { productId, locationId } },
+      create: { organizationId, productId, locationId, price },
+      update: { price },
     });
 
-    return products.map(this.toDto);
+    return {
+      productId: product.id,
+      productName: product.name,
+      sku: product.sku,
+      categoryName: product.categoryRef?.name ?? null,
+      basePrice: product.price.toNumber(),
+      locationPrice: price,
+    };
+  }
+
+  // Removing the override is how a point goes back to charging the default —
+  // there is no "same as base" price to type, and storing one would silently
+  // stop tracking later changes to Product.price.
+  async clearLocationPrice(
+    organizationId: string,
+    locationId: string,
+    productId: string,
+  ): Promise<{ cleared: true }> {
+    await this.prisma.productLocationPrice.deleteMany({ where: { organizationId, locationId, productId } });
+    return { cleared: true };
   }
 
   // The till's «Произвольная сумма» line. One per organization, created the
@@ -297,6 +388,9 @@ export class ProductsService {
       isActive: product.isActive,
       trackInventory: product.trackInventory,
       isOpenPrice: product.isOpenPrice,
+      // No location in scope here, so the default price IS the effective one.
+      // findAllForOrganization overwrites this when asked about a location.
+      effectivePrice: product.price.toNumber(),
       minQuantity: product.minQuantity.toNumber(),
     };
   }

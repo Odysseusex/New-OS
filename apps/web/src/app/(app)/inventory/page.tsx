@@ -23,8 +23,9 @@ import { NewProductModal } from "@/components/new-product-modal";
 import { CategoryModal } from "@/components/category-modal";
 import { ForceDeleteProductModal } from "@/components/force-delete-product-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
+import { LocationPricesTab } from "@/components/location-prices-tab";
 
-type Tab = "stock" | "catalog" | "categories";
+type Tab = "stock" | "catalog" | "categories" | "prices";
 
 export default function InventoryPage() {
   const { user } = useAuth();
@@ -235,6 +236,9 @@ export default function InventoryPage() {
           <TabButton active={tab === "categories"} onClick={() => openTab("categories")}>
             Категории
           </TabButton>
+          <TabButton active={tab === "prices"} onClick={() => openTab("prices")}>
+            Цены по точкам
+          </TabButton>
         </div>
 
         <div className="flex items-center gap-3">
@@ -429,6 +433,8 @@ export default function InventoryPage() {
           </div>
         </>
       )}
+
+      {tab === "prices" && <LocationPricesTab locations={locations} canManage={canManageProducts} />}
 
       {tab === "catalog" && (
         <div className="rounded-2xl border border-border bg-surface shadow-card">

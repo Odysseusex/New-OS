@@ -329,6 +329,7 @@ model Location {
   cashAccounts      CashAccount[]
   employees         Employee[]
   plannedFixedCosts PlannedFixedCost[]
+  productPrices     ProductLocationPrice[]
 
   @@index([organizationId])
   @@index([regionId])
@@ -480,6 +481,7 @@ model Product {
 
   stockLevels        StockLevel[]
   stockMovements     StockMovement[]
+  locationPrices     ProductLocationPrice[]
   saleItems          SaleItem[]
   saleReturnItems    SaleReturnItem[]
   recipe             Recipe?             @relation("RecipeOutput")
@@ -500,6 +502,36 @@ model Product {
 }
 
 // Current quantity on hand for a product at a specific location.
+// What a product costs AT ONE POINT OF SALE, when that differs from
+// Product.price.
+//
+// Product.price stays the default and is what almost everything in the app
+// means by "the price" — wholesale, in this business. A row here overrides it
+// for one location only: the retail point rents space inside a customer's
+// supermarket and sells the same bread at retail. Deliberately an override
+// table rather than a second price column on Product, so a third and fourth
+// point with their own prices need no schema change, and so only the products
+// that actually differ have to be filled in.
+//
+// Nothing reads this except price resolution for the till (and the screen
+// that edits it) — a Sale still stores the unit price it was rung up at, so
+// changing a price here never rewrites history.
+model ProductLocationPrice {
+  id             String   @id @default(cuid())
+  organizationId String
+  productId      String
+  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  locationId     String
+  location       Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  price          Decimal  @db.Decimal(12, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([productId, locationId])
+  @@index([organizationId, locationId])
+  @@map("product_location_prices")
+}
+
 model StockLevel {
   id             String   @id @default(cuid())
   organizationId String

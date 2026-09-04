@@ -123,11 +123,34 @@ export interface ProductDto {
   // here. At most one per organization — the POS hides it from the product
   // grid and offers it as its own button instead.
   isOpenPrice: boolean;
+  // What this product costs at the point of sale the list was requested for
+  // (`GET /products?locationId=…`). Equal to `price` unless that location has
+  // its own price, and always equal to `price` when no location was asked
+  // for. The till reads THIS, never `price` — `price` is the organization's
+  // default, which at this business is the wholesale one.
+  effectivePrice: number;
   // Low-stock threshold: StockLevelDto.isLow is true once quantity drops to
   // or below this. 0 (the default) means "alert only when fully out" —
   // fine for finished goods made to order, but raw materials usually want
   // a real number so purchasing gets a heads-up before they run out.
   minQuantity: number;
+}
+
+// One row of the «Цены по точке» screen: the organization's default price
+// next to what this one point of sale charges.
+export interface LocationPriceRowDto {
+  productId: string;
+  productName: string;
+  sku: string;
+  categoryName: string | null;
+  // Product.price — the default, unchanged by anything on that screen.
+  basePrice: number;
+  // Null means "no own price here", i.e. this point charges basePrice.
+  locationPrice: number | null;
+}
+
+export interface SetLocationPriceRequestDto {
+  price: number;
 }
 
 export interface CreateProductRequestDto {
