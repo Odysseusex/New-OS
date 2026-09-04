@@ -981,8 +981,16 @@ function PrintableReceipt({
       {/* A split sale prints each tender; anything else prints its one
           method. Reading the label off the shared map rather than a
           CASH-or-else ternary, which printed «Карта» for a transfer and
-          would now print it for a mixed sale too. */}
-      {sale.payments.length > 0 ? (
+          would now print it for a mixed sale too.
+          `sale.payments ?? []`, not `sale.payments`: this block renders
+          right after every sale (the print-only div is hidden by CSS, not
+          by React, so it still executes), and if the API server is a build
+          behind the web app — which has happened before on this project —
+          `payments` would be missing from its response entirely rather than
+          an empty array. That crashed the whole till after every single
+          sale until this guard, on every browser, because it really was
+          the deployed code faulting against a stale server reply. */}
+      {(sale.payments ?? []).length > 0 ? (
         <div className="mt-1 text-xs">
           {sale.payments.map((p) => (
             <div key={p.method} className="flex justify-between">

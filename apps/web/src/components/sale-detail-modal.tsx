@@ -118,7 +118,11 @@ export function SaleDetailModal({
 
             <div className="mb-5">
               <p className="mb-1.5 text-sm text-muted">Оплата</p>
-              {sale.payments.length > 0 ? (
+              {/* `sale.payments ?? []`: guards against an API build that
+                  predates this field returning a Sale with it simply
+                  missing — see the same guard (and its full story) in the
+                  till's PrintableReceipt. */}
+              {(sale.payments ?? []).length > 0 ? (
                 // A split sale: the parts, because «Смешанная» on its own
                 // does not say how much went where.
                 <div className="space-y-1">
