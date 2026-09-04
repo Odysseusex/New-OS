@@ -61,6 +61,9 @@ import type {
   NotificationDto,
   PlannedBreakEvenDto,
   PlannedFixedCostDto,
+  ConsignmentBalanceDto,
+  ConsignmentDetailDto,
+  CreateConsignmentPaymentRequestDto,
   LocationPriceRowDto,
   ProductDto,
   ProductionBatchDto,
@@ -573,5 +576,16 @@ export const api = {
     status: () => request<FiscalStatusDto>("/fiscal/status"),
     needsAttention: () => request<FiscalReceiptDto[]>("/fiscal/needs-attention"),
     reconcile: () => request<FiscalReconcileResultDto>("/fiscal/reconcile", { method: "POST" }),
+  },
+
+  consignment: {
+    balances: () => request<ConsignmentBalanceDto[]>("/consignment/balances"),
+    detail: (supplierId: string) =>
+      request<ConsignmentDetailDto>(`/consignment/balances/${supplierId}`),
+    pay: (dto: CreateConsignmentPaymentRequestDto) =>
+      request<{ id: string }>("/consignment/payments", {
+        method: "POST",
+        body: JSON.stringify(dto),
+      }),
   },
 };

@@ -67,7 +67,20 @@ export class SaleReturnsService {
 
     // What is still returnable: sold minus everything earlier returns already
     // took back. Without this the same loaf could be refunded twice.
-    const soldByProduct = new Map<string, { unitPrice: number; quantity: number; name: string; unit: string; ntin: string | null }>();
+    const soldByProduct = new Map<
+      string,
+      {
+        unitPrice: number;
+        quantity: number;
+        name: string;
+        unit: string;
+        ntin: string | null;
+        // Carried over from the sale line, not re-read from the product: a
+        // returned unit must cancel exactly the debt its own sale created.
+        consignmentSupplierId: string | null;
+        consignmentUnitCost: number | null;
+      }
+    >();
     for (const item of sale.items) {
       const existing = soldByProduct.get(item.productId);
       const quantity = item.quantity.toNumber() + (existing?.quantity ?? 0);
@@ -77,6 +90,8 @@ export class SaleReturnsService {
         name: item.product.name,
         unit: item.product.unit,
         ntin: item.product.ntin,
+        consignmentSupplierId: item.consignmentSupplierId,
+        consignmentUnitCost: item.consignmentUnitCost?.toNumber() ?? null,
       });
     }
     const alreadyReturned = new Map<string, number>();
@@ -109,6 +124,8 @@ export class SaleReturnsService {
         unitPrice: sold.unitPrice,
         // Refunded at the price actually paid, never today's price.
         subtotal: Number((requested.quantity * sold.unitPrice).toFixed(2)),
+        consignmentSupplierId: sold.consignmentSupplierId,
+        consignmentUnitCost: sold.consignmentUnitCost,
       };
     });
 
@@ -144,6 +161,8 @@ export class SaleReturnsService {
               quantity: l.quantity,
               unitPrice: l.unitPrice,
               subtotal: l.subtotal,
+              consignmentSupplierId: l.consignmentSupplierId,
+              consignmentUnitCost: l.consignmentUnitCost,
             })),
           },
         },

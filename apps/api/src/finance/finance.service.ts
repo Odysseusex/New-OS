@@ -338,7 +338,11 @@ export class FinanceService {
       for (const item of sale.items) {
         const quantity = item.quantity.toNumber();
         const revenue = item.subtotal.toNumber();
-        const unitCost = costFor(item.productId);
+        // Consignment goods cost exactly what we owe their owner for them,
+        // and that is snapshotted on the line — so it is known per sale, not
+        // per product, and it is recognised on the day of the sale rather
+        // than lumped into whichever month the payout happens to fall in.
+        const unitCost = item.consignmentUnitCost?.toNumber() ?? costFor(item.productId);
         const hasCost = unitCost !== null;
         if (!hasCost) unknownCostLineItems += 1;
         const cogs = hasCost ? unitCost * quantity : 0;
@@ -632,7 +636,7 @@ export class FinanceService {
   // confirmed expenses — same figure the Кредиторская задолженность tab
   // and the dashboard card show.
   async getAccountsPayable(organizationId: string): Promise<number> {
-    const [unpaidInvoices, unpaidExpenses] = await Promise.all([
+    const [unpaidInvoices, unpaidExpenses, consignmentOwed] = await Promise.all([
       this.prisma.invoice.findMany({
         where: { organizationId, status: PrismaInvoiceStatus.CONFIRMED },
         select: { totalCost: true, amountPaid: true },
@@ -641,10 +645,57 @@ export class FinanceService {
         where: { organizationId, status: ExpenseStatus.CONFIRMED },
         select: { amount: true, amountPaid: true },
       }),
+      // Goods sold on consignment are money owed to their owner just as much
+      // as an unpaid supplier invoice is, and it is owed from the moment they
+      // sell — so it belongs in Кредиторская задолженность rather than
+      // appearing out of nowhere on the day of the payout.
+      this.getConsignmentOwed(organizationId),
     ]);
     return (
       unpaidInvoices.reduce((sum, i) => sum + Math.max(0, i.totalCost.toNumber() - i.amountPaid.toNumber()), 0) +
-      unpaidExpenses.reduce((sum, e) => sum + Math.max(0, e.amount.toNumber() - e.amountPaid.toNumber()), 0)
+      unpaidExpenses.reduce((sum, e) => sum + Math.max(0, e.amount.toNumber() - e.amountPaid.toNumber()), 0) +
+      consignmentOwed
+    );
+  }
+
+  // Sold, minus returned, minus already paid — the same running balance the
+  // Расчёты по реализации screen shows, kept here so the dashboard's
+  // Кредиторская задолженность and that screen cannot drift apart.
+  //
+  // Clamped at zero per supplier: paying one supplier ahead must not quietly
+  // cancel out what is genuinely owed to another.
+  async getConsignmentOwed(organizationId: string): Promise<number> {
+    const [saleItems, returnItems, payments] = await Promise.all([
+      this.prisma.saleItem.findMany({
+        where: { consignmentSupplierId: { not: null }, sale: { organizationId } },
+        select: { consignmentSupplierId: true, consignmentUnitCost: true, quantity: true },
+      }),
+      this.prisma.saleReturnItem.findMany({
+        where: { consignmentSupplierId: { not: null }, saleReturn: { organizationId } },
+        select: { consignmentSupplierId: true, consignmentUnitCost: true, quantity: true },
+      }),
+      this.prisma.consignmentPayment.findMany({
+        where: { organizationId },
+        select: { supplierId: true, amount: true },
+      }),
+    ]);
+
+    const bySupplier = new Map<string, number>();
+    const add = (supplierId: string, delta: number) =>
+      bySupplier.set(supplierId, (bySupplier.get(supplierId) ?? 0) + delta);
+
+    for (const item of saleItems) {
+      add(item.consignmentSupplierId!, (item.consignmentUnitCost?.toNumber() ?? 0) * item.quantity.toNumber());
+    }
+    for (const item of returnItems) {
+      add(item.consignmentSupplierId!, -(item.consignmentUnitCost?.toNumber() ?? 0) * item.quantity.toNumber());
+    }
+    for (const payment of payments) {
+      add(payment.supplierId, -payment.amount.toNumber());
+    }
+
+    return Number(
+      [...bySupplier.values()].reduce((sum, owed) => sum + Math.max(0, owed), 0).toFixed(2),
     );
   }
 

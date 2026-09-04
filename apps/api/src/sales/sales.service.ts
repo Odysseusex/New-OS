@@ -611,6 +611,7 @@ export class SalesService {
       if (products.length !== new Set(productIds).size) {
         throw new BadRequestException("Один или несколько товаров не найдены");
       }
+      const productById = new Map(products.map((p) => [p.id, p]));
 
       const stockLevels = await tx.stockLevel.findMany({
         where: { locationId, productId: { in: productIds } },
@@ -641,7 +642,24 @@ export class SalesService {
           amountPaid,
           paymentMethod,
           createdById: user.id,
-          items: { create: items },
+          // Consignment terms are snapshotted onto each line here, from the
+          // product as it stands at this moment. Selling a unit of somebody
+          // else's goods is what creates the debt to them, and the debt must
+          // not move afterwards if the product's price is later edited or the
+          // product reassigned to another supplier.
+          items: {
+            create: items.map((item) => {
+              const product = productById.get(item.productId);
+              const owed =
+                product?.consignmentSupplierId && product.consignmentPrice !== null
+                  ? {
+                      consignmentSupplierId: product.consignmentSupplierId,
+                      consignmentUnitCost: product.consignmentPrice,
+                    }
+                  : {};
+              return { ...item, ...owed };
+            }),
+          },
           ...(split
             ? {
                 payments: {

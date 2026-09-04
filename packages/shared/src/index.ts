@@ -13,4 +13,5 @@ export * from "./notifications";
 export * from "./ai";
 export * from "./telegram";
 export * from "./fiscal";
+export * from "./consignment";
 export * from "./dto";

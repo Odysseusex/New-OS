@@ -4,7 +4,7 @@ import { LocationPriceRowDto, ProductDto, ProductType } from "@bakery-os/shared"
 import { CreateProductDto } from "./dto/create-product.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 
-const PRODUCT_INCLUDE = { categoryRef: true };
+const PRODUCT_INCLUDE = { categoryRef: true, consignmentSupplier: true };
 
 const SKU_PREFIX_BY_TYPE: Record<ProductType, string> = {
   [ProductType.RAW_MATERIAL]: "ING",
@@ -186,6 +186,7 @@ export class ProductsService {
     if (dto.categoryId) {
       await this.assertCategoryExists(organizationId, dto.categoryId);
     }
+    await this.assertConsignmentValid(organizationId, dto.consignmentSupplierId, dto.consignmentPrice);
 
     const product = await this.prisma.product.create({
       // An empty barcode from the form is stored as null, never "": a blank
@@ -222,6 +223,14 @@ export class ProductsService {
     if (dto.categoryId) {
       await this.assertCategoryExists(organizationId, dto.categoryId);
     }
+    // Checked against what the product will BE, not just what was sent:
+    // clearing only one of the two fields would otherwise leave a product
+    // that is somebody else's goods at an unknown price, or ours at a price.
+    await this.assertConsignmentValid(
+      organizationId,
+      dto.consignmentSupplierId !== undefined ? dto.consignmentSupplierId : product.consignmentSupplierId,
+      dto.consignmentPrice !== undefined ? dto.consignmentPrice : product.consignmentPrice?.toNumber() ?? null,
+    );
 
     const updated = await this.prisma.product.update({
       where: { id: productId },
@@ -236,6 +245,10 @@ export class ProductsService {
         ...(dto.price !== undefined ? { price: dto.price } : {}),
         ...(dto.trackInventory !== undefined ? { trackInventory: dto.trackInventory } : {}),
         ...(dto.minQuantity !== undefined ? { minQuantity: dto.minQuantity } : {}),
+        ...(dto.consignmentSupplierId !== undefined
+          ? { consignmentSupplierId: dto.consignmentSupplierId }
+          : {}),
+        ...(dto.consignmentPrice !== undefined ? { consignmentPrice: dto.consignmentPrice } : {}),
       },
       include: PRODUCT_INCLUDE,
     });
@@ -358,6 +371,36 @@ export class ProductsService {
     }
   }
 
+  // The supplier and the price are meaningless apart: a product marked as
+  // somebody else's goods with no price would accrue a zero debt on every
+  // sale — silently, and unrecoverably, since each sale snapshots the price
+  // it saw. Refusing the half-filled pair is the only way to keep that from
+  // ever reaching the ledger.
+  private async assertConsignmentValid(
+    organizationId: string,
+    supplierId: string | null | undefined,
+    price: number | null | undefined,
+  ): Promise<void> {
+    const hasSupplier = Boolean(supplierId);
+    const hasPrice = price !== null && price !== undefined;
+    if (!hasSupplier && !hasPrice) return;
+
+    if (hasSupplier !== hasPrice) {
+      throw new BadRequestException(
+        "Для товара под реализацию нужно указать и поставщика, и цену поставщику",
+      );
+    }
+    if (price! < 0) {
+      throw new BadRequestException("Цена поставщику не может быть отрицательной");
+    }
+    const supplier = await this.prisma.supplier.findFirst({
+      where: { id: supplierId!, organizationId },
+    });
+    if (!supplier) {
+      throw new NotFoundException("Поставщик не найден");
+    }
+  }
+
   private toDto(product: {
     id: string;
     name: string;
@@ -372,6 +415,9 @@ export class ProductsService {
     isActive: boolean;
     trackInventory: boolean;
     isOpenPrice: boolean;
+    consignmentSupplierId: string | null;
+    consignmentSupplier: { name: string } | null;
+    consignmentPrice: { toNumber: () => number } | null;
     minQuantity: { toNumber: () => number };
   }): ProductDto {
     return {
@@ -388,6 +434,9 @@ export class ProductsService {
       isActive: product.isActive,
       trackInventory: product.trackInventory,
       isOpenPrice: product.isOpenPrice,
+      consignmentSupplierId: product.consignmentSupplierId,
+      consignmentSupplierName: product.consignmentSupplier?.name ?? null,
+      consignmentPrice: product.consignmentPrice?.toNumber() ?? null,
       // No location in scope here, so the default price IS the effective one.
       // findAllForOrganization overwrites this when asked about a location.
       effectivePrice: product.price.toNumber(),

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
+import { ConsignmentTab } from "@/components/consignment-tab";
 import {
   AlertTriangle,
   Archive,
@@ -81,6 +82,7 @@ type Tab =
   | "payables"
   | "expenses"
   | "categories"
+  | "consignment"
   | "pnl"
   | "breakeven";
 type Period = "today" | "7d" | "30d" | "month";
@@ -93,6 +95,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "payables", label: "Кредиторская задолженность" },
   { id: "expenses", label: "Расходы" },
   { id: "categories", label: "Статьи ДДС" },
+  { id: "consignment", label: "Под реализацию" },
   { id: "pnl", label: "Прибыли и убытки" },
   { id: "breakeven", label: "Точка безубыточности" },
 ];
@@ -960,6 +963,8 @@ export default function FinancePage() {
           </table>
         </div>
       )}
+
+      {tab === "consignment" && <ConsignmentTab />}
 
       {tab === "categories" && (
         <>

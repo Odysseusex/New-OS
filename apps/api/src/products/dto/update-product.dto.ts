@@ -48,4 +48,15 @@ export class UpdateProductDto {
   @IsNumber()
   @Min(0)
   minQuantity?: number;
+
+  // Goods under consignment: whose they are, and what we owe per unit sold.
+  // Both or neither — ProductsService refuses a half-filled pair.
+  @IsOptional()
+  @IsString()
+  consignmentSupplierId?: string | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  consignmentPrice?: number | null;
 }

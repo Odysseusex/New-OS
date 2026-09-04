@@ -379,6 +379,7 @@ model User {
   createdRoutes          DeliveryRoute[]         @relation("RouteCreatedBy")
   drivenRoutes           DeliveryRoute[]         @relation("RouteDriver")
   expenses               Expense[]
+  consignmentPayments    ConsignmentPayment[]
   shiftsCreated          Shift[]                 @relation("ShiftCreatedBy")
   // Who physically performed a TimeEntry's clock-in/out — the employee
   // themself (self-service) or a manager acting on behalf of an employee
@@ -465,6 +466,17 @@ model Product {
   // A sale of such a product also skips the stock check and writes no
   // StockMovement: there is no stock to move.
   trackInventory Boolean     @default(true)
+  // Goods taken «под реализацию»: they belong to someone else (the village
+  // shop) until sold, and we owe that supplier `consignmentPrice` for every
+  // unit that actually SELLS — not for what was delivered. Set together or
+  // not at all; when set, this is somebody else's stock on our shelf.
+  //
+  // Nothing computes the debt from here after the fact: each sale and return
+  // snapshots the price onto its own line, so editing this price later
+  // cannot silently rewrite what is already owed.
+  consignmentSupplierId String?
+  consignmentSupplier   Supplier?   @relation(fields: [consignmentSupplierId], references: [id])
+  consignmentPrice      Decimal?    @db.Decimal(12, 2)
   // The till's "произвольная сумма" line: a product whose price is typed by
   // the cashier at the moment of sale instead of coming from `price`. Exists
   // so an item that has not been received into the catalogue yet cannot stop
@@ -763,7 +775,14 @@ model SaleReturnItem {
   // refunded what they actually paid, not today's price.
   unitPrice    Decimal    @db.Decimal(12, 2)
   subtotal     Decimal    @db.Decimal(12, 2)
+  // Copied from the sale line for the same reason, and so a returned
+  // consignment unit cancels exactly the debt its sale created — at the
+  // price that sale was settled on, not today's.
+  consignmentSupplierId String?
+  consignmentSupplier   Supplier? @relation(fields: [consignmentSupplierId], references: [id])
+  consignmentUnitCost   Decimal?  @db.Decimal(12, 2)
 
+  @@index([consignmentSupplierId])
   @@map("sale_return_items")
 }
 
@@ -776,7 +795,16 @@ model SaleItem {
   quantity  Decimal @db.Decimal(12, 3)
   unitPrice Decimal @db.Decimal(12, 2)
   subtotal  Decimal @db.Decimal(12, 2)
+  // Snapshot of the consignment terms at the moment of sale — null for our
+  // own goods. Selling one unit of somebody else's goods is what creates the
+  // debt, so the amount owed is Σ(quantity × consignmentUnitCost) over these
+  // rows; the supplier is copied too, because a product may be reassigned
+  // later and history must not follow it.
+  consignmentSupplierId String?
+  consignmentSupplier   Supplier? @relation(fields: [consignmentSupplierId], references: [id])
+  consignmentUnitCost   Decimal?  @db.Decimal(12, 2)
 
+  @@index([consignmentSupplierId])
   @@map("sale_items")
 }
 
@@ -939,12 +967,41 @@ model Supplier {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  purchaseOrders PurchaseOrder[]
-  invoices       Invoice[]
-  cashMovements  CashMovement[]
+  purchaseOrders      PurchaseOrder[]
+  invoices            Invoice[]
+  cashMovements       CashMovement[]
+  consignmentProducts Product[]
+  consignmentSaleItems SaleItem[]
+  consignmentReturnItems SaleReturnItem[]
+  consignmentPayments ConsignmentPayment[]
 
   @@index([organizationId])
   @@map("suppliers")
+}
+
+// Money sent to a supplier for their goods that we sold on consignment.
+//
+// Deliberately a running balance rather than periodic settlement acts: what
+// is owed today is everything sold, minus everything returned, minus
+// everything already paid. No periods to define, none to overlap, and no way
+// for a late return to land outside the window it belongs to — the three
+// numbers simply always add up.
+model ConsignmentPayment {
+  id             String   @id @default(cuid())
+  organizationId String
+  supplierId     String
+  supplier       Supplier @relation(fields: [supplierId], references: [id])
+  amount         Decimal  @db.Decimal(12, 2)
+  paidAt         DateTime @default(now())
+  note           String?
+  createdById    String
+  createdBy      User     @relation(fields: [createdById], references: [id])
+  createdAt      DateTime @default(now())
+
+  cashMovements CashMovement[]
+
+  @@index([organizationId, supplierId])
+  @@map("consignment_payments")
 }
 
 // An order placed with a supplier to replenish stock at one location.
@@ -1412,6 +1469,8 @@ model CashMovement {
   expense        Expense?         @relation(fields: [expenseId], references: [id])
   invoiceId      String?
   invoice        Invoice?         @relation(fields: [invoiceId], references: [id])
+  consignmentPaymentId String?
+  consignmentPayment   ConsignmentPayment? @relation(fields: [consignmentPaymentId], references: [id])
   // Pairs a transfer's two legs (TRANSFER_OUT on the source account,
   // TRANSFER_IN on the destination) — not a separate Transfer entity.
   transferGroupId String?

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import type { CategoryDto, ProductDto } from "@bakery-os/shared";
+import { useEffect, useState } from "react";
+import type { CategoryDto, ProductDto, SupplierDto } from "@bakery-os/shared";
 import { PRODUCT_TYPE_LABELS_RU, ProductType, Unit, UNIT_LABELS_RU } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
@@ -29,8 +29,26 @@ export function NewProductModal({
   const [price, setPrice] = useState(product ? String(product.price) : "");
   const [trackInventory, setTrackInventory] = useState(product?.trackInventory ?? true);
   const [minQuantity, setMinQuantity] = useState(String(product?.minQuantity ?? 0));
+  // Goods taken under consignment — somebody else's stock on our shelf that
+  // we owe them for once it sells. Off by default: almost everything here is
+  // our own.
+  const [isConsignment, setIsConsignment] = useState(Boolean(product?.consignmentSupplierId));
+  const [consignmentSupplierId, setConsignmentSupplierId] = useState(product?.consignmentSupplierId ?? "");
+  const [consignmentPrice, setConsignmentPrice] = useState(
+    product?.consignmentPrice !== null && product?.consignmentPrice !== undefined
+      ? String(product.consignmentPrice)
+      : "",
+  );
+  const [suppliers, setSuppliers] = useState<SupplierDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Only fetched when the switch is on: an ordinary product form has no
+  // business loading the supplier list.
+  useEffect(() => {
+    if (!isConsignment || suppliers.length > 0) return;
+    api.suppliers.list().then(setSuppliers).catch(() => {});
+  }, [isConsignment, suppliers.length]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -46,6 +64,10 @@ export function NewProductModal({
         price: Number(price),
         trackInventory,
         minQuantity: Number(minQuantity),
+        // Null, not undefined, so switching a product back to our own goods
+        // actually clears the link rather than leaving the old one in place.
+        consignmentSupplierId: isConsignment ? consignmentSupplierId : null,
+        consignmentPrice: isConsignment ? Number(consignmentPrice) : null,
       };
       const trimmedBarcode = barcode.trim();
       const trimmedNtin = ntin.trim();
@@ -191,6 +213,64 @@ export function NewProductModal({
               : "Цена, по которой товар продаётся клиенту"}
           </p>
         </div>
+
+        {type === ProductType.FINISHED_GOOD && (
+          <div className="mb-5">
+            <label className="flex items-start gap-2.5 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={isConsignment}
+                onChange={(e) => setIsConsignment(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-border text-accent focus:ring-accent/20"
+              />
+              <span>
+                <span className="font-medium">Товар под реализацию</span>
+                <p className="mt-0.5 text-xs text-muted">
+                  Товар чужой: платим поставщику за каждую проданную единицу, а не за привезённую.
+                  Долг система считает сама по продажам — вручную ничего сводить не нужно
+                </p>
+              </span>
+            </label>
+
+            {isConsignment && (
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-foreground">Поставщик</label>
+                  <select
+                    value={consignmentSupplierId}
+                    onChange={(e) => setConsignmentSupplierId(e.target.value)}
+                    required
+                    className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                  >
+                    <option value="">Выберите поставщика</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-foreground">
+                    Цена поставщику, ₸
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    required
+                    value={consignmentPrice}
+                    onChange={(e) => setConsignmentPrice(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                  />
+                  <p className="mt-1.5 text-xs text-muted">
+                    Сколько отдаём с одной проданной единицы. Разница с ценой продажи — ваш заработок
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="mb-5">
           <label className="flex items-start gap-2.5 text-sm text-foreground">

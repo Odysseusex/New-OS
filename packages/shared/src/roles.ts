@@ -111,6 +111,16 @@ export const FINANCE_VIEW_ROLES: Role[] = ORG_WIDE_ROLES;
 
 export const EXPENSE_MANAGE_ROLES: Role[] = ORG_WIDE_ROLES;
 
+// Consignment settlements — what we owe a supplier for their goods we sold,
+// and paying it. Money leaving the business against a debt, so the same tier
+// as expenses; deliberately NOT open to a store manager, who can already see
+// the goods but has no business deciding what gets paid out.
+// Written out rather than reusing HARD_DELETE_ROLES, which is declared
+// further down this file — referencing it from here would be a temporal
+// dead zone error at module load, not a compile error.
+export const CONSIGNMENT_VIEW_ROLES: Role[] = ORG_WIDE_ROLES;
+export const CONSIGNMENT_PAY_ROLES: Role[] = [Role.OWNER, Role.ADMIN];
+
 // Bank accounts and the income/expense category catalog are org-wide
 // financial configuration — same tier as expenses, not opened up to
 // location-level operational roles.

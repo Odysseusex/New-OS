@@ -123,6 +123,12 @@ export interface ProductDto {
   // here. At most one per organization — the POS hides it from the product
   // grid and offers it as its own button instead.
   isOpenPrice: boolean;
+  // Goods taken «под реализацию» — somebody else's stock on our shelf. Both
+  // fields are set together: the supplier we owe, and how much per unit sold.
+  // Null on our own goods.
+  consignmentSupplierId: string | null;
+  consignmentSupplierName: string | null;
+  consignmentPrice: number | null;
   // What this product costs at the point of sale the list was requested for
   // (`GET /products?locationId=…`). Equal to `price` unless that location has
   // its own price, and always equal to `price` when no location was asked
@@ -164,6 +170,8 @@ export interface CreateProductRequestDto {
   price: number;
   trackInventory?: boolean;
   minQuantity?: number;
+  consignmentSupplierId?: string | null;
+  consignmentPrice?: number | null;
 }
 
 export interface UpdateProductRequestDto {
@@ -177,4 +185,8 @@ export interface UpdateProductRequestDto {
   price?: number;
   trackInventory?: boolean;
   minQuantity?: number;
+  // Null clears the consignment link — the product becomes our own goods
+  // again. Already-recorded debt is unaffected: it lives on the sale lines.
+  consignmentSupplierId?: string | null;
+  consignmentPrice?: number | null;
 }

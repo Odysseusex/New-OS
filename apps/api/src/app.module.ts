@@ -27,6 +27,7 @@ import { NotificationsModule } from "./notifications/notifications.module";
 import { AiModule } from "./ai/ai.module";
 import { TelegramModule } from "./telegram/telegram.module";
 import { FiscalModule } from "./fiscal/fiscal.module";
+import { ConsignmentModule } from "./consignment/consignment.module";
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { FiscalModule } from "./fiscal/fiscal.module";
     AiModule,
     TelegramModule,
     FiscalModule,
+    ConsignmentModule,
   ],
   controllers: [AppController],
 })
