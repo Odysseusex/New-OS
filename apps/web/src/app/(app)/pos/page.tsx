@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
-import { Banknote, CreditCard, Minus, Plus, Printer, ScanLine, Split, Trash2, X } from "lucide-react";
+import { Banknote, CreditCard, History, Minus, Plus, Printer, ScanLine, Split, Trash2, X } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import type { CategoryDto, LocationDto, ProductDto, SaleDetailDto, SaleFiscalReceiptDto } from "@bakery-os/shared";
 import {
@@ -16,6 +16,7 @@ import {
 } from "@bakery-os/shared";
 import { Modal } from "@/components/modal";
 import { NumberPad } from "@/components/number-pad";
+import { SaleHistoryModal } from "@/components/sale-history-modal";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatMoney, formatQuantity } from "@/lib/format";
@@ -79,6 +80,10 @@ export default function PosPage() {
   // enough to print them on the slip. Deliberately not persisted: the server
   // records what the sale cost, not which note the buyer produced.
   const [cashDetails, setCashDetails] = useState<{ given: number; change: number } | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  // An older sale the cashier asked for another copy of. Takes precedence
+  // over `lastSale` on the printable slip, and clears itself once printed.
+  const [reprintSale, setReprintSale] = useState<SaleDetailDto | null>(null);
 
   const scanRef = useRef<HTMLInputElement>(null);
 
@@ -141,7 +146,11 @@ export default function PosPage() {
     // While an amount dialog is open the keypad owns the keyboard — pulling
     // focus back to the scan box would send the cashier's digits into the
     // product search instead of into the amount.
-    if (openPriceOpen || payMode !== null) return;
+    // History is included for a different reason than the amount dialogs: a
+    // scanner firing while the cashier is looking at past receipts would
+    // otherwise type into the search box behind the dialog and quietly drop
+    // a product into the cart nobody asked for.
+    if (openPriceOpen || historyOpen || payMode !== null) return;
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target && ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
@@ -149,7 +158,7 @@ export default function PosPage() {
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [focusScan, openPriceOpen, payMode]);
+  }, [focusScan, openPriceOpen, historyOpen, payMode]);
 
   // Only categories that actually hold something sellable. Without this the
   // till offers chips like «Сырьё», which can only ever show an empty grid,
@@ -307,6 +316,21 @@ export default function PosPage() {
     }
   }
 
+  // Reprinting an older receipt is deferred by a beat so the history dialog
+  // is really gone from the document first — window.print() captures the DOM
+  // as it stands, and printing over an open dialog would put the dialog on
+  // the slip. The flag is cleared inside the timeout, not in the effect body:
+  // clearing it here would re-run the effect and its own cleanup would cancel
+  // the print before it fired.
+  useEffect(() => {
+    if (!reprintSale) return;
+    const timer = setTimeout(() => {
+      window.print();
+      setReprintSale(null);
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [reprintSale]);
+
   if (user && !canSell) {
     return <p className="mx-auto max-w-6xl text-sm text-muted">У вас нет прав на оформление продаж.</p>;
   }
@@ -324,6 +348,17 @@ export default function PosPage() {
             who cannot see the point cannot tell the prices are the wrong
             ones — which is exactly how a till ended up quietly selling at
             another shop's prices. */}
+        <div className="flex items-center gap-2">
+        {/* The till is the only screen a cashier can reach, so checking what
+            was already sold has to live here — the Продажи module is closed
+            to them by design. */}
+        <button
+          onClick={() => setHistoryOpen(true)}
+          className="flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+        >
+          <History className="h-4 w-4" strokeWidth={1.75} />
+          История
+        </button>
         {isOrgWide ? (
           <select
             value={locationId}
@@ -344,6 +379,7 @@ export default function PosPage() {
             </div>
           )
         )}
+        </div>
       </div>
 
       {missingLocation && (
@@ -621,8 +657,29 @@ export default function PosPage() {
         }}
       />
     )}
-    {lastSale && (
-      <PrintableReceipt sale={lastSale} cash={cashDetails} orgName={user?.organization.name ?? ""} />
+    {historyOpen && (
+      <SaleHistoryModal
+        onClose={() => {
+          setHistoryOpen(false);
+          focusScan();
+        }}
+        onReprint={(sale) => {
+          // Close first, print after: the dialog would otherwise end up on
+          // the printed slip.
+          setHistoryOpen(false);
+          setReprintSale(sale);
+        }}
+      />
+    )}
+    {/* A reprint wins over the sale just rung up, and carries no cash
+        details — how much was handed over is not stored, and inventing it
+        on a reprint would put a made-up «Сдача» on a real receipt. */}
+    {(reprintSale ?? lastSale) && (
+      <PrintableReceipt
+        sale={(reprintSale ?? lastSale)!}
+        cash={reprintSale ? null : cashDetails}
+        orgName={user?.organization.name ?? ""}
+      />
     )}
     </>
   );
