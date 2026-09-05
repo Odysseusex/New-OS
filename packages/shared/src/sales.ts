@@ -102,9 +102,28 @@ export interface CreateSaleRequestDto {
   items: CreateSaleItemRequestDto[];
 }
 
+// One tender's share of what was taken today. `method` is never MIXED — a
+// split sale is counted under each of its own methods, which is the whole
+// point of the breakdown.
+export interface SalesTakingsRowDto {
+  method: PaymentMethod;
+  amount: number;
+}
+
 export interface SalesSummaryDto {
   todayRevenue: number;
   todaySalesCount: number;
+  // What was actually handed over today, split by tender — the figure a
+  // cashier counts the drawer against. Different from todayRevenue whenever
+  // a sale went out on credit; the gap is todayUnpaid.
+  todayTakings: SalesTakingsRowDto[];
+  // Refunds paid out today, as a positive number. Not split by tender: a
+  // refund follows its original sale's method, and a mixed sale has no single
+  // one to follow.
+  todayRefunds: number;
+  // Sold today but not paid for — the part of todayRevenue that is a debt
+  // rather than money in hand.
+  todayUnpaid: number;
   last7DaysRevenue: number;
   averageTicket: number;
 }

@@ -130,18 +130,54 @@ export class SalesService {
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     sevenDaysAgo.setHours(0, 0, 0, 0);
 
-    const [todaySales, last7DaysSales] = await Promise.all([
-      this.prisma.sale.findMany({ where: { ...baseWhere, soldAt: { gte: startOfToday } } }),
+    const [todaySales, last7DaysSales, todayReturns] = await Promise.all([
+      this.prisma.sale.findMany({
+        where: { ...baseWhere, soldAt: { gte: startOfToday } },
+        // The breakdown has to follow the money, and a split sale's money is
+        // only in its payment rows — its own paymentMethod just says MIXED.
+        include: { payments: true },
+      }),
       this.prisma.sale.findMany({ where: { ...baseWhere, soldAt: { gte: sevenDaysAgo } } }),
+      this.prisma.saleReturn.findMany({ where: { ...baseWhere, returnedAt: { gte: startOfToday } } }),
     ]);
 
     const todayRevenue = todaySales.reduce((sum, s) => sum + s.totalAmount.toNumber(), 0);
     const last7DaysRevenue = last7DaysSales.reduce((sum, s) => sum + s.totalAmount.toNumber(), 0);
     const averageTicket = last7DaysSales.length > 0 ? last7DaysRevenue / last7DaysSales.length : 0;
 
+    // Same rule as create(): a split sale is its payment rows, anything else
+    // is its single method for whatever was actually paid. A sale on credit
+    // contributes nothing here — no money changed hands — and shows up as
+    // todayUnpaid instead.
+    const takenByMethod = new Map<PaymentMethod, number>();
+    let todayUnpaid = 0;
+    for (const sale of todaySales) {
+      const paid = sale.amountPaid.toNumber();
+      todayUnpaid += sale.totalAmount.toNumber() - paid;
+      const tenders: { method: PaymentMethod; amount: number }[] =
+        sale.payments.length > 0
+          ? sale.payments.map((p) => ({ method: p.method as PaymentMethod, amount: p.amount.toNumber() }))
+          : [{ method: sale.paymentMethod as PaymentMethod, amount: paid }];
+      for (const tender of tenders) {
+        if (tender.amount <= 0 || tender.method === PaymentMethod.MIXED) continue;
+        takenByMethod.set(tender.method, (takenByMethod.get(tender.method) ?? 0) + tender.amount);
+      }
+    }
+
+    // Fixed order, and cash/card always present even at zero: the till's
+    // summary is read at a glance, and a line that appears and disappears
+    // with the day's trade is harder to read than one that stays put.
+    const methodOrder = [PaymentMethod.CASH, PaymentMethod.CARD, PaymentMethod.TRANSFER];
+    const todayTakings = methodOrder
+      .map((method) => ({ method, amount: takenByMethod.get(method) ?? 0 }))
+      .filter((row) => row.method !== PaymentMethod.TRANSFER || row.amount > 0);
+
     return {
       todayRevenue,
       todaySalesCount: todaySales.length,
+      todayTakings,
+      todayRefunds: todayReturns.reduce((sum, r) => sum + r.totalAmount.toNumber(), 0),
+      todayUnpaid,
       last7DaysRevenue,
       averageTicket,
     };

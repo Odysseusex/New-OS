@@ -13,16 +13,21 @@ const PAGE_SIZE = 50;
 // Recent sales, for a cashier standing at the till: "did that one go
 // through", "what was in it", "print me another copy".
 //
-// Nothing here is scoped on the client — the server pins a location-scoped
-// role to its own point for both the list and each individual sale, so a
-// cashier physically cannot pull up another shop's takings by asking for
+// The point passed in only narrows what is asked for — it is not what keeps
+// a cashier honest. The server pins a location-scoped role to its own point
+// for the list, the totals and each individual sale, so a cashier physically
+// cannot pull up another shop's takings by asking for
 // them. The «Итого за сегодня» figure comes from the summary endpoint rather
 // than by adding up the loaded page, which would quietly understate a busy
 // day once it ran past PAGE_SIZE.
 export function SaleHistoryModal({
+  locationId,
   onClose,
   onReprint,
 }: {
+  // The till's current point of sale, so the list and the day's totals are
+  // about the shop the cashier is standing in.
+  locationId?: string;
   onClose: () => void;
   // Handed back to the till, which owns the printable slip and has to close
   // this dialog before printing — otherwise the print would capture the
@@ -37,14 +42,14 @@ export function SaleHistoryModal({
   const [openError, setOpenError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([api.sales.list(undefined, PAGE_SIZE), api.sales.summary()])
+    Promise.all([api.sales.list(locationId, PAGE_SIZE), api.sales.summary(locationId)])
       .then(([list, s]) => {
         setSales(list);
         setSummary(s);
         setState("ready");
       })
       .catch(() => setState("error"));
-  }, []);
+  }, [locationId]);
 
   async function open(saleId: string) {
     setLoadingSaleId(saleId);
@@ -123,16 +128,7 @@ export function SaleHistoryModal({
 
       {state === "ready" && (
         <>
-          {summary && (
-            <div className="mb-4 flex items-baseline justify-between rounded-xl bg-surface-muted px-4 py-3">
-              <span className="text-sm text-muted">
-                Сегодня · {summary.todaySalesCount} {plural(summary.todaySalesCount)}
-              </span>
-              <span className="text-xl font-semibold text-foreground">
-                {formatMoney(summary.todayRevenue)}
-              </span>
-            </div>
-          )}
+          {summary && <TodayTotals summary={summary} />}
 
           {openError && (
             <p className="mb-3 rounded-xl bg-red-50 px-4 py-2.5 text-sm text-red-700">{openError}</p>
@@ -166,6 +162,59 @@ export function SaleHistoryModal({
         </>
       )}
     </Modal>
+  );
+}
+
+// The day's takings, split the way the cashier has to count them: the drawer
+// on one line, the terminal on another. «Итого» is what was actually taken —
+// the tenders less anything refunded — so it can be compared against what is
+// physically there rather than against what was sold.
+//
+// `?? []` and `?? 0` throughout: an API server one build behind sends none of
+// these fields, and the till must degrade to the old single total rather than
+// crash on it.
+function TodayTotals({ summary }: { summary: SalesSummaryDto }) {
+  const takings = summary.todayTakings ?? [];
+  const refunds = summary.todayRefunds ?? 0;
+  const unpaid = summary.todayUnpaid ?? 0;
+  const total = takings.reduce((sum, row) => sum + row.amount, 0) - refunds;
+
+  return (
+    <div className="mb-4 rounded-xl bg-surface-muted px-4 py-3">
+      <p className="text-sm text-muted">
+        Сегодня · {summary.todaySalesCount} {plural(summary.todaySalesCount)}
+      </p>
+
+      {takings.length > 0 && (
+        <div className="mt-2 space-y-1">
+          {takings.map((row) => (
+            <div key={row.method} className="flex items-baseline justify-between text-sm">
+              <span className="text-muted">{PAYMENT_METHOD_LABELS_RU[row.method]}</span>
+              <span className="font-medium text-foreground">{formatMoney(row.amount)}</span>
+            </div>
+          ))}
+          {refunds > 0 && (
+            <div className="flex items-baseline justify-between text-sm">
+              <span className="text-muted">Возвраты</span>
+              <span className="font-medium text-red-700">−{formatMoney(refunds)}</span>
+            </div>
+          )}
+          {unpaid > 0 && (
+            <div className="flex items-baseline justify-between text-sm">
+              <span className="text-muted">В долг</span>
+              <span className="font-medium text-foreground">{formatMoney(unpaid)}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2">
+        <span className="text-sm text-muted">Итого</span>
+        <span className="text-xl font-semibold text-foreground">
+          {formatMoney(takings.length > 0 ? total : summary.todayRevenue)}
+        </span>
+      </div>
+    </div>
   );
 }
 

@@ -724,6 +724,11 @@ export default function PosPage() {
     )}
     {historyOpen && (
       <SaleHistoryModal
+        // The point the till is currently selling at. A cashier is pinned to
+        // their own by the server either way; this is what makes the owner's
+        // figures match the point they picked in the header rather than
+        // silently totalling the whole network.
+        locationId={locationId || undefined}
         onClose={() => {
           setHistoryOpen(false);
           focusScan();
