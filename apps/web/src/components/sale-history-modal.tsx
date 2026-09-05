@@ -34,6 +34,7 @@ export function SaleHistoryModal({
   const [state, setState] = useState<"loading" | "error" | "ready">("loading");
   const [openSale, setOpenSale] = useState<SaleDetailDto | null>(null);
   const [loadingSaleId, setLoadingSaleId] = useState<string | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([api.sales.list(undefined, PAGE_SIZE), api.sales.summary()])
@@ -47,11 +48,13 @@ export function SaleHistoryModal({
 
   async function open(saleId: string) {
     setLoadingSaleId(saleId);
+    setOpenError(null);
     try {
       setOpenSale(await api.sales.findOne(saleId));
-    } catch {
-      // Falling back to the list is enough: nothing was changed, and the
-      // cashier can simply tap again.
+    } catch (err) {
+      // Staying on the list is safe — nothing was changed — but the tap has
+      // to visibly do something, or it reads as a dead button.
+      setOpenError(err instanceof Error ? err.message : "Не удалось открыть чек");
     } finally {
       setLoadingSaleId(null);
     }
@@ -61,13 +64,16 @@ export function SaleHistoryModal({
     return (
       <Modal title={`Чек · ${formatTime(openSale.soldAt)}`} onClose={() => setOpenSale(null)} width="max-w-md">
         <div className="mb-4 space-y-2">
-          {openSale.items.map((item) => (
+          {(openSale.items ?? []).map((item) => (
             <div key={item.id} className="flex justify-between text-sm">
               <span className="text-foreground">
                 {item.productName}
                 <span className="ml-1 text-muted">
                   {formatQuantity(item.quantity)} × {formatMoney(item.unitPrice)}
-                  {item.fullUnitPrice !== null && <span className="ml-1 text-amber-700">уценка</span>}
+                  {/* `!= null`, not `!== null`: an API build that predates the
+                      markdown field sends nothing at all, and `undefined !== null`
+                      would stamp «уценка» on every line of every old sale. */}
+                  {item.fullUnitPrice != null && <span className="ml-1 text-amber-700">уценка</span>}
                 </span>
               </span>
               <span className="font-medium text-foreground">{formatMoney(item.subtotal)}</span>
@@ -79,9 +85,15 @@ export function SaleHistoryModal({
           <span className="text-sm text-muted">Итого</span>
           <span className="text-xl font-semibold text-foreground">{formatMoney(openSale.totalAmount)}</span>
         </div>
+        {/* `openSale.payments ?? []`: this dialog is the first thing a cashier
+            opens after a sale, and an API server one build behind sends no
+            `payments` at all — reading `.length` off that took the whole till
+            screen down with «Application error». */}
         <p className="mt-1 text-sm text-muted">
-          {openSale.payments.length > 0
-            ? openSale.payments.map((p) => `${PAYMENT_METHOD_LABELS_RU[p.method]} ${formatMoney(p.amount)}`).join(" · ")
+          {(openSale.payments ?? []).length > 0
+            ? openSale.payments
+                .map((p) => `${PAYMENT_METHOD_LABELS_RU[p.method]} ${formatMoney(p.amount)}`)
+                .join(" · ")
             : PAYMENT_METHOD_LABELS_RU[openSale.paymentMethod]}
         </p>
 
@@ -120,6 +132,10 @@ export function SaleHistoryModal({
                 {formatMoney(summary.todayRevenue)}
               </span>
             </div>
+          )}
+
+          {openError && (
+            <p className="mb-3 rounded-xl bg-red-50 px-4 py-2.5 text-sm text-red-700">{openError}</p>
           )}
 
           {sales.length === 0 ? (
