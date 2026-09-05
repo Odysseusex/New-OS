@@ -2,15 +2,24 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Tuned for the shop's monoblock, not for a designer's monitor: a cheap
+   glossy panel under ceiling light washes pale colours out entirely, and
+   what survives that is contrast, not saturation. So the hue is unchanged
+   throughout — the accent is the same terracotta, just deep enough to carry
+   white text (3.7:1 before, 5.3:1 now), the secondary grey and the borders
+   are darkened, and nothing is made louder. Turning saturation up instead
+   would have made the screen harsher without making a single word easier to
+   read. --accent is mirrored in manifest.ts and layout.tsx's themeColor and
+   the three are changed together. */
 :root {
   --background: #f7f5f2;
   --foreground: #1c1917;
   --surface: #ffffff;
   --surface-muted: #f1eee9;
-  --border: #e7e2da;
-  --accent: #c2704a;
+  --border: #d9d2c7;
+  --accent: #a85333;
   --accent-foreground: #ffffff;
-  --muted: #78716c;
+  --muted: #57534e;
 }
 
 body {

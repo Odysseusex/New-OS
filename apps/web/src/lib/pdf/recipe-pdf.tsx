@@ -17,7 +17,7 @@ Font.register({
   ],
 });
 
-const COLOR_ACCENT = "#c2704a";
+const COLOR_ACCENT = "#a85333";
 const COLOR_FOREGROUND = "#1c1917";
 const COLOR_MUTED = "#78716c";
 const COLOR_BORDER = "#e7e2da";

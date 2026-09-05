@@ -427,15 +427,15 @@ export default function PosPage() {
           cashier presses «Без чека». Printing does not clear it, so a jammed
           or empty printer can simply be printed to again. */}
       {flash && (
-        <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-emerald-300 bg-emerald-100 px-4 py-3 text-base font-semibold text-emerald-900">
           <span>{flash}</span>
           {lastSale && (
             <div className="flex shrink-0 items-center gap-2">
               <button
                 onClick={() => window.print()}
-                className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50"
+                className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-50"
               >
-                <Printer className="h-3.5 w-3.5" strokeWidth={1.75} />
+                <Printer className="h-4 w-4" strokeWidth={1.75} />
                 Печать
               </button>
               <button
@@ -443,7 +443,7 @@ export default function PosPage() {
                   setFlash(null);
                   focusScan();
                 }}
-                className="rounded-lg px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100"
+                className="rounded-lg px-3 py-2 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-200"
               >
                 Без чека
               </button>
@@ -487,7 +487,7 @@ export default function PosPage() {
                 }
               }}
               placeholder="Отсканируйте товар или начните вводить название…"
-              className="w-full rounded-2xl border border-border bg-surface py-4 pl-12 pr-4 text-base text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+              className="w-full rounded-2xl border border-border bg-surface py-4 pl-12 pr-4 text-lg text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
             />
           </div>
 
@@ -509,10 +509,10 @@ export default function PosPage() {
             {openPriceProduct && locationId && (
               <button
                 onClick={() => setOpenPriceOpen(true)}
-                className="flex h-28 flex-col justify-between rounded-2xl border border-dashed border-accent bg-surface p-3 text-left transition hover:shadow-card active:scale-[0.98]"
+                className="flex h-32 flex-col justify-between rounded-2xl border border-dashed border-accent bg-surface p-3 text-left transition hover:shadow-card active:scale-[0.98]"
               >
-                <span className="line-clamp-3 text-sm font-medium text-foreground">Произвольная сумма</span>
-                <span className="text-sm font-semibold text-accent">Ввести вручную</span>
+                <span className="line-clamp-3 text-base font-semibold text-foreground">Произвольная сумма</span>
+                <span className="text-base font-bold text-accent">Ввести вручную</span>
               </button>
             )}
             {visibleProducts.map((p) => (
@@ -522,10 +522,12 @@ export default function PosPage() {
                   addToCart(p);
                   focusScan();
                 }}
-                className="flex h-28 flex-col justify-between rounded-2xl border border-border bg-surface p-3 text-left transition hover:border-accent hover:shadow-card active:scale-[0.98]"
+                // Bigger and heavier than the rest of the app on purpose: this
+                // grid is read at arm's length, off-axis, on a glossy panel.
+                className="flex h-32 flex-col justify-between rounded-2xl border border-border bg-surface p-3 text-left transition hover:border-accent hover:shadow-card active:scale-[0.98]"
               >
-                <span className="line-clamp-3 text-sm font-medium text-foreground">{p.name}</span>
-                <span className="text-sm font-semibold text-accent">{formatMoney(p.effectivePrice)}</span>
+                <span className="line-clamp-3 text-base font-semibold text-foreground">{p.name}</span>
+                <span className="text-lg font-bold text-accent">{formatMoney(p.effectivePrice)}</span>
               </button>
             ))}
             {visibleProducts.length === 0 && (
@@ -559,7 +561,7 @@ export default function PosPage() {
               cart.map((line) => (
                 <div key={line.key} className="border-b border-border px-5 py-3">
                   <div className="flex items-start justify-between gap-2">
-                    <span className="text-sm font-medium text-foreground">
+                    <span className="text-base font-semibold text-foreground">
                       {line.product.name}
                       {line.product.isOpenPrice && (
                         <span className="ml-1 text-muted">· {formatMoney(line.unitPrice)}</span>
@@ -581,7 +583,7 @@ export default function PosPage() {
                       >
                         <Minus className="h-3.5 w-3.5" strokeWidth={2} />
                       </QtyButton>
-                      <span className="min-w-[3rem] text-center text-sm font-medium text-foreground">
+                      <span className="min-w-[3rem] text-center text-base font-semibold text-foreground">
                         {formatQuantity(line.quantity)} {UNIT_LABELS_RU[line.product.unit]}
                       </span>
                       <QtyButton
@@ -601,8 +603,8 @@ export default function PosPage() {
                       )}
                       <span
                         className={clsx(
-                          "text-sm font-semibold",
-                          line.markedDown ? "text-amber-700" : "text-foreground",
+                          "text-base font-bold",
+                          line.markedDown ? "text-amber-800" : "text-foreground",
                         )}
                       >
                         {formatMoney(line.unitPrice * line.quantity)}
@@ -636,8 +638,8 @@ export default function PosPage() {
 
           <div className="border-t border-border px-5 py-4">
             <div className="mb-4 flex items-end justify-between">
-              <span className="text-sm text-muted">Итого{itemCount > 0 ? ` · ${formatQuantity(itemCount)} шт` : ""}</span>
-              <span className="text-2xl font-semibold text-foreground">{formatMoney(total)}</span>
+              <span className="text-base text-muted">Итого{itemCount > 0 ? ` · ${formatQuantity(itemCount)} шт` : ""}</span>
+              <span className="text-3xl font-bold text-foreground">{formatMoney(total)}</span>
             </div>
             {/* Every button opens a dialog rather than settling on the spot:
                 a stray tap must never be a completed sale, and the cashier
@@ -649,13 +651,13 @@ export default function PosPage() {
                   onClick={() => setPayMode(mode)}
                   disabled={cart.length === 0 || isSubmitting || !locationId}
                   className={clsx(
-                    "flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition hover:opacity-90 disabled:opacity-40",
+                    "flex items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-base font-semibold transition hover:opacity-90 disabled:opacity-40",
                     mode === "mixed"
                       ? "col-span-2 border border-border bg-surface text-foreground hover:bg-surface-muted"
                       : "bg-accent text-accent-foreground",
                   )}
                 >
-                  <Icon className="h-4 w-4" strokeWidth={1.75} />
+                  <Icon className="h-5 w-5" strokeWidth={1.75} />
                   {isSubmitting ? "…" : label}
                 </button>
               ))}
