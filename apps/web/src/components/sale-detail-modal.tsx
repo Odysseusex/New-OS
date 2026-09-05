@@ -89,7 +89,14 @@ export function SaleDetailModal({
                     <tr key={item.id}>
                       <td className="px-4 py-2.5 text-foreground">{item.productName}</td>
                       <td className="px-4 py-2.5 text-right text-muted">{formatQuantity(item.quantity)}</td>
-                      <td className="px-4 py-2.5 text-right text-muted">{formatMoney(item.unitPrice)}</td>
+                      <td className="px-4 py-2.5 text-right text-muted">
+                        {item.fullUnitPrice !== null && (
+                          <span className="mr-1.5 line-through">{formatMoney(item.fullUnitPrice)}</span>
+                        )}
+                        <span className={item.fullUnitPrice !== null ? "text-amber-700" : undefined}>
+                          {formatMoney(item.unitPrice)}
+                        </span>
+                      </td>
                       <td className="px-4 py-2.5 text-right font-medium text-foreground">
                         {formatMoney(item.subtotal)}
                       </td>

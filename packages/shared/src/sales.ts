@@ -3,12 +3,28 @@ import { PaymentStatus } from "./customers";
 import { PaymentMethod } from "./finance";
 import { FiscalReceiptStatus } from "./fiscal";
 
+// The one markdown this business uses: stale goods, after 18:00 and again
+// the next day, go for half price. A single constant rather than a setting
+// screen — there is exactly one rate, and changing it is a one-line edit.
+export const MARKDOWN_PERCENT = 50;
+
+// Whole tenge: the till's keypad has no decimal key, and asking a cashier
+// for 172.5 ₸ at a bread counter is not a real thing.
+export function markdownPrice(fullPrice: number): number {
+  return Math.round((fullPrice * (100 - MARKDOWN_PERCENT)) / 100);
+}
+
 export interface SaleItemDto {
   id: string;
   productId: string;
   productName: string;
   quantity: number;
+  // What the buyer actually paid per unit — already discounted when the line
+  // was marked down.
   unitPrice: number;
+  // The price before the markdown; null when sold at full price. The money
+  // given away is (fullUnitPrice − unitPrice) × quantity.
+  fullUnitPrice: number | null;
   subtotal: number;
 }
 
@@ -61,7 +77,12 @@ export interface SaleDetailDto extends SaleDto {
 export interface CreateSaleItemRequestDto {
   productId: string;
   quantity: number;
+  // The price actually charged, markdown already applied.
   unitPrice: number;
+  // Sent only for a marked-down line: the price it would have gone for.
+  // Must be greater than unitPrice — the server rejects anything else, since
+  // a "discount" that raised the price is a bug, not a discount.
+  fullUnitPrice?: number;
 }
 
 export interface CreateSalePaymentRequestDto {
@@ -100,6 +121,10 @@ export interface SalesByProductDto {
   productName: string;
   quantity: number;
   revenue: number;
+  // Of `quantity`, how many units went at the markdown price, and how much
+  // money that cost. Zero for a product never marked down.
+  markdownQuantity: number;
+  markdownLoss: number;
 }
 
 export interface SalesReportDto {
@@ -107,6 +132,11 @@ export interface SalesReportDto {
   to: string;
   totalRevenue: number;
   totalCount: number;
+  // Money given away on stale goods over the period, and the units it went
+  // on. This is really a measure of overproduction: a product that is
+  // reliably marked down is a product being baked in the wrong quantity.
+  markdownLoss: number;
+  markdownQuantity: number;
   byLocation: SalesByLocationDto[];
   byProduct: SalesByProductDto[];
 }

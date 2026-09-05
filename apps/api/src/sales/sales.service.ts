@@ -165,8 +165,13 @@ export class SalesService {
     });
 
     const byLocationMap = new Map<string, { locationName: string; revenue: number; count: number }>();
-    const byProductMap = new Map<string, { productName: string; quantity: number; revenue: number }>();
+    const byProductMap = new Map<
+      string,
+      { productName: string; quantity: number; revenue: number; markdownQuantity: number; markdownLoss: number }
+    >();
     let totalRevenue = 0;
+    let markdownLoss = 0;
+    let markdownQuantity = 0;
 
     for (const sale of sales) {
       const revenue = sale.totalAmount.toNumber();
@@ -186,9 +191,24 @@ export class SalesService {
           productName: item.product.name,
           quantity: 0,
           revenue: 0,
+          markdownQuantity: 0,
+          markdownLoss: 0,
         };
-        productEntry.quantity += item.quantity.toNumber();
+        const quantity = item.quantity.toNumber();
+        productEntry.quantity += quantity;
         productEntry.revenue += item.subtotal.toNumber();
+
+        // What the markdown cost: the gap between the price it would have
+        // gone for and what was actually taken. Null fullUnitPrice means it
+        // sold at full price and contributes nothing.
+        const full = item.fullUnitPrice?.toNumber();
+        if (full !== undefined) {
+          const loss = (full - item.unitPrice.toNumber()) * quantity;
+          productEntry.markdownQuantity += quantity;
+          productEntry.markdownLoss += loss;
+          markdownQuantity += quantity;
+          markdownLoss += loss;
+        }
         byProductMap.set(item.productId, productEntry);
       }
     }
@@ -198,7 +218,14 @@ export class SalesService {
       .sort((a, b) => b.revenue - a.revenue);
 
     const byProduct = Array.from(byProductMap.entries())
-      .map(([productId, v]) => ({ productId, productName: v.productName, quantity: v.quantity, revenue: v.revenue }))
+      .map(([productId, v]) => ({
+        productId,
+        productName: v.productName,
+        quantity: v.quantity,
+        revenue: v.revenue,
+        markdownQuantity: v.markdownQuantity,
+        markdownLoss: Number(v.markdownLoss.toFixed(2)),
+      }))
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 20);
 
@@ -207,6 +234,8 @@ export class SalesService {
       to: to.toISOString(),
       totalRevenue,
       totalCount: sales.length,
+      markdownLoss: Number(markdownLoss.toFixed(2)),
+      markdownQuantity,
       byLocation,
       byProduct,
     };
@@ -556,12 +585,21 @@ export class SalesService {
     }
 
     const productIds = dto.items.map((i) => i.productId);
-    const items = dto.items.map((item) => ({
-      productId: item.productId,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      subtotal: item.quantity * item.unitPrice,
-    }));
+    const items = dto.items.map((item) => {
+      // A markdown that did not lower the price is not a markdown. Letting
+      // one through would put a negative "loss" into the report and quietly
+      // inflate the markdown figures the owner is meant to steer by.
+      if (item.fullUnitPrice !== undefined && item.fullUnitPrice <= item.unitPrice) {
+        throw new BadRequestException("Цена до скидки должна быть выше цены продажи");
+      }
+      return {
+        productId: item.productId,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        fullUnitPrice: item.fullUnitPrice ?? null,
+        subtotal: item.quantity * item.unitPrice,
+      };
+    });
     const totalAmount = items.reduce((sum, i) => sum + i.subtotal, 0);
 
     // Walk-in retail sales are always settled immediately. Only a sale tied
@@ -934,6 +972,7 @@ export class SalesService {
       product: { name: string };
       quantity: { toNumber: () => number };
       unitPrice: { toNumber: () => number };
+      fullUnitPrice: { toNumber: () => number } | null;
       subtotal: { toNumber: () => number };
     }[];
     fiscalReceipt?: {
@@ -952,6 +991,7 @@ export class SalesService {
       productName: item.product.name,
       quantity: item.quantity.toNumber(),
       unitPrice: item.unitPrice.toNumber(),
+      fullUnitPrice: item.fullUnitPrice?.toNumber() ?? null,
       subtotal: item.subtotal.toNumber(),
     })),
     payments: (sale.payments ?? []).map((p) => ({

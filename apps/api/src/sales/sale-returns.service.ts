@@ -79,6 +79,9 @@ export class SaleReturnsService {
         // returned unit must cancel exactly the debt its own sale created.
         consignmentSupplierId: string | null;
         consignmentUnitCost: number | null;
+        // Same idea for a markdown: returning stale bread gives back the
+        // money we gave away on it, so the loss must net out.
+        fullUnitPrice: number | null;
       }
     >();
     for (const item of sale.items) {
@@ -92,6 +95,7 @@ export class SaleReturnsService {
         ntin: item.product.ntin,
         consignmentSupplierId: item.consignmentSupplierId,
         consignmentUnitCost: item.consignmentUnitCost?.toNumber() ?? null,
+        fullUnitPrice: item.fullUnitPrice?.toNumber() ?? null,
       });
     }
     const alreadyReturned = new Map<string, number>();
@@ -126,6 +130,7 @@ export class SaleReturnsService {
         subtotal: Number((requested.quantity * sold.unitPrice).toFixed(2)),
         consignmentSupplierId: sold.consignmentSupplierId,
         consignmentUnitCost: sold.consignmentUnitCost,
+        fullUnitPrice: sold.fullUnitPrice,
       };
     });
 
@@ -163,6 +168,7 @@ export class SaleReturnsService {
               subtotal: l.subtotal,
               consignmentSupplierId: l.consignmentSupplierId,
               consignmentUnitCost: l.consignmentUnitCost,
+              fullUnitPrice: l.fullUnitPrice,
             })),
           },
         },

@@ -775,6 +775,10 @@ model SaleReturnItem {
   // refunded what they actually paid, not today's price.
   unitPrice    Decimal    @db.Decimal(12, 2)
   subtotal     Decimal    @db.Decimal(12, 2)
+  // Also copied from the sale line, so returning a marked-down loaf cancels
+  // the markdown loss it created rather than leaving the report claiming we
+  // gave away money we got back.
+  fullUnitPrice Decimal? @db.Decimal(12, 2)
   // Copied from the sale line for the same reason, and so a returned
   // consignment unit cancels exactly the debt its sale created — at the
   // price that sale was settled on, not today's.
@@ -793,8 +797,18 @@ model SaleItem {
   productId String
   product   Product @relation(fields: [productId], references: [id])
   quantity  Decimal @db.Decimal(12, 3)
+  // What the buyer was actually charged. Everything downstream — revenue,
+  // P&L, the amount a return refunds — reads this and needs no knowledge of
+  // discounts at all.
   unitPrice Decimal @db.Decimal(12, 2)
   subtotal  Decimal @db.Decimal(12, 2)
+  // The price before the markdown, null when sold at full price. Kept so
+  // "how much did we give away on stale bread" is a real number instead of
+  // something nobody can reconstruct later — the loss is
+  // (fullUnitPrice − unitPrice) × quantity. The rate is deliberately NOT
+  // stored: it is derivable from these two, and a second copy of the same
+  // fact is a second thing that can drift.
+  fullUnitPrice Decimal? @db.Decimal(12, 2)
   // Snapshot of the consignment terms at the moment of sale — null for our
   // own goods. Selling one unit of somebody else's goods is what creates the
   // debt, so the amount owed is Σ(quantity × consignmentUnitCost) over these

@@ -67,6 +67,7 @@ export function SaleHistoryModal({
                 {item.productName}
                 <span className="ml-1 text-muted">
                   {formatQuantity(item.quantity)} × {formatMoney(item.unitPrice)}
+                  {item.fullUnitPrice !== null && <span className="ml-1 text-amber-700">уценка</span>}
                 </span>
               </span>
               <span className="font-medium text-foreground">{formatMoney(item.subtotal)}</span>

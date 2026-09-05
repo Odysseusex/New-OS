@@ -303,6 +303,14 @@ function SalesReport({
               label: "Средний чек",
               value: report.totalCount > 0 ? formatMoney(report.totalRevenue / report.totalCount) : "—",
             },
+            // Money given away on stale goods. Really a measure of
+            // overproduction: a product reliably marked down is a product
+            // being baked in the wrong quantity.
+            { label: "Потери на уценке", value: formatMoney(report.markdownLoss) },
+            {
+              label: "Продано по уценке",
+              value: report.markdownQuantity > 0 ? formatQuantity(report.markdownQuantity) : "—",
+            },
           ]}
         />
       </ReportCard>
@@ -330,14 +338,26 @@ function SalesReport({
         onExport={() =>
           downloadCsv(
             `sales-by-product-${period}.csv`,
-            ["Товар", "Продано", "Выручка"],
-            report.byProduct.map((p) => [p.productName, formatQuantity(p.quantity), p.revenue.toFixed(2)]),
+            ["Товар", "Продано", "Выручка", "Из них по уценке", "Потери на уценке"],
+            report.byProduct.map((p) => [
+              p.productName,
+              formatQuantity(p.quantity),
+              p.revenue.toFixed(2),
+              formatQuantity(p.markdownQuantity),
+              p.markdownLoss.toFixed(2),
+            ]),
           )
         }
       >
         <ReportTable
-          columns={["Товар", "Продано", "Выручка"]}
-          rows={report.byProduct.map((p) => [p.productName, formatQuantity(p.quantity), formatMoney(p.revenue)])}
+          columns={["Товар", "Продано", "Выручка", "Из них по уценке", "Потери на уценке"]}
+          rows={report.byProduct.map((p) => [
+            p.productName,
+            formatQuantity(p.quantity),
+            formatMoney(p.revenue),
+            p.markdownQuantity > 0 ? formatQuantity(p.markdownQuantity) : "—",
+            p.markdownLoss > 0 ? formatMoney(p.markdownLoss) : "—",
+          ])}
         />
       </ReportCard>
 

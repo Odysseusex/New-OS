@@ -7,6 +7,7 @@ import { FiscalSettings } from "../fiscal/fiscal.settings";
 import { FakeFiscalProvider } from "../fiscal/fake-fiscal.provider";
 import { FiscalProvider, FiscalSaleOutcome, FiscalSaleRequest } from "../fiscal/fiscal-provider";
 import { SalesService } from "./sales.service";
+import { SaleReturnsService } from "./sale-returns.service";
 import { AuthenticatedUser } from "../auth/auth.types";
 
 // The point of these tests is a single promise: with fiscalisation on, NOTHING
@@ -67,6 +68,17 @@ function buildService(provider: FiscalProvider): SalesService {
   );
 }
 
+// Sales plus returns off one shared fiscal/cash pair, for the tests that
+// need to sell something and then take it back.
+function servicesFor(provider: FiscalProvider) {
+  const cash = new CashMovementsService(prisma);
+  const fiscal = new FiscalService(prisma, provider, new FiscalSettings());
+  return {
+    sales: new SalesService(prisma, cash, fiscal, new FiscalSettings()),
+    returns: new SaleReturnsService(prisma, cash, fiscal, new FiscalSettings()),
+  };
+}
+
 async function stockOf(): Promise<number> {
   const level = await prisma.stockLevel.findUnique({
     where: { locationId_productId: { locationId, productId } },
@@ -121,8 +133,17 @@ afterAll(async () => {
   const allSaleIds = [...createdSaleIds, ...otherSaleIds];
   await prisma.fiscalReceipt.deleteMany({ where: { organizationId: ORG, saleId: { in: allSaleIds } } });
   await prisma.fiscalReceipt.deleteMany({ where: { organizationId: ORG, saleId: null } });
-  await prisma.cashMovement.deleteMany({ where: { saleId: { in: allSaleIds } } });
+  // Returns hold their sale by a foreign key with no cascade, so they have to
+  // go first — and their own cash/stock movements before them.
+  const returnIds = (
+    await prisma.saleReturn.findMany({ where: { saleId: { in: allSaleIds } }, select: { id: true } })
+  ).map((r) => r.id);
+  await prisma.cashMovement.deleteMany({
+    where: { OR: [{ saleId: { in: allSaleIds } }, { saleReturnId: { in: returnIds } }] },
+  });
   await prisma.stockMovement.deleteMany({ where: { productId } });
+  await prisma.saleReturnItem.deleteMany({ where: { saleReturnId: { in: returnIds } } });
+  await prisma.saleReturn.deleteMany({ where: { id: { in: returnIds } } });
   await prisma.saleItem.deleteMany({ where: { saleId: { in: allSaleIds } } });
   await prisma.sale.deleteMany({ where: { id: { in: allSaleIds } } });
   await prisma.stockLevel.deleteMany({ where: { productId } });
@@ -159,6 +180,45 @@ describe("SalesService.create with fiscalisation OFF", () => {
     expect(provider.seen).toHaveLength(0);
     expect(await stockOf()).toBe(98);
     expect(await prisma.fiscalReceipt.findUnique({ where: { saleId: sale.id } })).toBeNull();
+  });
+
+  it("records what a markdown gave away, and nets out a return of the same loaf", async () => {
+    // Half price on stale bread. The buyer pays 295, and the 295 difference
+    // is the number the owner steers production by — it has to survive into
+    // the report and come back out again if the loaf is returned.
+    const { sales, returns } = servicesFor(new ScriptedProvider());
+    const sale = await sales.create(user, {
+      locationId,
+      paymentMethod: PaymentMethod.CASH,
+      items: [{ productId, quantity: 2, unitPrice: 295, fullUnitPrice: 590 }],
+    });
+    createdSaleIds.push(sale.id);
+
+    expect(sale.totalAmount).toBe(590);
+    expect(sale.items[0].fullUnitPrice).toBe(590);
+
+    const from = new Date(Date.now() - 60_000);
+    const to = new Date(Date.now() + 60_000);
+    const before = await sales.report(user, from, to, locationId);
+    const beforeRow = before.byProduct.find((p) => p.productId === productId);
+    expect(beforeRow?.markdownQuantity).toBe(2);
+    expect(beforeRow?.markdownLoss).toBe(590);
+
+    // Refunded at what was actually paid, not the full price.
+    const returned = await returns.create(user, sale.id, { items: [{ productId, quantity: 1 }] });
+    expect(returned.totalAmount).toBe(295);
+  });
+
+  it("refuses a markdown that did not lower the price", async () => {
+    // A negative "loss" would quietly inflate the very figure the owner
+    // uses to decide how much to bake.
+    await expect(
+      buildService(new ScriptedProvider()).create(user, {
+        locationId,
+        paymentMethod: PaymentMethod.CASH,
+        items: [{ productId, quantity: 1, unitPrice: 590, fullUnitPrice: 500 }],
+      }),
+    ).rejects.toThrow("Цена до скидки должна быть выше");
   });
 
   it("sells an open-price line with no stock at all, and moves no stock for it", async () => {

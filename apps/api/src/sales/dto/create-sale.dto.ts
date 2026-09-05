@@ -13,6 +13,13 @@ export class CreateSaleItemDto {
   @IsNumber()
   @Min(0)
   unitPrice!: number;
+
+  // Only on a marked-down line: what it would have cost at full price.
+  // SalesService checks it is actually higher than unitPrice.
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  fullUnitPrice?: number;
 }
 
 export class CreateSalePaymentDto {

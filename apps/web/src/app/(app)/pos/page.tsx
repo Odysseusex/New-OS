@@ -11,6 +11,8 @@ import {
   PAYMENT_METHOD_LABELS_RU,
   PaymentMethod,
   ProductType,
+  MARKDOWN_PERCENT,
+  markdownPrice,
   SALE_CREATE_ROLES,
   UNIT_LABELS_RU,
 } from "@bakery-os/shared";
@@ -31,6 +33,11 @@ interface CartLine {
   product: ProductDto;
   quantity: number;
   unitPrice: number;
+  // Stale goods sold at half price. Off by default and stays off unless the
+  // cashier says so: most of what crosses this counter is fresh, and the
+  // system cannot tell yesterday's bread from today's — only the person at
+  // the shelf can.
+  markedDown: boolean;
 }
 
 // Payment buttons at the till. Deliberately no "в долг" option: a walk-in
@@ -192,7 +199,10 @@ export default function PosPage() {
       if (!existing) {
         // effectivePrice, not price: what this point of sale charges, which
         // for the retail point is not the organization's default.
-        return [...current, { key: product.id, product, quantity: step, unitPrice: product.effectivePrice }];
+        return [
+          ...current,
+          { key: product.id, product, quantity: step, unitPrice: product.effectivePrice, markedDown: false },
+        ];
       }
       return current.map((line) =>
         line.key === product.id ? { ...line, quantity: line.quantity + step } : line,
@@ -219,11 +229,31 @@ export default function PosPage() {
         product: openPriceProduct,
         quantity: 1,
         unitPrice: amount,
+        // Never marked down: the cashier typed the price they meant, so
+        // halving it again would be a second discount nobody asked for.
+        markedDown: false,
       },
     ]);
     setError(null);
     setReceipt(null);
     setFlash(null);
+  }
+
+  function toggleMarkdown(key: string) {
+    setCart((current) =>
+      current.map((line) => {
+        if (line.key !== key) return line;
+        const markedDown = !line.markedDown;
+        return {
+          ...line,
+          markedDown,
+          // Recomputed from the product's price at this point rather than
+          // halved and doubled back, so switching the markdown off restores
+          // the exact original price instead of a rounding artefact.
+          unitPrice: markedDown ? markdownPrice(line.product.effectivePrice) : line.product.effectivePrice,
+        };
+      }),
+    );
   }
 
   function setLineQuantity(key: string, quantity: number) {
@@ -290,6 +320,7 @@ export default function PosPage() {
           productId: line.product.id,
           quantity: line.quantity,
           unitPrice: line.unitPrice,
+          ...(line.markedDown ? { fullUnitPrice: line.product.effectivePrice } : {}),
         })),
       });
       // With fiscalisation off there is no receipt, and the short green
@@ -560,10 +591,44 @@ export default function PosPage() {
                         <Plus className="h-3.5 w-3.5" strokeWidth={2} />
                       </QtyButton>
                     </div>
-                    <span className="text-sm font-semibold text-foreground">
-                      {formatMoney(line.unitPrice * line.quantity)}
-                    </span>
+                    <div className="text-right">
+                      {line.markedDown && (
+                        // The old price crossed out, so the cashier can see at
+                        // a glance that this line really is discounted.
+                        <span className="mr-2 text-xs text-muted line-through">
+                          {formatMoney(line.product.effectivePrice * line.quantity)}
+                        </span>
+                      )}
+                      <span
+                        className={clsx(
+                          "text-sm font-semibold",
+                          line.markedDown ? "text-amber-700" : "text-foreground",
+                        )}
+                      >
+                        {formatMoney(line.unitPrice * line.quantity)}
+                      </span>
+                    </div>
                   </div>
+
+                  {/* Full price needs no action at all — this is the only
+                      button, and it is only for stale goods. An open-price
+                      line has no full price to halve, so it is not offered. */}
+                  {!line.product.isOpenPrice && (
+                    <button
+                      onClick={() => {
+                        toggleMarkdown(line.key);
+                        focusScan();
+                      }}
+                      className={clsx(
+                        "mt-2 rounded-lg border px-2.5 py-1 text-xs font-medium transition",
+                        line.markedDown
+                          ? "border-amber-300 bg-amber-50 text-amber-800"
+                          : "border-border text-muted hover:bg-surface-muted hover:text-foreground",
+                      )}
+                    >
+                      {line.markedDown ? `Уценка −${MARKDOWN_PERCENT}% ✓` : `Уценка −${MARKDOWN_PERCENT}%`}
+                    </button>
+                  )}
                 </div>
               ))
             )}
@@ -1023,6 +1088,9 @@ function PrintableReceipt({
               <tr>
                 <td className="pt-0.5">
                   {formatQuantity(item.quantity)} × {formatMoney(item.unitPrice)}
+                  {/* The buyer should see they got the discount, and the
+                      slip is the only record they take home. */}
+                  {item.fullUnitPrice !== null && ` (уценка, было ${formatMoney(item.fullUnitPrice)})`}
                 </td>
                 <td className="pt-0.5 text-right">{formatMoney(item.subtotal)}</td>
               </tr>
