@@ -71,20 +71,32 @@ export function NewProductModal({
       };
       const trimmedBarcode = barcode.trim();
       const trimmedNtin = ntin.trim();
+      let saved: ProductDto;
       if (product) {
         // Explicit null, not undefined, so clearing the field actually erases
         // the stored barcode instead of leaving the old value untouched.
-        await api.products.update(product.id, {
+        saved = await api.products.update(product.id, {
           ...dto,
           barcode: trimmedBarcode || null,
           ntin: trimmedNtin || null,
         });
       } else {
-        await api.products.create({
+        saved = await api.products.create({
           ...dto,
           barcode: trimmedBarcode || undefined,
           ntin: trimmedNtin || undefined,
         });
+      }
+      // The API strips fields it doesn't know about (whitelisting validation)
+      // and still answers 200, so a server running an older build saves the
+      // product *without* the consignment link and nothing looks wrong until
+      // the form is reopened and the checkbox is blank again. Check what came
+      // back instead of trusting the status code.
+      if (isConsignment && !saved.consignmentSupplierId) {
+        setError(
+          "Товар сохранён, но признак «под реализацию» не записался — сервер работает на старой версии. Сообщите об этом и повторите после обновления.",
+        );
+        return;
       }
       onSaved();
     } catch (err) {
