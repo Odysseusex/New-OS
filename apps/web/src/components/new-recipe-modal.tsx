@@ -15,6 +15,7 @@ import {
 } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
+import { ProductSelect } from "@/components/product-select";
 import { formatDateTime, formatMoney, formatMoneyPrecise } from "@/lib/format";
 
 interface IngredientRow {
@@ -423,17 +424,17 @@ export function NewRecipeModal({
             const percent = liveDoughWeightKg && weightKg !== null ? (weightKg / liveDoughWeightKg) * 100 : null;
             return (
               <div key={index} className="flex items-center gap-2">
-                <select
+                {/* Searchable rather than a plain <select>: a real technical
+                    card is picked from the whole raw-materials catalogue, and
+                    scrolling a hundred names to find «Спред растительно-
+                    сливочный» is the slow part of writing one. */}
+                <ProductSelect
+                  products={ingredientOptions}
                   value={row.ingredientProductId}
-                  onChange={(e) => updateRowIngredient(index, e.target.value)}
-                  className="flex-1 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-                >
-                  {ingredientOptions.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({UNIT_LABELS_RU[p.unit]})
-                    </option>
-                  ))}
-                </select>
+                  onChange={(productId) => updateRowIngredient(index, productId)}
+                  placeholder="Выберите ингредиент"
+                  className="flex-1 min-w-0"
+                />
                 <input
                   type="number"
                   min="0"
