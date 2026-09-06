@@ -369,32 +369,53 @@ export default function PosPage() {
   return (
     <>
     <div className="mx-auto max-w-7xl print:hidden">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">Касса</h1>
-          <p className="mt-1 text-sm text-muted">Продажа на точке: сканирование, корзина, оплата</p>
+      {/* No «Касса» heading and no strapline. On a 768px-tall monoblock the
+          title, its subtitle and their margins cost 72px — half a row of
+          products — to tell a cashier, whose screen has nothing else on it,
+          which screen they are on. The controls that did earn their place
+          move onto the scan row instead. */}
+      <div className="mb-3 flex items-center gap-3">
+        <div className="relative flex-1">
+          <ScanLine
+            className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted"
+            strokeWidth={1.75}
+          />
+          <input
+            ref={scanRef}
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleScanSubmit();
+              }
+            }}
+            placeholder="Отсканируйте товар или начните вводить название…"
+            className="w-full rounded-2xl border border-border bg-surface py-3 pl-12 pr-4 text-lg text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+          />
         </div>
-        {/* Which point this till is selling at is shown to EVERYONE, not just
-            to whoever may switch it. Prices differ per point, so a cashier
-            who cannot see the point cannot tell the prices are the wrong
-            ones — which is exactly how a till ended up quietly selling at
-            another shop's prices. */}
-        <div className="flex items-center gap-2">
+
         {/* The till is the only screen a cashier can reach, so checking what
             was already sold has to live here — the Продажи module is closed
             to them by design. */}
         <button
           onClick={() => setHistoryOpen(true)}
-          className="flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+          className="flex shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
         >
           <History className="h-4 w-4" strokeWidth={1.75} />
           История
         </button>
+        {/* Which point this till is selling at is shown to EVERYONE, not just
+            to whoever may switch it. Prices differ per point, so a cashier
+            who cannot see the point cannot tell the prices are the wrong
+            ones — which is exactly how a till ended up quietly selling at
+            another shop's prices. */}
         {isOrgWide ? (
           <select
             value={locationId}
             onChange={(e) => setLocationId(e.target.value)}
-            className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            className="shrink-0 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
           >
             {locations.map((loc) => (
               <option key={loc.id} value={loc.id}>
@@ -404,13 +425,12 @@ export default function PosPage() {
           </select>
         ) : (
           activeLocationName && (
-            <div className="rounded-xl border border-border bg-surface px-3 py-2 text-sm">
+            <div className="shrink-0 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm">
               <span className="text-muted">Точка: </span>
               <span className="font-medium text-foreground">{activeLocationName}</span>
             </div>
           )
         )}
-        </div>
       </div>
 
       {missingLocation && (
@@ -468,30 +488,12 @@ export default function PosPage() {
         </div>
       )}
 
-      <div className="grid gap-5 lg:grid-cols-[1fr_380px]">
+      {/* 340, not 380: the receipt column is mostly empty most of the time,
+          and every pixel it gives back is a pixel of product grid on a
+          screen that has none to spare. */}
+      <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
         <div>
-          <div className="relative mb-4">
-            <ScanLine
-              className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted"
-              strokeWidth={1.75}
-            />
-            <input
-              ref={scanRef}
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleScanSubmit();
-                }
-              }}
-              placeholder="Отсканируйте товар или начните вводить название…"
-              className="w-full rounded-2xl border border-border bg-surface py-4 pl-12 pr-4 text-lg text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-            />
-          </div>
-
-          <div className="mb-4 flex flex-wrap items-center gap-1 rounded-xl bg-surface-muted p-1">
+          <div className="mb-3 flex flex-wrap items-center gap-1 rounded-xl bg-surface-muted p-1">
             <CategoryChip active={categoryId === ""} onClick={() => setCategoryId("")}>
               Все
             </CategoryChip>
@@ -502,14 +504,21 @@ export default function PosPage() {
             ))}
           </div>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+          {/* Column count follows the width of THIS column, not the width of
+              the window. Breakpoints answered the wrong question: on the
+              tablet the grid stayed at four wide columns with room for six,
+              and on the shop's monoblock the same rule would have squeezed
+              five columns into 646px and wrapped every name onto three
+              lines. auto-fill just fits as many ~150px tiles as there is
+              room for, on both. */}
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2.5">
             {/* Also gated on a location: without one nothing can be sold at
                 all, and an open-price line would only fill a cart whose
                 payment buttons silently do nothing. */}
             {openPriceProduct && locationId && (
               <button
                 onClick={() => setOpenPriceOpen(true)}
-                className="flex h-32 flex-col justify-between rounded-2xl border border-dashed border-accent bg-surface p-3 text-left transition hover:shadow-card active:scale-[0.98]"
+                className="flex min-h-[5.5rem] flex-col justify-between gap-2 rounded-2xl border border-dashed border-accent bg-surface p-2.5 text-left transition hover:shadow-card active:scale-[0.98]"
               >
                 <span className="line-clamp-3 text-base font-semibold text-foreground">Произвольная сумма</span>
                 <span className="text-base font-bold text-accent">Ввести вручную</span>
@@ -524,7 +533,11 @@ export default function PosPage() {
                 }}
                 // Bigger and heavier than the rest of the app on purpose: this
                 // grid is read at arm's length, off-axis, on a glossy panel.
-                className="flex h-32 flex-col justify-between rounded-2xl border border-border bg-surface p-3 text-left transition hover:border-accent hover:shadow-card active:scale-[0.98]"
+                // Height follows the name instead of being fixed at three
+                // lines for everyone — most names are one line, and the
+                // reserved space for the other two was pushing whole rows of
+                // products below the fold.
+                className="flex min-h-[5.5rem] flex-col justify-between gap-2 rounded-2xl border border-border bg-surface p-2.5 text-left transition hover:border-accent hover:shadow-card active:scale-[0.98]"
               >
                 <span className="line-clamp-3 text-base font-semibold text-foreground">{p.name}</span>
                 <span className="text-lg font-bold text-accent">{formatMoney(p.effectivePrice)}</span>
