@@ -53,6 +53,7 @@ export default function InventoryPage() {
   const [newProductCategoryId, setNewProductCategoryId] = useState<string | undefined>(undefined);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [productSearch, setProductSearch] = useState("");
+  const [stockSearch, setStockSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   // Matches anywhere in the name or the SKU, not just from the start, so
@@ -67,6 +68,20 @@ export default function InventoryPage() {
           (p.barcode ?? "").toLowerCase().includes(productQuery),
       )
     : products;
+
+  // Same rule for both tables on the Остатки tab — the point of searching
+  // here is "where is this product and what happened to it", so the balance
+  // and its history have to answer about the same product. Movements carry no
+  // SKU of their own, hence the lookup through the already-loaded catalogue.
+  const stockQuery = stockSearch.trim().toLowerCase();
+  const skuByProductId = new Map(products.map((p) => [p.id, (p.sku ?? "").toLowerCase()]));
+  const matchesStockQuery = (productId: string, productName: string) =>
+    !stockQuery ||
+    productName.toLowerCase().includes(stockQuery) ||
+    (skuByProductId.get(productId) ?? "").includes(stockQuery);
+
+  const visibleStockLevels = stockLevels.filter((l) => matchesStockQuery(l.productId, l.productName));
+  const visibleMovements = movements.filter((m) => matchesStockQuery(m.productId, m.productName));
 
   const selectedCategory = selectedCategoryId
     ? categories.find((c) => c.id === selectedCategoryId) ?? null
@@ -122,7 +137,10 @@ export default function InventoryPage() {
     loadStock();
   }, [loadStock]);
 
-  const lowStockCount = stockLevels.filter((s) => s.isLow).length;
+  // Counted over what is actually on screen: this banner sits directly above
+  // the table and summarises it, so a search that hides every low-stock row
+  // must not leave a warning standing over rows that are all fine.
+  const lowStockCount = visibleStockLevels.filter((s) => s.isLow).length;
   const fixedLocationId = isOrgWide ? null : (user?.locationId ?? null);
 
   async function handleProductArchive(p: ProductDto) {
@@ -242,6 +260,31 @@ export default function InventoryPage() {
         </div>
 
         <div className="flex items-center gap-3">
+          {tab === "stock" && (
+            <div className="relative">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
+                strokeWidth={1.75}
+              />
+              <input
+                type="text"
+                value={stockSearch}
+                onChange={(e) => setStockSearch(e.target.value)}
+                placeholder="Поиск по названию или артикулу…"
+                className="w-64 rounded-xl border border-border bg-surface py-2 pl-9 pr-9 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+              />
+              {stockSearch && (
+                <button
+                  onClick={() => setStockSearch("")}
+                  aria-label="Очистить поиск"
+                  className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" strokeWidth={1.75} />
+                </button>
+              )}
+            </div>
+          )}
+
           {tab === "stock" && isOrgWide && (
             <select
               value={locationFilter}
@@ -354,7 +397,7 @@ export default function InventoryPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {stockLevels.map((level) => (
+                {visibleStockLevels.map((level) => (
                   <tr key={level.id}>
                     <td className="px-5 py-3 font-medium text-foreground">{level.productName}</td>
                     {isOrgWide && <td className="px-5 py-3 text-muted">{level.locationName}</td>}
@@ -372,10 +415,15 @@ export default function InventoryPage() {
                     </td>
                   </tr>
                 ))}
-                {stockLevels.length === 0 && (
+                {/* An empty search result must not read as an empty warehouse
+                    — that is a different fact and would send someone looking
+                    for a stock problem that isn't there. */}
+                {visibleStockLevels.length === 0 && (
                   <tr>
                     <td colSpan={5} className="px-5 py-8 text-center text-sm text-muted">
-                      Нет данных об остатках
+                      {stockQuery
+                        ? `Ничего не найдено по запросу «${stockSearch.trim()}»`
+                        : "Нет данных об остатках"}
                     </td>
                   </tr>
                 )}
@@ -399,7 +447,7 @@ export default function InventoryPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {movements.map((m) => (
+                {visibleMovements.map((m) => (
                   <tr key={m.id}>
                     <td className="px-5 py-3 text-muted">{formatDateTime(m.createdAt)}</td>
                     <td className="px-5 py-3 font-medium text-foreground">{m.productName}</td>
@@ -421,10 +469,12 @@ export default function InventoryPage() {
                     </td>
                   </tr>
                 ))}
-                {movements.length === 0 && (
+                {visibleMovements.length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-5 py-8 text-center text-sm text-muted">
-                      Движений пока нет
+                      {stockQuery
+                        ? `Ничего не найдено по запросу «${stockSearch.trim()}»`
+                        : "Движений пока нет"}
                     </td>
                   </tr>
                 )}
