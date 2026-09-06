@@ -35,10 +35,21 @@ export function CategoryModal({
         setError("Порядок — целое число от 1");
         return;
       }
-      if (category) {
-        await api.categories.update(category.id, { name, sortOrder: order });
-      } else {
-        await api.categories.create({ name, sortOrder: order });
+      const saved = category
+        ? await api.categories.update(category.id, { name, sortOrder: order })
+        : await api.categories.create({ name, sortOrder: order });
+      // The API strips fields it does not know about and still answers 200,
+      // so a server running an older build saves the name, drops the order,
+      // and nothing looks wrong until the list still reads «—». Check what
+      // came back rather than trusting the status code.
+      // `?? null` so an older server that sends no such field at all reads as
+      // "unplaced" — which matches an empty box, and must not be reported as
+      // a failure when nothing was asked for.
+      if ((saved.sortOrder ?? null) !== order) {
+        setError(
+          "Название сохранено, но порядок не записался — сервер работает на старой версии. Повторите после обновления.",
+        );
+        return;
       }
       onSaved();
     } catch (err) {
