@@ -98,7 +98,13 @@ export default function PosPage() {
   // types very fast and presses Enter, so whatever is focused receives the
   // barcode. Pulling focus back after every tap keeps a scan working even
   // once the cashier has been clicking tiles.
-  const focusScan = useCallback(() => scanRef.current?.focus(), []);
+  //
+  // `preventScroll` is the whole point of this being a helper. The scan box
+  // sits at the top of the page, so focusing it scrolls it into view — which
+  // meant that tapping a product far down the grid threw the cashier back to
+  // the top, and tapping the same tile twice to ring up two of something was
+  // impossible: the tile was no longer under their finger.
+  const focusScan = useCallback(() => scanRef.current?.focus({ preventScroll: true }), []);
 
   useEffect(() => {
     api.categories.list().then(setCategories).catch(() => {});
