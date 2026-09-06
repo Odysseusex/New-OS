@@ -23,12 +23,25 @@ export class CategoriesService {
     }));
   }
 
+  // The name is unique per organization whether the category is archived or
+  // not, so a conflict can be with a row the screen is not showing. Saying
+  // only "уже существует" then contradicts a list the user is looking at,
+  // with nothing to act on — the archive is where they have to go, so the
+  // message says so.
+  private nameTakenError(existing: { name: string; isActive: boolean }): ConflictException {
+    return new ConflictException(
+      existing.isActive
+        ? "Категория с таким названием уже существует"
+        : `Категория «${existing.name}» есть в архиве. Восстановите её или выберите другое название.`,
+    );
+  }
+
   async create(organizationId: string, dto: CreateCategoryDto): Promise<CategoryDto> {
     const existing = await this.prisma.category.findUnique({
       where: { organizationId_name: { organizationId, name: dto.name } },
     });
     if (existing) {
-      throw new ConflictException("Категория с таким названием уже существует");
+      throw this.nameTakenError(existing);
     }
 
     const category = await this.prisma.category.create({ data: { ...dto, organizationId } });
@@ -46,7 +59,7 @@ export class CategoriesService {
         where: { organizationId_name: { organizationId, name: dto.name } },
       });
       if (existing) {
-        throw new ConflictException("Категория с таким названием уже существует");
+        throw this.nameTakenError(existing);
       }
     }
 

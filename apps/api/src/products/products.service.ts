@@ -170,6 +170,18 @@ export class ProductsService {
     return this.toDto(created);
   }
 
+  // The SKU is unique per organization regardless of archiving, so the
+  // product holding it may be one the list is not showing. Naming it, and
+  // saying where it is, is the difference between an error the user can act
+  // on and one that contradicts what is on their screen.
+  private skuTakenError(existing: { name: string; isActive: boolean }): ConflictException {
+    return new ConflictException(
+      existing.isActive
+        ? `Артикул занят товаром «${existing.name}»`
+        : `Артикул занят товаром «${existing.name}» в архиве. Восстановите его или укажите другой артикул.`,
+    );
+  }
+
   async create(organizationId: string, dto: CreateProductDto): Promise<ProductDto> {
     let sku = dto.sku?.trim();
     if (sku) {
@@ -177,7 +189,7 @@ export class ProductsService {
         where: { organizationId_sku: { organizationId, sku } },
       });
       if (existing) {
-        throw new ConflictException("Товар с таким артикулом уже существует");
+        throw this.skuTakenError(existing);
       }
     } else {
       sku = await this.generateSku(organizationId, dto.type);
@@ -216,7 +228,7 @@ export class ProductsService {
         where: { organizationId_sku: { organizationId, sku: dto.sku } },
       });
       if (existing) {
-        throw new ConflictException("Товар с таким артикулом уже существует");
+        throw this.skuTakenError(existing);
       }
     }
 
