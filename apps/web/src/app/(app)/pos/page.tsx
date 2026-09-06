@@ -912,11 +912,19 @@ function CardPaymentModal({
 // that has to be recorded as two payments, because the two halves genuinely
 // end up in different accounts.
 //
-// Only ONE number is typed: how much goes on the card. The cash part is
-// whatever is left, so the two can never fail to add up to the total — the
-// cashier cannot produce an unbalanced split at all. Tapping «Получено
-// наличными» switches the keypad to that second number, for when the buyer
-// hands over a bigger note and needs change.
+// Still only ONE of the two halves is ever typed — the other is the
+// remainder, so they can never fail to add up and an unbalanced split is not
+// expressible. What changed is WHICH half: either, whichever the cashier taps.
+//
+// Cash leads and is selected by default, because that is the half the buyer
+// states: they say «630 наличкой, остальное картой», since cash is what is
+// physically in their hand. Card-first was the original guess and made the
+// cashier do the subtraction the till exists to do. Tapping the other row
+// switches the keypad to it, seeded with what that row currently shows so
+// the numbers never jump under the finger.
+//
+// «Получено наличными» is a third, separate number: what the buyer actually
+// handed over for the cash half, for change.
 function MixedPaymentModal({
   total,
   isSubmitting,
@@ -929,20 +937,55 @@ function MixedPaymentModal({
   // (card part, cash part, cash actually handed over)
   onSubmit: (card: number, cash: number, cashGiven: number) => void;
 }) {
-  const [field, setField] = useState<"card" | "given">("card");
-  const [cardValue, setCardValue] = useState("");
+  // The split is held as ONE number — the cash half — no matter which row is
+  // being typed into. The card half is always the remainder, so the two can
+  // never fail to add up. Null until the cashier has decided anything.
+  const [cashAmount, setCashAmount] = useState<number | null>(null);
+  const [splitSide, setSplitSide] = useState<"cash" | "card">("cash");
+  // Digits typed since this row was selected. Kept separate from cashAmount
+  // so that switching rows does not make the next keypress append to the
+  // number already showing there — tapping «Картой» after typing 630 must let
+  // 200 mean two hundred, not 170200.
+  const [buffer, setBuffer] = useState("");
   const [givenValue, setGivenValue] = useState("");
+  // Which number the keypad is driving: the split, or the cash handed over.
+  const [field, setField] = useState<"split" | "given">("split");
 
-  const card = cardValue ? Number(cardValue) : 0;
-  const cashPart = Math.max(0, total - card);
-  // Untouched, the buyer hands over exactly the cash part and there is no
-  // change — the common case needs no second number at all.
+  function onSplitDigits(next: string) {
+    setBuffer(next);
+    if (next === "") {
+      setCashAmount(null);
+      return;
+    }
+    const typed = Number(next);
+    setCashAmount(splitSide === "cash" ? typed : total - typed);
+  }
+
+  // Switching rows keeps the amounts on screen exactly as they are — only the
+  // keypad moves.
+  function selectSide(side: "cash" | "card") {
+    setField("split");
+    if (side === splitSide) return;
+    setSplitSide(side);
+    setBuffer("");
+  }
+
+  const decided = cashAmount !== null;
+  // Out of range means the typed half exceeded the sale, which would make the
+  // other half negative. Refused rather than silently rebalanced.
+  const overpaid = decided && (cashAmount < 0 || cashAmount > total);
+  const cashPart = Math.min(Math.max(cashAmount ?? 0, 0), total);
+  const cardPart = total - cashPart;
+  // Untouched, the buyer hands over exactly the cash half and there is no
+  // change — the common case needs no third number at all.
   const given = givenValue ? Number(givenValue) : cashPart;
   const change = given - cashPart;
 
-  const valid = card > 0 && card < total && given >= cashPart && !isSubmitting;
+  // Both halves must be real money, otherwise this is a single-method sale
+  // and belongs on the «Наличные» or «Карта» button.
+  const valid = decided && !overpaid && cashPart > 0 && cardPart > 0 && given >= cashPart && !isSubmitting;
   const submit = () => {
-    if (valid) onSubmit(card, cashPart, given);
+    if (valid) onSubmit(cardPart, cashPart, given);
   };
 
   return (
@@ -952,28 +995,38 @@ function MixedPaymentModal({
         <span className="text-xl font-semibold text-foreground">{formatMoney(total)}</span>
       </div>
 
+      {/* Both halves are tappable, and whichever is tapped becomes the one
+          being typed. Cash sits first because it is the half the buyer
+          names. */}
       <button
         type="button"
-        onClick={() => setField("card")}
+        onClick={() => selectSide("cash")}
         className={clsx(
           "flex w-full items-baseline justify-between rounded-xl border px-4 py-3 text-left transition",
-          field === "card" ? "border-accent bg-surface" : "border-border bg-surface-muted",
+          field === "split" && splitSide === "cash" ? "border-accent bg-surface" : "border-border bg-surface-muted",
+        )}
+      >
+        <span className="text-sm text-muted">Наличными</span>
+        <span className="text-2xl font-semibold tabular-nums text-foreground">
+          {decided ? formatMoney(cashPart) : "—"}
+        </span>
+      </button>
+
+      <button
+        type="button"
+        onClick={() => selectSide("card")}
+        className={clsx(
+          "mt-2 flex w-full items-baseline justify-between rounded-xl border px-4 py-3 text-left transition",
+          field === "split" && splitSide === "card" ? "border-accent bg-surface" : "border-border bg-surface-muted",
         )}
       >
         <span className="text-sm text-muted">Картой</span>
         <span className="text-2xl font-semibold tabular-nums text-foreground">
-          {cardValue ? formatMoney(card) : "—"}
+          {decided ? formatMoney(cardPart) : "—"}
         </span>
       </button>
 
-      <div className="mt-2 flex items-baseline justify-between rounded-xl bg-surface-muted px-4 py-3">
-        <span className="text-sm text-muted">Наличными</span>
-        <span className="text-2xl font-semibold tabular-nums text-foreground">
-          {formatMoney(cashPart)}
-        </span>
-      </div>
-
-      {cashPart > 0 && (
+      {decided && !overpaid && cashPart > 0 && (
         <>
           <button
             type="button"
@@ -1001,8 +1054,8 @@ function MixedPaymentModal({
 
       <div className="mt-3">
         <NumberPad
-          value={field === "card" ? cardValue : givenValue}
-          onChange={field === "card" ? setCardValue : setGivenValue}
+          value={field === "split" ? buffer : givenValue}
+          onChange={field === "split" ? onSplitDigits : setGivenValue}
           onSubmit={submit}
         />
       </div>
@@ -1015,9 +1068,19 @@ function MixedPaymentModal({
       >
         {isSubmitting ? "…" : "Провести продажу"}
       </button>
-      {card >= total && cardValue !== "" && (
+      {overpaid && (
+        <p className="mt-2 text-center text-xs text-red-700">
+          Больше суммы чека — {formatMoney(total)}
+        </p>
+      )}
+      {!overpaid && decided && cardPart === 0 && (
         <p className="mt-2 text-center text-xs text-muted">
-          Вся сумма на карте — используйте кнопку «Карта»
+          Всё наличными — используйте кнопку «Наличные»
+        </p>
+      )}
+      {!overpaid && decided && cashPart === 0 && (
+        <p className="mt-2 text-center text-xs text-muted">
+          Всё на карте — используйте кнопку «Карта»
         </p>
       )}
     </Modal>
