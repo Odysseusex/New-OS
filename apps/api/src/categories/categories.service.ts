@@ -12,12 +12,18 @@ export class CategoriesService {
     const categories = await this.prisma.category.findMany({
       where: { organizationId, ...(includeArchived ? {} : { isActive: true }) },
       include: { _count: { select: { products: true } } },
-      orderBy: { name: "asc" },
+      // The till reads this order straight into its row of tabs, so the
+      // cashier's own ordering has to win over the alphabet. Unplaced
+      // categories are NULL and go last — the whole reason the column is
+      // nullable, since a default 0 would have outranked «поставь хлеб
+      // первым». Name second, so the unplaced group stays alphabetical.
+      orderBy: [{ sortOrder: { sort: "asc", nulls: "last" } }, { name: "asc" }],
     });
 
     return categories.map((c) => ({
       id: c.id,
       name: c.name,
+      sortOrder: c.sortOrder,
       isActive: c.isActive,
       productCount: c._count.products,
     }));
@@ -45,7 +51,13 @@ export class CategoriesService {
     }
 
     const category = await this.prisma.category.create({ data: { ...dto, organizationId } });
-    return { id: category.id, name: category.name, isActive: category.isActive, productCount: 0 };
+    return {
+      id: category.id,
+      name: category.name,
+      sortOrder: category.sortOrder,
+      isActive: category.isActive,
+      productCount: 0,
+    };
   }
 
   async update(organizationId: string, categoryId: string, dto: UpdateCategoryDto): Promise<CategoryDto> {
@@ -65,10 +77,10 @@ export class CategoriesService {
 
     const updated = await this.prisma.category.update({
       where: { id: categoryId },
-      data: { name: dto.name },
+      data: { name: dto.name, ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}) },
       include: { _count: { select: { products: true } } },
     });
-    return { id: updated.id, name: updated.name, isActive: updated.isActive, productCount: updated._count.products };
+    return this.toDto(updated);
   }
 
   async archive(organizationId: string, categoryId: string): Promise<CategoryDto> {
@@ -97,6 +109,22 @@ export class CategoriesService {
     return { deleted: true };
   }
 
+  private toDto(category: {
+    id: string;
+    name: string;
+    sortOrder: number | null;
+    isActive: boolean;
+    _count: { products: number };
+  }): CategoryDto {
+    return {
+      id: category.id,
+      name: category.name,
+      sortOrder: category.sortOrder,
+      isActive: category.isActive,
+      productCount: category._count.products,
+    };
+  }
+
   private async setActive(organizationId: string, categoryId: string, isActive: boolean): Promise<CategoryDto> {
     const category = await this.prisma.category.findFirst({ where: { id: categoryId, organizationId } });
     if (!category) {
@@ -107,6 +135,6 @@ export class CategoriesService {
       data: { isActive },
       include: { _count: { select: { products: true } } },
     });
-    return { id: updated.id, name: updated.name, isActive: updated.isActive, productCount: updated._count.products };
+    return this.toDto(updated);
   }
 }

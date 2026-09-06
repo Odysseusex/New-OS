@@ -413,6 +413,15 @@ model Category {
   id             String   @id @default(cuid())
   organizationId String
   name           String
+  // Where the category sits in every list that shows categories — above all,
+  // the till's row of tabs, where the cashier's most-used category has to be
+  // the nearest one. Lower comes first, and NULL means "unplaced" and sorts
+  // last by name, so an untouched catalogue keeps exactly the alphabetical
+  // order it had. Nullable rather than defaulting to 0 precisely so that
+  // "not ordered" cannot outrank "ordered first". A typed number rather than
+  // drag-and-drop: the order has to stay put between shifts, and a tab that
+  // moves under a cashier's finger is worse than a tab in the wrong place.
+  sortOrder      Int?
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

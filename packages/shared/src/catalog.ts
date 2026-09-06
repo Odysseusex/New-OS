@@ -84,16 +84,24 @@ export const PRODUCT_TYPE_LABELS_RU: Record<ProductType, string> = {
 export interface CategoryDto {
   id: string;
   name: string;
+  // Position in every list of categories, lowest first. Null means the
+  // category has not been placed and goes after all the placed ones, by name
+  // — so a catalogue nobody has ordered reads exactly as it always did.
+  sortOrder: number | null;
   isActive: boolean;
   productCount: number;
 }
 
 export interface CreateCategoryRequestDto {
   name: string;
+  // Null clears the position and sends the category back to the unplaced
+  // group; omitted leaves whatever is stored alone.
+  sortOrder?: number | null;
 }
 
 export interface UpdateCategoryRequestDto {
   name: string;
+  sortOrder?: number | null;
 }
 
 export interface ProductDto {

@@ -565,6 +565,7 @@ export default function InventoryPage() {
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
                 <th className="px-5 py-3 font-medium">Название</th>
+                <th className="px-5 py-3 text-right font-medium">Порядок</th>
                 <th className="px-5 py-3 text-right font-medium">Товаров</th>
                 {canManageProducts && <th className="px-5 py-3 font-medium">Действия</th>}
               </tr>
@@ -582,6 +583,10 @@ export default function InventoryPage() {
                       {!c.isActive && <ArchivedBadge />}
                     </div>
                   </td>
+                  {/* The list is already sorted by this, so the column is
+                      really there to show which categories have been ordered
+                      at all — a screen of zeroes means nobody has. */}
+                  <td className="px-5 py-3 text-right text-muted">{c.sortOrder ?? "—"}</td>
                   <td className="px-5 py-3 text-right text-muted">{c.productCount}</td>
                   {canManageProducts && (
                     <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
@@ -601,7 +606,7 @@ export default function InventoryPage() {
               ))}
               {categories.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="px-5 py-8 text-center text-sm text-muted">
+                  <td colSpan={4} className="px-5 py-8 text-center text-sm text-muted">
                     Категорий пока нет
                   </td>
                 </tr>
