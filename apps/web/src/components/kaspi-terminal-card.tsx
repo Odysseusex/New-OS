@@ -57,6 +57,21 @@ function bareIpAddress(raw: string): { ip: string; port: string } | null {
   }
 }
 
+function hostOf(raw: string): string {
+  try {
+    return new URL(raw).hostname;
+  } catch {
+    return raw;
+  }
+}
+
+// A name rather than a number means the address is resolved through the
+// machine's hosts file, which pins it to one number — so a failure has a
+// cause, and a fix, that a numeric address does not.
+function isHostname(raw: string): boolean {
+  return Boolean(hostOf(raw)) && bareIpAddress(raw) === null;
+}
+
 // Setting up the payment terminal: where it is, whether this browser can
 // reach it, and the one-time pairing that gives the till a key to use it.
 //
@@ -238,9 +253,34 @@ export function KaspiTerminalCard() {
       {outcome.kind === "unreachable" && (
         <div className="mt-4 rounded-xl bg-red-50 px-4 py-3">
           <p className="text-sm font-medium text-red-900">Терминал не отвечает</p>
-          <p className="mt-1 text-sm text-red-800">
-            Проверьте, что терминал и моноблок в одной сети, а адрес выше совпадает с «IP терминала».
-          </p>
+          {/* Told apart deliberately. Against a name the old advice — "сверьте
+              адрес с IP терминала" — was useless, because a name never looks
+              like an address: the number it stands for is buried in the hosts
+              file, and that is precisely what goes stale when the terminal
+              gets a new one. */}
+          {isHostname(url) ? (
+            <>
+              <p className="mt-1 text-sm text-red-800">
+                Скорее всего у терминала сменился IP. Имя <span className="font-mono text-xs">{hostOf(url)}</span>{" "}
+                привязано к одному адресу в файле hosts, и при смене адреса связь пропадает.
+              </p>
+              <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-red-800">
+                <li>
+                  На терминале посмотрите текущий адрес: Настройки → Kaspi Гид → О терминале → «IP
+                  терминала»
+                </li>
+                <li>
+                  Если он отличается — поправьте строку в{" "}
+                  <span className="font-mono text-xs">C:\Windows\System32\drivers\etc\hosts</span> на новый
+                </li>
+                <li>Заодно проверьте, что терминал включён, не спит и подключён к той же сети</li>
+              </ol>
+            </>
+          ) : (
+            <p className="mt-1 text-sm text-red-800">
+              Проверьте, что терминал и моноблок в одной сети, а адрес выше совпадает с «IP терминала».
+            </p>
+          )}
         </div>
       )}
 
