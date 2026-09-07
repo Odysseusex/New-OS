@@ -14,6 +14,7 @@ import { FiscalReceiptStatus, HARD_DELETE_ROLES, ROLE_LABELS_RU, USER_MANAGE_ROL
 import { api, ApiError } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import { useAuth } from "@/lib/auth-context";
+import { KaspiTerminalCard } from "@/components/kaspi-terminal-card";
 import { UserAccountModal } from "@/components/user-account-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 
@@ -75,6 +76,10 @@ export default function SettingsPage() {
         <TelegramCard />
         {/* Same gate as the endpoints behind it — OWNER/ADMIN only. */}
         {canSeeFiscal && <FiscalCard />}
+        {/* Setting up the payment terminal is an owner's job, and the check
+            below has to run in the browser standing on the shop's network —
+            which is exactly the machine this page is open on. */}
+        {canSeeFiscal && <KaspiTerminalCard />}
       </div>
 
       {!canManage && (
