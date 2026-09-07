@@ -1,14 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CreditCard, Loader2 } from "lucide-react";
+import { CheckCircle2, CreditCard, Loader2 } from "lucide-react";
+import {
+  CLIENT_NAME,
+  KaspiError,
+  getTerminalUrl,
+  getTokens,
+  register,
+  setTerminalUrl,
+  setTokens,
+  type KaspiTokens,
+} from "@/lib/kaspi-terminal";
 
-// The name this till registers under on the Smart POS. It is stored in the
-// terminal's «Клиенты интеграции» list and validated on every token refresh,
-// so it must stay exactly this string once registered.
-const CLIENT_NAME = "ArAmirOS";
-const STORAGE_KEY = "aramir.kaspiTerminalUrl";
-const DEFAULT_URL = "https://172.20.10.3:8080";
+const DEFAULT_URL = "https://pos.kaspipos.kz:8080";
 // Any single label under kaspipos.kz matches the terminal's wildcard
 // certificate, so the name is ours to choose — it only has to be pointed at
 // the terminal's address in the machine's hosts file.
@@ -21,12 +26,21 @@ type Outcome =
   | { kind: "blocked" }
   // `certificate` is a strong suspicion, not a measurement: a browser reports
   // a rejected certificate and an unreachable host as the same opaque
-  // failure. What separates them is the address — see isBareIp below. The
+  // failure. What separates them is the address — see bareIpAddress below. The
   // address is carried here rather than re-parsed at render time, so that
   // editing the field afterwards cannot leave the instructions quoting a
   // different address than the one that failed — or throw on a half-typed one.
   | { kind: "certificate"; ip: string; port: string }
   | { kind: "unreachable" };
+
+type Pairing =
+  | { kind: "unpaired" }
+  | { kind: "waiting" }
+  // The terminal already knows this name and will not issue a second token,
+  // so the old entry has to be removed on the terminal before retrying.
+  | { kind: "alreadyPaired" }
+  | { kind: "failed"; message: string }
+  | { kind: "paired"; tokens: KaspiTokens };
 
 // The terminal's certificate is issued to *.kaspipos.kz, so it only validates
 // when the terminal is addressed by a name. Reached by its number the
@@ -43,47 +57,26 @@ function bareIpAddress(raw: string): { ip: string; port: string } | null {
   }
 }
 
-// Checks whether this browser can talk to the Kaspi Smart POS on the shop's
-// network, and — the part that cannot be answered any other way — whether the
-// terminal lets a web page talk to it at all.
+// Setting up the payment terminal: where it is, whether this browser can
+// reach it, and the one-time pairing that gives the till a key to use it.
 //
-// Reaching the terminal by typing its address into the address bar proves
-// nothing about this: a page asking for another address is a different kind of
-// request, and browsers restrict those far more tightly than they restrict a
-// person navigating. So the probe runs twice. A normal request that succeeds
-// means the terminal returns the permission header a page needs. If it fails,
-// the same request is repeated in "no-cors" mode, which is exempt from that
-// permission — if THAT one gets through, the terminal is reachable and only
-// the permission is missing, which is a completely different problem with a
-// completely different fix (a small local helper) than the terminal not
-// answering at all.
-//
-// The probe is /v2/register, the one route that needs no token. Repeating it
-// is harmless: once this name is in the terminal's list it simply answers
-// "already allowed". It moves no money and starts no payment.
+// All of it lives in the browser on the monoblock, because the terminal is on
+// the shop's local network and our server is not.
 export function KaspiTerminalCard() {
   const [url, setUrl] = useState(DEFAULT_URL);
   const [outcome, setOutcome] = useState<Outcome>({ kind: "idle" });
+  const [pairing, setPairing] = useState<Pairing>({ kind: "unpaired" });
 
-  // Per-machine, not per-organization: this address belongs to the till
-  // standing next to this particular terminal. Wrapped because a browser set
-  // to block site data throws on the accessor itself.
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) setUrl(saved);
-    } catch {
-      // Storage unavailable — the default address stands.
-    }
+    const saved = getTerminalUrl();
+    if (saved) setUrl(saved);
+    const tokens = getTokens();
+    if (tokens) setPairing({ kind: "paired", tokens });
   }, []);
 
   function remember(next: string) {
     setUrl(next);
-    try {
-      localStorage.setItem(STORAGE_KEY, next);
-    } catch {
-      // Not being able to remember the address is not worth an error.
-    }
+    setTerminalUrl(next);
   }
 
   // A wrong address does not fail — it hangs, until the operating system
@@ -101,6 +94,13 @@ export function KaspiTerminalCard() {
     }
   }
 
+  // Probes /v2/register — the one route needing no token, harmless to repeat
+  // (an already-known name simply gets refused), and it starts no payment.
+  //
+  // It runs twice on purpose. A normal request getting through means the
+  // terminal returns the permission a page needs to talk to it at all. If
+  // only the no-cors repeat gets through, the terminal is reachable and
+  // withholding that permission — a different problem with a different fix.
   async function check() {
     setOutcome({ kind: "checking" });
     const probe = `${url.replace(/\/+$/, "")}/v2/register?name=${encodeURIComponent(CLIENT_NAME)}`;
@@ -127,11 +127,43 @@ export function KaspiTerminalCard() {
     }
   }
 
+  // The terminal does not answer this call until somebody presses
+  // «Разрешить» on its screen, so the wait is expected and the button says so
+  // while it happens.
+  async function pair() {
+    setPairing({ kind: "waiting" });
+    try {
+      const tokens = await register(url.replace(/\/+$/, ""));
+      setTokens(tokens);
+      setPairing({ kind: "paired", tokens });
+    } catch (err) {
+      const message = err instanceof KaspiError ? err.message : "Не удалось подключить терминал";
+      // 105 with this wording is the terminal saying it already has an entry
+      // under our name — recoverable, but only from the terminal's screen.
+      setPairing(
+        /already allowed/i.test(message) ? { kind: "alreadyPaired" } : { kind: "failed", message },
+      );
+    }
+  }
+
+  function unpair() {
+    setTokens(null);
+    setPairing({ kind: "unpaired" });
+  }
+
   return (
     <div className="rounded-2xl border border-border bg-surface p-5 shadow-card">
-      <div className="mb-4 flex items-center gap-2">
-        <CreditCard className="h-5 w-5 text-muted" strokeWidth={1.75} />
-        <h2 className="text-sm font-semibold text-foreground">Терминал Kaspi</h2>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <CreditCard className="h-5 w-5 text-muted" strokeWidth={1.75} />
+          <h2 className="text-sm font-semibold text-foreground">Терминал Kaspi</h2>
+        </div>
+        {pairing.kind === "paired" && (
+          <span className="flex items-center gap-1.5 rounded-lg bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-900">
+            <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
+            Подключён
+          </span>
+        )}
       </div>
 
       <label className="mb-1.5 block text-sm font-medium text-foreground">Адрес терминала</label>
@@ -147,7 +179,7 @@ export function KaspiTerminalCard() {
           type="button"
           onClick={check}
           disabled={outcome.kind === "checking"}
-          className="flex shrink-0 items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-60"
+          className="flex shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted disabled:opacity-60"
         >
           {outcome.kind === "checking" && <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} />}
           Проверить связь
@@ -211,6 +243,69 @@ export function KaspiTerminalCard() {
           </p>
         </div>
       )}
+
+      <div className="mt-5 border-t border-border pt-4">
+        {pairing.kind === "paired" ? (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm text-foreground">Касса зарегистрирована на терминале</p>
+              <p className="mt-0.5 text-xs text-muted">
+                Ключ доступа действует до {pairing.tokens.expirationDate || "—"} и продлевается сам
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={unpair}
+              className="shrink-0 rounded-xl border border-border px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+            >
+              Отключить
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm text-foreground">Терминал не подключён к кассе</p>
+                <p className="mt-0.5 text-xs text-muted">
+                  После нажатия подтвердите доступ на экране терминала
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={pair}
+                disabled={pairing.kind === "waiting"}
+                className="flex shrink-0 items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-60"
+              >
+                {pairing.kind === "waiting" && (
+                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} />
+                )}
+                {pairing.kind === "waiting" ? "Ждём подтверждения…" : "Подключить терминал"}
+              </button>
+            </div>
+
+            {pairing.kind === "waiting" && (
+              <p className="mt-3 rounded-xl bg-surface-muted px-4 py-3 text-sm text-foreground">
+                На терминале появился запрос доступа — нажмите на нём «Разрешить»
+              </p>
+            )}
+
+            {pairing.kind === "alreadyPaired" && (
+              <div className="mt-3 rounded-xl bg-amber-50 px-4 py-3">
+                <p className="text-sm font-medium text-amber-900">Терминал уже знает эту кассу</p>
+                <p className="mt-1 text-sm text-amber-800">
+                  Новый ключ он выдаст только заново. На терминале: Панель администратора → «Защита
+                  интеграции» → «Настроить доступ» → напротив «{CLIENT_NAME}» нажмите «Запретить». Потом
+                  вернитесь сюда и нажмите «Подключить терминал» ещё раз.
+                </p>
+              </div>
+            )}
+
+            {pairing.kind === "failed" && (
+              <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-800">{pairing.message}</p>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
