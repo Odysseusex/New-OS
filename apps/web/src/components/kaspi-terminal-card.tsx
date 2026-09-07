@@ -9,13 +9,39 @@ import { CreditCard, Loader2 } from "lucide-react";
 const CLIENT_NAME = "ArAmirOS";
 const STORAGE_KEY = "aramir.kaspiTerminalUrl";
 const DEFAULT_URL = "https://172.20.10.3:8080";
+// Any single label under kaspipos.kz matches the terminal's wildcard
+// certificate, so the name is ours to choose — it only has to be pointed at
+// the terminal's address in the machine's hosts file.
+const SUGGESTED_HOST = "pos.kaspipos.kz";
 
 type Outcome =
   | { kind: "idle" }
   | { kind: "checking" }
   | { kind: "reachable"; body: string }
   | { kind: "blocked" }
+  // `certificate` is a strong suspicion, not a measurement: a browser reports
+  // a rejected certificate and an unreachable host as the same opaque
+  // failure. What separates them is the address — see isBareIp below. The
+  // address is carried here rather than re-parsed at render time, so that
+  // editing the field afterwards cannot leave the instructions quoting a
+  // different address than the one that failed — or throw on a half-typed one.
+  | { kind: "certificate"; ip: string; port: string }
   | { kind: "unreachable" };
+
+// The terminal's certificate is issued to *.kaspipos.kz, so it only validates
+// when the terminal is addressed by a name. Reached by its number the
+// certificate cannot match, and a page's request is refused silently — no
+// prompt, no way to click through, unlike typing the address by hand. So a
+// failure against a bare address is the certificate until proven otherwise.
+function bareIpAddress(raw: string): { ip: string; port: string } | null {
+  try {
+    const parsed = new URL(raw);
+    if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(parsed.hostname)) return null;
+    return { ip: parsed.hostname, port: parsed.port || "8080" };
+  } catch {
+    return null;
+  }
+}
 
 // Checks whether this browser can talk to the Kaspi Smart POS on the shop's
 // network, and — the part that cannot be answered any other way — whether the
@@ -93,7 +119,11 @@ export function KaspiTerminalCard() {
       await probeOnce(probe, { mode: "no-cors" });
       setOutcome({ kind: "blocked" });
     } catch {
-      setOutcome({ kind: "unreachable" });
+      // no-cors is exempt from the permission check but not from the
+      // certificate one, so this failing against a bare address points at the
+      // certificate rather than at the network.
+      const bare = bareIpAddress(url);
+      setOutcome(bare ? { kind: "certificate", ...bare } : { kind: "unreachable" });
     }
   }
 
@@ -139,6 +169,36 @@ export function KaspiTerminalCard() {
           <p className="text-sm font-medium text-amber-900">Терминал найден, но не пускает кассу напрямую</p>
           <p className="mt-1 text-sm text-amber-800">
             Нужна небольшая программа-посредник на моноблоке. Сообщите об этом — она ставится один раз.
+          </p>
+        </div>
+      )}
+
+      {outcome.kind === "certificate" && (
+        <div className="mt-4 rounded-xl bg-amber-50 px-4 py-3">
+          <p className="text-sm font-medium text-amber-900">
+            К терминалу нельзя обращаться по цифровому адресу
+          </p>
+          <p className="mt-1 text-sm text-amber-800">
+            Сертификат терминала выписан на имя, поэтому по цифрам касса до него не достучится. Нужно
+            один раз задать терминалу имя на этом компьютере:
+          </p>
+          <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-amber-800">
+            <li>Откройте «Блокнот» правой кнопкой → «Запуск от имени администратора»</li>
+            <li>
+              Файл → Открыть → вставьте путь{" "}
+              <span className="font-mono text-xs">C:\Windows\System32\drivers\etc\hosts</span> (внизу
+              выберите «Все файлы»)
+            </li>
+            <li>
+              В конец файла добавьте строку:{" "}
+              <span className="font-mono text-xs">
+                {outcome.ip} {SUGGESTED_HOST}
+              </span>
+            </li>
+            <li>Сохраните, а сюда впишите адрес из поля ниже и проверьте снова</li>
+          </ol>
+          <p className="mt-2 break-all font-mono text-xs text-amber-900">
+            https://{SUGGESTED_HOST}:{outcome.port}
           </p>
         </div>
       )}
