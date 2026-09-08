@@ -151,16 +151,26 @@ export function hostsFileBlock(): string {
   ).join("\n");
 }
 
-// Probes /v2/status WITHOUT a token on purpose. It answers 401, which is
-// answer enough — something on that address is a Smart POS — and unlike
-// /v2/register it starts nothing and puts no approval prompt on the
-// terminal's screen. Probing register would pop a dialog on the terminal for
-// every address tried.
-async function looksLikeTerminal(candidate: string, timeoutMs: number): Promise<boolean> {
+// Probes /v2/status WITHOUT a token on purpose. Unlike /v2/register it starts
+// nothing and puts no approval prompt on the terminal's screen, so trying
+// many addresses is harmless.
+//
+// The mode is the whole trick and the bug the first version of this had:
+// Kaspi's own docs say a token-less request gets a bare HTTP 401, and a 401
+// is exactly the kind of response an API is least likely to also carry a
+// permissive CORS header on. Without one, a NORMAL-mode fetch against a
+// terminal that is genuinely sitting there and answering rejects with the
+// same generic error as an address nothing is listening on at all — so
+// discovery would silently fail to find a terminal that has already replied.
+// `no-cors` sidesteps this entirely: the browser resolves the fetch (with an
+// opaque, unreadable response) for ANY response from ANY reachable server,
+// no matter the status or headers, and only rejects when the connection
+// itself genuinely fails. That is the one distinction this needs.
+export async function isTerminalAt(candidate: string, timeoutMs = 5000): Promise<boolean> {
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), timeoutMs);
   try {
-    await fetch(`${candidate}/v2/status?processId=0`, { signal: abort.signal });
+    await fetch(`${candidate}/v2/status?processId=0`, { signal: abort.signal, mode: "no-cors" });
     return true;
   } catch {
     return false;
@@ -178,7 +188,7 @@ export async function discoverTerminal(
 ): Promise<string | null> {
   const candidates = HOTSPOT_LAST_OCTETS.map((octet) => `https://${hostForOctet(octet)}:${port}`);
   const results = await Promise.all(
-    candidates.map(async (candidate) => ((await looksLikeTerminal(candidate, timeoutMs)) ? candidate : null)),
+    candidates.map(async (candidate) => ((await isTerminalAt(candidate, timeoutMs)) ? candidate : null)),
   );
   return results.find((found) => found !== null) ?? null;
 }

@@ -9,6 +9,7 @@ import {
   getTerminalUrl,
   getTokens,
   hostsFileBlock,
+  isTerminalAt,
   register,
   setTerminalUrl,
   setTokens,
@@ -167,13 +168,27 @@ export function KaspiTerminalCard() {
     }
   }
 
-  // The terminal does not answer this call until somebody presses
-  // «Разрешить» on its screen, so the wait is expected and the button says so
-  // while it happens.
+  // The terminal does not answer register() until somebody presses
+  // «Разрешить» on its screen, so that call is given minutes — which is
+  // exactly why it must never be started against a dead address. This
+  // confirms something answers first, and searches again if the configured
+  // address has gone stale (a real risk on a phone hotspot) rather than
+  // tying up the whole wait on a terminal that has already moved.
   async function pair() {
     setPairing({ kind: "waiting" });
+    let target = url.replace(/\/+$/, "");
+    if (!(await isTerminalAt(target))) {
+      const found = await discoverTerminal();
+      if (!found) {
+        setPairing({ kind: "unpaired" });
+        setSearchFailed(true);
+        return;
+      }
+      target = found;
+      remember(target);
+    }
     try {
-      const tokens = await register(url.replace(/\/+$/, ""));
+      const tokens = await register(target);
       setTokens(tokens);
       setPairing({ kind: "paired", tokens });
     } catch (err) {
