@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, CreditCard, Loader2 } from "lucide-react";
+import { CheckCircle2, CreditCard, Loader2, Search } from "lucide-react";
 import {
   CLIENT_NAME,
   KaspiError,
+  discoverTerminal,
   getTerminalUrl,
   getTokens,
+  hostsFileBlock,
   register,
   setTerminalUrl,
   setTokens,
@@ -81,6 +83,9 @@ export function KaspiTerminalCard() {
   const [url, setUrl] = useState(DEFAULT_URL);
   const [outcome, setOutcome] = useState<Outcome>({ kind: "idle" });
   const [pairing, setPairing] = useState<Pairing>({ kind: "unpaired" });
+  const [searching, setSearching] = useState(false);
+  const [searchFailed, setSearchFailed] = useState(false);
+  const [showHosts, setShowHosts] = useState(false);
 
   useEffect(() => {
     const saved = getTerminalUrl();
@@ -142,6 +147,26 @@ export function KaspiTerminalCard() {
     }
   }
 
+  // Looks for the terminal across every address the hotspot can hand out,
+  // so a moved terminal is found rather than reported as missing. Costs
+  // nothing but a few seconds and touches nothing on the terminal.
+  async function search() {
+    setSearching(true);
+    setSearchFailed(false);
+    setOutcome({ kind: "idle" });
+    try {
+      const found = await discoverTerminal();
+      if (found) {
+        remember(found);
+        setOutcome({ kind: "reachable", body: `Терминал найден: ${found}` });
+      } else {
+        setSearchFailed(true);
+      }
+    } finally {
+      setSearching(false);
+    }
+  }
+
   // The terminal does not answer this call until somebody presses
   // «Разрешить» on its screen, so the wait is expected and the button says so
   // while it happens.
@@ -192,6 +217,19 @@ export function KaspiTerminalCard() {
         />
         <button
           type="button"
+          onClick={search}
+          disabled={searching}
+          className="flex shrink-0 items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-60"
+        >
+          {searching ? (
+            <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} />
+          ) : (
+            <Search className="h-4 w-4" strokeWidth={1.75} />
+          )}
+          {searching ? "Ищем…" : "Найти терминал"}
+        </button>
+        <button
+          type="button"
           onClick={check}
           disabled={outcome.kind === "checking"}
           className="flex shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted disabled:opacity-60"
@@ -201,8 +239,46 @@ export function KaspiTerminalCard() {
         </button>
       </div>
       <p className="mt-1.5 text-xs text-muted">
-        Адрес виден на терминале: Настройки → Kaspi Гид → О терминале → «IP терминала»
+        «Найти терминал» сам подберёт адрес — вводить вручную ничего не нужно
       </p>
+
+      {searchFailed && (
+        <div className="mt-4 rounded-xl bg-amber-50 px-4 py-3">
+          <p className="text-sm font-medium text-amber-900">Терминал не нашёлся</p>
+          <p className="mt-1 text-sm text-amber-800">
+            Если это первый запуск на этом компьютере — нужно один раз разрешить ему обращаться к
+            терминалу по имени. Дальше поиск будет работать сам, даже когда адрес терминала меняется.
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowHosts((open) => !open)}
+            className="mt-2 text-sm font-medium text-amber-900 underline"
+          >
+            {showHosts ? "Скрыть инструкцию" : "Показать, что сделать"}
+          </button>
+          {showHosts && (
+            <>
+              <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-amber-800">
+                <li>«Блокнот» правой кнопкой → «Запуск от имени администратора»</li>
+                <li>
+                  Файл → Открыть → путь{" "}
+                  <span className="font-mono text-xs">C:\Windows\System32\drivers\etc\hosts</span>{" "}
+                  (внизу выберите «Все файлы»)
+                </li>
+                <li>В конец файла вставьте этот список целиком и сохраните</li>
+                <li>Вернитесь сюда и нажмите «Найти терминал»</li>
+              </ol>
+              <pre className="mt-2 overflow-x-auto rounded-lg bg-white px-3 py-2 font-mono text-xs text-amber-900">
+                {hostsFileBlock()}
+              </pre>
+              <p className="mt-2 text-xs text-amber-800">
+                Если у терминала уже была строка в этом файле — старую можно удалить, этот список её
+                заменяет.
+              </p>
+            </>
+          )}
+        </div>
+      )}
 
       {outcome.kind === "reachable" && (
         <div className="mt-4 rounded-xl bg-emerald-50 px-4 py-3">

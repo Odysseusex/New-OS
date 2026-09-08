@@ -64,8 +64,21 @@ export interface SalePaymentDto {
   amount: number;
 }
 
+// What the Kaspi payment terminal returned for the card half of a sale.
+// Null whenever no terminal was involved: cash, a card typed on the terminal
+// by hand, or any sale from before the terminal was connected.
+export interface SaleTerminalPaymentDto {
+  // "qr", "card" or "alaqan". A refund has to go back the same way.
+  method: string;
+  // What a refund quotes — the order number for QR, the RRN for a card.
+  transactionId: string;
+  cardMask: string | null;
+}
+
 export interface SaleDetailDto extends SaleDto {
   items: SaleItemDto[];
+  // Present only when the card half went through the Kaspi terminal.
+  terminalPayment: SaleTerminalPaymentDto | null;
   // Empty for an ordinary single-method sale — `paymentMethod` says it all
   // there. Populated only when the sale was split.
   payments: SalePaymentDto[];
@@ -90,8 +103,18 @@ export interface CreateSalePaymentRequestDto {
   amount: number;
 }
 
+// Sent by the till when the card half was taken on the Kaspi terminal. The
+// payment has already happened by then — the terminal is the authority on
+// that — so this is the till reporting a fact, not asking for one.
+export interface CreateSaleTerminalPaymentRequestDto {
+  method: string;
+  transactionId: string;
+  cardMask?: string;
+}
+
 export interface CreateSaleRequestDto {
   locationId?: string;
+  terminalPayment?: CreateSaleTerminalPaymentRequestDto;
   customerId?: string;
   amountPaid?: number;
   paymentMethod?: PaymentMethod;

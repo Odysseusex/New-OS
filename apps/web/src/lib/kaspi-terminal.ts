@@ -122,6 +122,67 @@ export function isConfigured(): boolean {
   return Boolean(getTerminalUrl()) && getTokens() !== null;
 }
 
+// ── Finding the terminal ──────────────────────────────────────────────
+//
+// The terminal has to be addressed by name, and a name only resolves through
+// the machine's hosts file — which pins it to one address. On a phone hotspot
+// the terminal's address moves whenever the phone re-shares its connection,
+// and every move meant editing a system file again. That is not a thing a
+// cashier can do at eight in the morning.
+//
+// So instead every address the hotspot can hand out gets its own name, once,
+// and the till tries them all and keeps whichever answers. The certificate is
+// a wildcard, so all of these names validate against it equally.
+//
+// An iPhone hotspot is always 172.20.10.0/28: the phone itself is .1, and
+// everything it hands out lands between .2 and .14.
+export const HOTSPOT_SUBNET_PREFIX = "172.20.10";
+export const HOTSPOT_LAST_OCTETS = Array.from({ length: 13 }, (_, i) => i + 2);
+
+export function hostForOctet(octet: number): string {
+  return `pos${octet}.kaspipos.kz`;
+}
+
+// The block to paste into the machine's hosts file. Written once and then
+// good for as long as the shop stays on this hotspot.
+export function hostsFileBlock(): string {
+  return HOTSPOT_LAST_OCTETS.map(
+    (octet) => `${HOTSPOT_SUBNET_PREFIX}.${octet}  ${hostForOctet(octet)}`,
+  ).join("\n");
+}
+
+// Probes /v2/status WITHOUT a token on purpose. It answers 401, which is
+// answer enough — something on that address is a Smart POS — and unlike
+// /v2/register it starts nothing and puts no approval prompt on the
+// terminal's screen. Probing register would pop a dialog on the terminal for
+// every address tried.
+async function looksLikeTerminal(candidate: string, timeoutMs: number): Promise<boolean> {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), timeoutMs);
+  try {
+    await fetch(`${candidate}/v2/status?processId=0`, { signal: abort.signal });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Tries every name at once and returns the first that answers. Parallel
+// because the misses are the slow part: an address with nothing on it does
+// not refuse, it goes quiet until the attempt is given up on.
+export async function discoverTerminal(
+  port = "8080",
+  timeoutMs = 5000,
+): Promise<string | null> {
+  const candidates = HOTSPOT_LAST_OCTETS.map((octet) => `https://${hostForOctet(octet)}:${port}`);
+  const results = await Promise.all(
+    candidates.map(async (candidate) => ((await looksLikeTerminal(candidate, timeoutMs)) ? candidate : null)),
+  );
+  return results.find((found) => found !== null) ?? null;
+}
+
 // ── The wire ──────────────────────────────────────────────────────────
 
 async function call(

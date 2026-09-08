@@ -716,6 +716,16 @@ export class SalesService {
           amountPaid,
           paymentMethod,
           createdById: user.id,
+          // Recorded exactly as the terminal reported it. The money has
+          // already moved by the time this runs — refusing or rewriting it
+          // here would only lose the reference a refund needs.
+          ...(dto.terminalPayment
+            ? {
+                terminalMethod: dto.terminalPayment.method,
+                terminalTransactionId: dto.terminalPayment.transactionId,
+                terminalCardMask: dto.terminalPayment.cardMask ?? null,
+              }
+            : {}),
           // Consignment terms are snapshotted onto each line here, from the
           // product as it stands at this moment. Selling a unit of somebody
           // else's goods is what creates the debt to them, and the debt must
@@ -1019,8 +1029,21 @@ export class SalesService {
       isOffline: boolean;
     } | null;
     payments?: { method: string; amount: { toNumber: () => number } }[];
+    terminalMethod?: string | null;
+    terminalTransactionId?: string | null;
+    terminalCardMask?: string | null;
   }): SaleDetailDto => ({
     ...this.toSaleDto(sale),
+    // Both halves or nothing: a method without the transaction it refers to
+    // cannot refund anything, so it would be a promise the till cannot keep.
+    terminalPayment:
+      sale.terminalMethod && sale.terminalTransactionId
+        ? {
+            method: sale.terminalMethod,
+            transactionId: sale.terminalTransactionId,
+            cardMask: sale.terminalCardMask ?? null,
+          }
+        : null,
     items: sale.items.map((item) => ({
       id: item.id,
       productId: item.productId,

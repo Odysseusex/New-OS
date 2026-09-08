@@ -629,6 +629,19 @@ model Sale {
   createdById    String
   createdBy      User      @relation(fields: [createdById], references: [id])
 
+  // What the Kaspi payment terminal returned, when the card half of this sale
+  // went through it. Null for cash, for a card typed on the terminal by hand,
+  // and for every sale made before the terminal was connected.
+  //
+  // These are not decoration: Kaspi refuse a refund that does not go back by
+  // the method it came in, quoting the original transaction. Without these two
+  // the money cannot be returned through the terminal at all — so they are
+  // captured at the moment of sale, the only moment they exist.
+  terminalMethod        String?
+  terminalTransactionId String?
+  // For the printed slip and for telling two payments apart in a dispute.
+  terminalCardMask      String?
+
   items          SaleItem[]
   payments       SalePayment[]
   stockMovements StockMovement[]

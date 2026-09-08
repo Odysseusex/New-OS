@@ -1,5 +1,16 @@
 import { Type } from "class-transformer";
-import { ArrayMinSize, IsArray, IsEnum, IsNumber, IsOptional, IsPositive, IsString, Min, ValidateNested } from "class-validator";
+import {
+  ArrayMinSize,
+  IsArray,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsPositive,
+  IsString,
+  MaxLength,
+  Min,
+  ValidateNested,
+} from "class-validator";
 import { PaymentMethod } from "@bakery-os/shared";
 
 export class CreateSaleItemDto {
@@ -31,10 +42,34 @@ export class CreateSalePaymentDto {
   amount!: number;
 }
 
+// The card half was taken on the Kaspi terminal, which already moved the
+// money. The till is reporting what the terminal returned, so the server
+// stores it as given — it has no way to verify it and no business refusing a
+// payment that has already happened.
+export class CreateSaleTerminalPaymentDto {
+  @IsString()
+  @MaxLength(32)
+  method!: string;
+
+  @IsString()
+  @MaxLength(64)
+  transactionId!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  cardMask?: string;
+}
+
 export class CreateSaleDto {
   @IsOptional()
   @IsString()
   locationId?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CreateSaleTerminalPaymentDto)
+  terminalPayment?: CreateSaleTerminalPaymentDto;
 
   @IsOptional()
   @IsString()

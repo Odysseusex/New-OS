@@ -313,6 +313,10 @@ export default function PosPage() {
     method: PaymentMethod,
     cashGiven?: number,
     split?: { method: PaymentMethod; amount: number }[],
+    // Set only when the card half went through the Kaspi terminal. By the
+    // time this is called the money has already moved, so a failure to record
+    // the sale is a problem to shout about, not to retry silently.
+    terminalPayment?: { method: string; transactionId: string; cardMask?: string },
   ) {
     if (cart.length === 0 || !locationId) return;
     setIsSubmitting(true);
@@ -322,6 +326,7 @@ export default function PosPage() {
         locationId,
         paymentMethod: method,
         ...(split ? { payments: split } : {}),
+        ...(terminalPayment ? { terminalPayment } : {}),
         items: cart.map((line) => ({
           productId: line.product.id,
           quantity: line.quantity,
