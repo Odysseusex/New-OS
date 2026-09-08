@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
-import { Banknote, CreditCard, History, Minus, Plus, Printer, ScanLine, Split, Trash2, X } from "lucide-react";
+import { Banknote, CreditCard, History, Minus, Plus, Printer, ScanLine, Split, Tag, Trash2, X } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import type { CategoryDto, LocationDto, ProductDto, SaleDetailDto, SaleFiscalReceiptDto } from "@bakery-os/shared";
 import {
@@ -18,6 +18,7 @@ import {
 } from "@bakery-os/shared";
 import { Modal } from "@/components/modal";
 import { NumberPad } from "@/components/number-pad";
+import { LabelPrintPicker } from "@/components/label-print-modal";
 import { SaleHistoryModal } from "@/components/sale-history-modal";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -88,6 +89,9 @@ export default function PosPage() {
   // records what the sale cost, not which note the buyer produced.
   const [cashDetails, setCashDetails] = useState<{ given: number; change: number } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  // Labels are printed at the till because that is where the label printer is
+  // plugged in — the monoblock is the only machine it is attached to.
+  const [labelsOpen, setLabelsOpen] = useState(false);
   // An older sale the cashier asked for another copy of. Takes precedence
   // over `lastSale` on the printable slip, and clears itself once printed.
   const [reprintSale, setReprintSale] = useState<SaleDetailDto | null>(null);
@@ -422,6 +426,17 @@ export default function PosPage() {
         >
           <History className="h-4 w-4" strokeWidth={1.75} />
           История
+        </button>
+        {/* Same reason as История: the printer hangs off the monoblock, so
+            printing a sticker for a cake means standing at this screen. It
+            prints — it does not touch stock, money or the cart — so it needs
+            no role of its own. */}
+        <button
+          onClick={() => setLabelsOpen(true)}
+          className="flex shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+        >
+          <Tag className="h-4 w-4" strokeWidth={1.75} />
+          Этикетки
         </button>
         {/* Which point this till is selling at is shown to EVERYONE, not just
             to whoever may switch it. Prices differ per point, so a cashier
@@ -770,6 +785,18 @@ export default function PosPage() {
           // the printed slip.
           setHistoryOpen(false);
           setReprintSale(sale);
+        }}
+      />
+    )}
+    {labelsOpen && (
+      <LabelPrintPicker
+        // Own production only. A bought-in packet already carries the
+        // manufacturer's own label; the sticker exists for the cake that has
+        // nothing on it.
+        products={products.filter((p) => p.type === ProductType.FINISHED_GOOD)}
+        onClose={() => {
+          setLabelsOpen(false);
+          focusScan();
         }}
       />
     )}

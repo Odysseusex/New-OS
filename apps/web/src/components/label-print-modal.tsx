@@ -14,17 +14,21 @@ import { Modal } from "@/components/modal";
 // or feeds a blank one. Hence @page size below, per chosen stock.
 //
 // Type sizes and the barcode's height are per stock rather than one set of
-// numbers scaled down: at 40 mm wide the two dates no longer fit on one line
-// and have to stack, which is a layout change, not a font change.
+// numbers scaled down.
+//
+// The two dates are stacked on every size, not laid side by side on the wider
+// ones: «Изгот.: 08.09.2026» and «Годен до: 11.09.2026» together overrun even
+// 58 mm, and the sticker clips rather than wraps — so the best-before date,
+// the whole reason the label exists, was losing its last characters.
 //
 // 30 × 20 mm is deliberately absent. A name, two dates and a scannable Code
 // 128 of an SKU do not fit on it — the barcode comes out under the width a
 // scanner can read, so offering it would only print stickers that fail at the
 // till.
 const LABEL_SIZES = [
-  { id: "58x40", label: "58 × 40 мм", widthMm: 58, heightMm: 40, nameMm: 3, textMm: 2.6, barcodeMm: 14, stackDates: false },
-  { id: "58x30", label: "58 × 30 мм", widthMm: 58, heightMm: 30, nameMm: 2.8, textMm: 2.4, barcodeMm: 11, stackDates: false },
-  { id: "40x30", label: "40 × 30 мм", widthMm: 40, heightMm: 30, nameMm: 2.6, textMm: 2.2, barcodeMm: 10, stackDates: true },
+  { id: "58x40", label: "58 × 40 мм", widthMm: 58, heightMm: 40, nameMm: 3, textMm: 2.6, barcodeMm: 14 },
+  { id: "58x30", label: "58 × 30 мм", widthMm: 58, heightMm: 30, nameMm: 2.8, textMm: 2.4, barcodeMm: 10 },
+  { id: "40x30", label: "40 × 30 мм", widthMm: 40, heightMm: 30, nameMm: 2.6, textMm: 2.2, barcodeMm: 10 },
 ] as const;
 
 type LabelSize = (typeof LABEL_SIZES)[number];
@@ -125,9 +129,8 @@ function LabelBody({
       <div
         style={{
           display: "flex",
-          flexDirection: size.stackDates ? "column" : "row",
-          justifyContent: "space-between",
-          gap: size.stackDates ? "0.5mm" : undefined,
+          flexDirection: "column",
+          gap: "0.5mm",
           fontSize: `${size.textMm}mm`,
           lineHeight: 1.2,
           whiteSpace: "nowrap",
@@ -353,5 +356,69 @@ export function LabelPrintModal({
           document.body,
         )}
     </>
+  );
+}
+
+// Pick a product, then print its labels. This exists for the till: the label
+// printer is plugged into the monoblock, and the monoblock is the till, so
+// whoever prints a sticker is standing at the till screen — not in Склад on
+// another machine. Printing changes nothing (no money, no stock, no request
+// that writes), so it needs no role of its own.
+//
+// A tap list rather than the dropdown ProductSelect offers, because this one
+// is used with a finger on a touch screen.
+export function LabelPrintPicker({
+  products,
+  onClose,
+}: {
+  products: ProductDto[];
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [picked, setPicked] = useState<ProductDto | null>(null);
+
+  // Same in-memory substring match as every other search in the app: the
+  // catalogue is already loaded, so there is no request and no debounce.
+  const normalizedQuery = query.trim().toLowerCase();
+  const filtered = normalizedQuery
+    ? products.filter(
+        (p) =>
+          p.name.toLowerCase().includes(normalizedQuery) ||
+          p.sku.toLowerCase().includes(normalizedQuery),
+      )
+    : products;
+
+  if (picked) return <LabelPrintModal product={picked} onClose={onClose} />;
+
+  return (
+    <Modal title="Печать этикеток" onClose={onClose} width="max-w-lg">
+      <input
+        type="text"
+        autoFocus
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Поиск по названию или артикулу…"
+        className="mb-3 w-full rounded-xl border border-border bg-surface px-4 py-3 text-base text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+      />
+
+      <div className="max-h-[26rem] space-y-1.5 overflow-y-auto">
+        {filtered.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => setPicked(p)}
+            className="flex w-full items-center justify-between gap-3 rounded-xl border border-border px-4 py-3 text-left transition hover:border-accent hover:bg-surface-muted"
+          >
+            <span className="text-base font-medium text-foreground">{p.name}</span>
+            <span className="shrink-0 font-mono text-xs text-muted">
+              {(p.barcode ?? "").trim() || p.sku}
+            </span>
+          </button>
+        ))}
+        {filtered.length === 0 && (
+          <p className="px-1 py-6 text-center text-sm text-muted">Ничего не найдено</p>
+        )}
+      </div>
+    </Modal>
   );
 }
