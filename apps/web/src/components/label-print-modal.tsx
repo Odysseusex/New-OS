@@ -1,0 +1,357 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import JsBarcode from "jsbarcode";
+import { Printer } from "lucide-react";
+import type { ProductDto, RecipeDto } from "@bakery-os/shared";
+import { api } from "@/lib/api";
+import { Modal } from "@/components/modal";
+
+// Physical label stock, in millimetres. A thermal label printer is a normal
+// Windows printer, so printing is the browser's ordinary print — but the page
+// has to be told the exact size of the sticker or the printer either crops it
+// or feeds a blank one. Hence @page size below, per chosen stock.
+//
+// Type sizes and the barcode's height are per stock rather than one set of
+// numbers scaled down: at 40 mm wide the two dates no longer fit on one line
+// and have to stack, which is a layout change, not a font change.
+//
+// 30 × 20 mm is deliberately absent. A name, two dates and a scannable Code
+// 128 of an SKU do not fit on it — the barcode comes out under the width a
+// scanner can read, so offering it would only print stickers that fail at the
+// till.
+const LABEL_SIZES = [
+  { id: "58x40", label: "58 × 40 мм", widthMm: 58, heightMm: 40, nameMm: 3, textMm: 2.6, barcodeMm: 14, stackDates: false },
+  { id: "58x30", label: "58 × 30 мм", widthMm: 58, heightMm: 30, nameMm: 2.8, textMm: 2.4, barcodeMm: 11, stackDates: false },
+  { id: "40x30", label: "40 × 30 мм", widthMm: 40, heightMm: 30, nameMm: 2.6, textMm: 2.2, barcodeMm: 10, stackDates: true },
+] as const;
+
+type LabelSize = (typeof LABEL_SIZES)[number];
+
+function todayIso(): string {
+  const now = new Date();
+  const offsetMinutes = now.getTimezoneOffset();
+  return new Date(now.getTime() - offsetMinutes * 60000).toISOString().slice(0, 10);
+}
+
+function addDays(iso: string, days: number): string | null {
+  const parsed = Date.parse(`${iso}T00:00:00`);
+  if (Number.isNaN(parsed)) return null;
+  return new Date(parsed + days * 86400000).toISOString().slice(0, 10);
+}
+
+function formatRu(iso: string | null): string {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("-");
+  return `${d}.${m}.${y}`;
+}
+
+// Code 128 — what every cheap thermal printer and USB scanner handles, and
+// unlike EAN-13 it takes letters, so a generated SKU like PRD-000123 goes on
+// the label as-is instead of needing a made-up numeric code.
+function Barcode({ value, heightMm }: { value: string; heightMm: number }) {
+  const ref = useRef<SVGSVGElement>(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    try {
+      JsBarcode(ref.current, value, {
+        format: "CODE128",
+        width: 1.6,
+        height: 40,
+        displayValue: true,
+        fontSize: 12,
+        margin: 0,
+        // Black on white regardless of theme: the scanner reads contrast, not
+        // brand colours, and the label is printed on white stock anyway.
+        lineColor: "#000000",
+        background: "#ffffff",
+      });
+      // JsBarcode sizes the SVG in pixels, which has nothing to do with a
+      // sticker measured in millimetres — left alone it overflows a narrow
+      // label and gets cropped, which is what an unscannable barcode looks
+      // like. It does emit a viewBox, so clearing the pixel width/height and
+      // letting CSS set the box makes it fill the label exactly.
+      // preserveAspectRatio="none" is safe here: every bar is stretched by the
+      // same factor, and a scanner reads the ratios between bars, not their
+      // absolute width.
+      ref.current.removeAttribute("width");
+      ref.current.removeAttribute("height");
+      ref.current.setAttribute("preserveAspectRatio", "none");
+    } catch {
+      // A value Code 128 cannot encode leaves the barcode blank rather than
+      // taking the whole dialog down; the text on the label still prints.
+    }
+  }, [value]);
+
+  return <svg ref={ref} style={{ display: "block", width: "100%", height: `${heightMm}mm` }} />;
+}
+
+// One sticker's contents. Shared between the on-screen preview and the sheet
+// that actually prints, so what the person sees before pressing print is the
+// same markup that reaches the printer rather than an approximation of it.
+function LabelBody({
+  name,
+  madeOn,
+  bestBefore,
+  barcodeValue,
+  size,
+}: {
+  name: string;
+  madeOn: string;
+  bestBefore: string | null;
+  barcodeValue: string;
+  size: LabelSize;
+}) {
+  return (
+    <>
+      {/* Two lines at most: a long name pushing the dates and the barcode off
+          a small sticker would silently lose the two things the label exists
+          for. */}
+      <div
+        style={{
+          fontSize: `${size.nameMm}mm`,
+          fontWeight: 700,
+          lineHeight: 1.15,
+          display: "-webkit-box",
+          WebkitBoxOrient: "vertical",
+          WebkitLineClamp: 2,
+          overflow: "hidden",
+        }}
+      >
+        {name}
+      </div>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: size.stackDates ? "column" : "row",
+          justifyContent: "space-between",
+          gap: size.stackDates ? "0.5mm" : undefined,
+          fontSize: `${size.textMm}mm`,
+          lineHeight: 1.2,
+          whiteSpace: "nowrap",
+        }}
+      >
+        <span>Изгот.: {formatRu(madeOn)}</span>
+        {bestBefore && <span style={{ fontWeight: 700 }}>Годен до: {formatRu(bestBefore)}</span>}
+      </div>
+      <Barcode value={barcodeValue} heightMm={size.barcodeMm} />
+    </>
+  );
+}
+
+// Labels for own production — the case this exists for is a cake that has to
+// carry a date and a code the till can scan back.
+//
+// The barcode is the product's own barcode when it has one (bought-in goods
+// do), and its SKU otherwise, which is what own production always has. The
+// till resolves a scan against both, so a label printed here rings the
+// product up without anything else being set first.
+export function LabelPrintModal({
+  product,
+  onClose,
+}: {
+  product: ProductDto;
+  onClose: () => void;
+}) {
+  const [madeOn, setMadeOn] = useState(todayIso());
+  const [shelfLifeDays, setShelfLifeDays] = useState("");
+  const [copies, setCopies] = useState("1");
+  const [sizeId, setSizeId] = useState<LabelSize["id"]>("58x40");
+  const [recipeChecked, setRecipeChecked] = useState(false);
+  // The label sheet is portalled onto <body> so that printing can hide every
+  // other top-level element and leave only the stickers. Rendered in place it
+  // sat deep inside the page, with the whole app — sidebar, table, this very
+  // dialog — as its ancestors, and no amount of hiding siblings could stop
+  // those from reaching the printer. Portals need the DOM, so it waits for
+  // the client rather than rendering during SSR.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  // The shelf life already lives on the product's technical card, so it is
+  // filled in from there rather than retyped for every print run. Editable,
+  // because a particular batch can differ and the person at the bench knows.
+  useEffect(() => {
+    let cancelled = false;
+    api.recipes
+      .list()
+      .then((recipes: RecipeDto[]) => {
+        if (cancelled) return;
+        const own = recipes.find((r) => r.productId === product.id);
+        if (own?.shelfLifeDays != null) setShelfLifeDays(String(own.shelfLifeDays));
+        setRecipeChecked(true);
+      })
+      .catch(() => {
+        if (!cancelled) setRecipeChecked(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [product.id]);
+
+  const size = LABEL_SIZES.find((s) => s.id === sizeId) ?? LABEL_SIZES[0];
+  const days = Number(shelfLifeDays);
+  const bestBefore = shelfLifeDays.trim() && Number.isFinite(days) ? addDays(madeOn, days) : null;
+  const barcodeValue = (product.barcode ?? "").trim() || product.sku;
+  const count = Math.max(1, Math.min(200, Number(copies) || 1));
+
+  const labels = useMemo(() => Array.from({ length: count }, (_, i) => i), [count]);
+
+  return (
+    <>
+      <Modal title="Печать этикеток" onClose={onClose} width="max-w-md">
+        {/* The sticker at its real size, so a roll is not spent finding out
+            that the name was cut off or the dates were wrong. */}
+        <div className="mb-4 flex justify-center rounded-xl bg-surface-muted px-4 py-4">
+          <div
+            style={{
+              width: `${size.widthMm}mm`,
+              height: `${size.heightMm}mm`,
+              boxSizing: "border-box",
+              padding: "1.5mm 2mm",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              color: "#000",
+              background: "#fff",
+              overflow: "hidden",
+            }}
+            className="rounded-md shadow-sm ring-1 ring-border"
+          >
+            <LabelBody
+              name={product.name}
+              madeOn={madeOn}
+              bestBefore={bestBefore}
+              barcodeValue={barcodeValue}
+              size={size}
+            />
+          </div>
+        </div>
+
+        <div className="mb-4 grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">Дата изготовления</label>
+            <input
+              type="date"
+              value={madeOn}
+              onChange={(e) => setMadeOn(e.target.value)}
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">Срок годности, дней</label>
+            <input
+              type="number"
+              min={0}
+              value={shelfLifeDays}
+              onChange={(e) => setShelfLifeDays(e.target.value)}
+              placeholder={recipeChecked ? "Не задан" : "…"}
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+          </div>
+        </div>
+
+        <div className="mb-4 flex items-baseline justify-between rounded-xl border border-border px-4 py-3">
+          <span className="text-sm text-muted">Годен до</span>
+          <span className="text-lg font-semibold tabular-nums text-foreground">{formatRu(bestBefore)}</span>
+        </div>
+
+        <div className="mb-5 grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">Сколько этикеток</label>
+            <input
+              type="number"
+              min={1}
+              max={200}
+              value={copies}
+              onChange={(e) => setCopies(e.target.value)}
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">Размер этикетки</label>
+            <select
+              value={sizeId}
+              onChange={(e) => setSizeId(e.target.value as LabelSize["id"])}
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            >
+              {LABEL_SIZES.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {!bestBefore && (
+          <p className="mb-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Срок годности не задан — на этикетке не будет строки «Годен до». Его можно один раз указать
+            в техкарте товара, тогда он подставится сам.
+          </p>
+        )}
+
+        <button
+          type="button"
+          onClick={() => window.print()}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-medium text-accent-foreground transition hover:opacity-90"
+        >
+          <Printer className="h-4 w-4" strokeWidth={1.75} />
+          Напечатать {count} шт
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-2 w-full rounded-xl px-4 py-2.5 text-sm font-medium text-muted transition hover:bg-surface-muted"
+        >
+          Закрыть
+        </button>
+      </Modal>
+
+      {/* Print-only, and portalled onto <body> on purpose: everything else at
+          the top level is hidden when printing, so this sheet is all that
+          reaches the printer. One label per page, because a label printer
+          feeds one sticker at a time. */}
+      {mounted &&
+        createPortal(
+          <div className="aramir-label-sheet hidden print:block">
+            <style>{`
+          @page { size: ${size.widthMm}mm ${size.heightMm}mm; margin: 0; }
+          @media print {
+            html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+            body > *:not(.aramir-label-sheet) { display: none !important; }
+            .aramir-label {
+              width: ${size.widthMm}mm;
+              height: ${size.heightMm}mm;
+              box-sizing: border-box;
+              padding: 1.5mm 2mm;
+              display: flex;
+              flex-direction: column;
+              justify-content: space-between;
+              color: #000;
+              background: #fff;
+              overflow: hidden;
+              break-after: page;
+              page-break-after: always;
+            }
+            .aramir-label:last-child { break-after: auto; page-break-after: auto; }
+          }
+        `}</style>
+            {labels.map((i) => (
+              <div key={i} className="aramir-label">
+                <LabelBody
+                  name={product.name}
+                  madeOn={madeOn}
+                  bestBefore={bestBefore}
+                  barcodeValue={barcodeValue}
+                  size={size}
+                />
+              </div>
+            ))}
+          </div>,
+          document.body,
+        )}
+    </>
+  );
+}

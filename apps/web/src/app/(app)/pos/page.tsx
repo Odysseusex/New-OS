@@ -278,13 +278,19 @@ export default function PosPage() {
     if (!raw) return;
     const lower = raw.toLowerCase();
 
-    const byBarcode = products.filter((p) => (p.barcode ?? "").toLowerCase() === lower);
-    if (byBarcode.length === 1) {
-      addToCart(byBarcode[0]);
+    // Barcode first, then SKU. Own production — bread, cakes — carries no
+    // manufacturer's barcode, so the label printed for it encodes the SKU
+    // instead; matching both is what makes that label ring the product up
+    // rather than land as an unrecognised code.
+    const byCode = products.filter(
+      (p) => (p.barcode ?? "").toLowerCase() === lower || p.sku.toLowerCase() === lower,
+    );
+    if (byCode.length === 1) {
+      addToCart(byCode[0]);
       setQuery("");
       return;
     }
-    if (byBarcode.length > 1) {
+    if (byCode.length > 1) {
       setError(`Штрихкод ${raw} привязан к нескольким товарам — исправьте в номенклатуре`);
       setQuery("");
       return;

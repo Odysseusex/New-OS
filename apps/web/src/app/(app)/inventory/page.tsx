@@ -11,6 +11,7 @@ import {
   PRODUCT_FORCE_DELETE_ROLES,
   PRODUCT_MANAGE_ROLES,
   PRODUCT_TYPE_LABELS_RU,
+  ProductType,
   STOCK_MOVEMENT_TYPE_LABELS_RU,
   StockMovementType,
   UNIT_LABELS_RU,
@@ -19,6 +20,7 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
 import { StockMovementModal } from "@/components/stock-movement-modal";
+import { LabelPrintModal } from "@/components/label-print-modal";
 import { NewProductModal } from "@/components/new-product-modal";
 import { CategoryModal } from "@/components/category-modal";
 import { ForceDeleteProductModal } from "@/components/force-delete-product-modal";
@@ -49,6 +51,7 @@ export default function InventoryPage() {
   );
   const [forceDeleteProduct, setForceDeleteProduct] = useState<ProductDto | undefined>(undefined);
   const [editingProduct, setEditingProduct] = useState<ProductDto | undefined>(undefined);
+  const [labelProduct, setLabelProduct] = useState<ProductDto | undefined>(undefined);
   const [editingCategory, setEditingCategory] = useState<CategoryDto | undefined>(undefined);
   const [newProductCategoryId, setNewProductCategoryId] = useState<string | undefined>(undefined);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
@@ -535,6 +538,12 @@ export default function InventoryPage() {
                           setEditingProduct(p);
                           setModal("product");
                         }}
+                        // Only for what the bakery makes itself: a bought-in
+                        // raw material already arrives labelled by whoever
+                        // produced it.
+                        onLabels={
+                          p.type === ProductType.FINISHED_GOOD ? () => setLabelProduct(p) : undefined
+                        }
                         onArchive={() => handleProductArchive(p)}
                         onRestore={() => handleProductRestore(p)}
                         onDelete={canDelete ? () => handleProductDelete(p) : undefined}
@@ -686,6 +695,12 @@ export default function InventoryPage() {
                           setEditingProduct(p);
                           setModal("product");
                         }}
+                        // Only for what the bakery makes itself: a bought-in
+                        // raw material already arrives labelled by whoever
+                        // produced it.
+                        onLabels={
+                          p.type === ProductType.FINISHED_GOOD ? () => setLabelProduct(p) : undefined
+                        }
                         onArchive={() => handleProductArchive(p)}
                         onRestore={() => handleProductRestore(p)}
                         onDelete={canDelete ? () => handleProductDelete(p) : undefined}
@@ -720,6 +735,10 @@ export default function InventoryPage() {
             loadStock();
           }}
         />
+      )}
+
+      {labelProduct && (
+        <LabelPrintModal product={labelProduct} onClose={() => setLabelProduct(undefined)} />
       )}
 
       {modal === "product" && (

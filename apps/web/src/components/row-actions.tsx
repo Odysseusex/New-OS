@@ -1,10 +1,11 @@
 "use client";
 
-import { Archive, Flame, Pencil, RotateCcw, Trash2 } from "lucide-react";
+import { Archive, Flame, Pencil, RotateCcw, Tag, Trash2 } from "lucide-react";
 
 export function RowActions({
   isActive,
   onEdit,
+  onLabels,
   onArchive,
   onRestore,
   onDelete,
@@ -12,6 +13,9 @@ export function RowActions({
 }: {
   isActive: boolean;
   onEdit?: () => void;
+  // Printing labels for a product. Offered only where it means something —
+  // own production that needs a date and a scannable code on the sticker.
+  onLabels?: () => void;
   onArchive: () => void;
   onRestore: () => void;
   onDelete?: () => void;
@@ -29,6 +33,15 @@ export function RowActions({
           className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-foreground"
         >
           <Pencil className="h-4 w-4" strokeWidth={1.75} />
+        </button>
+      )}
+      {onLabels && (
+        <button
+          onClick={onLabels}
+          title="Печать этикеток"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-foreground"
+        >
+          <Tag className="h-4 w-4" strokeWidth={1.75} />
         </button>
       )}
       {isActive ? (
