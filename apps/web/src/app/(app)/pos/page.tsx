@@ -502,7 +502,7 @@ export default function PosPage() {
             if (result === "blocked") {
               setError("Браузер заблокировал новое окно. Разрешите всплывающие окна для этого сайта.");
             } else if (result !== "placed") {
-              setFlash("Экран покупателя открыт. Перетащите окно на второй экран и нажмите F11.");
+              setFlash("Экран покупателя открыт. Перетащите окно на второй экран пальцем за верхний край.");
             }
           }}
           className="flex shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"

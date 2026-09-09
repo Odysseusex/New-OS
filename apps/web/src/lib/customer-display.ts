@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 // The buyer-facing second screen of the monoblock.
 //
@@ -112,9 +112,16 @@ export function useCustomerDisplaySubscriber(onState: (state: CustomerState) => 
 export type OpenResult = "placed" | "opened" | "blocked" | "single-screen";
 
 // Opens the display window. Placing it on the second screen needs the Window
-// Management API, which asks the user for permission the first time; without
-// it (permission refused, or an older browser) the window still opens and can
-// be dragged across by hand once.
+// Management API, which asks the user for permission the first time.
+//
+// Sized to the screen's full width/height — not availWidth/availHeight —
+// specifically so the window already covers the monitor edge to edge the
+// moment it opens, with no further action needed on that screen at all. The
+// second screen on a two-screen monoblock is a plain display with no touch
+// and often no mouse reaching it, so anything that required a tap or click
+// over there (a "go fullscreen" button, F11) was never actually usable —
+// this is why that button existed in the first place and why it is being
+// removed below.
 export async function openCustomerDisplay(): Promise<OpenResult> {
   const url = "/customer";
   try {
@@ -124,8 +131,20 @@ export async function openCustomerDisplay(): Promise<OpenResult> {
       ).getScreenDetails();
       const other = details.screens.find((s) => !s.isPrimary);
       if (!other) return window.open(url, "aramir-customer") ? "single-screen" : "blocked";
-      const features = `left=${other.availLeft},top=${other.availTop},width=${other.availWidth},height=${other.availHeight}`;
-      return window.open(url, "aramir-customer", features) ? "placed" : "blocked";
+      const features = `left=${other.left},top=${other.top},width=${other.width},height=${other.height}`;
+      const win = window.open(url, "aramir-customer", features);
+      if (!win) return "blocked";
+      // Some browsers clamp a popup's initial size/position to the screen it
+      // opened from, ignoring left/top/width/height in the features string
+      // the first time — resizing after the fact still lands it correctly.
+      try {
+        win.moveTo(other.left, other.top);
+        win.resizeTo(other.width, other.height);
+      } catch {
+        // Cross-origin or otherwise refused; the features string above was
+        // still the first attempt and may have already worked.
+      }
+      return "placed";
     }
   } catch {
     // Permission refused or the API is missing — fall through to a plain
@@ -136,22 +155,8 @@ export async function openCustomerDisplay(): Promise<OpenResult> {
 
 interface ScreenPlacement {
   isPrimary: boolean;
-  availLeft: number;
-  availTop: number;
-  availWidth: number;
-  availHeight: number;
-}
-
-// Fullscreen has to be asked for by the window that wants it, from a real
-// user gesture — the till window cannot put the display window fullscreen on
-// its behalf. Hence the corner button on the display itself.
-export function useFullscreenToggle() {
-  return useCallback(async () => {
-    try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else await document.documentElement.requestFullscreen();
-    } catch {
-      // Refused by the browser; F11 still works.
-    }
-  }, []);
+  left: number;
+  top: number;
+  width: number;
+  height: number;
 }

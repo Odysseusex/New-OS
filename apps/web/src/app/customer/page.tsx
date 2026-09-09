@@ -1,13 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Maximize2 } from "lucide-react";
+import { Check } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import {
-  useCustomerDisplaySubscriber,
-  useFullscreenToggle,
-  type CustomerState,
-} from "@/lib/customer-display";
+import { useCustomerDisplaySubscriber, type CustomerState } from "@/lib/customer-display";
 import { formatMoney, formatQuantity } from "@/lib/format";
 
 // The buyer's screen on the two-screen monoblock.
@@ -20,32 +16,28 @@ import { formatMoney, formatQuantity } from "@/lib/format";
 // renders only what the till window broadcasts to it, which is why it is safe
 // for it to be reachable without a password: opened by itself it shows a
 // welcome and nothing else.
+//
+// No fullscreen button here on purpose. This screen is a plain display on a
+// two-screen monoblock — no touch, usually no mouse reaching it either — so
+// anything that needed a tap or click on THIS screen was unusable by design.
+// The till already opens this window sized to cover the whole second monitor
+// (see openCustomerDisplay), which is as close to fullscreen as is reachable
+// without any interaction here; the one silent attempt at true fullscreen
+// below only helps if the browser allows it, and does nothing if not.
 export default function CustomerDisplayPage() {
   const [state, setState] = useState<CustomerState>({ kind: "idle", locationName: null });
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const toggleFullscreen = useFullscreenToggle();
 
   useCustomerDisplaySubscriber(setState);
 
   useEffect(() => {
-    const sync = () => setIsFullscreen(Boolean(document.fullscreenElement));
-    sync();
-    document.addEventListener("fullscreenchange", sync);
-    return () => document.removeEventListener("fullscreenchange", sync);
+    document.documentElement.requestFullscreen?.().catch(() => {
+      // Refused because there was no user gesture on this window — expected
+      // most of the time. The window still covers the screen edge to edge.
+    });
   }, []);
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
-      {!isFullscreen && (
-        <button
-          onClick={toggleFullscreen}
-          title="Во весь экран"
-          className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-lg text-muted/60 transition hover:bg-surface-muted hover:text-foreground"
-        >
-          <Maximize2 className="h-4 w-4" strokeWidth={1.75} />
-        </button>
-      )}
-
       {state.kind === "idle" && <IdleScreen locationName={state.locationName} />}
       {state.kind === "cart" && <CartScreen state={state} />}
       {state.kind === "paid" && <PaidScreen state={state} />}
