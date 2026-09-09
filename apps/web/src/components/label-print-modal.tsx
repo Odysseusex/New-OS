@@ -33,6 +33,12 @@ const LABEL_SIZES = [
 
 type LabelSize = (typeof LABEL_SIZES)[number];
 
+// Where the last shelf life printed for a product is remembered, per browser.
+// Not a product field: a shelf life that belongs to the product belongs on its
+// technical card, where production and the labels both read it. This is only
+// so the same number is not retyped at every print run on this machine.
+const SHELF_LIFE_KEY = "aramir.labelShelfLife.";
+
 function todayIso(): string {
   const now = new Date();
   const offsetMinutes = now.getTimezoneOffset();
@@ -159,7 +165,18 @@ export function LabelPrintModal({
   onClose: () => void;
 }) {
   const [madeOn, setMadeOn] = useState(todayIso());
-  const [shelfLifeDays, setShelfLifeDays] = useState("");
+  // Seeded from what was last printed for this product, so a shelf life typed
+  // by hand is typed once rather than at every print run. Read lazily inside
+  // useState rather than in an effect: an effect would briefly render an empty
+  // field, and the person would start typing into a box about to be
+  // overwritten. localStorage throws in some privacy modes, hence the guard.
+  const [shelfLifeDays, setShelfLifeDays] = useState(() => {
+    try {
+      return localStorage.getItem(`${SHELF_LIFE_KEY}${product.id}`) ?? "";
+    } catch {
+      return "";
+    }
+  });
   const [copies, setCopies] = useState("1");
   const [sizeId, setSizeId] = useState<LabelSize["id"]>("58x40");
   const [recipeChecked, setRecipeChecked] = useState(false);
@@ -172,9 +189,10 @@ export function LabelPrintModal({
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  // The shelf life already lives on the product's technical card, so it is
-  // filled in from there rather than retyped for every print run. Editable,
-  // because a particular batch can differ and the person at the bench knows.
+  // The shelf life may also live on the product's technical card. It only
+  // fills an empty field: what was typed here last is more specific than the
+  // card, and arrives first, so the card must not overwrite it — nor anything
+  // the person has already started typing while this request was in flight.
   useEffect(() => {
     let cancelled = false;
     api.recipes
@@ -182,7 +200,9 @@ export function LabelPrintModal({
       .then((recipes: RecipeDto[]) => {
         if (cancelled) return;
         const own = recipes.find((r) => r.productId === product.id);
-        if (own?.shelfLifeDays != null) setShelfLifeDays(String(own.shelfLifeDays));
+        if (own?.shelfLifeDays != null) {
+          setShelfLifeDays((current) => (current.trim() ? current : String(own.shelfLifeDays)));
+        }
         setRecipeChecked(true);
       })
       .catch(() => {
@@ -290,14 +310,25 @@ export function LabelPrintModal({
 
         {!bestBefore && (
           <p className="mb-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            Срок годности не задан — на этикетке не будет строки «Годен до». Его можно один раз указать
-            в техкарте товара, тогда он подставится сам.
+            Срок годности не задан — на этикетке не будет строки «Годен до».
           </p>
         )}
 
         <button
           type="button"
-          onClick={() => window.print()}
+          onClick={() => {
+            // Remembered on print, not on every keystroke: what was actually
+            // printed is the number worth offering again next time.
+            try {
+              const key = `${SHELF_LIFE_KEY}${product.id}`;
+              if (shelfLifeDays.trim()) localStorage.setItem(key, shelfLifeDays.trim());
+              else localStorage.removeItem(key);
+            } catch {
+              // Storage blocked — the label still prints, it just will not be
+              // prefilled next time.
+            }
+            window.print();
+          }}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-medium text-accent-foreground transition hover:opacity-90"
         >
           <Printer className="h-4 w-4" strokeWidth={1.75} />
