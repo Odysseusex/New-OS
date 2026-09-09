@@ -2,7 +2,20 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
-import { Banknote, CreditCard, History, Minus, Plus, Printer, ScanLine, Split, Tag, Trash2, X } from "lucide-react";
+import {
+  Banknote,
+  CreditCard,
+  History,
+  Minus,
+  MonitorSmartphone,
+  Plus,
+  Printer,
+  ScanLine,
+  Split,
+  Tag,
+  Trash2,
+  X,
+} from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import type { CategoryDto, LocationDto, ProductDto, SaleDetailDto, SaleFiscalReceiptDto } from "@bakery-os/shared";
 import {
@@ -19,6 +32,11 @@ import {
 import { Modal } from "@/components/modal";
 import { NumberPad } from "@/components/number-pad";
 import { LabelPrintPicker } from "@/components/label-print-modal";
+import {
+  openCustomerDisplay,
+  useCustomerDisplayPublisher,
+  type CustomerState,
+} from "@/lib/customer-display";
 import { SaleHistoryModal } from "@/components/sale-history-modal";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -202,6 +220,44 @@ export default function PosPage() {
 
   const total = cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
   const itemCount = cart.reduce((sum, line) => sum + line.quantity, 0);
+
+  // What the buyer's screen shows. Derived from the cart rather than pushed
+  // at it from each handler, so there is no path that changes the cart and
+  // forgets to update the display — every one of them already goes through
+  // setCart, and this recomputes from the result.
+  //
+  // The paid state wins while it is showing: `lastSale` is cleared when the
+  // next order starts, and until then the buyer is still looking at what they
+  // owe and their change. Deliberately no cost, margin or markdown flag beyond
+  // the struck-through price — this screen faces the shop floor.
+  const customerState = useMemo<CustomerState>(() => {
+    if (cart.length === 0 && lastSale) {
+      return {
+        kind: "paid",
+        locationName: activeLocationName,
+        total: lastSale.totalAmount,
+        change: cashDetails ? cashDetails.change : null,
+        receiptNumber: lastSale.fiscalReceipt?.ticketNumber ?? null,
+        qrCode: lastSale.fiscalReceipt?.qrCode ?? null,
+      };
+    }
+    if (cart.length === 0) return { kind: "idle", locationName: activeLocationName };
+    return {
+      kind: "cart",
+      locationName: activeLocationName,
+      total,
+      lines: cart.map((line) => ({
+        key: line.key,
+        name: line.product.name,
+        quantity: line.quantity,
+        unit: UNIT_LABELS_RU[line.product.unit],
+        unitPrice: line.unitPrice,
+        fullUnitPrice: line.markedDown ? line.product.effectivePrice : null,
+      })),
+    };
+  }, [cart, total, lastSale, cashDetails, activeLocationName]);
+
+  useCustomerDisplayPublisher(customerState);
 
   function addToCart(product: ProductDto, step = 1) {
     setCart((current) => {
@@ -437,6 +493,22 @@ export default function PosPage() {
         >
           <Tag className="h-4 w-4" strokeWidth={1.75} />
           Этикетки
+        </button>
+        {/* Opens the buyer's screen on the monoblock's second display. Once
+            per boot — the window then just sits there and follows the cart. */}
+        <button
+          onClick={async () => {
+            const result = await openCustomerDisplay();
+            if (result === "blocked") {
+              setError("Браузер заблокировал новое окно. Разрешите всплывающие окна для этого сайта.");
+            } else if (result !== "placed") {
+              setFlash("Экран покупателя открыт. Перетащите окно на второй экран и нажмите F11.");
+            }
+          }}
+          className="flex shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+        >
+          <MonitorSmartphone className="h-4 w-4" strokeWidth={1.75} />
+          Экран покупателя
         </button>
         {/* Which point this till is selling at is shown to EVERYONE, not just
             to whoever may switch it. Prices differ per point, so a cashier
