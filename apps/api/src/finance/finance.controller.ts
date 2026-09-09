@@ -40,6 +40,13 @@ export class FinanceController {
     );
   }
 
+  // ДДС over a period. Gated by the controller's own class-level roles, same
+  // as every other finance figure — cash movements are not shop-floor data.
+  @Get("cash-flow")
+  getCashFlow(@CurrentUser() user: AuthenticatedUser, @Query() query: GetPnlQueryDto) {
+    return this.financeService.getCashFlow(user.organizationId, new Date(query.from), new Date(query.to));
+  }
+
   @Get("break-even")
   getBreakEven(@CurrentUser() user: AuthenticatedUser, @Query() query: GetPnlQueryDto) {
     return this.financeService.getBreakEven(

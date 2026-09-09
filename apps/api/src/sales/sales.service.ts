@@ -8,8 +8,12 @@ import {
   PAYMENT_METHOD_LABELS_RU,
   PaymentMethod,
   PaymentStatus,
+  ProductProfitabilityDto,
+  ProductProfitabilityRowDto,
   SaleDetailDto,
   SaleDto,
+  SalesDynamicsDto,
+  SalesDynamicsPointDto,
   SalesDemandAnalysisDto,
   SalesDemandByCustomerRowDto,
   SalesDemandByProductRowDto,
@@ -25,6 +29,7 @@ import { FiscalReceipt, FiscalReceiptStatus, StockMovementType } from "@prisma/c
 import { AuthenticatedUser } from "../auth/auth.types";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
 import { deltaPct, previousRangeOf } from "../common/period-range";
+import { resolveProductUnitCosts } from "../common/product-costs";
 import { CashMovementsService } from "../finance/cash-movements.service";
 import { buildFiscalSaleRequest, FiscalService } from "../fiscal/fiscal.service";
 import { FiscalSettings } from "../fiscal/fiscal.settings";
@@ -36,6 +41,20 @@ import { RecordPaymentDto } from "./dto/record-payment.dto";
 // charted on the previous day. Invisible in a monthly total, obvious the moment
 // the same data is plotted per day.
 const REPORTING_TIME_ZONE = "Asia/Almaty";
+
+// Money and percentages are reported to two decimals. Floating-point sums of
+// tenge drift into 1234.5600000000002 otherwise, which then renders as a
+// nonsense figure on a report the owner is meant to trust.
+const round2 = (value: number): number => Number(value.toFixed(2));
+
+// ISO weekday (1 = Monday … 7 = Sunday) from a "YYYY-MM-DD" key. Parsed as
+// UTC because the key is already a wall-clock date in the reporting zone —
+// re-interpreting it in the server's zone could shift it by a day.
+function isoWeekday(dateKey: string): number {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const day = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return day === 0 ? 7 : day;
+}
 
 const SALE_INCLUDE = { location: true, customer: true, createdBy: true, items: true };
 const SALE_DETAIL_INCLUDE = {
@@ -274,6 +293,152 @@ export class SalesService {
       markdownQuantity,
       byLocation,
       byProduct,
+    };
+  }
+
+  // Which products actually EARN, as opposed to which merely turn over.
+  //
+  // Cost comes from common/product-costs, the same resolution the P&L charges
+  // as COGS — a margin computed from a second notion of cost would contradict
+  // the P&L for the same period with no way to tell which was wrong.
+  //
+  // A product with no recipe and no purchase history is reported with
+  // hasCostData=false and excluded from every total and from ABC ranking. It
+  // is NOT costed at zero: zero cost reads as 100% margin and would flatter
+  // the whole period. The revenue it did make is reported separately so the
+  // owner can see how much of the picture the margin figure actually covers.
+  async productProfitability(
+    user: AuthenticatedUser,
+    from: Date,
+    to: Date,
+    requestedLocationId?: string,
+  ): Promise<ProductProfitabilityDto> {
+    const locationId = resolveLocationScope(user, requestedLocationId);
+
+    const [items, unitCosts] = await Promise.all([
+      this.prisma.saleItem.findMany({
+        where: {
+          sale: {
+            organizationId: user.organizationId,
+            soldAt: { gte: from, lte: to },
+            ...(locationId ? { locationId } : {}),
+          },
+        },
+        include: { product: true },
+      }),
+      resolveProductUnitCosts(this.prisma, user.organizationId),
+    ]);
+
+    const acc = new Map<
+      string,
+      {
+        productName: string;
+        quantity: number;
+        revenue: number;
+        cost: number;
+        hasCostData: boolean;
+        markdownQuantity: number;
+        markdownLoss: number;
+      }
+    >();
+
+    for (const item of items) {
+      const unitCost = unitCosts.get(item.productId);
+      const entry = acc.get(item.productId) ?? {
+        productName: item.product.name,
+        quantity: 0,
+        revenue: 0,
+        cost: 0,
+        hasCostData: unitCost !== undefined,
+        markdownQuantity: 0,
+        markdownLoss: 0,
+      };
+      const quantity = item.quantity.toNumber();
+      entry.quantity += quantity;
+      entry.revenue += item.subtotal.toNumber();
+      if (unitCost !== undefined) entry.cost += unitCost * quantity;
+
+      const full = item.fullUnitPrice?.toNumber();
+      if (full !== undefined) {
+        entry.markdownQuantity += quantity;
+        entry.markdownLoss += (full - item.unitPrice.toNumber()) * quantity;
+      }
+      acc.set(item.productId, entry);
+    }
+
+    // Totals cover only products we can actually cost — see the note above.
+    let totalRevenue = 0;
+    let totalCost = 0;
+    let revenueWithoutCostData = 0;
+    let productsWithoutCostData = 0;
+    for (const entry of acc.values()) {
+      if (entry.hasCostData) {
+        totalRevenue += entry.revenue;
+        totalCost += entry.cost;
+      } else {
+        revenueWithoutCostData += entry.revenue;
+        productsWithoutCostData += 1;
+      }
+    }
+    const totalMargin = totalRevenue - totalCost;
+
+    const rows: ProductProfitabilityRowDto[] = Array.from(acc.entries())
+      .map(([productId, v]) => {
+        const margin = v.hasCostData ? v.revenue - v.cost : 0;
+        return {
+          productId,
+          productName: v.productName,
+          quantity: v.quantity,
+          revenue: round2(v.revenue),
+          cost: round2(v.cost),
+          margin: round2(margin),
+          marginPercent: v.revenue > 0 && v.hasCostData ? round2((margin / v.revenue) * 100) : null,
+          revenueShare: totalRevenue > 0 && v.hasCostData ? round2((v.revenue / totalRevenue) * 100) : 0,
+          // Share of margin is meaningless when the period lost money overall:
+          // dividing by a negative total flips every sign and would label the
+          // worst product the biggest contributor.
+          marginShare: totalMargin > 0 && v.hasCostData ? round2((margin / totalMargin) * 100) : 0,
+          abcClass: null,
+          hasCostData: v.hasCostData,
+          markdownQuantity: v.markdownQuantity,
+          markdownLoss: round2(v.markdownLoss),
+        };
+      })
+      // Ranked by margin, not revenue — putting the biggest earner first is
+      // the entire point, and revenue order is what hides a high-turnover,
+      // thin-margin product at the top.
+      .sort((a, b) => b.margin - a.margin);
+
+    // ABC by cumulative share of margin: A covers the first 80% of the money
+    // earned, B the next 15%, C the rest. Only costable, profitable products
+    // are ranked — a loss-making line has no share of the money earned, and
+    // padding class C with it would move the 80/95 boundaries for everyone
+    // above it.
+    //
+    // Classified on the cumulative share BEFORE this product, so the product
+    // that carries the total past 80% is itself still an A. Testing the total
+    // after adding it instead is the classic off-by-one here, and on a small
+    // catalogue it is not subtle: with two profitable products the second was
+    // landing in class C while earning 39% of the money.
+    if (totalMargin > 0) {
+      let cumulative = 0;
+      for (const row of rows) {
+        if (!row.hasCostData || row.margin <= 0) continue;
+        row.abcClass = cumulative < 80 ? "A" : cumulative < 95 ? "B" : "C";
+        cumulative += (row.margin / totalMargin) * 100;
+      }
+    }
+
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      totalRevenue: round2(totalRevenue),
+      totalCost: round2(totalCost),
+      totalMargin: round2(totalMargin),
+      totalMarginPercent: totalRevenue > 0 ? round2((totalMargin / totalRevenue) * 100) : null,
+      revenueWithoutCostData: round2(revenueWithoutCostData),
+      productsWithoutCostData,
+      rows,
     };
   }
 
@@ -566,6 +731,157 @@ export class SalesService {
         revenueDeltaPct: deltaPct(totalRevenue, previousRevenue),
       },
     };
+  }
+
+  // Revenue over time for the whole business, and the two shapes hiding
+  // inside it: which hours of the day and which days of the week the money
+  // arrives. For a bakery those two are production decisions — when to bake
+  // and how much, and which day needs a second pair of hands.
+  //
+  // customerTrend() answers the same "when" question for ONE named customer's
+  // orders. This one is deliberately separate rather than a parameter on it:
+  // that report is gated on customer access and reports quantities of goods
+  // shipped, this one is the till's own takings and is open to anyone who can
+  // already see the sales list.
+  async dynamics(
+    user: AuthenticatedUser,
+    from: Date,
+    to: Date,
+    requestedLocationId?: string,
+  ): Promise<SalesDynamicsDto> {
+    const locationId = resolveLocationScope(user, requestedLocationId);
+    const previous = previousRangeOf({ from, to });
+
+    const where = (range: { from: Date; to: Date }) => ({
+      organizationId: user.organizationId,
+      soldAt: { gte: range.from, lte: range.to },
+      ...(locationId ? { locationId } : {}),
+    });
+
+    const [sales, previousSales] = await Promise.all([
+      this.prisma.sale.findMany({
+        where: where({ from, to }),
+        select: { soldAt: true, totalAmount: true },
+      }),
+      this.prisma.sale.findMany({
+        where: where(previous),
+        select: { totalAmount: true },
+      }),
+    ]);
+
+    const byDate = new Map<string, { revenue: number; salesCount: number }>();
+    const byHour = new Map<number, { revenue: number; salesCount: number }>();
+    const byWeekday = new Map<number, { revenue: number; salesCount: number }>();
+    let totalRevenue = 0;
+
+    for (const sale of sales) {
+      const revenue = sale.totalAmount.toNumber();
+      totalRevenue += revenue;
+
+      const dateKey = this.zonedDateKey(sale.soldAt);
+      const dateEntry = byDate.get(dateKey) ?? { revenue: 0, salesCount: 0 };
+      dateEntry.revenue += revenue;
+      dateEntry.salesCount += 1;
+      byDate.set(dateKey, dateEntry);
+
+      const hour = this.zonedHour(sale.soldAt);
+      const hourEntry = byHour.get(hour) ?? { revenue: 0, salesCount: 0 };
+      hourEntry.revenue += revenue;
+      hourEntry.salesCount += 1;
+      byHour.set(hour, hourEntry);
+
+      const weekday = isoWeekday(dateKey);
+      const weekdayEntry = byWeekday.get(weekday) ?? { revenue: 0, salesCount: 0 };
+      weekdayEntry.revenue += revenue;
+      weekdayEntry.salesCount += 1;
+      byWeekday.set(weekday, weekdayEntry);
+    }
+
+    const dateKeys = this.zonedDateKeysBetween(from, to);
+    const points: SalesDynamicsPointDto[] = dateKeys.map((date) => {
+      const entry = byDate.get(date);
+      const revenue = round2(entry?.revenue ?? 0);
+      const salesCount = entry?.salesCount ?? 0;
+      return {
+        date,
+        revenue,
+        salesCount,
+        averageTicket: salesCount > 0 ? round2(revenue / salesCount) : null,
+      };
+    });
+
+    // How many times each weekday actually fell in the period. Without this a
+    // month with five Mondays makes Monday look like the best day purely
+    // because there was more of it.
+    const weekdayOccurrences = new Map<number, number>();
+    for (const key of dateKeys) {
+      const weekday = isoWeekday(key);
+      weekdayOccurrences.set(weekday, (weekdayOccurrences.get(weekday) ?? 0) + 1);
+    }
+
+    // Same "today doesn't count yet" rule as demandAnalysis and customerTrend,
+    // so no two reports can disagree about what an average day is.
+    const todayKey = this.zonedDateKey(new Date());
+    const completedDays = points.filter((p) => p.date !== todayKey).length;
+
+    const withSales = points.filter((p) => p.salesCount > 0);
+    const sortedByRevenue = [...withSales].sort((a, b) => a.revenue - b.revenue);
+
+    const previousRevenue = previousSales.reduce((sum, s) => sum + s.totalAmount.toNumber(), 0);
+
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      timeZone: REPORTING_TIME_ZONE,
+      points,
+      totalRevenue: round2(totalRevenue),
+      totalSalesCount: sales.length,
+      averageTicket: sales.length > 0 ? round2(totalRevenue / sales.length) : null,
+      completedDays,
+      averageRevenuePerDay: completedDays > 0 ? round2(totalRevenue / completedDays) : null,
+      // Best/worst over days that actually had sales: a closed day is not the
+      // worst trading day, it is not a trading day.
+      bestDay: sortedByRevenue[sortedByRevenue.length - 1] ?? null,
+      worstDay: sortedByRevenue[0] ?? null,
+      byHour: Array.from({ length: 24 }, (_, hour) => {
+        const entry = byHour.get(hour);
+        return { hour, revenue: round2(entry?.revenue ?? 0), salesCount: entry?.salesCount ?? 0 };
+      }),
+      byWeekday: Array.from({ length: 7 }, (_, i) => {
+        const weekday = i + 1;
+        const entry = byWeekday.get(weekday);
+        const revenue = round2(entry?.revenue ?? 0);
+        const occurrences = weekdayOccurrences.get(weekday) ?? 0;
+        return {
+          weekday,
+          revenue,
+          salesCount: entry?.salesCount ?? 0,
+          occurrences,
+          averageRevenue: occurrences > 0 ? round2(revenue / occurrences) : null,
+        };
+      }),
+      previous: {
+        from: previous.from.toISOString(),
+        to: previous.to.toISOString(),
+        revenue: round2(previousRevenue),
+        salesCount: previousSales.length,
+        revenueDeltaPct: deltaPct(totalRevenue, previousRevenue),
+        salesCountDeltaPct: deltaPct(sales.length, previousSales.length),
+      },
+    };
+  }
+
+  // Hour of the day on a wall clock in REPORTING_TIME_ZONE. hourCycle h23 so
+  // midnight is 0 and not 24 — the default for ru/en-CA formats it as "24",
+  // which would land outside the 0–23 buckets entirely.
+  private zonedHour(date: Date): number {
+    return Number(
+      new Intl.DateTimeFormat("en-GB", {
+        timeZone: REPORTING_TIME_ZONE,
+        hour: "2-digit",
+        hourCycle: "h23",
+      }).format(date),
+    );
   }
 
   // "YYYY-MM-DD" as it reads on a wall clock in REPORTING_TIME_ZONE. en-CA

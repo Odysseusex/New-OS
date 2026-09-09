@@ -333,3 +333,124 @@ export interface CreateSaleReturnRequestDto {
   reason?: string;
   restocked?: boolean;
 }
+
+// ── Product profitability and ABC analysis ────────────────────────────
+//
+// What the sales report never answered: which products actually EARN. It
+// reports revenue per product, and revenue is not profit — a cake with the
+// biggest turnover can be the one carrying the thinnest margin.
+//
+// Cost comes from the same place P&L takes it: the product's техкарта
+// (recipe) first, weighted-average actual purchase price second. A product
+// with neither is reported with hasCostData=false and left OUT of every
+// total rather than being guessed at, exactly as the P&L does — a made-up
+// cost would quietly poison the margin of the whole period.
+export interface ProductProfitabilityRowDto {
+  productId: string;
+  productName: string;
+  quantity: number;
+  revenue: number;
+  // Себестоимость проданного: unit cost × quantity sold.
+  cost: number;
+  // Маржинальная прибыль — revenue minus the cost of what was sold.
+  margin: number;
+  // Маржинальность, % of revenue. Null when revenue is zero (undefined
+  // ratio), which happens for a product given away at a 100% markdown.
+  marginPercent: number | null;
+  // Share of the period's total revenue and total margin, in percent. The
+  // two differ, and the gap between them is the point of this whole report.
+  revenueShare: number;
+  marginShare: number;
+  // ABC class by contribution to MARGIN, not revenue: A = the products
+  // making the first 80% of the money, B = the next 15%, C = the last 5%.
+  // Ranked on margin because ranking on revenue is what hides a
+  // high-turnover, low-margin product in class A. The product that carries
+  // the running total past 80% is itself still an A.
+  abcClass: "A" | "B" | "C" | null;
+  // False when the product has no recipe and no purchase history. Its
+  // revenue is still shown, but cost/margin are zero and it is excluded
+  // from the totals and from ABC ranking.
+  hasCostData: boolean;
+  // Of `quantity`, how many units went at the markdown price. A product
+  // reliably marked down is being baked in the wrong quantity, and that
+  // shows up here as margin lost rather than only as units.
+  markdownQuantity: number;
+  markdownLoss: number;
+}
+
+export interface ProductProfitabilityDto {
+  from: string;
+  to: string;
+  // Totals over products WITH cost data only — see hasCostData above.
+  totalRevenue: number;
+  totalCost: number;
+  totalMargin: number;
+  totalMarginPercent: number | null;
+  // Revenue of products with no cost data, excluded from the totals above.
+  // Surfaced rather than hidden: it says how much of the period the margin
+  // figure actually covers.
+  revenueWithoutCostData: number;
+  productsWithoutCostData: number;
+  rows: ProductProfitabilityRowDto[];
+}
+
+// ── Sales dynamics: day by day, by hour, by weekday ───────────────────
+//
+// Bucketed on a wall clock in Asia/Almaty, never the server's UTC — a loaf
+// sold at 9pm Almaty is not tomorrow's sale.
+export interface SalesDynamicsPointDto {
+  // "YYYY-MM-DD" in the reporting time zone.
+  date: string;
+  revenue: number;
+  salesCount: number;
+  // Null on a day with no sales — an average of nothing is not zero.
+  averageTicket: number | null;
+}
+
+export interface SalesHourBucketDto {
+  // 0–23, wall clock in the reporting time zone.
+  hour: number;
+  revenue: number;
+  salesCount: number;
+}
+
+export interface SalesWeekdayBucketDto {
+  // 1 = Monday … 7 = Sunday. ISO order, so the week reads Mon→Sun as it does
+  // on every Russian calendar, rather than starting on Sunday.
+  weekday: number;
+  revenue: number;
+  salesCount: number;
+  // Sales spread over however many of this weekday fell in the period, so a
+  // period containing five Mondays and four Tuesdays compares fairly.
+  occurrences: number;
+  averageRevenue: number | null;
+}
+
+export interface SalesDynamicsDto {
+  from: string;
+  to: string;
+  timeZone: string;
+  // One point per calendar day in range, zero-filled — a gap in a time series
+  // reads as "no data" when it should read as "genuinely zero".
+  points: SalesDynamicsPointDto[];
+  totalRevenue: number;
+  totalSalesCount: number;
+  averageTicket: number | null;
+  // Days excluding today, since today is still in progress and would drag
+  // every average down. Same rule as the demand and customer-trend reports.
+  completedDays: number;
+  averageRevenuePerDay: number | null;
+  bestDay: SalesDynamicsPointDto | null;
+  worstDay: SalesDynamicsPointDto | null;
+  byHour: SalesHourBucketDto[];
+  byWeekday: SalesWeekdayBucketDto[];
+  // The same span immediately before this one, for a like-for-like delta.
+  previous: {
+    from: string;
+    to: string;
+    revenue: number;
+    salesCount: number;
+    revenueDeltaPct: number | null;
+    salesCountDeltaPct: number | null;
+  };
+}

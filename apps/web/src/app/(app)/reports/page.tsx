@@ -9,8 +9,11 @@ import type {
   HrKpiResponseDto,
   LocationDto,
   ProductDto,
+  ProductProfitabilityDto,
   ProfitAndLossDto,
   QualitySummaryDto,
+  CashFlowDto,
+  SalesDynamicsDto,
   SalesCustomerTrendDto,
   SalesDemandAnalysisDto,
   SalesReportDto,
@@ -31,8 +34,22 @@ import { useAuth } from "@/lib/auth-context";
 import { downloadCsv } from "@/lib/csv";
 import { formatAverage, formatDayKey, formatMoney, formatQuantity } from "@/lib/format";
 import { SalesTrendChart, type TrendMetric } from "@/components/sales-trend-chart";
+import {
+  HourlyRevenueChart,
+  RevenueTrendChart,
+  WeekdayRevenueChart,
+} from "@/components/revenue-charts";
 
-type ReportKey = "finance" | "sales" | "trend" | "quality" | "hr" | "stock";
+type ReportKey =
+  | "finance"
+  | "sales"
+  | "profitability"
+  | "dynamics"
+  | "cashflow"
+  | "trend"
+  | "quality"
+  | "hr"
+  | "stock";
 type Period = "today" | "7d" | "30d" | "month";
 
 const PERIOD_LABELS: Record<Period, string> = {
@@ -59,10 +76,18 @@ export default function ReportsPage() {
   const availableReports: { key: ReportKey; label: string }[] = [
     ...(user && FINANCE_VIEW_ROLES.includes(user.role) ? [{ key: "finance" as const, label: "Финансы (P&L)" }] : []),
     { key: "sales" as const, label: "Продажи" },
+    // Margin per product needs the same cost data the P&L is built on, so it
+    // is gated with the P&L rather than with the sales list: it exposes what
+    // each product costs us, which the sales figures alone do not.
+    ...(user && FINANCE_VIEW_ROLES.includes(user.role)
+      ? [{ key: "profitability" as const, label: "Рентабельность" }]
+      : []),
+    { key: "dynamics" as const, label: "Динамика продаж" },
+    ...(user && FINANCE_VIEW_ROLES.includes(user.role) ? [{ key: "cashflow" as const, label: "ДДС" }] : []),
     // Needs a customer to be picked, and the customer list is gated on
     // CUSTOMER_VIEW_ROLES — without them the tab could only ever show an
     // empty dropdown.
-    ...(user && CUSTOMER_VIEW_ROLES.includes(user.role) ? [{ key: "trend" as const, label: "Динамика" }] : []),
+    ...(user && CUSTOMER_VIEW_ROLES.includes(user.role) ? [{ key: "trend" as const, label: "Динамика по клиенту" }] : []),
     ...(user && QUALITY_VIEW_ROLES.includes(user.role)
       ? [{ key: "quality" as const, label: "Качество и списания" }]
       : []),
@@ -155,6 +180,11 @@ export default function ReportsPage() {
         {activeReport === "sales" && (
           <SalesReport period={period} locationId={locationFilter} isOrgWide={isOrgWide} />
         )}
+        {activeReport === "profitability" && (
+          <ProfitabilityReport period={period} locationId={locationFilter} />
+        )}
+        {activeReport === "dynamics" && <DynamicsReport period={period} locationId={locationFilter} />}
+        {activeReport === "cashflow" && <CashFlowReport period={period} />}
         {activeReport === "trend" && <CustomerSalesTrendCard locationId={locationFilter} />}
         {activeReport === "quality" && <QualityReport period={period} locationId={locationFilter} />}
         {activeReport === "hr" && <HrReport period={period} locationId={locationFilter} />}
@@ -921,4 +951,296 @@ function ReportTable({
 
 function EmptyState() {
   return <div className="rounded-2xl border border-border bg-surface p-10 text-center text-sm text-muted shadow-card">Загрузка…</div>;
+}
+
+// ── Рентабельность: маржинальная прибыль по товарам + ABC ─────────────
+//
+// The sales report answers which products TURN OVER. This one answers which
+// products EARN, which is a different ranking and usually a surprising one.
+function ProfitabilityReport({ period, locationId }: { period: Period; locationId: string }) {
+  const [report, setReport] = useState<ProductProfitabilityDto | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const { from, to } = periodRange(period);
+    setReport(null);
+    setError(null);
+    api.sales
+      .profitability(from.toISOString(), to.toISOString(), locationId || undefined)
+      .then(setReport)
+      .catch((err) =>
+        setError(err instanceof ApiError ? err.message : "Не удалось загрузить отчёт"),
+      );
+  }, [period, locationId]);
+
+  if (error) return <ErrorState message={error} />;
+  if (!report) return <EmptyState />;
+
+  return (
+    <div className="space-y-5">
+      <ReportCard title="Маржинальная прибыль">
+        <StatRow
+          items={[
+            { label: "Выручка", value: formatMoney(report.totalRevenue) },
+            { label: "Себестоимость", value: formatMoney(report.totalCost) },
+            { label: "Маржинальная прибыль", value: formatMoney(report.totalMargin) },
+            {
+              label: "Маржинальность",
+              value: report.totalMarginPercent !== null ? `${report.totalMarginPercent.toFixed(1)}%` : "—",
+            },
+          ]}
+        />
+        {/* A data warning, not a lesson: it says how much of the period the
+            margin above actually covers. Without it the totals look complete
+            when they are not. */}
+        {report.productsWithoutCostData > 0 && (
+          <p className="border-b border-border bg-amber-50 px-5 py-3 text-sm text-amber-800">
+            Не учтено: {report.productsWithoutCostData} товар(ов) без себестоимости на{" "}
+            {formatMoney(report.revenueWithoutCostData)} выручки. Себестоимость берётся из техкарты
+            или из фактических закупок — у этих товаров нет ни того, ни другого.
+          </p>
+        )}
+      </ReportCard>
+
+      <ReportCard
+        title="По товарам"
+        onExport={() =>
+          downloadCsv(
+            `profitability-${period}.csv`,
+            [
+              "Товар",
+              "Продано",
+              "Выручка",
+              "Себестоимость",
+              "Маржинальная прибыль",
+              "Маржинальность, %",
+              "Доля в выручке, %",
+              "Доля в прибыли, %",
+              "ABC",
+            ],
+            report.rows.map((r) => [
+              r.productName,
+              r.quantity,
+              r.revenue.toFixed(2),
+              r.hasCostData ? r.cost.toFixed(2) : "",
+              r.hasCostData ? r.margin.toFixed(2) : "",
+              r.marginPercent !== null ? r.marginPercent.toFixed(1) : "",
+              r.hasCostData ? r.revenueShare.toFixed(1) : "",
+              r.hasCostData ? r.marginShare.toFixed(1) : "",
+              r.abcClass ?? "",
+            ]),
+          )
+        }
+      >
+        <ReportTable
+          columns={[
+            "Товар",
+            "Продано",
+            "Выручка",
+            "Себестоимость",
+            "Маржинальная прибыль",
+            "Маржинальность",
+            "Доля в прибыли",
+            "ABC",
+          ]}
+          rows={report.rows.map((r) => [
+            r.productName,
+            formatQuantity(r.quantity),
+            formatMoney(r.revenue),
+            r.hasCostData ? formatMoney(r.cost) : "нет данных",
+            r.hasCostData ? formatMoney(r.margin) : "—",
+            r.marginPercent !== null ? `${r.marginPercent.toFixed(1)}%` : "—",
+            r.hasCostData ? `${r.marginShare.toFixed(1)}%` : "—",
+            r.abcClass ?? "—",
+          ])}
+        />
+      </ReportCard>
+
+      {report.rows.some((r) => r.markdownQuantity > 0) && (
+        <ReportCard title="Потери на уценке">
+          <ReportTable
+            columns={["Товар", "Продано по уценке", "Потеряно на уценке"]}
+            rows={report.rows
+              .filter((r) => r.markdownQuantity > 0)
+              .sort((a, b) => b.markdownLoss - a.markdownLoss)
+              .map((r) => [r.productName, formatQuantity(r.markdownQuantity), formatMoney(r.markdownLoss)])}
+          />
+        </ReportCard>
+      )}
+    </div>
+  );
+}
+
+// ── Динамика продаж: по дням, часам и дням недели ─────────────────────
+function DynamicsReport({ period, locationId }: { period: Period; locationId: string }) {
+  const [report, setReport] = useState<SalesDynamicsDto | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const { from, to } = periodRange(period);
+    setReport(null);
+    setError(null);
+    api.sales
+      .dynamics(from.toISOString(), to.toISOString(), locationId || undefined)
+      .then(setReport)
+      .catch((err) =>
+        setError(err instanceof ApiError ? err.message : "Не удалось загрузить отчёт"),
+      );
+  }, [period, locationId]);
+
+  if (error) return <ErrorState message={error} />;
+  if (!report) return <EmptyState />;
+
+  const delta = (value: number | null) =>
+    value === null ? "—" : `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
+
+  return (
+    <div className="space-y-5">
+      <ReportCard title="Выручка по дням">
+        <StatRow
+          items={[
+            { label: "Выручка", value: formatMoney(report.totalRevenue) },
+            { label: "Продаж", value: String(report.totalSalesCount) },
+            {
+              label: "Средний чек",
+              value: report.averageTicket !== null ? formatMoney(report.averageTicket) : "—",
+            },
+            {
+              label: "Среднее в день",
+              value:
+                report.averageRevenuePerDay !== null ? formatMoney(report.averageRevenuePerDay) : "—",
+            },
+          ]}
+        />
+        <StatRow
+          items={[
+            { label: "К прошлому периоду", value: delta(report.previous.revenueDeltaPct) },
+            { label: "Выручка ранее", value: formatMoney(report.previous.revenue) },
+            {
+              label: "Лучший день",
+              value: report.bestDay
+                ? `${formatDayKey(report.bestDay.date)} — ${formatMoney(report.bestDay.revenue)}`
+                : "—",
+            },
+            {
+              label: "Худший день",
+              value: report.worstDay
+                ? `${formatDayKey(report.worstDay.date)} — ${formatMoney(report.worstDay.revenue)}`
+                : "—",
+            },
+          ]}
+        />
+        <RevenueTrendChart points={report.points} />
+      </ReportCard>
+
+      <ReportCard title="Выручка по часам">
+        <HourlyRevenueChart buckets={report.byHour} />
+      </ReportCard>
+
+      <ReportCard
+        title="Выручка по дням недели"
+        onExport={() =>
+          downloadCsv(
+            `revenue-by-weekday-${period}.csv`,
+            ["День недели", "Выручка", "Продаж", "Таких дней в периоде", "В среднем за день"],
+            report.byWeekday.map((d) => [
+              ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"][d.weekday - 1],
+              d.revenue.toFixed(2),
+              d.salesCount,
+              d.occurrences,
+              d.averageRevenue !== null ? d.averageRevenue.toFixed(2) : "",
+            ]),
+          )
+        }
+      >
+        <WeekdayRevenueChart buckets={report.byWeekday} />
+      </ReportCard>
+    </div>
+  );
+}
+
+// ── ДДС: движение денежных средств ────────────────────────────────────
+function CashFlowReport({ period }: { period: Period }) {
+  const [report, setReport] = useState<CashFlowDto | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const { from, to } = periodRange(period);
+    setReport(null);
+    setError(null);
+    api.finance
+      .cashFlow(from.toISOString(), to.toISOString())
+      .then(setReport)
+      .catch((err) =>
+        setError(err instanceof ApiError ? err.message : "Не удалось загрузить отчёт"),
+      );
+  }, [period]);
+
+  if (error) return <ErrorState message={error} />;
+  if (!report) return <EmptyState />;
+
+  return (
+    <div className="space-y-5">
+      <ReportCard title="Денежный поток">
+        <StatRow
+          items={[
+            { label: "Остаток на начало", value: formatMoney(report.openingBalance) },
+            { label: "Поступления", value: formatMoney(report.totalInflow) },
+            { label: "Выплаты", value: formatMoney(report.totalOutflow) },
+            { label: "Остаток на конец", value: formatMoney(report.closingBalance) },
+          ]}
+        />
+        <StatRow items={[{ label: "Чистый денежный поток", value: formatMoney(report.netFlow) }]} />
+      </ReportCard>
+
+      <ReportCard title="Поступления">
+        <ReportTable
+          columns={["Статья", "Сумма", "Операций"]}
+          rows={report.inflowByType.map((l) => [l.label, formatMoney(l.amount), String(l.count)])}
+        />
+      </ReportCard>
+
+      <ReportCard title="Выплаты">
+        <ReportTable
+          columns={["Статья", "Сумма", "Операций"]}
+          rows={report.outflowByType.map((l) => [l.label, formatMoney(l.amount), String(l.count)])}
+        />
+      </ReportCard>
+
+      <ReportCard
+        title="Выплаты по категориям"
+        onExport={() =>
+          downloadCsv(
+            `cash-outflow-by-category-${period}.csv`,
+            ["Категория", "Сумма", "Операций"],
+            report.outflowByCategory.map((c) => [c.categoryName, c.amount.toFixed(2), c.count]),
+          )
+        }
+      >
+        <ReportTable
+          columns={["Категория", "Сумма", "Операций"]}
+          rows={report.outflowByCategory.map((c) => [c.categoryName, formatMoney(c.amount), String(c.count)])}
+        />
+        {/* Same kind of data warning as the profitability card: without it the
+            category breakdown reads as the whole of the spending. */}
+        {report.uncategorizedOutflow > 0 && (
+          <p className="border-t border-border bg-amber-50 px-5 py-3 text-sm text-amber-800">
+            Без категории: {formatMoney(report.uncategorizedOutflow)}. Эти выплаты не попали ни в одну
+            строку выше.
+          </p>
+        )}
+      </ReportCard>
+    </div>
+  );
+}
+
+// A failed request must never look like a genuine empty result — see the
+// customer-trend card, where a stale-backend 404 rendered as the same quiet
+// "нет данных" a real zero would.
+function ErrorState({ message }: { message: string }) {
+  return (
+    <div className="rounded-2xl border border-border bg-surface p-10 text-center shadow-card">
+      <p className="text-sm text-red-600">{message}</p>
+    </div>
+  );
 }

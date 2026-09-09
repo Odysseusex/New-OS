@@ -68,6 +68,7 @@ import type {
   ProductDto,
   ProductionBatchDto,
   ProfitAndLossDto,
+  CashFlowDto,
   PurchaseOrderDto,
   QualitySummaryDto,
   RecipeDto,
@@ -82,6 +83,8 @@ import type {
   SalesCustomerTrendDto,
   SalesDemandAnalysisDto,
   SalesReportDto,
+  SalesDynamicsDto,
+  ProductProfitabilityDto,
   SalesSummaryDto,
   ShiftDto,
   StockLevelDto,
@@ -267,6 +270,10 @@ export const api = {
       request<SalesSummaryDto>(withQuery("/sales/summary", { locationId })),
     report: (from: string, to: string, locationId?: string) =>
       request<SalesReportDto>(withQuery("/sales/report", { from, to, locationId })),
+    profitability: (from: string, to: string, locationId?: string) =>
+      request<ProductProfitabilityDto>(withQuery("/sales/profitability", { from, to, locationId })),
+    dynamics: (from: string, to: string, locationId?: string) =>
+      request<SalesDynamicsDto>(withQuery("/sales/dynamics", { from, to, locationId })),
     demand: (
       from: string,
       to: string,
@@ -435,6 +442,8 @@ export const api = {
     inventoryValuation: () => request<InventoryValuationDto>("/finance/inventory-valuation"),
     pnl: (from: string, to: string, locationId?: string) =>
       request<ProfitAndLossDto>(withQuery("/finance/pnl", { from, to, locationId })),
+    cashFlow: (from: string, to: string) =>
+      request<CashFlowDto>(withQuery("/finance/cash-flow", { from, to })),
     breakEven: (from: string, to: string, locationId?: string) =>
       request<BreakEvenDto>(withQuery("/finance/break-even", { from, to, locationId })),
     plannedBreakEven: (from: string, to: string, locationId?: string) =>

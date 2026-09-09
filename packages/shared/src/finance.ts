@@ -526,3 +526,52 @@ export interface FinanceDashboardDto {
   netProfit: number;
   period: { from: string; to: string };
 }
+
+// ── ДДС / Денежный поток за период ────────────────────────────────────
+//
+// The finance dashboard already answers "what moved today". This answers the
+// month-scale question the owner actually plans against: where the money
+// came from, where it went, and whether the account ended the period fuller
+// or emptier than it started.
+//
+// Opening balance is computed from every movement BEFORE `from` rather than
+// stored, so the statement reconciles against the ledger no matter which
+// period is asked for: opening + inflow − outflow always equals closing.
+// TRANSFER_IN/TRANSFER_OUT are kept in: at organisation level they cancel
+// out, but the pair is real money leaving one account for another and
+// hiding it would make a single account's own statement wrong.
+export interface CashFlowLineDto {
+  type: CashMovementType;
+  label: string;
+  amount: number;
+  // How many movements make up `amount` — a single 400 000 ₸ line and forty
+  // 10 000 ₸ ones are different situations.
+  count: number;
+}
+
+// The same money grouped the way the owner budgets it, by expense/income
+// category rather than by mechanism. Only movements that carry a category.
+export interface CashFlowCategoryLineDto {
+  categoryId: string | null;
+  categoryName: string;
+  amount: number;
+  count: number;
+}
+
+export interface CashFlowDto {
+  from: string;
+  to: string;
+  openingBalance: number;
+  closingBalance: number;
+  totalInflow: number;
+  totalOutflow: number;
+  // closingBalance − openingBalance. Positive means the period funded
+  // itself; negative means it ran on money earned earlier.
+  netFlow: number;
+  inflowByType: CashFlowLineDto[];
+  outflowByType: CashFlowLineDto[];
+  outflowByCategory: CashFlowCategoryLineDto[];
+  // Movements with no category, so the by-category list is never mistaken
+  // for the whole picture.
+  uncategorizedOutflow: number;
+}

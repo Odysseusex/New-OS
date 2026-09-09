@@ -74,6 +74,29 @@ export class SalesController {
     return this.salesService.report(user, new Date(from), new Date(to), locationId);
   }
 
+  // Which products earn, not just which turn over. Declared before
+  // @Get(":id") like every other named route on this controller.
+  @Get("profitability")
+  profitability(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("from") from: string,
+    @Query("to") to: string,
+    @Query("locationId") locationId?: string,
+  ) {
+    return this.salesService.productProfitability(user, new Date(from), new Date(to), locationId);
+  }
+
+  // Revenue day by day, by hour and by weekday.
+  @Get("dynamics")
+  dynamics(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("from") from: string,
+    @Query("to") to: string,
+    @Query("locationId") locationId?: string,
+  ) {
+    return this.salesService.dynamics(user, new Date(from), new Date(to), locationId);
+  }
+
   @Get("demand")
   demandAnalysis(@CurrentUser() user: AuthenticatedUser, @Query() query: GetDemandQueryDto) {
     return this.salesService.demandAnalysis(user, new Date(query.from), new Date(query.to), {

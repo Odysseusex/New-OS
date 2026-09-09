@@ -1,9 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { resolveProductUnitCosts } from "../common/product-costs";
 import {
   BreakEvenDto,
   BreakEvenFixedCostLineDto,
   BreakEvenStatus,
+  CASH_MOVEMENT_TYPE_LABELS_RU,
+  CashFlowDto,
+  CashFlowLineDto,
   CASH_MOVEMENT_INFLOW_TYPES,
   CashAccountType,
   CashMovementType,
@@ -33,6 +37,11 @@ import { CreateExpenseDto } from "./dto/create-expense.dto";
 import { RecordExpensePaymentDto } from "./dto/record-expense-payment.dto";
 
 const EXPENSE_INCLUDE = { location: true, categoryRef: true, createdBy: true };
+
+// Tenge to two decimals. Floating-point sums of money drift into
+// 1234.5600000000002, which then renders as a nonsense figure on a statement
+// the owner is meant to reconcile against a real bank balance.
+const roundMoney = (value: number): number => Number(value.toFixed(2));
 
 @Injectable()
 export class FinanceService {
@@ -212,45 +221,11 @@ export class FinanceService {
   // so both stay in lockstep instead of drifting apart. Deliberately never
   // reads Product.price for a FINISHED_GOOD — see the schema comment on
   // Product.price for why that field cannot stand in for cost.
-  private async resolveFinishedGoodUnitCosts(organizationId: string): Promise<Map<string, number>> {
-    const [recipes, purchaseItems] = await Promise.all([
-      this.prisma.recipe.findMany({
-        where: { organizationId, isActive: true },
-        include: { items: { include: { ingredientProduct: true } } },
-      }),
-      this.prisma.purchaseOrderItem.findMany({
-        where: { purchaseOrder: { organizationId } },
-      }),
-    ]);
-
-    // Ingredient-based cost for products that have a техкарта (recipe).
-    const recipeCostByProduct = new Map<string, number>();
-    for (const recipe of recipes) {
-      const yieldQuantity = recipe.yieldQuantity.toNumber();
-      if (yieldQuantity <= 0) continue;
-      const totalIngredientCost = recipe.items.reduce(
-        (sum, item) => sum + item.quantity.toNumber() * item.ingredientProduct.price.toNumber(),
-        0,
-      );
-      recipeCostByProduct.set(recipe.productId, totalIngredientCost / yieldQuantity);
-    }
-
-    // Fallback for products without a recipe: weighted-average purchase cost.
-    const purchaseAgg = new Map<string, { totalCost: number; totalQty: number }>();
-    for (const item of purchaseItems) {
-      const entry = purchaseAgg.get(item.productId) ?? { totalCost: 0, totalQty: 0 };
-      entry.totalCost += item.subtotal.toNumber();
-      entry.totalQty += item.quantity.toNumber();
-      purchaseAgg.set(item.productId, entry);
-    }
-    const avgPurchaseCostByProduct = new Map<string, number>();
-    for (const [productId, agg] of purchaseAgg) {
-      if (agg.totalQty > 0) avgPurchaseCostByProduct.set(productId, agg.totalCost / agg.totalQty);
-    }
-
-    const merged = new Map<string, number>(avgPurchaseCostByProduct);
-    for (const [productId, cost] of recipeCostByProduct) merged.set(productId, cost);
-    return merged;
+  // Moved to common/product-costs.ts so the profitability report computes
+  // margin from the identical number this P&L charges as COGS — see the note
+  // there. Kept as a thin method so every existing call site reads unchanged.
+  private resolveFinishedGoodUnitCosts(organizationId: string): Promise<Map<string, number>> {
+    return resolveProductUnitCosts(this.prisma, organizationId);
   }
 
   // Values every product currently on hand as an asset — for the "Запуск
@@ -702,6 +677,120 @@ export class FinanceService {
   // Powers the owner dashboard's at-a-glance cards. Balances/AR/AP are
   // point-in-time (as of now); profit figures cover the given period,
   // defaulting to the current calendar month.
+  // ДДС — движение денежных средств over a period.
+  //
+  // The dashboard already answers "what moved today". This answers the
+  // month-scale question the owner plans against: where the money came from,
+  // where it went, and whether the period ended fuller than it started.
+  //
+  // Opening balance is derived from every movement BEFORE `from` rather than
+  // read off the account, so the statement reconciles for ANY period asked
+  // for, not just one ending today: opening + inflow − outflow is always the
+  // closing balance. Closing is then computed the same way rather than taken
+  // from CashAccount.currentBalance, because a period ending in the past must
+  // not report today's balance as its own.
+  //
+  // ADJUSTMENT is signed (mirroring StockMovement) and so is classified by
+  // the sign of its amount, not by its type — the same rule the dashboard and
+  // the Telegram bot already use.
+  async getCashFlow(organizationId: string, from: Date, to: Date): Promise<CashFlowDto> {
+    const [priorMovements, movements] = await Promise.all([
+      this.prisma.cashMovement.findMany({
+        where: { organizationId, occurredAt: { lt: from } },
+        select: { type: true, amount: true },
+      }),
+      this.prisma.cashMovement.findMany({
+        where: { organizationId, occurredAt: { gte: from, lte: to } },
+        include: { categoryRef: true },
+      }),
+    ]);
+
+    const signedOf = (type: CashMovementType, amount: number): number =>
+      type === CashMovementType.ADJUSTMENT
+        ? amount
+        : CASH_MOVEMENT_INFLOW_TYPES.includes(type)
+          ? amount
+          : -amount;
+
+    const openingBalance = priorMovements.reduce(
+      (sum, m) => sum + signedOf(m.type as CashMovementType, m.amount.toNumber()),
+      0,
+    );
+
+    const inflowByType = new Map<CashMovementType, { amount: number; count: number }>();
+    const outflowByType = new Map<CashMovementType, { amount: number; count: number }>();
+    const outflowByCategory = new Map<string | null, { categoryName: string; amount: number; count: number }>();
+    let totalInflow = 0;
+    let totalOutflow = 0;
+    let uncategorizedOutflow = 0;
+
+    for (const m of movements) {
+      const type = m.type as CashMovementType;
+      const signed = signedOf(type, m.amount.toNumber());
+      // A signed ADJUSTMENT of exactly zero moves nothing and belongs on
+      // neither side; counting it as an outflow would inflate the count.
+      if (signed === 0) continue;
+      const magnitude = Math.abs(signed);
+      const bucket = signed > 0 ? inflowByType : outflowByType;
+      const entry = bucket.get(type) ?? { amount: 0, count: 0 };
+      entry.amount += magnitude;
+      entry.count += 1;
+      bucket.set(type, entry);
+
+      if (signed > 0) {
+        totalInflow += magnitude;
+        continue;
+      }
+      totalOutflow += magnitude;
+      // Grouped by category only on the way out: an inflow's category is
+      // almost always just "выручка", while it is spending the owner needs
+      // broken down to budget against.
+      if (!m.categoryId) {
+        uncategorizedOutflow += magnitude;
+        continue;
+      }
+      const categoryEntry = outflowByCategory.get(m.categoryId) ?? {
+        categoryName: m.categoryRef?.name ?? "Без категории",
+        amount: 0,
+        count: 0,
+      };
+      categoryEntry.amount += magnitude;
+      categoryEntry.count += 1;
+      outflowByCategory.set(m.categoryId, categoryEntry);
+    }
+
+    const toLines = (map: Map<CashMovementType, { amount: number; count: number }>): CashFlowLineDto[] =>
+      Array.from(map.entries())
+        .map(([type, v]) => ({
+          type,
+          label: CASH_MOVEMENT_TYPE_LABELS_RU[type],
+          amount: roundMoney(v.amount),
+          count: v.count,
+        }))
+        .sort((a, b) => b.amount - a.amount);
+
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      openingBalance: roundMoney(openingBalance),
+      closingBalance: roundMoney(openingBalance + totalInflow - totalOutflow),
+      totalInflow: roundMoney(totalInflow),
+      totalOutflow: roundMoney(totalOutflow),
+      netFlow: roundMoney(totalInflow - totalOutflow),
+      inflowByType: toLines(inflowByType),
+      outflowByType: toLines(outflowByType),
+      outflowByCategory: Array.from(outflowByCategory.entries())
+        .map(([categoryId, v]) => ({
+          categoryId,
+          categoryName: v.categoryName,
+          amount: roundMoney(v.amount),
+          count: v.count,
+        }))
+        .sort((a, b) => b.amount - a.amount),
+      uncategorizedOutflow: roundMoney(uncategorizedOutflow),
+    };
+  }
+
   async getDashboard(organizationId: string, from?: Date, to?: Date): Promise<FinanceDashboardDto> {
     const periodTo = to ?? new Date();
     const periodFrom = from ?? new Date(periodTo.getFullYear(), periodTo.getMonth(), 1);
