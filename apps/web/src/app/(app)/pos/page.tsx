@@ -10,6 +10,7 @@ import {
   MonitorSmartphone,
   Plus,
   Printer,
+  RotateCcw,
   ScanLine,
   Split,
   Tag,
@@ -32,10 +33,13 @@ import {
 import { Modal } from "@/components/modal";
 import { NumberPad } from "@/components/number-pad";
 import { LabelPrintPicker } from "@/components/label-print-modal";
+import { CustomerScreenPickerModal } from "@/components/customer-screen-picker";
 import {
+  forgetRememberedCustomerScreen,
   openCustomerDisplay,
   useCustomerDisplayPublisher,
   type CustomerState,
+  type ScreenPlacement,
 } from "@/lib/customer-display";
 import { SaleHistoryModal } from "@/components/sale-history-modal";
 import { api, ApiError } from "@/lib/api";
@@ -110,6 +114,12 @@ export default function PosPage() {
   // Labels are printed at the till because that is where the label printer is
   // plugged in — the monoblock is the only machine it is attached to.
   const [labelsOpen, setLabelsOpen] = useState(false);
+  // Set only when openCustomerDisplay() cannot tell which physical monitor is
+  // the customer's — no remembered choice yet, or Windows' own displays
+  // changed since. See customer-screen-picker.tsx for why this exists at all.
+  const [screenPicker, setScreenPicker] = useState<{ screens: ScreenPlacement[]; hostIndex: number | null } | null>(
+    null,
+  );
   // An older sale the cashier asked for another copy of. Takes precedence
   // over `lastSale` on the printable slip, and clears itself once printed.
   const [reprintSale, setReprintSale] = useState<SaleDetailDto | null>(null);
@@ -495,13 +505,20 @@ export default function PosPage() {
           Этикетки
         </button>
         {/* Opens the buyer's screen on the monoblock's second display. Once
-            per boot — the window then just sits there and follows the cart. */}
+            per boot — the window then just sits there and follows the cart.
+            Which physical monitor that is gets picked once and remembered
+            (see customer-display.ts); it does not re-derive it from Windows'
+            own "primary display" setting on every open, because that setting
+            is exactly what moved on its own and sent the window to the wrong
+            screen. */}
         <button
           onClick={async () => {
             const result = await openCustomerDisplay();
-            if (result === "blocked") {
+            if (result.kind === "blocked") {
               setError("Браузер заблокировал новое окно. Разрешите всплывающие окна для этого сайта.");
-            } else if (result !== "placed") {
+            } else if (result.kind === "needs-pick") {
+              setScreenPicker({ screens: result.screens, hostIndex: result.hostIndex });
+            } else if (result.kind !== "placed") {
               setFlash("Экран покупателя открыт. Перетащите окно на второй экран пальцем за верхний край.");
             }
           }}
@@ -509,6 +526,25 @@ export default function PosPage() {
         >
           <MonitorSmartphone className="h-4 w-4" strokeWidth={1.75} />
           Экран покупателя
+        </button>
+        {/* Escape hatch for exactly what the owner hit: Windows decided a
+            different physical monitor is now "главный", or a cable got
+            swapped. Forgetting the remembered screen makes the next open show
+            the picker again instead of guessing. */}
+        <button
+          onClick={async () => {
+            forgetRememberedCustomerScreen();
+            const result = await openCustomerDisplay();
+            if (result.kind === "needs-pick") {
+              setScreenPicker({ screens: result.screens, hostIndex: result.hostIndex });
+            } else if (result.kind === "blocked") {
+              setError("Браузер заблокировал новое окно. Разрешите всплывающие окна для этого сайта.");
+            }
+          }}
+          title="Сменить экран покупателя"
+          className="flex shrink-0 items-center justify-center rounded-xl border border-border bg-surface px-2.5 py-2.5 text-sm font-medium text-muted transition hover:bg-surface-muted hover:text-foreground"
+        >
+          <RotateCcw className="h-4 w-4" strokeWidth={1.75} />
         </button>
         {/* Which point this till is selling at is shown to EVERYONE, not just
             to whoever may switch it. Prices differ per point, so a cashier
@@ -868,6 +904,16 @@ export default function PosPage() {
         products={products.filter((p) => p.type === ProductType.FINISHED_GOOD)}
         onClose={() => {
           setLabelsOpen(false);
+          focusScan();
+        }}
+      />
+    )}
+    {screenPicker && (
+      <CustomerScreenPickerModal
+        screens={screenPicker.screens}
+        hostIndex={screenPicker.hostIndex}
+        onClose={() => {
+          setScreenPicker(null);
           focusScan();
         }}
       />
