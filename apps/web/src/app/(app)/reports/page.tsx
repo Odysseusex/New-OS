@@ -32,6 +32,13 @@ import {
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { downloadCsv } from "@/lib/csv";
+import {
+  addDaysKey,
+  endOfZonedDay,
+  firstOfMonthKey,
+  startOfZonedDay,
+  zonedDateKey,
+} from "@/lib/reporting-period";
 import { formatAverage, formatDayKey, formatMoney, formatQuantity } from "@/lib/format";
 import { SalesTrendChart, type TrendMetric } from "@/components/sales-trend-chart";
 import {
@@ -50,23 +57,45 @@ type ReportKey =
   | "quality"
   | "hr"
   | "stock";
-type Period = "today" | "7d" | "30d" | "month";
+type Period = "today" | "yesterday" | "7d" | "30d" | "month" | "90d" | "year";
 
+// Ordered shortest to longest, which is the order they are rendered in.
+// «Вчера» exists because it is the single most asked-for report — the owner is
+// asked for yesterday's numbers the next morning, and computing them from a
+// 7-day total is not something anyone should have to do by hand. The two long
+// ones exist so the month-by-month history below has more than one month in it.
 const PERIOD_LABELS: Record<Period, string> = {
   today: "Сегодня",
+  yesterday: "Вчера",
   "7d": "7 дней",
   "30d": "30 дней",
   month: "Этот месяц",
+  "90d": "3 месяца",
+  year: "Год",
 };
 
+// Built on Almaty calendar days, not the browser's, because that is how the
+// server buckets every report — see lib/reporting-period.ts. Asked for in the
+// browser's own days instead, «Вчера» came back spanning two of the server's.
 function periodRange(period: Period): { from: Date; to: Date } {
+  const today = zonedDateKey();
+  const startDaysBack = (days: number) => startOfZonedDay(addDaysKey(today, -days));
+
+  if (period === "yesterday") {
+    // The only period that does not end "now": yesterday is a closed day, so
+    // its window has to close at the end of it. Left running to now, it would
+    // silently include today's sales and stop being yesterday at all.
+    const key = addDaysKey(today, -1);
+    return { from: startOfZonedDay(key), to: endOfZonedDay(key) };
+  }
+
   const to = new Date();
-  const from = new Date();
-  from.setHours(0, 0, 0, 0);
-  if (period === "7d") from.setDate(from.getDate() - 6);
-  if (period === "30d") from.setDate(from.getDate() - 29);
-  if (period === "month") from.setDate(1);
-  return { from, to };
+  if (period === "7d") return { from: startDaysBack(6), to };
+  if (period === "30d") return { from: startDaysBack(29), to };
+  if (period === "month") return { from: startOfZonedDay(firstOfMonthKey(today)), to };
+  if (period === "90d") return { from: startDaysBack(89), to };
+  if (period === "year") return { from: startDaysBack(364), to };
+  return { from: startOfZonedDay(today), to };
 }
 
 export default function ReportsPage() {
@@ -134,7 +163,7 @@ export default function ReportsPage() {
               custom range, which the other tabs don't), so the shared one
               would just contradict it. */}
           {activeReport !== "stock" && activeReport !== "trend" && (
-            <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
+            <div className="flex flex-wrap items-center gap-1 rounded-xl bg-surface-muted p-1">
               {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
                 <button
                   key={p}
@@ -351,14 +380,28 @@ function SalesReport({
           onExport={() =>
             downloadCsv(
               `sales-by-location-${period}.csv`,
-              ["Точка", "Выручка", "Продаж"],
-              report.byLocation.map((l) => [l.locationName, l.revenue.toFixed(2), l.count]),
+              ["Точка", "Выручка", "Продаж", "Средний чек"],
+              report.byLocation.map((l) => [
+                l.locationName,
+                l.revenue.toFixed(2),
+                l.count,
+                l.count > 0 ? (l.revenue / l.count).toFixed(2) : "",
+              ]),
             )
           }
         >
+          {/* Средний чек per point, not just for the network. Two points can
+              take the same money on very different numbers of buyers, and it
+              is the per-point figure that says which. Divided here rather than
+              on the server because both halves are already in this row. */}
           <ReportTable
-            columns={["Точка", "Выручка", "Продаж"]}
-            rows={report.byLocation.map((l) => [l.locationName, formatMoney(l.revenue), String(l.count)])}
+            columns={["Точка", "Выручка", "Продаж", "Средний чек"]}
+            rows={report.byLocation.map((l) => [
+              l.locationName,
+              formatMoney(l.revenue),
+              String(l.count),
+              l.count > 0 ? formatMoney(l.revenue / l.count) : "—",
+            ])}
           />
         </ReportCard>
       )}
@@ -1155,7 +1198,140 @@ function DynamicsReport({ period, locationId }: { period: Period; locationId: st
       >
         <WeekdayRevenueChart buckets={report.byWeekday} />
       </ReportCard>
+
+      <SalesHistoryTable report={report} period={period} />
     </div>
+  );
+}
+
+// ── История: те же продажи числами, по дням / неделям / месяцам ───────
+//
+// The charts above show the shape; this shows the numbers, because "сколько
+// было продаж вчера" is a question with an exact answer and reading it off a
+// line chart is not it.
+//
+// Grouped from the daily points the server already returns rather than by
+// asking it again — every bucket here is a sum of whole calendar days it has
+// already bucketed in Asia/Almaty, so the week and month totals cannot drift
+// from the day totals or from any other report.
+type Grouping = "day" | "week" | "month";
+
+const GROUPING_LABELS: Record<Grouping, string> = {
+  day: "По дням",
+  week: "По неделям",
+  month: "По месяцам",
+};
+
+// Monday of the week a "YYYY-MM-DD" key falls in, as another such key. Stepped
+// in UTC on a plain calendar date, never on a zoned instant, so it cannot slip
+// a day around an offset change — the same rule the server buckets by.
+function mondayOf(dateKey: string): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  const isoDay = date.getUTCDay() === 0 ? 7 : date.getUTCDay();
+  date.setUTCDate(date.getUTCDate() - (isoDay - 1));
+  return date.toISOString().slice(0, 10);
+}
+
+const monthFormatter = new Intl.DateTimeFormat("ru-RU", { month: "long", year: "numeric" });
+
+function shortDayKey(dateKey: string): string {
+  const [, month, day] = dateKey.split("-");
+  return `${day}.${month}`;
+}
+
+interface HistoryRow {
+  key: string;
+  label: string;
+  revenue: number;
+  salesCount: number;
+}
+
+function groupPoints(points: SalesDynamicsDto["points"], grouping: Grouping): HistoryRow[] {
+  const buckets = new Map<string, HistoryRow>();
+  for (const point of points) {
+    let key: string;
+    let label: string;
+    if (grouping === "day") {
+      key = point.date;
+      label = formatDayKey(point.date);
+    } else if (grouping === "week") {
+      key = mondayOf(point.date);
+      label = `${shortDayKey(key)} — ${shortDayKey(addDaysKey(key, 6))}`;
+    } else {
+      key = point.date.slice(0, 7);
+      const [y, m] = key.split("-").map(Number);
+      label = monthFormatter.format(new Date(Date.UTC(y, m - 1, 1)));
+    }
+    const row = buckets.get(key) ?? { key, label, revenue: 0, salesCount: 0 };
+    row.revenue += point.revenue;
+    row.salesCount += point.salesCount;
+    buckets.set(key, row);
+  }
+  // Newest first: the question being answered is almost always about the most
+  // recent day or week, and it should not need scrolling to.
+  return Array.from(buckets.values()).sort((a, b) => b.key.localeCompare(a.key));
+}
+
+function SalesHistoryTable({ report, period }: { report: SalesDynamicsDto; period: Period }) {
+  const [grouping, setGrouping] = useState<Grouping>("day");
+  const rows = useMemo(() => groupPoints(report.points, grouping), [report.points, grouping]);
+
+  // A day with no sales is kept over a short period — "в этот день ничего не
+  // продали" is a real answer, and over a week or a month there are few enough
+  // of them to read. Over a quarter or a year it is the opposite: sixty empty
+  // rows bury the handful that carry numbers, so they are dropped and the
+  // table says so rather than looking like days went missing.
+  const ZERO_ROW_LIMIT = 31;
+  const hidesEmptyDays = grouping === "day" && rows.length > ZERO_ROW_LIMIT;
+  const visible =
+    grouping === "day" && !hidesEmptyDays ? rows : rows.filter((r) => r.salesCount > 0);
+
+  return (
+    <ReportCard
+      title="История продаж"
+      onExport={() =>
+        downloadCsv(
+          `sales-history-${grouping}-${period}.csv`,
+          ["Период", "Выручка", "Продаж", "Средний чек"],
+          visible.map((r) => [
+            r.label,
+            r.revenue.toFixed(2),
+            r.salesCount,
+            r.salesCount > 0 ? (r.revenue / r.salesCount).toFixed(2) : "",
+          ]),
+        )
+      }
+    >
+      <div className="flex flex-wrap items-center gap-1 border-b border-border px-5 py-3 print:hidden">
+        {(Object.keys(GROUPING_LABELS) as Grouping[]).map((g) => (
+          <button
+            key={g}
+            onClick={() => setGrouping(g)}
+            className={clsx(
+              "rounded-lg px-3 py-1.5 text-sm font-medium transition",
+              grouping === g ? "bg-surface-muted text-foreground" : "text-muted hover:text-foreground",
+            )}
+          >
+            {GROUPING_LABELS[g]}
+          </button>
+        ))}
+      </div>
+      <ReportTable
+        columns={["Период", "Выручка", "Продаж", "Средний чек"]}
+        rows={visible.map((r) => [
+          r.label,
+          formatMoney(r.revenue),
+          String(r.salesCount),
+          r.salesCount > 0 ? formatMoney(r.revenue / r.salesCount) : "—",
+        ])}
+      />
+      {hidesEmptyDays && (
+        <p className="border-t border-border px-5 py-3 text-sm text-muted">
+          Дни без продаж скрыты — их {rows.length - visible.length} за период.
+        </p>
+      )}
+    </ReportCard>
   );
 }
 
