@@ -64,3 +64,14 @@ export function addDaysKey(dateKey: string, days: number): string {
 export function firstOfMonthKey(dateKey: string): string {
   return `${dateKey.slice(0, 7)}-01`;
 }
+
+// A specific wall-clock time ("18:00") on a specific day, both read as they
+// stand in the reporting zone — e.g. "продажи до 18:00" on a given date.
+// Adding the minutes straight onto the day's start instant is safe (not just
+// convenient) because Asia/Almaty has had a fixed offset since 2005, per
+// startOfZonedDay's own comment above — there is no DST edge to land on
+// between midnight and any HH:mm the same day.
+export function zonedDateTime(dateKey: string, hhmm: string): Date {
+  const [hours, minutes] = hhmm.split(":").map(Number);
+  return new Date(startOfZonedDay(dateKey).getTime() + (hours * 60 + minutes) * 60_000);
+}

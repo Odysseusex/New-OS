@@ -50,12 +50,16 @@ export class SalesController {
     @Query("locationId") locationId?: string,
     @Query("limit") limit?: string,
     @Query("offset") offset?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
   ) {
     return this.salesService.findAll(
       user,
       locationId,
       limit ? Number(limit) : undefined,
       offset ? Number(offset) : undefined,
+      from ? new Date(from) : undefined,
+      to ? new Date(to) : undefined,
     );
   }
 

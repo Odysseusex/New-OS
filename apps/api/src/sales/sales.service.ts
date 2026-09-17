@@ -122,11 +122,18 @@ export class SalesService {
     return bank?.id ?? null;
   }
 
+  // `from`/`to` cover both "which dates" and "which hours" in one pair of
+  // instants — a cashier asking for "продажи до 18:00 сегодня в Мерей" is
+  // just `from` = start of that Almaty day, `to` = that day's 18:00, same as
+  // report()/dynamics() already do. Undefined means unrestricted, so every
+  // existing caller of findAll() keeps working untouched.
   async findAll(
     user: AuthenticatedUser,
     requestedLocationId?: string,
     limit = 50,
     offset = 0,
+    from?: Date,
+    to?: Date,
   ): Promise<SaleDto[]> {
     const locationId = resolveLocationScope(user, requestedLocationId);
 
@@ -134,6 +141,7 @@ export class SalesService {
       where: {
         organizationId: user.organizationId,
         ...(locationId ? { locationId } : {}),
+        ...(from || to ? { soldAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
       },
       include: SALE_INCLUDE,
       orderBy: { soldAt: "desc" },

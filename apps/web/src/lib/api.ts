@@ -268,12 +268,14 @@ export const api = {
       create: (saleId: string, dto: CreateSaleReturnRequestDto) =>
         request<SaleReturnDto>(`/sales/${saleId}/returns`, { method: "POST", body: JSON.stringify(dto) }),
     },
-    list: (locationId?: string, limit?: number, offset?: number) =>
+    list: (locationId?: string, limit?: number, offset?: number, from?: string, to?: string) =>
       request<SaleDto[]>(
         withQuery("/sales", {
           locationId,
           limit: limit ? String(limit) : undefined,
           offset: offset ? String(offset) : undefined,
+          from,
+          to,
         }),
       ),
     summary: (locationId?: string) =>

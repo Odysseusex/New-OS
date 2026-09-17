@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Plus, Receipt, TrendingUp, Wallet } from "lucide-react";
-import type { CustomerDto, LocationDto, ProductDto, SaleDto, SalesSummaryDto } from "@bakery-os/shared";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Plus, Receipt, TrendingUp, Wallet, X } from "lucide-react";
+import type { CustomerDto, LocationDto, ProductDto, SaleDto, SalesReportDto, SalesSummaryDto } from "@bakery-os/shared";
 import { ORG_WIDE_ROLES, PAYMENT_RECORD_ROLES, ProductType, SALE_CREATE_ROLES } from "@bakery-os/shared";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney } from "@/lib/format";
+import { endOfZonedDay, startOfZonedDay, zonedDateKey, zonedDateTime } from "@/lib/reporting-period";
 import { NewSaleModal } from "@/components/new-sale-modal";
 import { SaleDetailModal } from "@/components/sale-detail-modal";
 import { PaymentStatusBadge } from "@/components/payment-status-badge";
@@ -28,37 +29,70 @@ export default function SalesPage() {
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [locationFilter, setLocationFilter] = useState<string>("");
+  // Empty means unrestricted — the list behaves exactly as it always has.
+  // Filled in, it's a single Almaty calendar day; fromTime/toTime narrow it
+  // further within that day ("продажи до 18:00"). Time inputs are only
+  // offered once a date is picked — a time-of-day cutoff with no day to
+  // anchor it to isn't a question this list can answer.
+  const [dateFilter, setDateFilter] = useState("");
+  const [fromTime, setFromTime] = useState("");
+  const [toTime, setToTime] = useState("");
+  const [periodSummary, setPeriodSummary] = useState<SalesReportDto | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
   const [payingSale, setPayingSale] = useState<SalePaymentContext | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Both bounds of the filter, or null when the date is unset. fromTime/
+  // toTime default to the day's own boundaries rather than to nothing, so a
+  // date with no time typed in still means "the whole day" and not "from the
+  // dawn of time" — the day is what fully replaces the unrestricted default.
+  const filterRange = useMemo(() => {
+    if (!dateFilter) return null;
+    return {
+      from: fromTime ? zonedDateTime(dateFilter, fromTime) : startOfZonedDay(dateFilter),
+      to: toTime ? zonedDateTime(dateFilter, toTime) : endOfZonedDay(dateFilter),
+    };
+  }, [dateFilter, fromTime, toTime]);
+
   const load = useCallback(() => {
+    const fromIso = filterRange?.from.toISOString();
+    const toIso = filterRange?.to.toISOString();
     Promise.all([
       api.sales.summary(locationFilter || undefined),
-      api.sales.list(locationFilter || undefined, PAGE_SIZE),
+      api.sales.list(locationFilter || undefined, PAGE_SIZE, undefined, fromIso, toIso),
+      filterRange
+        ? api.sales.report(fromIso!, toIso!, locationFilter || undefined)
+        : Promise.resolve(null),
     ])
-      .then(([s, list]) => {
+      .then(([s, list, period]) => {
         setSummary(s);
         setSales(list);
+        setPeriodSummary(period);
         // A full page might mean there's more, or might just mean the list
         // ends exactly on a page boundary — either way, "Показать ещё" is
         // the correct next click; a short page is the only reliable "done".
         setHasMore(list.length === PAGE_SIZE);
       })
       .catch(() => setError("Не удалось загрузить продажи"));
-  }, [locationFilter]);
+  }, [locationFilter, filterRange]);
 
   function loadMore() {
     setIsLoadingMore(true);
     api.sales
-      .list(locationFilter || undefined, PAGE_SIZE, sales.length)
+      .list(locationFilter || undefined, PAGE_SIZE, sales.length, filterRange?.from.toISOString(), filterRange?.to.toISOString())
       .then((next) => {
         setSales((prev) => [...prev, ...next]);
         setHasMore(next.length === PAGE_SIZE);
       })
       .catch(() => setError("Не удалось загрузить продажи"))
       .finally(() => setIsLoadingMore(false));
+  }
+
+  function resetDateFilter() {
+    setDateFilter("");
+    setFromTime("");
+    setToTime("");
   }
 
   useEffect(() => {
@@ -125,7 +159,74 @@ export default function SalesPage() {
 
       <div className="rounded-2xl border border-border bg-surface shadow-card">
         <div className="border-b border-border px-5 py-4">
-          <h2 className="text-sm font-semibold text-foreground">Последние продажи</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold text-foreground">
+              {dateFilter ? "Продажи за период" : "Последние продажи"}
+            </h2>
+          </div>
+          <div className="mt-3 flex flex-wrap items-end gap-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted">Дата</label>
+              <input
+                type="date"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+              />
+            </div>
+            {!dateFilter && (
+              <button
+                type="button"
+                onClick={() => setDateFilter(zonedDateKey())}
+                className="rounded-xl border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+              >
+                Сегодня
+              </button>
+            )}
+            {dateFilter && (
+              <>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted">С</label>
+                  <input
+                    type="time"
+                    value={fromTime}
+                    onChange={(e) => setFromTime(e.target.value)}
+                    className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted">До</label>
+                  <input
+                    type="time"
+                    value={toTime}
+                    onChange={(e) => setToTime(e.target.value)}
+                    className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={resetDateFilter}
+                  className="flex items-center gap-1 rounded-xl border border-border px-3 py-2 text-sm font-medium text-muted transition hover:bg-surface-muted hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  Сбросить
+                </button>
+              </>
+            )}
+          </div>
+          {periodSummary && (
+            <p className="mt-3 text-sm text-foreground">
+              {periodSummary.totalCount === 0
+                ? "Продаж за этот период нет"
+                : `${periodSummary.totalCount} продаж(и) на сумму ${formatMoney(periodSummary.totalRevenue)}`}
+              {isOrgWide && !locationFilter && periodSummary.byLocation.length > 0 && (
+                <span className="text-muted">
+                  {" "}
+                  — {periodSummary.byLocation.map((l) => `${l.locationName}: ${formatMoney(l.revenue)}`).join(", ")}
+                </span>
+              )}
+            </p>
+          )}
         </div>
         <table className="w-full text-sm">
           <thead>
