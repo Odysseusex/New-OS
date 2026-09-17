@@ -421,6 +421,14 @@ export function formatBusinessContext(
     );
 
     out.heading(3, "STOCK MOVEMENTS BY TYPE");
+    out.line(
+      "ВАЖНО: total_qty — это ВЕЛИЧИНА движения, а не знаковое изменение остатка. " +
+        "Направление задаёт тип, а не знак числа. Приход (RECEIPT, PRODUCTION_OUTPUT) " +
+        "увеличивает остаток; расход (WRITE_OFF, SALE, PRODUCTION_CONSUMPTION) — " +
+        "уменьшает, и его total_qty тоже положительный. Исключение — ADJUSTMENT: " +
+        "только у него число знаковое, потому что корректировка может идти в обе " +
+        "стороны. Не складывай эти строки между собой без учёта типа.",
+    );
     out.table(
       ["movement_type", "total_qty", "movement_count"],
       inv.movementsByType.map((m) => [m.type, num(m.totalQuantity), String(m.movementCount)]),

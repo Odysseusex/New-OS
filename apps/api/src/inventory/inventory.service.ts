@@ -53,9 +53,12 @@ export class InventoryService {
     return grouped
       .map((row) => ({
         type: row.type as StockMovementType,
-        // Signed, because the ledger stores it signed: a write-off is
-        // negative here exactly as it is in the table, and flipping it to a
-        // magnitude would hide which way the goods moved.
+        // A MAGNITUDE, not a signed delta — because that is how the ledger
+        // stores it. receive() and writeOff() both persist a positive
+        // quantity and carry the direction in `type`; only ADJUSTMENT stores
+        // a signed value, since a correction can go either way. So a
+        // WRITE_OFF total of 19 means 19 units left, not 19 units arrived,
+        // and the reader has to know the type to know the direction.
         totalQuantity: Number((row._sum.quantity?.toNumber() ?? 0).toFixed(3)),
         movementCount: row._count._all,
       }))
