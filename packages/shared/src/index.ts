@@ -16,4 +16,5 @@ export * from "./business-context-format";
 export * from "./telegram";
 export * from "./fiscal";
 export * from "./consignment";
+export * from "./promotions";
 export * from "./dto";

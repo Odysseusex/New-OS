@@ -61,6 +61,13 @@ import type {
   NotificationDto,
   PlannedBreakEvenDto,
   PlannedFixedCostDto,
+  PromotionDto,
+  PromotionCouponDto,
+  PromotionCouponPreviewDto,
+  PromotionReportDto,
+  CreatePromotionRequestDto,
+  UpdatePromotionRequestDto,
+  GeneratePromotionCouponsResponseDto,
   ConsignmentBalanceDto,
   ConsignmentDetailDto,
   CreateConsignmentPaymentRequestDto,
@@ -305,6 +312,32 @@ export const api = {
         body: JSON.stringify(dto),
       }),
     payments: (id: string) => request<CashMovementDto[]>(`/sales/${id}/payments`),
+  },
+
+  promotions: {
+    list: (locationId?: string) => request<PromotionDto[]>(withQuery("/promotions", { locationId })),
+    findOne: (id: string) => request<PromotionDto>(`/promotions/${id}`),
+    create: (dto: CreatePromotionRequestDto) =>
+      request<PromotionDto>("/promotions", { method: "POST", body: JSON.stringify(dto) }),
+    update: (id: string, dto: UpdatePromotionRequestDto) =>
+      request<PromotionDto>(`/promotions/${id}`, { method: "PATCH", body: JSON.stringify(dto) }),
+    coupons: (id: string) => request<PromotionCouponDto[]>(`/promotions/${id}/coupons`),
+    generateCoupons: (id: string, count: number) =>
+      request<GeneratePromotionCouponsResponseDto>(`/promotions/${id}/coupons`, {
+        method: "POST",
+        body: JSON.stringify({ count }),
+      }),
+    voidCoupon: (id: string, couponId: string, reason?: string) =>
+      request<{ voided: true }>(`/promotions/${id}/coupons/${couponId}`, {
+        method: "DELETE",
+        body: JSON.stringify({ reason }),
+      }),
+    // Preview only — never changes the coupon's status. Thrown ApiError
+    // carries the exact reason a code can't be used right now.
+    lookupCoupon: (code: string, locationId: string) =>
+      request<PromotionCouponPreviewDto>(withQuery("/promotions/lookup-coupon", { code, locationId })),
+    report: (id: string, from: string, to: string) =>
+      request<PromotionReportDto>(withQuery(`/promotions/${id}/report`, { from, to })),
   },
 
   customers: {

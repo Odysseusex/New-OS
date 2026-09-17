@@ -5,6 +5,7 @@ import { FinanceService } from "../finance/finance.service";
 import { FiscalService } from "../fiscal/fiscal.service";
 import { FiscalSettings } from "../fiscal/fiscal.settings";
 import { FakeFiscalProvider } from "../fiscal/fake-fiscal.provider";
+import { PromotionsService } from "../promotions/promotions.service";
 import { SalesService } from "./sales.service";
 import { AuthenticatedUser } from "../auth/auth.types";
 
@@ -34,7 +35,7 @@ function services() {
   const cash = new CashMovementsService(prisma);
   const fiscal = new FiscalService(prisma, new FakeFiscalProvider(), new FiscalSettings());
   return {
-    sales: new SalesService(prisma, cash, fiscal, new FiscalSettings()),
+    sales: new SalesService(prisma, cash, fiscal, new FiscalSettings(), new PromotionsService(prisma)),
     finance: new FinanceService(prisma, cash),
   };
 }

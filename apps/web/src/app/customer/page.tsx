@@ -84,10 +84,15 @@ function CartScreen({ state }: { state: Extract<CustomerState, { kind: "cart" }>
                   this from a metre away, across the counter — the discount has
                   to be unmistakable, not inferred from a thin line. The percent
                   is computed from the two prices rather than assumed, so it
-                  stays true if the markdown rate is ever changed. */}
+                  stays true if the markdown rate is ever changed. Labelled
+                  generically ("Скидка") rather than "Уценка" specifically —
+                  this same struck-through pair now also carries a promotion
+                  coupon's discount, and this screen has no per-line name to
+                  tell the two apart by (the receipt does; see PrintableReceipt
+                  in pos/page.tsx). */}
               {line.fullUnitPrice != null && (
                 <span className="shrink-0 rounded-lg bg-accent/10 px-2.5 py-1 text-xl font-semibold text-accent">
-                  Уценка −{Math.round((1 - line.unitPrice / line.fullUnitPrice) * 100)}%
+                  Скидка −{Math.round((1 - line.unitPrice / line.fullUnitPrice) * 100)}%
                 </span>
               )}
               <span className="w-44 shrink-0 text-right text-3xl font-semibold tabular-nums">

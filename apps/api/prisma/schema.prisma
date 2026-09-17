@@ -77,6 +77,14 @@ enum WriteOffReason {
   OTHER
 }
 
+// A coupon's whole lifecycle: printed, redeemed once, or manually voided
+// (e.g. a cashier mistyped one). Never deleted — see PromotionCoupon.
+enum PromotionCouponStatus {
+  ISSUED
+  REDEEMED
+  VOID
+}
+
 enum ProductionBatchStatus {
   PLANNED
   IN_PROGRESS
@@ -335,6 +343,8 @@ model Location {
   employees         Employee[]
   plannedFixedCosts PlannedFixedCost[]
   productPrices     ProductLocationPrice[]
+  promotions            Promotion[]
+  promotionRedemptions  PromotionCoupon[]
 
   @@index([organizationId])
   @@index([regionId])
@@ -400,6 +410,8 @@ model User {
   telegramPendingActions    TelegramPendingAction[]
   telegramChatState         TelegramChatState?
   telegramNotificationLogs  TelegramNotificationLog[]
+  promotionsCreated         Promotion[]
+  promotionRedemptions      PromotionCoupon[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -426,7 +438,8 @@ model Category {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  products Product[]
+  products       Product[]
+  promotionRules PromotionRule[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -648,6 +661,10 @@ model Sale {
   cashMovements  CashMovement[]
   fiscalReceipt  FiscalReceipt?
   returns        SaleReturn[]
+  // Set only when this sale was rung up against a promotion coupon — the
+  // redemption fact itself lives on PromotionCoupon, this is just the back
+  // pointer so a Sale can be checked for one.
+  promotionCoupon PromotionCoupon?
 
   @@index([organizationId, locationId])
   @@index([soldAt])
@@ -840,8 +857,117 @@ model SaleItem {
   consignmentSupplier   Supplier? @relation(fields: [consignmentSupplierId], references: [id])
   consignmentUnitCost   Decimal?  @db.Decimal(12, 2)
 
+  // Set only on a line discounted by a Promotion (see below) — never for the
+  // MARKDOWN_PERCENT stale-goods discount, which uses fullUnitPrice/unitPrice
+  // alone with this left null. This is the one flag that keeps the two
+  // discount kinds apart: SalesService's markdown-loss figures filter on
+  // `promotionId IS NULL`, so a marketing coupon can never be mistaken for
+  // stale-goods overproduction, and a promotion report can sum exactly the
+  // lines that belong to it.
+  promotionId String?
+  promotion   Promotion? @relation(fields: [promotionId], references: [id])
+
   @@index([consignmentSupplierId])
+  @@index([promotionId])
   @@map("sale_items")
+}
+
+// A short-lived marketing campaign — e.g. a paper-coupon test at a partner
+// site's register. Deliberately its own mechanism, not a variant of the
+// MARKDOWN_PERCENT stale-goods discount: that one means "this bread is going
+// stale", this one means "we are buying foot traffic", and conflating them
+// would corrupt SalesReportDto.markdownLoss, which the owner reads as an
+// overproduction signal.
+//
+// `isActive` is the entire "toggle without a code change" requirement: an
+// owner/admin flips it from the Settings screen, no deploy involved.
+model Promotion {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  // Null = redeemable network-wide; set = only at this one location, so a
+  // coupon printed for one partner site's till cannot also be typed in at
+  // another point of sale.
+  locationId String?
+  location   Location? @relation(fields: [locationId], references: [id])
+  startAt    DateTime
+  endAt      DateTime
+  isActive   Boolean  @default(true)
+  // Defensive cap on total redemptions across the whole campaign, in case a
+  // paper coupon gets photocopied. Null = uncapped.
+  maxRedemptions Int?
+  createdById    String
+  createdBy      User     @relation(fields: [createdById], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  rules     PromotionRule[]
+  coupons   PromotionCoupon[]
+  saleItems SaleItem[]
+
+  @@index([organizationId])
+  @@map("promotions")
+}
+
+// Category -> discount %, for one promotion. The entire "настроить правила"
+// requirement: add/edit/remove a row here to change what a promotion
+// discounts, without touching code. A cashier never picks a percent by
+// hand — the product's own category decides it, which removes a whole class
+// of till mistakes.
+model PromotionRule {
+  id              String    @id @default(cuid())
+  promotionId     String
+  promotion       Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  categoryId      String
+  category        Category  @relation(fields: [categoryId], references: [id])
+  discountPercent Int
+
+  @@unique([promotionId, categoryId])
+  @@map("promotion_rules")
+}
+
+// One physical paper coupon. `code` is what the cashier types in at
+// redemption — short, random, unique — and `status` is the one-use
+// enforcement: redemption flips ISSUED -> REDEEMED with a single conditional
+// UPDATE ... WHERE status = 'ISSUED' (the same claim idiom
+// TelegramPendingAction.claim() already uses in this codebase), so two
+// cashiers racing on the same code can never both win.
+//
+// This row IS "the fact that a coupon was used, separate from the ordinary
+// sale" — it has its own lifecycle and is never edited to represent the
+// sale itself; it only points at the Sale that was created alongside it.
+// Never deleted, even VOID — a paper coupon that was mistakenly issued twice
+// or mistyped stays visible rather than disappearing from the count.
+model PromotionCoupon {
+  id             String                @id @default(cuid())
+  organizationId String
+  promotionId    String
+  promotion      Promotion             @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  // Short, random, unique per organization — printed on/matched to one paper
+  // coupon. Deliberately not sequential: a guessable neighbour code on a
+  // paper slip is a real abuse path for a coupon nobody scans, only types.
+  code   String
+  status PromotionCouponStatus @default(ISSUED)
+
+  redeemedAt         DateTime?
+  redeemedSaleId     String?   @unique
+  redeemedSale       Sale?     @relation(fields: [redeemedSaleId], references: [id])
+  redeemedById       String?
+  redeemedBy         User?     @relation(fields: [redeemedById], references: [id])
+  redeemedLocationId String?
+  redeemedLocation   Location? @relation(fields: [redeemedLocationId], references: [id])
+  // Sum of (fullUnitPrice - unitPrice) x quantity over the sale's tagged
+  // lines, captured once at redemption so a coupon list reads without
+  // joining back through Sale/SaleItem for every row — recomputable from
+  // SaleItem if it ever needs re-deriving.
+  discountTotal Decimal? @db.Decimal(12, 2)
+  voidReason    String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([organizationId, code])
+  @@index([promotionId, status])
+  @@map("promotion_coupons")
 }
 
 // A техкарта: how many units of `product` one batch of this recipe yields,

@@ -18,7 +18,14 @@ import {
   X,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import type { CategoryDto, LocationDto, ProductDto, SaleDetailDto, SaleFiscalReceiptDto } from "@bakery-os/shared";
+import type {
+  CategoryDto,
+  LocationDto,
+  ProductDto,
+  PromotionCouponPreviewDto,
+  SaleDetailDto,
+  SaleFiscalReceiptDto,
+} from "@bakery-os/shared";
 import {
   FiscalReceiptStatus,
   ORG_WIDE_ROLES,
@@ -27,6 +34,7 @@ import {
   ProductType,
   MARKDOWN_PERCENT,
   markdownPrice,
+  applyDiscountPercent,
   SALE_CREATE_ROLES,
   UNIT_LABELS_RU,
 } from "@bakery-os/shared";
@@ -123,6 +131,14 @@ export default function PosPage() {
   // An older sale the cashier asked for another copy of. Takes precedence
   // over `lastSale` on the printable slip, and clears itself once printed.
   const [reprintSale, setReprintSale] = useState<SaleDetailDto | null>(null);
+  // A promotion coupon typed in at the till. `appliedCoupon` is only ever a
+  // PREVIEW (see api.promotions.lookupCoupon) — it never claims the coupon.
+  // The actual claim happens server-side, atomically with the sale, when
+  // `couponCode` is submitted with it.
+  const [couponCode, setCouponCode] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<PromotionCouponPreviewDto | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [couponLoading, setCouponLoading] = useState(false);
 
   const scanRef = useRef<HTMLInputElement>(null);
 
@@ -164,6 +180,12 @@ export default function PosPage() {
     // A part-built order belongs to the point it was priced at. Carrying it
     // across would keep the old prices while the grid shows new ones.
     setCart([]);
+    // A coupon is validated against one specific location (see
+    // Promotion.locationId) — switching points invalidates whatever was
+    // typed in, same reasoning as clearing the cart above.
+    setAppliedCoupon(null);
+    setCouponCode("");
+    setCouponError(null);
   }, [locationId]);
 
   // A location-scoped cashier sells at their own point and nowhere else.
@@ -228,8 +250,60 @@ export default function PosPage() {
     return list;
   }, [products, categoryId, normalizedQuery]);
 
-  const total = cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
+  // Category -> percent from the applied coupon's rules, or null when none is
+  // applied. A pure lookup table — deciding whether it actually applies to a
+  // given line is couponPercentFor() below, since an open-price or
+  // already-marked-down line is never eligible.
+  const couponRuleByCategory = useMemo(() => {
+    if (!appliedCoupon) return null;
+    return new Map(appliedCoupon.rules.map((r) => [r.categoryId, r.discountPercent]));
+  }, [appliedCoupon]);
+
+  // The coupon's discount is applied by category automatically — a cashier
+  // never picks a percent by hand, which is what removes the till-mistake
+  // this is guarding against. A line already marked down by hand keeps that
+  // discount instead: the two never stack, same rule the server enforces.
+  function couponPercentFor(line: CartLine): number | null {
+    if (!couponRuleByCategory || line.markedDown || line.product.isOpenPrice || !line.product.categoryId) {
+      return null;
+    }
+    return couponRuleByCategory.get(line.product.categoryId) ?? null;
+  }
+
+  // This is a LIVE PREVIEW only, computed with the same shared formula the
+  // server uses — the server is what actually decides and claims the
+  // discount when the sale is submitted (see handlePay). Kept in sync so the
+  // cashier and the customer screen never show a number the receipt then
+  // contradicts.
+  function displayUnitPrice(line: CartLine): number {
+    const percent = couponPercentFor(line);
+    return percent !== null ? applyDiscountPercent(line.unitPrice, percent) : line.unitPrice;
+  }
+
+  const total = cart.reduce((sum, line) => sum + displayUnitPrice(line) * line.quantity, 0);
   const itemCount = cart.reduce((sum, line) => sum + line.quantity, 0);
+
+  async function applyCoupon() {
+    const code = couponCode.trim();
+    if (!code || !locationId) return;
+    setCouponLoading(true);
+    setCouponError(null);
+    try {
+      const preview = await api.promotions.lookupCoupon(code, locationId);
+      setAppliedCoupon(preview);
+    } catch (err) {
+      setAppliedCoupon(null);
+      setCouponError(err instanceof ApiError ? err.message : "Не удалось проверить купон");
+    } finally {
+      setCouponLoading(false);
+    }
+  }
+
+  function removeCoupon() {
+    setAppliedCoupon(null);
+    setCouponCode("");
+    setCouponError(null);
+  }
 
   // What the buyer's screen shows. Derived from the cart rather than pushed
   // at it from each handler, so there is no path that changes the cart and
@@ -256,16 +330,22 @@ export default function PosPage() {
       kind: "cart",
       locationName: activeLocationName,
       total,
-      lines: cart.map((line) => ({
-        key: line.key,
-        name: line.product.name,
-        quantity: line.quantity,
-        unit: UNIT_LABELS_RU[line.product.unit],
-        unitPrice: line.unitPrice,
-        fullUnitPrice: line.markedDown ? line.product.effectivePrice : null,
-      })),
+      lines: cart.map((line) => {
+        const couponPercent = couponPercentFor(line);
+        return {
+          key: line.key,
+          name: line.product.name,
+          quantity: line.quantity,
+          unit: UNIT_LABELS_RU[line.product.unit],
+          unitPrice: displayUnitPrice(line),
+          fullUnitPrice: line.markedDown ? line.product.effectivePrice : couponPercent !== null ? line.unitPrice : null,
+        };
+      }),
     };
-  }, [cart, total, lastSale, cashDetails, activeLocationName]);
+    // couponPercentFor/displayUnitPrice are plain functions closing over
+    // couponRuleByCategory, which IS listed — they need no dep of their own.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart, total, lastSale, cashDetails, activeLocationName, couponRuleByCategory]);
 
   useCustomerDisplayPublisher(customerState);
 
@@ -403,6 +483,10 @@ export default function PosPage() {
         paymentMethod: method,
         ...(split ? { payments: split } : {}),
         ...(terminalPayment ? { terminalPayment } : {}),
+        // The server decides which lines this actually discounts and claims
+        // the coupon itself — the cart's per-line unitPrice below is sent
+        // unchanged even for lines the coupon preview shows discounted.
+        ...(appliedCoupon ? { couponCode: couponCode.trim() } : {}),
         items: cart.map((line) => ({
           productId: line.product.id,
           quantity: line.quantity,
@@ -426,6 +510,7 @@ export default function PosPage() {
       setCashDetails(cashGiven !== undefined ? { given: cashGiven, change: cashGiven - total } : null);
       setCart([]);
       setQuery("");
+      removeCoupon();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось провести продажу");
     } finally {
@@ -698,6 +783,7 @@ export default function PosPage() {
               <button
                 onClick={() => {
                   setCart([]);
+                  removeCoupon();
                   focusScan();
                 }}
                 className="text-xs font-medium text-muted transition hover:text-foreground"
@@ -711,7 +797,9 @@ export default function PosPage() {
             {cart.length === 0 ? (
               <p className="px-5 py-12 text-center text-sm text-muted">Отсканируйте или выберите товар</p>
             ) : (
-              cart.map((line) => (
+              cart.map((line) => {
+                const couponPercent = couponPercentFor(line);
+                return (
                 <div key={line.key} className="border-b border-border px-5 py-3">
                   <div className="flex items-start justify-between gap-2">
                     <span className="text-base font-semibold text-foreground">
@@ -747,28 +835,32 @@ export default function PosPage() {
                       </QtyButton>
                     </div>
                     <div className="text-right">
-                      {line.markedDown && (
+                      {(line.markedDown || couponPercent !== null) && (
                         // The old price crossed out, so the cashier can see at
                         // a glance that this line really is discounted.
                         <span className="mr-2 text-xs text-muted line-through">
-                          {formatMoney(line.product.effectivePrice * line.quantity)}
+                          {formatMoney((line.markedDown ? line.product.effectivePrice : line.unitPrice) * line.quantity)}
                         </span>
                       )}
                       <span
                         className={clsx(
                           "text-base font-bold",
-                          line.markedDown ? "text-amber-800" : "text-foreground",
+                          line.markedDown ? "text-amber-800" : couponPercent !== null ? "text-accent" : "text-foreground",
                         )}
                       >
-                        {formatMoney(line.unitPrice * line.quantity)}
+                        {formatMoney(displayUnitPrice(line) * line.quantity)}
                       </span>
                     </div>
                   </div>
 
                   {/* Full price needs no action at all — this is the only
                       button, and it is only for stale goods. An open-price
-                      line has no full price to halve, so it is not offered. */}
-                  {!line.product.isOpenPrice && (
+                      line has no full price to halve, so it is not offered.
+                      Not offered either on a line the applied coupon already
+                      discounts by category — the two never stack, and there
+                      is nothing for the cashier to toggle: the coupon's
+                      discount is automatic. */}
+                  {!line.product.isOpenPrice && couponPercent === null && (
                     <button
                       onClick={() => {
                         toggleMarkdown(line.key);
@@ -784,9 +876,61 @@ export default function PosPage() {
                       {line.markedDown ? `Уценка −${MARKDOWN_PERCENT}% ✓` : `Уценка −${MARKDOWN_PERCENT}%`}
                     </button>
                   )}
+                  {couponPercent !== null && (
+                    <span className="mt-2 inline-block rounded-lg border border-accent/30 bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent">
+                      {appliedCoupon?.promotionName} −{couponPercent}%
+                    </span>
+                  )}
                 </div>
-              ))
+                );
+              })
             )}
+          </div>
+
+          {/* A coupon is applied once per sale, not per line — matching it
+              here rather than in the payment dialogs keeps the discount
+              visible on the cart itself while the cashier is still building
+              the order, same as the markdown toggle above. */}
+          <div className="border-t border-border px-5 py-3">
+            {appliedCoupon ? (
+              <div className="flex items-center justify-between gap-2 rounded-xl border border-accent/30 bg-accent/10 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-accent">{appliedCoupon.promotionName}</p>
+                  <p className="text-xs text-muted">Купон «{couponCode.trim().toUpperCase()}» применён</p>
+                </div>
+                <button
+                  onClick={removeCoupon}
+                  aria-label="Отменить купон"
+                  className="shrink-0 text-muted transition hover:text-red-600"
+                >
+                  <X className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      applyCoupon();
+                    }
+                  }}
+                  placeholder="Код купона"
+                  className="min-w-0 flex-1 rounded-xl border border-border bg-surface px-3 py-2 text-sm uppercase text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                />
+                <button
+                  onClick={applyCoupon}
+                  disabled={!couponCode.trim() || couponLoading}
+                  className="shrink-0 rounded-xl border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted disabled:opacity-40"
+                >
+                  {couponLoading ? "…" : "Применить"}
+                </button>
+              </div>
+            )}
+            {couponError && <p className="mt-1.5 text-xs text-red-600">{couponError}</p>}
           </div>
 
           <div className="border-t border-border px-5 py-4">
@@ -1334,8 +1478,13 @@ function PrintableReceipt({
                 <td className="pt-0.5">
                   {formatQuantity(item.quantity)} × {formatMoney(item.unitPrice)}
                   {/* The buyer should see they got the discount, and the
-                      slip is the only record they take home. */}
-                  {item.fullUnitPrice !== null && ` (уценка, было ${formatMoney(item.fullUnitPrice)})`}
+                      slip is the only record they take home. A promotion
+                      discount is labelled by its own name, never "уценка" —
+                      that word means stale goods, and a coupon is not that. */}
+                  {item.fullUnitPrice !== null &&
+                    (item.promotionName
+                      ? ` (по акции «${item.promotionName}», было ${formatMoney(item.fullUnitPrice)})`
+                      : ` (уценка, было ${formatMoney(item.fullUnitPrice)})`)}
                 </td>
                 <td className="pt-0.5 text-right">{formatMoney(item.subtotal)}</td>
               </tr>

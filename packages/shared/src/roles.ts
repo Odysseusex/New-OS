@@ -247,6 +247,14 @@ export const PRODUCT_FORCE_DELETE_ROLES: Role[] = [Role.OWNER];
 // management rather than opened up to operational roles.
 export const USER_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN];
 
+// Creating/editing a marketing promotion (campaign + category rules),
+// generating coupon codes, and voiding one manually — administrative,
+// financially-consequential configuration, same tier as customer/location
+// management. Deliberately NOT the same as SALE_CREATE_ROLES: a cashier
+// applies an already-issued coupon at the till (that's just selling), but
+// does not get to invent a new discount campaign.
+export const PROMOTION_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.STORE_MANAGER];
+
 // AI-центр surfaces cross-module financial data (margin, cash balances,
 // AR/AP) that isn't otherwise open to location-scoped operational roles —
 // same breadth as Finance/Network/Reports, not a per-insight ACL. A

@@ -77,8 +77,13 @@ export function SaleHistoryModal({
                   {formatQuantity(item.quantity)} × {formatMoney(item.unitPrice)}
                   {/* `!= null`, not `!== null`: an API build that predates the
                       markdown field sends nothing at all, and `undefined !== null`
-                      would stamp «уценка» on every line of every old sale. */}
-                  {item.fullUnitPrice != null && <span className="ml-1 text-amber-700">уценка</span>}
+                      would stamp a label on every line of every old sale.
+                      promotionName tells a coupon discount apart from a
+                      stale-goods markdown — the same distinction the receipt
+                      and markdownLoss reporting already make. */}
+                  {item.fullUnitPrice != null && (
+                    <span className="ml-1 text-amber-700">{item.promotionName ?? "уценка"}</span>
+                  )}
                 </span>
               </span>
               <span className="font-medium text-foreground">{formatMoney(item.subtotal)}</span>

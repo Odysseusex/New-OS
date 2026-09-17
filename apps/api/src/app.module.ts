@@ -28,6 +28,7 @@ import { AiModule } from "./ai/ai.module";
 import { TelegramModule } from "./telegram/telegram.module";
 import { FiscalModule } from "./fiscal/fiscal.module";
 import { ConsignmentModule } from "./consignment/consignment.module";
+import { PromotionsModule } from "./promotions/promotions.module";
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { ConsignmentModule } from "./consignment/consignment.module";
     TelegramModule,
     FiscalModule,
     ConsignmentModule,
+    PromotionsModule,
   ],
   controllers: [AppController],
 })

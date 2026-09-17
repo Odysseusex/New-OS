@@ -26,6 +26,11 @@ export interface SaleItemDto {
   // given away is (fullUnitPrice − unitPrice) × quantity.
   fullUnitPrice: number | null;
   subtotal: number;
+  // Name of the promotion that discounted this line, when fullUnitPrice was
+  // lowered by a coupon rather than by the stale-goods markdown. Lets the
+  // receipt/history say "по акции «Мерей — купон»" instead of the wrong
+  // "уценка" label — the two must never be shown as the same thing.
+  promotionName: string | null;
 }
 
 export interface SaleDto {
@@ -122,6 +127,12 @@ export interface CreateSaleRequestDto {
   // Omit it for an ordinary sale and `paymentMethod` decides everything, as
   // before — every existing caller keeps working untouched.
   payments?: CreateSalePaymentRequestDto[];
+  // A promotion coupon applied at the till. Sent once per sale — a code
+  // identifies one physical paper coupon, so one sale can only ever redeem
+  // one. The server looks up the promotion, applies its category rules to
+  // matching lines itself (see fullUnitPrice on CreateSaleItemRequestDto),
+  // and claims the coupon atomically in the same transaction as the sale.
+  couponCode?: string;
   items: CreateSaleItemRequestDto[];
 }
 

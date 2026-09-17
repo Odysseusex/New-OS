@@ -11,6 +11,7 @@ import {
   Min,
   ValidateNested,
 } from "class-validator";
+import { PROMOTION_COUPON_CODE_MAX_LENGTH } from "../../promotions/promotions.constants";
 import { PaymentMethod } from "@bakery-os/shared";
 
 export class CreateSaleItemDto {
@@ -92,6 +93,14 @@ export class CreateSaleDto {
   @ValidateNested({ each: true })
   @Type(() => CreateSalePaymentDto)
   payments?: CreateSalePaymentDto[];
+
+  // A promotion coupon typed in at the till. The server looks it up, decides
+  // which lines it discounts from the product's own category, and claims it
+  // — never trusted as a price from the client.
+  @IsOptional()
+  @IsString()
+  @MaxLength(PROMOTION_COUPON_CODE_MAX_LENGTH)
+  couponCode?: string;
 
   @IsArray()
   @ArrayMinSize(1)

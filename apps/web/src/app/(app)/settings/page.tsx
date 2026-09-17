@@ -4,24 +4,35 @@ import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
 import { Plus, Send, ShieldAlert } from "lucide-react";
 import type {
+  CategoryDto,
   FiscalReceiptDto,
   FiscalShiftDto,
   FiscalStatusDto,
   LocationDto,
+  PromotionDto,
   UserAccountDto,
 } from "@bakery-os/shared";
-import { FiscalReceiptStatus, HARD_DELETE_ROLES, ROLE_LABELS_RU, USER_MANAGE_ROLES } from "@bakery-os/shared";
+import {
+  FiscalReceiptStatus,
+  HARD_DELETE_ROLES,
+  PROMOTION_MANAGE_ROLES,
+  ROLE_LABELS_RU,
+  USER_MANAGE_ROLES,
+} from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import { useAuth } from "@/lib/auth-context";
 import { KaspiTerminalCard } from "@/components/kaspi-terminal-card";
 import { UserAccountModal } from "@/components/user-account-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
+import { PromotionModal } from "@/components/promotion-modal";
+import { PromotionCouponsModal } from "@/components/promotion-coupons-modal";
 
 export default function SettingsPage() {
   const { user } = useAuth();
   const canManage = user ? USER_MANAGE_ROLES.includes(user.role) : false;
   const canSeeFiscal = user ? HARD_DELETE_ROLES.includes(user.role) : false;
+  const canManagePromotions = user ? PROMOTION_MANAGE_ROLES.includes(user.role) : false;
 
   const [accounts, setAccounts] = useState<UserAccountDto[]>([]);
   const [locations, setLocations] = useState<LocationDto[]>([]);
@@ -80,6 +91,7 @@ export default function SettingsPage() {
             below has to run in the browser standing on the shop's network —
             which is exactly the machine this page is open on. */}
         {canSeeFiscal && <KaspiTerminalCard />}
+        {canManagePromotions && <PromotionsCard />}
       </div>
 
       {!canManage && (
@@ -466,6 +478,131 @@ function ShiftRow({ shift }: { shift: FiscalShiftDto | null }) {
             ? `Смена просрочена с ${formatDateTime(shift.expiresAt)} — закройте её в приложении re:Kassa`
             : `Истекает ${formatDateTime(shift.expiresAt)}`}
         </p>
+      )}
+    </div>
+  );
+}
+
+// Marketing coupon campaigns — e.g. the Merey pilot. `isActive` on the row is
+// the entire "toggle off without a code change" story: it's flipped from
+// here, no deploy involved.
+function PromotionsCard() {
+  const [promotions, setPromotions] = useState<PromotionDto[]>([]);
+  const [categories, setCategories] = useState<CategoryDto[]>([]);
+  const [locations, setLocations] = useState<LocationDto[]>([]);
+  const [state, setState] = useState<"loading" | "error" | "ready">("loading");
+  const [modalPromotion, setModalPromotion] = useState<PromotionDto | "new" | null>(null);
+  const [couponsPromotion, setCouponsPromotion] = useState<PromotionDto | null>(null);
+
+  const load = useCallback(() => {
+    api.promotions
+      .list()
+      .then((list) => {
+        setPromotions(list);
+        setState("ready");
+      })
+      .catch(() => setState("error"));
+  }, []);
+
+  useEffect(() => {
+    load();
+    api.categories.list().then(setCategories).catch(() => {});
+    api.locations.list().then(setLocations).catch(() => {});
+  }, [load]);
+
+  async function toggleActive(promotion: PromotionDto) {
+    try {
+      await api.promotions.update(promotion.id, { isActive: !promotion.isActive });
+      load();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "Не удалось изменить акцию");
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-border bg-surface p-5 shadow-card">
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <h2 className="text-sm font-semibold text-foreground">Акции</h2>
+        <button
+          onClick={() => setModalPromotion("new")}
+          className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-muted"
+        >
+          + Новая акция
+        </button>
+      </div>
+
+      {state === "loading" && <p className="text-sm text-muted">Загрузка…</p>}
+      {state === "error" && <p className="text-sm text-red-700">Не удалось загрузить акции</p>}
+
+      {state === "ready" && promotions.length === 0 && (
+        <p className="text-sm text-muted">Акций пока нет — например, купон для точки в супермаркете.</p>
+      )}
+
+      {state === "ready" && promotions.length > 0 && (
+        <ul className="space-y-2">
+          {promotions.map((p) => (
+            <li key={p.id} className="rounded-xl border border-border px-3 py-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-foreground">{p.name}</span>
+                    <span
+                      className={clsx(
+                        "rounded-full px-2 py-0.5 text-xs font-medium",
+                        p.isActive ? "bg-emerald-50 text-emerald-700" : "bg-surface-muted text-muted",
+                      )}
+                    >
+                      {p.isActive ? "Включена" : "Выключена"}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted">
+                    {p.locationName ?? "Вся сеть"} · {formatDateTime(p.startAt)} — {formatDateTime(p.endAt)} ·{" "}
+                    {p.rules.map((r) => `${r.categoryName} −${r.discountPercent}%`).join(", ")}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    Купонов: выдано {p.couponsIssued}, использовано {p.couponsRedeemed}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    onClick={() => setCouponsPromotion(p)}
+                    className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-muted"
+                  >
+                    Купоны
+                  </button>
+                  <button
+                    onClick={() => setModalPromotion(p)}
+                    className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-muted"
+                  >
+                    Изменить
+                  </button>
+                  <button
+                    onClick={() => toggleActive(p)}
+                    className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-muted"
+                  >
+                    {p.isActive ? "Выключить" : "Включить"}
+                  </button>
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {modalPromotion && (
+        <PromotionModal
+          promotion={modalPromotion === "new" ? undefined : modalPromotion}
+          categories={categories}
+          locations={locations}
+          onClose={() => setModalPromotion(null)}
+          onSaved={() => {
+            setModalPromotion(null);
+            load();
+          }}
+        />
+      )}
+      {couponsPromotion && (
+        <PromotionCouponsModal promotion={couponsPromotion} onClose={() => setCouponsPromotion(null)} />
       )}
     </div>
   );

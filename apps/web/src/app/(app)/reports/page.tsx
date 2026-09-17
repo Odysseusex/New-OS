@@ -11,6 +11,8 @@ import type {
   ProductDto,
   ProductProfitabilityDto,
   ProfitAndLossDto,
+  PromotionDto,
+  PromotionReportDto,
   QualitySummaryDto,
   CashFlowDto,
   SalesDynamicsDto,
@@ -24,6 +26,7 @@ import {
   FINANCE_VIEW_ROLES,
   HR_MANAGE_ROLES,
   ORG_WIDE_ROLES,
+  PROMOTION_MANAGE_ROLES,
   ProductType,
   QUALITY_VIEW_ROLES,
   UNIT_LABELS_RU,
@@ -56,7 +59,8 @@ type ReportKey =
   | "trend"
   | "quality"
   | "hr"
-  | "stock";
+  | "stock"
+  | "promotions";
 type Period = "today" | "yesterday" | "7d" | "30d" | "month" | "90d" | "year";
 
 // Ordered shortest to longest, which is the order they are rendered in.
@@ -122,6 +126,9 @@ export default function ReportsPage() {
       : []),
     ...(user && HR_MANAGE_ROLES.includes(user.role) ? [{ key: "hr" as const, label: "Персонал (KPI)" }] : []),
     { key: "stock" as const, label: "Остатки склада" },
+    // Same admin bar as creating/editing a campaign — a promotion's numbers
+    // are as sensitive as the discount decision itself.
+    ...(user && PROMOTION_MANAGE_ROLES.includes(user.role) ? [{ key: "promotions" as const, label: "Акции" }] : []),
   ];
 
   const [activeReport, setActiveReport] = useState<ReportKey>(availableReports[0]?.key ?? "sales");
@@ -218,6 +225,7 @@ export default function ReportsPage() {
         {activeReport === "quality" && <QualityReport period={period} locationId={locationFilter} />}
         {activeReport === "hr" && <HrReport period={period} locationId={locationFilter} />}
         {activeReport === "stock" && <StockReport locationId={locationFilter} isOrgWide={isOrgWide} />}
+        {activeReport === "promotions" && <PromotionsReport period={period} />}
       </div>
 
       <style jsx global>{`
@@ -948,6 +956,122 @@ function StockReport({ locationId, isOrgWide }: { locationId: string; isOrgWide:
         highlightRow={(i) => levels[i].isLow}
       />
     </ReportCard>
+  );
+}
+
+// Picks a campaign first (a promotion has no meaningful "all campaigns"
+// rollup — each one has its own coupons and category rules), then reports
+// against it for the shared period control. Defaults to the most recently
+// created promotion, which for a short pilot is almost always the one being
+// watched.
+function PromotionsReport({ period }: { period: Period }) {
+  const [promotions, setPromotions] = useState<PromotionDto[]>([]);
+  const [promotionId, setPromotionId] = useState("");
+  const [report, setReport] = useState<PromotionReportDto | null>(null);
+
+  useEffect(() => {
+    api.promotions.list().then((list) => {
+      setPromotions(list);
+      if (!promotionId && list.length > 0) setPromotionId(list[0].id);
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!promotionId) return;
+    const { from, to } = periodRange(period);
+    api.promotions.report(promotionId, from.toISOString(), to.toISOString()).then(setReport).catch(() => setReport(null));
+  }, [promotionId, period]);
+
+  if (promotions.length === 0) {
+    return (
+      <div className="rounded-2xl border border-border bg-surface p-8 text-center text-sm text-muted shadow-card">
+        Акций пока нет — создайте кампанию в Настройках.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <select
+        value={promotionId}
+        onChange={(e) => setPromotionId(e.target.value)}
+        className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+      >
+        {promotions.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name}
+          </option>
+        ))}
+      </select>
+
+      {!report ? (
+        <EmptyState />
+      ) : (
+        <ReportCard
+          title={report.promotionName}
+          onExport={() =>
+            downloadCsv(
+              `promotion-${report.promotionId}-${period}.csv`,
+              ["Товар", "Количество", "Скидка", "Выручка после скидки"],
+              report.topProducts.map((p) => [
+                p.productName,
+                formatQuantity(p.quantity),
+                p.discountTotal.toFixed(2),
+                p.revenueAfterDiscount.toFixed(2),
+              ]),
+            )
+          }
+        >
+          <StatRow
+            items={[
+              { label: "Выдано купонов", value: String(report.couponsIssued) },
+              { label: "Использовано", value: String(report.couponsRedeemed) },
+              {
+                label: "Конверсия",
+                value: report.conversionPercent !== null ? `${report.conversionPercent.toFixed(1)}%` : "—",
+              },
+              { label: "Чеков по акции", value: String(report.receiptsCount) },
+            ]}
+          />
+          <StatRow
+            items={[
+              { label: "Выручка до скидки", value: formatMoney(report.revenueBeforeDiscount) },
+              { label: "Сумма скидок", value: formatMoney(report.discountTotal) },
+              { label: "Выручка после скидки", value: formatMoney(report.revenueAfterDiscount) },
+              { label: "Средний чек", value: report.averageTicket !== null ? formatMoney(report.averageTicket) : "—" },
+            ]}
+          />
+          <StatRow
+            items={[
+              { label: "Себестоимость", value: formatMoney(report.cogs) },
+              { label: "Валовая прибыль", value: formatMoney(report.grossProfit) },
+            ]}
+          />
+
+          <div className="border-t border-border px-5 py-4">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Скидка по категориям</h3>
+            <ReportTable
+              columns={["Категория", "Количество", "Скидка"]}
+              rows={report.discountByCategory.map((c) => [c.categoryName, formatQuantity(c.quantity), formatMoney(c.discountTotal)])}
+            />
+          </div>
+
+          <div className="border-t border-border px-5 py-4">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Топ товаров по купону</h3>
+            <ReportTable
+              columns={["Товар", "Количество", "Скидка", "Выручка после скидки"]}
+              rows={report.topProducts.map((p) => [
+                p.productName,
+                formatQuantity(p.quantity),
+                formatMoney(p.discountTotal),
+                formatMoney(p.revenueAfterDiscount),
+              ])}
+            />
+          </div>
+        </ReportCard>
+      )}
+    </div>
   );
 }
 

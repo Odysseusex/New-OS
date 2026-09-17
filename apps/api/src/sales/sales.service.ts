@@ -10,6 +10,7 @@ import {
   PaymentStatus,
   ProductProfitabilityDto,
   ProductProfitabilityRowDto,
+  applyDiscountPercent,
   SaleDetailDto,
   SaleDto,
   SalesDynamicsDto,
@@ -25,7 +26,12 @@ import {
   Unit,
   FiscalReceiptStatus as FiscalReceiptStatusDto,
 } from "@bakery-os/shared";
-import { FiscalReceipt, FiscalReceiptStatus, StockMovementType } from "@prisma/client";
+import {
+  FiscalReceipt,
+  FiscalReceiptStatus,
+  PromotionCouponStatus as PrismaPromotionCouponStatus,
+  StockMovementType,
+} from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
 import { deltaPct, previousRangeOf } from "../common/period-range";
@@ -33,6 +39,7 @@ import { resolveProductUnitCosts } from "../common/product-costs";
 import { CashMovementsService } from "../finance/cash-movements.service";
 import { buildFiscalSaleRequest, FiscalService } from "../fiscal/fiscal.service";
 import { FiscalSettings } from "../fiscal/fiscal.settings";
+import { PromotionsService } from "../promotions/promotions.service";
 import { CreateSaleDto } from "./dto/create-sale.dto";
 import { RecordPaymentDto } from "./dto/record-payment.dto";
 
@@ -61,7 +68,7 @@ const SALE_DETAIL_INCLUDE = {
   location: true,
   customer: true,
   createdBy: true,
-  items: { include: { product: true } },
+  items: { include: { product: true, promotion: true } },
   // So a receipt number stays findable later, not just in the seconds after
   // payment — the buyer may come back with a question about it.
   fiscalReceipt: true,
@@ -76,6 +83,7 @@ export class SalesService {
     private cashMovementsService: CashMovementsService,
     private fiscalService: FiscalService,
     private fiscalSettings: FiscalSettings,
+    private promotionsService: PromotionsService,
   ) {}
 
   // CASH sales land in the selling location's own till, auto-created the
@@ -255,9 +263,14 @@ export class SalesService {
 
         // What the markdown cost: the gap between the price it would have
         // gone for and what was actually taken. Null fullUnitPrice means it
-        // sold at full price and contributes nothing.
+        // sold at full price and contributes nothing. A line discounted by a
+        // Promotion (promotionId set) is excluded here on purpose — that
+        // money was spent buying foot traffic, not given away on stale
+        // goods, and summing it into markdownLoss would corrupt the
+        // overproduction signal this figure exists to give. See
+        // PromotionsService.report() for where that money IS counted.
         const full = item.fullUnitPrice?.toNumber();
-        if (full !== undefined) {
+        if (full !== undefined && item.promotionId === null) {
           const loss = (full - item.unitPrice.toNumber()) * quantity;
           productEntry.markdownQuantity += quantity;
           productEntry.markdownLoss += loss;
@@ -358,8 +371,10 @@ export class SalesService {
       entry.revenue += item.subtotal.toNumber();
       if (unitCost !== undefined) entry.cost += unitCost * quantity;
 
+      // Same promotionId exclusion as report() above — a coupon discount is
+      // not a markdown, and must not be counted as one here either.
       const full = item.fullUnitPrice?.toNumber();
-      if (full !== undefined) {
+      if (full !== undefined && item.promotionId === null) {
         entry.markdownQuantity += quantity;
         entry.markdownLoss += (full - item.unitPrice.toNumber()) * quantity;
       }
@@ -937,6 +952,50 @@ export class SalesService {
     }
 
     const productIds = dto.items.map((i) => i.productId);
+
+    // --- Promotion coupon, when one was applied at the till --------------
+    //
+    // Resolved and validated BEFORE `items` is built, because the coupon's
+    // own category rules decide the price on matching lines — unlike an
+    // ordinary markdown, the client's unitPrice for those lines is not
+    // trusted, precisely so a coupon's discount can never be forged from the
+    // till. The coupon itself is only CLAIMED later, inside the sale's own
+    // transaction (see below): a sale that fails for an unrelated reason
+    // must not burn a paper coupon that cannot be reissued mid-pilot.
+    const couponCode = dto.couponCode?.trim();
+    let couponId: string | null = null;
+    let promotionId: string | null = null;
+    let discountRuleByCategory: Map<string, number> | null = null;
+    if (couponCode) {
+      const { coupon, promotion } = await this.promotionsService.resolveActiveCoupon(
+        user.organizationId,
+        locationId,
+        couponCode,
+      );
+      couponId = coupon.id;
+      promotionId = promotion.id;
+      discountRuleByCategory = new Map(promotion.rules.map((r) => [r.categoryId, r.discountPercent]));
+    }
+
+    // Category + this location's own price per product — only fetched when a
+    // coupon is actually in play, so an ordinary sale pays nothing extra.
+    let categoryByProduct: Map<string, string | null> | null = null;
+    let priceByProduct: Map<string, number> | null = null;
+    if (discountRuleByCategory) {
+      const [products, overrides] = await Promise.all([
+        this.prisma.product.findMany({
+          where: { id: { in: productIds }, organizationId: user.organizationId },
+        }),
+        this.prisma.productLocationPrice.findMany({
+          where: { organizationId: user.organizationId, locationId, productId: { in: productIds } },
+        }),
+      ]);
+      categoryByProduct = new Map(products.map((p) => [p.id, p.categoryId]));
+      const overrideByProduct = new Map(overrides.map((o) => [o.productId, o.price.toNumber()]));
+      priceByProduct = new Map(products.map((p) => [p.id, overrideByProduct.get(p.id) ?? p.price.toNumber()]));
+    }
+
+    let promotionDiscountTotal = 0;
     const items = dto.items.map((item) => {
       // A markdown that did not lower the price is not a markdown. Letting
       // one through would put a negative "loss" into the report and quietly
@@ -944,15 +1003,43 @@ export class SalesService {
       if (item.fullUnitPrice !== undefined && item.fullUnitPrice <= item.unitPrice) {
         throw new BadRequestException("Цена до скидки должна быть выше цены продажи");
       }
+
+      let unitPrice = item.unitPrice;
+      let fullUnitPrice = item.fullUnitPrice ?? null;
+      let lineItemPromotionId: string | null = null;
+      // A line the cashier already marked down by hand (fullUnitPrice sent
+      // by the client) keeps that discount as-is — the two mechanisms never
+      // stack, and an explicit staff choice on the till wins over the
+      // coupon's own rule for that one line.
+      if (discountRuleByCategory && categoryByProduct && priceByProduct && item.fullUnitPrice === undefined) {
+        const categoryId = categoryByProduct.get(item.productId);
+        const percent = categoryId ? discountRuleByCategory.get(categoryId) : undefined;
+        if (percent !== undefined) {
+          const full = priceByProduct.get(item.productId) ?? item.unitPrice;
+          unitPrice = applyDiscountPercent(full, percent);
+          fullUnitPrice = full;
+          lineItemPromotionId = promotionId;
+          promotionDiscountTotal += (full - unitPrice) * item.quantity;
+        }
+      }
+
       return {
         productId: item.productId,
         quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        fullUnitPrice: item.fullUnitPrice ?? null,
-        subtotal: item.quantity * item.unitPrice,
+        unitPrice,
+        fullUnitPrice,
+        subtotal: item.quantity * unitPrice,
+        promotionId: lineItemPromotionId,
       };
     });
     const totalAmount = items.reduce((sum, i) => sum + i.subtotal, 0);
+
+    // A coupon that matched nothing in the cart is not a used coupon — reject
+    // before the coupon is ever claimed or a receipt punched, so nothing is
+    // spent on a sale the coupon did not actually discount.
+    if (couponCode && promotionDiscountTotal === 0) {
+      throw new BadRequestException("В чеке нет товаров, к которым применяется эта акция — купон не использован");
+    }
 
     // Walk-in retail sales are always settled immediately. Only a sale tied
     // to a customer account can be placed on credit (partially or fully).
@@ -1081,6 +1168,33 @@ export class SalesService {
 
       if (receipt) {
         await this.fiscalService.linkSale(tx, receipt.id, sale.id);
+      }
+
+      // Claiming the coupon is the last write before the sale is considered
+      // final — a single conditional UPDATE (the same idempotent-claim idiom
+      // TelegramPendingAction.claim() already uses), so two tills redeeming
+      // the identical code at the same instant can never both win. Losing
+      // the race rolls back this entire transaction — sale, stock and cash
+      // movements included — rather than let two baskets share one paper
+      // coupon. If a receipt was already punched for this attempt, it is
+      // left as an orphan with no saleId; FiscalService's existing
+      // needsAttention()/reconcile() is exactly the tool for that already
+      // rare case.
+      if (couponId) {
+        const claimed = await tx.promotionCoupon.updateMany({
+          where: { id: couponId, status: PrismaPromotionCouponStatus.ISSUED },
+          data: {
+            status: PrismaPromotionCouponStatus.REDEEMED,
+            redeemedAt: soldAt,
+            redeemedSaleId: sale.id,
+            redeemedById: user.id,
+            redeemedLocationId: locationId,
+            discountTotal: promotionDiscountTotal,
+          },
+        });
+        if (claimed.count === 0) {
+          throw new BadRequestException("Купон уже использован — продажа не проведена");
+        }
       }
 
       // One movement per tender, because a split sale genuinely puts money in
@@ -1336,6 +1450,7 @@ export class SalesService {
       unitPrice: { toNumber: () => number };
       fullUnitPrice: { toNumber: () => number } | null;
       subtotal: { toNumber: () => number };
+      promotion?: { name: string } | null;
     }[];
     fiscalReceipt?: {
       status: string;
@@ -1368,6 +1483,7 @@ export class SalesService {
       unitPrice: item.unitPrice.toNumber(),
       fullUnitPrice: item.fullUnitPrice?.toNumber() ?? null,
       subtotal: item.subtotal.toNumber(),
+      promotionName: item.promotion?.name ?? null,
     })),
     payments: (sale.payments ?? []).map((p) => ({
       method: p.method as PaymentMethod,
