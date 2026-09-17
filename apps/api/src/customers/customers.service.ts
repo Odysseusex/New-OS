@@ -1,12 +1,111 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { CustomerDetailDto, CustomerDto, CustomerOrderDto, PaymentStatus } from "@bakery-os/shared";
+import {
+  BusinessContextCustomerRowDto,
+  BusinessContextCustomersDto,
+  CustomerDetailDto,
+  CustomerDto,
+  CustomerOrderDto,
+  PaymentStatus,
+} from "@bakery-os/shared";
 import { CreateCustomerDto } from "./dto/create-customer.dto";
 import { UpdateCustomerDto } from "./dto/update-customer.dto";
 
 @Injectable()
 export class CustomersService {
   constructor(private prisma: PrismaService) {}
+
+  // Revenue per named customer over a period, plus what retail took.
+  //
+  // A groupBy on sales, then ONE lookup for the names — not a query per
+  // customer. Sales with no customerId are walk-in retail: they are a real
+  // and usually dominant part of the takings, so they are reported as their
+  // own figure rather than dropped for having nobody to attribute them to.
+  //
+  // Contact details (phone, email, address, coordinates, notes) are
+  // deliberately never selected here: none of them is needed to answer a
+  // question about revenue, and this data is leaving the building.
+  async revenueByCustomer(
+    organizationId: string,
+    from: Date,
+    to: Date,
+    locationId?: string,
+  ): Promise<BusinessContextCustomersDto> {
+    const scope = {
+      organizationId,
+      soldAt: { gte: from, lte: to },
+      ...(locationId ? { locationId } : {}),
+    };
+
+    const [grouped, activeCount] = await Promise.all([
+      this.prisma.sale.groupBy({
+        by: ["customerId"],
+        where: scope,
+        _sum: { totalAmount: true },
+        _count: { _all: true },
+      }),
+      this.prisma.customer.count({ where: { organizationId, isActive: true } }),
+    ]);
+
+    const customerIds = grouped.map((g) => g.customerId).filter((id): id is string => id !== null);
+    const customers = customerIds.length
+      ? await this.prisma.customer.findMany({
+          where: { id: { in: customerIds } },
+          select: { id: true, name: true, creditLimit: true },
+        })
+      : [];
+    const byId = new Map(customers.map((c) => [c.id, c]));
+
+    // Outstanding balance is what they owe IN TOTAL, not within the period —
+    // a debt from last month is still a debt today, and scoping it to the
+    // window would understate it. Same definition getOutstandingBalance uses,
+    // computed for everyone at once instead of per customer.
+    const debts = customerIds.length
+      ? await this.prisma.sale.groupBy({
+          by: ["customerId"],
+          where: { organizationId, customerId: { in: customerIds } },
+          _sum: { totalAmount: true, amountPaid: true },
+        })
+      : [];
+    const debtById = new Map(
+      debts.map((d) => [
+        d.customerId,
+        (d._sum.totalAmount?.toNumber() ?? 0) - (d._sum.amountPaid?.toNumber() ?? 0),
+      ]),
+    );
+
+    const money = (value: number) => Number(value.toFixed(2));
+    const retail = grouped.find((g) => g.customerId === null);
+    let totalOutstanding = 0;
+
+    const byCustomer: BusinessContextCustomerRowDto[] = grouped
+      .filter((g): g is typeof g & { customerId: string } => g.customerId !== null)
+      .map((g) => {
+        const customer = byId.get(g.customerId);
+        const revenue = g._sum.totalAmount?.toNumber() ?? 0;
+        const salesCount = g._count._all;
+        const outstanding = debtById.get(g.customerId) ?? 0;
+        totalOutstanding += outstanding;
+        return {
+          customerId: g.customerId,
+          name: customer?.name ?? "Клиент",
+          revenue: money(revenue),
+          salesCount,
+          averageTicket: salesCount > 0 ? money(revenue / salesCount) : null,
+          outstandingBalance: money(outstanding),
+          creditLimit: customer?.creditLimit ? customer.creditLimit.toNumber() : null,
+        };
+      })
+      .sort((a, b) => b.revenue - a.revenue);
+
+    return {
+      activeCount,
+      totalOutstanding: money(totalOutstanding),
+      retailRevenue: money(retail?._sum.totalAmount?.toNumber() ?? 0),
+      retailSalesCount: retail?._count._all ?? 0,
+      byCustomer,
+    };
+  }
 
   async findAllForOrganization(organizationId: string, includeArchived = false): Promise<CustomerDto[]> {
     const [customers, balances] = await Promise.all([

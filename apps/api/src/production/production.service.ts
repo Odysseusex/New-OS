@@ -1,6 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { ProductionBatchDto, ProductionBatchStatus, ProductionCancelReason, Unit } from "@bakery-os/shared";
+import {
+  BusinessContextProductionDto,
+  BusinessContextProductionRowDto,
+  ProductionBatchDto,
+  ProductionBatchStatus,
+  ProductionCancelReason,
+  Unit,
+} from "@bakery-os/shared";
 import { ProductionBatchStatus as PrismaProductionBatchStatus, StockMovementType } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
@@ -12,6 +19,109 @@ import { CompleteBatchDto } from "./dto/complete-batch.dto";
 @Injectable()
 export class ProductionService {
   constructor(private prisma: PrismaService) {}
+
+  // Production per product over a period — what the batch list cannot answer
+  // because it is one row per batch.
+  //
+  // A batch belongs to the period by `scheduledFor`, which every batch has
+  // from the moment it is planned. Using completedAt instead would make a
+  // batch appear only once finished, so a period with work still in progress
+  // would report nothing planned — the opposite of what production planning
+  // needs to see.
+  //
+  // `varianceQuantity` is actual − planned over COMPLETED batches only: an
+  // unfinished batch has no actual yet, and averaging it in as zero would
+  // read as a total failure to produce. This is production variance, NOT
+  // waste — goods written off later are a separate event that this system
+  // does not link back to the batch they came from (see QualityService).
+  async summaryByProduct(
+    user: AuthenticatedUser,
+    from: Date,
+    to: Date,
+    requestedLocationId?: string,
+  ): Promise<BusinessContextProductionDto> {
+    const locationId = resolveLocationScope(user, requestedLocationId);
+
+    // One query with a join, not a query per batch: the product a batch makes
+    // is reachable only through its recipe.
+    const batches = await this.prisma.productionBatch.findMany({
+      where: {
+        organizationId: user.organizationId,
+        scheduledFor: { gte: from, lte: to },
+        ...(locationId ? { locationId } : {}),
+      },
+      select: {
+        status: true,
+        plannedQuantity: true,
+        actualQuantity: true,
+        recipe: { select: { product: { select: { id: true, name: true, unit: true } } } },
+      },
+    });
+
+    const acc = new Map<string, BusinessContextProductionRowDto>();
+    let unitsPlanned = 0;
+    let unitsProduced = 0;
+
+    for (const batch of batches) {
+      const product = batch.recipe.product;
+      const row =
+        acc.get(product.id) ??
+        ({
+          productId: product.id,
+          productName: product.name,
+          unit: product.unit as Unit,
+          batchesPlanned: 0,
+          batchesInProgress: 0,
+          batchesCompleted: 0,
+          batchesCancelled: 0,
+          plannedQuantity: 0,
+          actualQuantity: 0,
+          varianceQuantity: 0,
+          variancePercent: null,
+        } satisfies BusinessContextProductionRowDto);
+
+      const planned = batch.plannedQuantity.toNumber();
+      row.plannedQuantity += planned;
+      unitsPlanned += planned;
+
+      if (batch.status === PrismaProductionBatchStatus.PLANNED) row.batchesPlanned += 1;
+      if (batch.status === PrismaProductionBatchStatus.IN_PROGRESS) row.batchesInProgress += 1;
+      if (batch.status === PrismaProductionBatchStatus.CANCELLED) row.batchesCancelled += 1;
+      if (batch.status === PrismaProductionBatchStatus.COMPLETED) {
+        row.batchesCompleted += 1;
+        const actual = batch.actualQuantity?.toNumber() ?? 0;
+        row.actualQuantity += actual;
+        row.varianceQuantity += actual - planned;
+        unitsProduced += actual;
+      }
+
+      acc.set(product.id, row);
+    }
+
+    const round = (value: number) => Number(value.toFixed(3));
+    const byProduct = Array.from(acc.values())
+      .map((row) => {
+        // Measured against the planned quantity of COMPLETED batches only,
+        // which is the only planned figure the actual can be compared to.
+        const completedPlanned = row.batchesCompleted > 0 ? row.actualQuantity - row.varianceQuantity : 0;
+        return {
+          ...row,
+          plannedQuantity: round(row.plannedQuantity),
+          actualQuantity: round(row.actualQuantity),
+          varianceQuantity: round(row.varianceQuantity),
+          variancePercent:
+            completedPlanned > 0 ? Number(((row.varianceQuantity / completedPlanned) * 100).toFixed(2)) : null,
+        };
+      })
+      .sort((a, b) => b.actualQuantity - a.actualQuantity);
+
+    return {
+      batchesTotal: batches.length,
+      unitsPlanned: round(unitsPlanned),
+      unitsProduced: round(unitsProduced),
+      byProduct,
+    };
+  }
 
   async findAll(user: AuthenticatedUser, requestedLocationId?: string): Promise<ProductionBatchDto[]> {
     const locationId = resolveLocationScope(user, requestedLocationId);

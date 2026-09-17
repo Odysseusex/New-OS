@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import {
+  BusinessContextMovementRowDto,
   isStockLow,
   StockLevelDto,
   StockMovementDto,
@@ -18,6 +19,48 @@ import { StockMovementType as PrismaStockMovementType } from "@prisma/client";
 @Injectable()
 export class InventoryService {
   constructor(private prisma: PrismaService) {}
+
+  // Every stock movement in a period, grouped by type — receipts, sales,
+  // write-offs, production output and consumption, transfers, adjustments.
+  //
+  // A groupBy rather than reading the rows: this ledger is the busiest table
+  // in the system (a row per sale line, per production input, per delivery),
+  // and a month of it has no business being pulled into memory to be summed.
+  //
+  // Types are NOT netted against each other. RECEIPT and WRITE_OFF moving the
+  // same product in opposite directions are different events, and the whole
+  // point of reporting them separately is that "почему выросли списания"
+  // cannot be answered from a net figure.
+  async movementsSummary(
+    user: AuthenticatedUser,
+    from: Date,
+    to: Date,
+    requestedLocationId?: string,
+  ): Promise<BusinessContextMovementRowDto[]> {
+    const locationId = resolveLocationScope(user, requestedLocationId);
+
+    const grouped = await this.prisma.stockMovement.groupBy({
+      by: ["type"],
+      where: {
+        organizationId: user.organizationId,
+        createdAt: { gte: from, lte: to },
+        ...(locationId ? { locationId } : {}),
+      },
+      _sum: { quantity: true },
+      _count: { _all: true },
+    });
+
+    return grouped
+      .map((row) => ({
+        type: row.type as StockMovementType,
+        // Signed, because the ledger stores it signed: a write-off is
+        // negative here exactly as it is in the table, and flipping it to a
+        // magnitude would hide which way the goods moved.
+        totalQuantity: Number((row._sum.quantity?.toNumber() ?? 0).toFixed(3)),
+        movementCount: row._count._all,
+      }))
+      .sort((a, b) => b.movementCount - a.movementCount);
+  }
 
   async getStockLevels(user: AuthenticatedUser, requestedLocationId?: string): Promise<StockLevelDto[]> {
     const locationId = resolveLocationScope(user, requestedLocationId);

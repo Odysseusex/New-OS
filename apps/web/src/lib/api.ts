@@ -69,6 +69,9 @@ import type {
   ProductionBatchDto,
   ProfitAndLossDto,
   CashFlowDto,
+  BusinessContextDto,
+  BusinessContextLevel,
+  BusinessContextModule,
   PurchaseOrderDto,
   QualitySummaryDto,
   RecipeDto,
@@ -573,6 +576,25 @@ export const api = {
     dismiss: (key: string) =>
       request<DismissAiInsightResponseDto>(`/ai/insights/${encodeURIComponent(key)}/dismiss`, { method: "POST" }),
     dismissAll: () => request<DismissAiInsightResponseDto>("/ai/insights/dismiss-all", { method: "POST" }),
+    // The provider-agnostic business context. Returns the DTO, not text:
+    // rendering it to Markdown is a pure transform in @bakery-os/shared, so
+    // the same contract can later be posted straight to an AI provider.
+    businessContext: (params: {
+      from: string;
+      to: string;
+      level: BusinessContextLevel;
+      locationId?: string;
+      modules?: BusinessContextModule[];
+    }) =>
+      request<BusinessContextDto>(
+        withQuery("/ai/business-context", {
+          from: params.from,
+          to: params.to,
+          level: params.level,
+          locationId: params.locationId,
+          modules: params.modules?.length ? params.modules.join(",") : undefined,
+        }),
+      ),
   },
 
   telegram: {

@@ -4,19 +4,26 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
 import { ChevronDown, ChevronUp, Sparkles, TrendingDown, TrendingUp, X } from "lucide-react";
-import type { AiExecutiveSummaryDto, AiInsightDto, AiLocationDeviationResponseDto } from "@bakery-os/shared";
+import type {
+  AiExecutiveSummaryDto,
+  AiInsightDto,
+  AiLocationDeviationResponseDto,
+  LocationDto,
+} from "@bakery-os/shared";
 import { AI_INSIGHT_CATEGORY_LABELS_RU, AiInsightCategory } from "@bakery-os/shared";
 import { api } from "@/lib/api";
 import { formatMoney } from "@/lib/format";
 import { AiPriorityChip } from "@/components/ai-priority-chip";
 import { AiConfidenceBadge } from "@/components/ai-confidence-badge";
+import { BusinessContextTab } from "@/components/business-context-tab";
 
-type Tab = "summary" | "priorities" | "locations";
+type Tab = "summary" | "priorities" | "locations" | "context";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "summary", label: "Сводка" },
   { key: "priorities", label: "Приоритеты" },
   { key: "locations", label: "Сравнение точек" },
+  { key: "context", label: "Контекст для AI" },
 ];
 
 export default function AiCenterPage() {
@@ -24,6 +31,9 @@ export default function AiCenterPage() {
   const [summary, setSummary] = useState<AiExecutiveSummaryDto | null>(null);
   const [insights, setInsights] = useState<AiInsightDto[] | null>(null);
   const [locations, setLocations] = useState<AiLocationDeviationResponseDto | null>(null);
+  // The plain location list the context tab filters by — the deviation
+  // report above is a different shape and covers its own window.
+  const [allLocations, setAllLocations] = useState<LocationDto[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const loadSummary = useCallback(() => {
@@ -42,6 +52,7 @@ export default function AiCenterPage() {
   useEffect(() => {
     loadSummary();
     loadInsights();
+    api.locations.list().then(setAllLocations).catch(() => {});
   }, [loadSummary, loadInsights]);
 
   useEffect(() => {
@@ -127,6 +138,7 @@ export default function AiCenterPage() {
       )}
 
       {tab === "locations" && <LocationsTab data={locations} />}
+      {tab === "context" && <BusinessContextTab locations={allLocations} />}
     </div>
   );
 }
