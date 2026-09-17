@@ -125,43 +125,30 @@ export function isConfigured(): boolean {
 // ── Finding the terminal ──────────────────────────────────────────────
 //
 // The terminal has to be addressed by name, and a name only resolves through
-// the machine's hosts file — which pins it to one address. On a phone hotspot
-// the terminal's address moves whenever the phone re-shares its connection,
-// and every move meant editing a system file again. That is not a thing a
-// cashier can do at eight in the morning.
+// the machine's hosts file — which pins it to one address.
 //
-// So instead every address the hotspot can hand out gets its own name, once,
-// and the till tries them all and keeps whichever answers. The certificate is
-// a wildcard, so all of these names validate against it equally.
-//
-// An iPhone hotspot is always 172.20.10.0/28: the phone itself is .1, and
-// everything it hands out lands between .2 and .14.
-export const HOTSPOT_SUBNET_PREFIX = "172.20.10";
-export const HOTSPOT_LAST_OCTETS = Array.from({ length: 13 }, (_, i) => i + 2);
-
-export function hostForOctet(octet: number): string {
-  return `pos${octet}.kaspipos.kz`;
-}
-
-// The block to paste into the machine's hosts file. Written once and then
-// good for as long as the shop stays on this hotspot.
-export function hostsFileBlock(): string {
-  return HOTSPOT_LAST_OCTETS.map(
-    (octet) => `${HOTSPOT_SUBNET_PREFIX}.${octet}  ${hostForOctet(octet)}`,
-  ).join("\n");
-}
+// This used to also carry a multi-candidate scanner for a phone hotspot,
+// where the terminal's address genuinely moved on its own every time the
+// phone re-shared its connection (always somewhere in 172.20.10.2–14, so
+// every possible address got its own name and the till tried them all).
+// The shop now runs the terminal and the till off a proper router instead,
+// where a device's DHCP lease is stable — so that whole scanner was dropped
+// rather than generalised to an arbitrary, unknown router subnet (unlike an
+// iPhone hotspot, a router's address range isn't a fixed, guessable
+// constant). One name, one hosts-file line, same as the card's existing
+// "IP changed" recovery flow already assumed for the non-hotspot case.
 
 // Probes /v2/status WITHOUT a token on purpose. Unlike /v2/register it starts
-// nothing and puts no approval prompt on the terminal's screen, so trying
-// many addresses is harmless.
+// nothing and puts no approval prompt on the terminal's screen, so it is
+// harmless to call before pair() commits to the long register() wait.
 //
 // The mode is the whole trick and the bug the first version of this had:
 // Kaspi's own docs say a token-less request gets a bare HTTP 401, and a 401
 // is exactly the kind of response an API is least likely to also carry a
 // permissive CORS header on. Without one, a NORMAL-mode fetch against a
 // terminal that is genuinely sitting there and answering rejects with the
-// same generic error as an address nothing is listening on at all — so
-// discovery would silently fail to find a terminal that has already replied.
+// same generic error as an address nothing is listening on at all — so this
+// would silently report a terminal that has already replied as absent.
 // `no-cors` sidesteps this entirely: the browser resolves the fetch (with an
 // opaque, unreadable response) for ANY response from ANY reachable server,
 // no matter the status or headers, and only rejects when the connection
@@ -177,20 +164,6 @@ export async function isTerminalAt(candidate: string, timeoutMs = 5000): Promise
   } finally {
     clearTimeout(timer);
   }
-}
-
-// Tries every name at once and returns the first that answers. Parallel
-// because the misses are the slow part: an address with nothing on it does
-// not refuse, it goes quiet until the attempt is given up on.
-export async function discoverTerminal(
-  port = "8080",
-  timeoutMs = 5000,
-): Promise<string | null> {
-  const candidates = HOTSPOT_LAST_OCTETS.map((octet) => `https://${hostForOctet(octet)}:${port}`);
-  const results = await Promise.all(
-    candidates.map(async (candidate) => ((await isTerminalAt(candidate, timeoutMs)) ? candidate : null)),
-  );
-  return results.find((found) => found !== null) ?? null;
 }
 
 // ── The wire ──────────────────────────────────────────────────────────
