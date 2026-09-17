@@ -168,48 +168,76 @@ export class PromotionsService {
     return this.toDto(promotion, issued, redeemed);
   }
 
-  async listCoupons(user: AuthenticatedUser, promotionId: string): Promise<PromotionCouponDto[]> {
+  // `status` narrows to one lifecycle stage — chiefly ISSUED, for a caller
+  // building a print batch that must never include an already-redeemed or
+  // voided code. Passing nothing keeps the full history, same as before.
+  async listCoupons(
+    user: AuthenticatedUser,
+    promotionId: string,
+    status?: PromotionCouponStatus,
+  ): Promise<PromotionCouponDto[]> {
     const promotion = await this.getOwned(user.organizationId, promotionId);
     resolveLocationScope(user, promotion.locationId ?? undefined);
 
     const coupons = await this.prisma.promotionCoupon.findMany({
-      where: { promotionId },
+      where: { promotionId, ...(status ? { status: status as PrismaPromotionCouponStatus } : {}) },
       include: { redeemedBy: true, redeemedLocation: true },
       orderBy: { createdAt: "asc" },
     });
     return coupons.map((c) => this.toCouponDto(c));
   }
 
-  // Retries on a code collision rather than batching with skipDuplicates —
-  // at 6 random characters from a 32-symbol alphabet the odds are vanishing,
-  // but a caller asking for the codes back needs to know exactly which ones
-  // it got, so this stays a simple per-code loop instead of an insert whose
-  // success count could silently fall short of `count`.
-  async generateCoupons(user: AuthenticatedUser, promotionId: string, count: number): Promise<string[]> {
+  // One bulk insert per call rather than a loop of single-row creates: at a
+  // few thousand codes, thousands of sequential round trips in one HTTP
+  // request is a real timeout/network-drop risk (this is meant to run from
+  // a laptop on a supermarket's wifi), and a request that dies partway used
+  // to leave already-created rows silently invisible to the caller — never
+  // returned, never printed, but still counting toward "issued" in every
+  // report forever. createManyAndReturn makes each attempt atomic-ish in
+  // effect: we always learn exactly which of our candidates actually
+  // landed, and top up only the shortfall.
+  //
+  // Every code minted by one call shares `batchLabel` (this call's own
+  // timestamp) — the admin screen groups by it to show "print runs" and to
+  // let a re-download pull just one run's still-ISSUED codes.
+  async generateCoupons(
+    user: AuthenticatedUser,
+    promotionId: string,
+    count: number,
+  ): Promise<{ codes: string[]; batchLabel: string }> {
     const promotion = await this.getOwned(user.organizationId, promotionId);
     resolveLocationScope(user, promotion.locationId ?? undefined);
 
-    const codes: string[] = [];
-    for (let i = 0; i < count; i++) {
-      let created = false;
-      for (let attempt = 0; attempt < 5 && !created; attempt++) {
+    const batchLabel = new Date().toISOString();
+    const allCodes: string[] = [];
+    // Codes already tried in THIS call, successful or not — never generate
+    // the same random value twice within one batch, on top of the alphabet
+    // already making a collision astronomically unlikely.
+    const attempted = new Set<string>();
+    const MAX_ROUNDS = 10;
+
+    for (let round = 0; round < MAX_ROUNDS && allCodes.length < count; round++) {
+      const need = count - allCodes.length;
+      const candidates: string[] = [];
+      while (candidates.length < need) {
         const code = generateCouponCode();
-        try {
-          await this.prisma.promotionCoupon.create({
-            data: { organizationId: user.organizationId, promotionId, code },
-          });
-          codes.push(code);
-          created = true;
-        } catch (err) {
-          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") continue;
-          throw err;
-        }
+        if (attempted.has(code)) continue;
+        attempted.add(code);
+        candidates.push(code);
       }
-      if (!created) {
-        throw new BadRequestException("Не удалось сгенерировать уникальные коды купонов — повторите попытку");
-      }
+
+      const inserted = await this.prisma.promotionCoupon.createManyAndReturn({
+        data: candidates.map((code) => ({ organizationId: user.organizationId, promotionId, code, batchLabel })),
+        skipDuplicates: true,
+        select: { code: true },
+      });
+      allCodes.push(...inserted.map((r) => r.code));
     }
-    return codes;
+
+    if (allCodes.length < count) {
+      throw new BadRequestException("Не удалось сгенерировать уникальные коды купонов — повторите попытку");
+    }
+    return { codes: allCodes, batchLabel };
   }
 
   // Only an ISSUED coupon can be voided — a REDEEMED one already represents
@@ -436,6 +464,7 @@ export class PromotionsService {
     id: string;
     code: string;
     status: string;
+    batchLabel: string | null;
     redeemedAt: Date | null;
     redeemedSaleId: string | null;
     redeemedBy: { fullName: string } | null;
@@ -448,6 +477,7 @@ export class PromotionsService {
       id: coupon.id,
       code: coupon.code,
       status: coupon.status as PromotionCouponStatus,
+      batchLabel: coupon.batchLabel,
       redeemedAt: coupon.redeemedAt ? coupon.redeemedAt.toISOString() : null,
       redeemedSaleId: coupon.redeemedSaleId,
       redeemedByName: coupon.redeemedBy?.fullName ?? null,

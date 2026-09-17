@@ -1,5 +1,5 @@
 import { BadRequestException } from "@nestjs/common";
-import { PaymentMethod, ProductType, Unit } from "@bakery-os/shared";
+import { PaymentMethod, ProductType, PromotionCouponStatus as PromotionCouponStatusEnum, Unit } from "@bakery-os/shared";
 import { PromotionCouponStatus as PrismaPromotionCouponStatus } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { CashMovementsService } from "../finance/cash-movements.service";
@@ -95,7 +95,7 @@ afterAll(async () => {
 });
 
 async function freshCoupon(): Promise<string> {
-  const codes = await services().promotions.generateCoupons(user, promotionId, 1);
+  const { codes } = await services().promotions.generateCoupons(user, promotionId, 1);
   return codes[0];
 }
 
@@ -261,5 +261,58 @@ describe("promotion coupon redemption", () => {
     expect(report.couponsRedeemed).toBeGreaterThanOrEqual(3);
     expect(report.discountTotal).toBeGreaterThanOrEqual(1500);
     expect(report.conversionPercent).not.toBeNull();
+  });
+});
+
+// The printing-workflow rework: one bulk insert instead of a loop of single
+// creates, a shared batchLabel per generation call, and a status filter for
+// pulling just the still-printable codes.
+describe("bulk coupon generation", () => {
+  it("mints a large batch in one call, every code unique and sharing one batchLabel", async () => {
+    const { promotions } = services();
+    const { codes, batchLabel } = await promotions.generateCoupons(user, promotionId, 600);
+
+    expect(codes).toHaveLength(600);
+    expect(new Set(codes).size).toBe(600);
+    expect(batchLabel).toBeTruthy();
+
+    const rows = await prisma.promotionCoupon.findMany({ where: { promotionId, batchLabel } });
+    expect(rows).toHaveLength(600);
+    expect(rows.every((r) => r.status === PrismaPromotionCouponStatus.ISSUED)).toBe(true);
+  });
+
+  it("two separate calls get two distinct batchLabels, each covering only its own codes", async () => {
+    const { promotions } = services();
+    const first = await promotions.generateCoupons(user, promotionId, 5);
+    const second = await promotions.generateCoupons(user, promotionId, 5);
+
+    expect(first.batchLabel).not.toBe(second.batchLabel);
+    const firstRows = await prisma.promotionCoupon.findMany({ where: { promotionId, batchLabel: first.batchLabel } });
+    const secondRows = await prisma.promotionCoupon.findMany({ where: { promotionId, batchLabel: second.batchLabel } });
+    expect(firstRows.map((r) => r.code).sort()).toEqual([...first.codes].sort());
+    expect(secondRows.map((r) => r.code).sort()).toEqual([...second.codes].sort());
+  });
+
+  it("listCoupons(status) returns only that status, and a redeemed code drops out of ISSUED", async () => {
+    const { promotions, sales } = services();
+    const { codes } = await promotions.generateCoupons(user, promotionId, 1);
+    const code = codes[0];
+
+    const issuedBefore = await promotions.listCoupons(user, promotionId, PromotionCouponStatusEnum.ISSUED);
+    expect(issuedBefore.some((c) => c.code === code)).toBe(true);
+
+    const sale = await sales.create(user, {
+      locationId,
+      paymentMethod: PaymentMethod.CASH,
+      couponCode: code,
+      items: [{ productId, quantity: 1, unitPrice: 1000 }],
+    });
+    saleIds.push(sale.id);
+
+    const issuedAfter = await promotions.listCoupons(user, promotionId, PromotionCouponStatusEnum.ISSUED);
+    expect(issuedAfter.some((c) => c.code === code)).toBe(false);
+
+    const redeemed = await promotions.listCoupons(user, promotionId, PromotionCouponStatusEnum.REDEEMED);
+    expect(redeemed.some((c) => c.code === code)).toBe(true);
   });
 });

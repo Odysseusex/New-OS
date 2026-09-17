@@ -948,6 +948,13 @@ model PromotionCoupon {
   // paper slip is a real abuse path for a coupon nobody scans, only types.
   code   String
   status PromotionCouponStatus @default(ISSUED)
+  // ISO timestamp shared by every code minted in one generateCoupons() call
+  // — the whole of "which print run is this" without a separate batch
+  // table. Null on coupons created before this field existed. Lets the
+  // admin screen group a huge flat list into the runs it was actually
+  // printed in, and re-download exactly one run's still-ISSUED codes
+  // rather than "everything ever generated for this promotion".
+  batchLabel String?
 
   redeemedAt         DateTime?
   redeemedSaleId     String?   @unique

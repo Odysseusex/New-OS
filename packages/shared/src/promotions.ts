@@ -83,6 +83,10 @@ export interface PromotionCouponDto {
   id: string;
   code: string;
   status: PromotionCouponStatus;
+  // ISO timestamp of the generateCoupons() call that minted this code — see
+  // the schema comment on PromotionCoupon.batchLabel. Null on coupons
+  // created before this field existed.
+  batchLabel: string | null;
   redeemedAt: string | null;
   redeemedSaleId: string | null;
   redeemedByName: string | null;
@@ -98,6 +102,9 @@ export interface GeneratePromotionCouponsRequestDto {
 
 export interface GeneratePromotionCouponsResponseDto {
   codes: string[];
+  // Shared by every code this call created — pass it back to the coupons
+  // list to find exactly this run again.
+  batchLabel: string;
 }
 
 export interface VoidPromotionCouponRequestDto {

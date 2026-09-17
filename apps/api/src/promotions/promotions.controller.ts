@@ -1,5 +1,10 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { PROMOTION_MANAGE_ROLES, PromotionCouponPreviewDto, SALE_CREATE_ROLES } from "@bakery-os/shared";
+import {
+  PROMOTION_MANAGE_ROLES,
+  PromotionCouponPreviewDto,
+  PromotionCouponStatus,
+  SALE_CREATE_ROLES,
+} from "@bakery-os/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
 import { Roles } from "../common/decorators/roles.decorator";
@@ -55,21 +60,26 @@ export class PromotionsController {
     return this.promotionsService.update(user, id, dto);
   }
 
+  // `status` is a plain string query param rather than a DTO — a bad value
+  // is simply ignored (falls back to the full list) rather than rejected,
+  // since this narrows an otherwise-safe read, not a write.
   @Get(":id/coupons")
   @Roles(...PROMOTION_MANAGE_ROLES)
-  listCoupons(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.promotionsService.listCoupons(user, id);
+  listCoupons(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Query("status") status?: string) {
+    const validStatus = Object.values(PromotionCouponStatus).includes(status as PromotionCouponStatus)
+      ? (status as PromotionCouponStatus)
+      : undefined;
+    return this.promotionsService.listCoupons(user, id, validStatus);
   }
 
   @Post(":id/coupons")
   @Roles(...PROMOTION_MANAGE_ROLES)
-  async generateCoupons(
+  generateCoupons(
     @CurrentUser() user: AuthenticatedUser,
     @Param("id") id: string,
     @Body() dto: GenerateCouponsDto,
   ) {
-    const codes = await this.promotionsService.generateCoupons(user, id, dto.count);
-    return { codes };
+    return this.promotionsService.generateCoupons(user, id, dto.count);
   }
 
   @Delete(":id/coupons/:couponId")

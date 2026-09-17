@@ -64,6 +64,7 @@ import type {
   PromotionDto,
   PromotionCouponDto,
   PromotionCouponPreviewDto,
+  PromotionCouponStatus,
   PromotionReportDto,
   CreatePromotionRequestDto,
   UpdatePromotionRequestDto,
@@ -323,7 +324,8 @@ export const api = {
       request<PromotionDto>("/promotions", { method: "POST", body: JSON.stringify(dto) }),
     update: (id: string, dto: UpdatePromotionRequestDto) =>
       request<PromotionDto>(`/promotions/${id}`, { method: "PATCH", body: JSON.stringify(dto) }),
-    coupons: (id: string) => request<PromotionCouponDto[]>(`/promotions/${id}/coupons`),
+    coupons: (id: string, status?: PromotionCouponStatus) =>
+      request<PromotionCouponDto[]>(withQuery(`/promotions/${id}/coupons`, { status })),
     generateCoupons: (id: string, count: number) =>
       request<GeneratePromotionCouponsResponseDto>(`/promotions/${id}/coupons`, {
         method: "POST",

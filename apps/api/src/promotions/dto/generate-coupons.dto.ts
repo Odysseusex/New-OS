@@ -1,10 +1,11 @@
 import { IsInt, Max, Min } from "class-validator";
 
 export class GenerateCouponsDto {
-  // Capped well below anything a paper-coupon test would ever need — a
-  // typo here (a stray zero) should not silently mint a thousand codes.
+  // The Merey pilot's own stated ceiling is ~3000 in one run; 5000 leaves
+  // headroom above that while still catching a stray extra zero (30000)
+  // before it ever reaches generateCoupons().
   @IsInt()
   @Min(1)
-  @Max(500)
+  @Max(5000)
   count!: number;
 }
