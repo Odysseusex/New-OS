@@ -50,6 +50,8 @@ import {
   type ScreenPlacement,
 } from "@/lib/customer-display";
 import { SaleHistoryModal } from "@/components/sale-history-modal";
+import { TerminalPaymentPanel } from "@/components/terminal-payment-panel";
+import { isConfigured as isTerminalConfigured, type KaspiTransaction } from "@/lib/kaspi-terminal";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatMoney, formatQuantity } from "@/lib/format";
@@ -76,6 +78,22 @@ interface CartLine {
 // which is what the Продажи form is for.
 // Which payment dialog is open. `null` = none.
 type PayMode = "cash" | "card" | "mixed";
+
+// Everything needed to record one sale. Kept as an object rather than four
+// positional arguments so that a payment the terminal already took can be
+// stored whole and replayed byte-for-byte if recording it fails.
+interface PayArgs {
+  method: PaymentMethod;
+  // The note the buyer handed over — never sent to the server (a walk-in sale
+  // is always settled in full), it only works out the change and the slip.
+  cashGiven?: number;
+  // Sent: it decides which accounts the money lands in.
+  split?: { method: PaymentMethod; amount: number }[];
+  // Set only when the card half went through the Kaspi terminal. By the time
+  // this is used the money has already moved, so a failure to record the sale
+  // is a problem to shout about, not to retry silently.
+  terminalPayment?: { method: string; transactionId: string; cardMask?: string };
+}
 
 const PAYMENT_BUTTONS: { mode: PayMode; label: string; icon: typeof Banknote }[] = [
   { mode: "cash", label: "Наличные", icon: Banknote },
@@ -114,6 +132,11 @@ export default function PosPage() {
   const [openPriceProduct, setOpenPriceProduct] = useState<ProductDto | null>(null);
   const [openPriceOpen, setOpenPriceOpen] = useState(false);
   const [payMode, setPayMode] = useState<PayMode | null>(null);
+  // A payment the terminal has ALREADY taken, whose sale did not record. The
+  // money has moved, so the only safe retry is one that re-sends this exact
+  // transaction — running the card again would charge the buyer twice. Held
+  // until the sale lands, and it blocks every payment button meanwhile.
+  const [chargedButUnrecorded, setChargedButUnrecorded] = useState<PayArgs | null>(null);
   // Cash handed over and change due for the sale just rung up, kept only long
   // enough to print them on the slip. Deliberately not persisted: the server
   // records what the sale cost, not which note the buyer produced.
@@ -465,15 +488,7 @@ export default function PosPage() {
   // total either way); it exists only to work out the change and to put both
   // numbers on the printed slip. `split` IS sent: it decides which accounts
   // the money lands in.
-  async function handlePay(
-    method: PaymentMethod,
-    cashGiven?: number,
-    split?: { method: PaymentMethod; amount: number }[],
-    // Set only when the card half went through the Kaspi terminal. By the
-    // time this is called the money has already moved, so a failure to record
-    // the sale is a problem to shout about, not to retry silently.
-    terminalPayment?: { method: string; transactionId: string; cardMask?: string },
-  ) {
+  async function handlePay({ method, cashGiven, split, terminalPayment }: PayArgs) {
     if (cart.length === 0 || !locationId) return;
     setIsSubmitting(true);
     setError(null);
@@ -511,8 +526,15 @@ export default function PosPage() {
       setCart([]);
       setQuery("");
       removeCoupon();
+      setChargedButUnrecorded(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось провести продажу");
+      // The card was already charged, so this cannot be retried by simply
+      // pressing «Картой» again — that would run a second payment. The exact
+      // arguments are kept for a retry that re-sends the same transaction.
+      if (terminalPayment) {
+        setChargedButUnrecorded({ method, cashGiven, split, terminalPayment });
+      }
     } finally {
       setIsSubmitting(false);
       focusScan();
@@ -938,6 +960,28 @@ export default function PosPage() {
               <span className="text-base text-muted">Итого{itemCount > 0 ? ` · ${formatQuantity(itemCount)} шт` : ""}</span>
               <span className="text-3xl font-bold text-foreground">{formatMoney(total)}</span>
             </div>
+            {/* The card has been charged but the sale did not record. Every
+                payment button is blocked while this stands, because each one
+                would run a SECOND payment — the only way out is to record the
+                same transaction again. */}
+            {chargedButUnrecorded && (
+              <div className="mb-3 rounded-xl bg-amber-50 px-4 py-3">
+                <p className="text-sm font-medium text-amber-900">
+                  Оплата на терминале прошла, но продажа не записалась
+                </p>
+                <p className="mt-1 text-sm text-amber-800">
+                  Деньги с покупателя уже списаны. <strong>Не проводите оплату заново.</strong>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => handlePay(chargedButUnrecorded)}
+                  disabled={isSubmitting}
+                  className="mt-2 w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-40"
+                >
+                  {isSubmitting ? "…" : "Записать продажу ещё раз"}
+                </button>
+              </div>
+            )}
             {/* Every button opens a dialog rather than settling on the spot:
                 a stray tap must never be a completed sale, and the cashier
                 gets one place to change their mind. */}
@@ -946,7 +990,7 @@ export default function PosPage() {
                 <button
                   key={mode}
                   onClick={() => setPayMode(mode)}
-                  disabled={cart.length === 0 || isSubmitting || !locationId}
+                  disabled={cart.length === 0 || isSubmitting || !locationId || chargedButUnrecorded !== null}
                   className={clsx(
                     "flex items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-base font-semibold transition hover:opacity-90 disabled:opacity-40",
                     mode === "mixed"
@@ -973,7 +1017,7 @@ export default function PosPage() {
         }}
         onSubmit={(given) => {
           setPayMode(null);
-          handlePay(PaymentMethod.CASH, given);
+          handlePay({ method: PaymentMethod.CASH, cashGiven: given });
         }}
       />
     )}
@@ -985,9 +1029,9 @@ export default function PosPage() {
           setPayMode(null);
           focusScan();
         }}
-        onSubmit={() => {
+        onSubmit={(terminalPayment) => {
           setPayMode(null);
-          handlePay(PaymentMethod.CARD);
+          handlePay({ method: PaymentMethod.CARD, terminalPayment });
         }}
       />
     )}
@@ -999,12 +1043,17 @@ export default function PosPage() {
           setPayMode(null);
           focusScan();
         }}
-        onSubmit={(card, cashPart, cashGiven) => {
+        onSubmit={(card, cashPart, cashGiven, terminalPayment) => {
           setPayMode(null);
-          handlePay(PaymentMethod.MIXED, cashGiven, [
-            { method: PaymentMethod.CARD, amount: card },
-            { method: PaymentMethod.CASH, amount: cashPart },
-          ]);
+          handlePay({
+            method: PaymentMethod.MIXED,
+            cashGiven,
+            split: [
+              { method: PaymentMethod.CARD, amount: card },
+              { method: PaymentMethod.CASH, amount: cashPart },
+            ],
+            terminalPayment,
+          });
         }}
       />
     )}
@@ -1177,33 +1226,64 @@ function CardPaymentModal({
   total: number;
   isSubmitting: boolean;
   onClose: () => void;
-  onSubmit: () => void;
+  onSubmit: (terminalPayment?: PayArgs["terminalPayment"]) => void;
 }) {
+  // Read once on open, not on every render: unpairing the terminal midway
+  // through a payment must not swap the dialog out from under the cashier.
+  const [paired] = useState(isTerminalConfigured);
+  const [busy, setBusy] = useState(false);
+
+  const paid = useCallback(
+    (tx: KaspiTransaction) =>
+      onSubmit({ method: tx.method, transactionId: tx.transactionId, cardMask: tx.cardMask }),
+    [onSubmit],
+  );
+
   return (
-    <Modal title="Оплата картой" onClose={onClose} width="max-w-sm">
+    // A live payment on the terminal pins the dialog open — closing it would
+    // leave the card being charged with nothing watching the result.
+    <Modal title="Оплата картой" onClose={busy ? () => {} : onClose} width="max-w-sm">
       <div className="rounded-xl border border-border bg-surface-muted px-4 py-5 text-center">
         <p className="text-sm text-muted">К оплате</p>
         <p className="mt-1 text-3xl font-semibold tabular-nums text-foreground">{formatMoney(total)}</p>
       </div>
-      <p className="mt-3 text-xs text-muted">
-        Проведите оплату на терминале, затем подтвердите. Продажа запишется только после подтверждения.
-      </p>
-      <button
-        type="button"
-        onClick={onSubmit}
-        disabled={isSubmitting}
-        className="mt-3 w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-40"
-      >
-        {isSubmitting ? "…" : "Оплата прошла — провести продажу"}
-      </button>
-      <button
-        type="button"
-        onClick={onClose}
-        disabled={isSubmitting}
-        className="mt-2 w-full rounded-xl px-4 py-2.5 text-sm font-medium text-muted transition hover:bg-surface-muted disabled:opacity-40"
-      >
-        Отмена
-      </button>
+
+      {paired ? (
+        <TerminalPaymentPanel
+          amount={total}
+          onPaid={paid}
+          onBusyChange={setBusy}
+          onManual={() => onSubmit()}
+        />
+      ) : (
+        // No terminal paired on this machine — the original flow, untouched:
+        // the cashier rings the card up on the terminal by hand and says so.
+        <>
+          <p className="mt-3 text-xs text-muted">
+            Проведите оплату на терминале, затем подтвердите. Продажа запишется только после
+            подтверждения.
+          </p>
+          <button
+            type="button"
+            onClick={() => onSubmit()}
+            disabled={isSubmitting}
+            className="mt-3 w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-40"
+          >
+            {isSubmitting ? "…" : "Оплата прошла — провести продажу"}
+          </button>
+        </>
+      )}
+
+      {!busy && (
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={isSubmitting}
+          className="mt-2 w-full rounded-xl px-4 py-2.5 text-sm font-medium text-muted transition hover:bg-surface-muted disabled:opacity-40"
+        >
+          Отмена
+        </button>
+      )}
     </Modal>
   );
 }
@@ -1234,8 +1314,13 @@ function MixedPaymentModal({
   total: number;
   isSubmitting: boolean;
   onClose: () => void;
-  // (card part, cash part, cash actually handed over)
-  onSubmit: (card: number, cash: number, cashGiven: number) => void;
+  // (card part, cash part, cash actually handed over, terminal transaction)
+  onSubmit: (
+    card: number,
+    cash: number,
+    cashGiven: number,
+    terminalPayment?: PayArgs["terminalPayment"],
+  ) => void;
 }) {
   // The split is held as ONE number — the cash half — no matter which row is
   // being typed into. The card half is always the remainder, so the two can
@@ -1250,6 +1335,12 @@ function MixedPaymentModal({
   const [givenValue, setGivenValue] = useState("");
   // Which number the keypad is driving: the split, or the cash handed over.
   const [field, setField] = useState<"split" | "given">("split");
+  const [paired] = useState(isTerminalConfigured);
+  // The split is frozen before the card half goes to the terminal: the amount
+  // on the terminal's screen and the amount in this dialog must be the same
+  // number, and a keypad still live under an open payment could part them.
+  const [settling, setSettling] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   function onSplitDigits(next: string) {
     setBuffer(next);
@@ -1287,9 +1378,22 @@ function MixedPaymentModal({
   const submit = () => {
     if (valid) onSubmit(cardPart, cashPart, given);
   };
+  // Freezes the split, then hands the card half to the terminal.
+  const lockSplit = () => {
+    if (valid) setSettling(true);
+  };
+  const paidOnTerminal = useCallback(
+    (tx: KaspiTransaction) =>
+      onSubmit(cardPart, cashPart, given, {
+        method: tx.method,
+        transactionId: tx.transactionId,
+        cardMask: tx.cardMask,
+      }),
+    [onSubmit, cardPart, cashPart, given],
+  );
 
   return (
-    <Modal title="Картой и наличными" onClose={onClose} width="max-w-sm">
+    <Modal title="Картой и наличными" onClose={busy ? () => {} : onClose} width="max-w-sm">
       <div className="mb-3 flex items-baseline justify-between">
         <span className="text-sm text-muted">К оплате</span>
         <span className="text-xl font-semibold text-foreground">{formatMoney(total)}</span>
@@ -1301,6 +1405,7 @@ function MixedPaymentModal({
       <button
         type="button"
         onClick={() => selectSide("cash")}
+        disabled={settling}
         className={clsx(
           "flex w-full items-baseline justify-between rounded-xl border px-4 py-3 text-left transition",
           field === "split" && splitSide === "cash" ? "border-accent bg-surface" : "border-border bg-surface-muted",
@@ -1315,6 +1420,7 @@ function MixedPaymentModal({
       <button
         type="button"
         onClick={() => selectSide("card")}
+        disabled={settling}
         className={clsx(
           "mt-2 flex w-full items-baseline justify-between rounded-xl border px-4 py-3 text-left transition",
           field === "split" && splitSide === "card" ? "border-accent bg-surface" : "border-border bg-surface-muted",
@@ -1331,6 +1437,7 @@ function MixedPaymentModal({
           <button
             type="button"
             onClick={() => setField("given")}
+            disabled={settling}
             className={clsx(
               "mt-2 flex w-full items-baseline justify-between rounded-xl border px-4 py-3 text-left transition",
               field === "given" ? "border-accent bg-surface" : "border-border bg-surface-muted",
@@ -1352,22 +1459,46 @@ function MixedPaymentModal({
         </>
       )}
 
-      <div className="mt-3">
-        <NumberPad
-          value={field === "split" ? buffer : givenValue}
-          onChange={field === "split" ? onSplitDigits : setGivenValue}
-          onSubmit={submit}
-        />
-      </div>
+      {!settling && (
+        <>
+          <div className="mt-3">
+            <NumberPad
+              value={field === "split" ? buffer : givenValue}
+              onChange={field === "split" ? onSplitDigits : setGivenValue}
+              onSubmit={paired ? lockSplit : submit}
+            />
+          </div>
 
-      <button
-        type="button"
-        onClick={submit}
-        disabled={!valid}
-        className="mt-3 w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-40"
-      >
-        {isSubmitting ? "…" : "Провести продажу"}
-      </button>
+          <button
+            type="button"
+            onClick={paired ? lockSplit : submit}
+            disabled={!valid}
+            className="mt-3 w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-40"
+          >
+            {isSubmitting ? "…" : paired ? `Оплатить картой ${formatMoney(cardPart)}` : "Провести продажу"}
+          </button>
+        </>
+      )}
+
+      {settling && (
+        <>
+          <TerminalPaymentPanel
+            amount={cardPart}
+            onPaid={paidOnTerminal}
+            onBusyChange={setBusy}
+            onManual={submit}
+          />
+          {!busy && (
+            <button
+              type="button"
+              onClick={() => setSettling(false)}
+              className="mt-2 w-full rounded-xl px-4 py-2.5 text-xs font-medium text-muted transition hover:bg-surface-muted"
+            >
+              Изменить суммы
+            </button>
+          )}
+        </>
+      )}
       {overpaid && (
         <p className="mt-2 text-center text-xs text-red-700">
           Больше суммы чека — {formatMoney(total)}
