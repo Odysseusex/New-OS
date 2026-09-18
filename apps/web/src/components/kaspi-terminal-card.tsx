@@ -161,6 +161,15 @@ export function KaspiTerminalCard() {
     }
     try {
       const tokens = await register(target);
+      // Only `remember()` (the input's onChange) used to persist the address,
+      // so an address that arrived pre-filled — the field's own default, or a
+      // value restored on mount — could pair successfully while never once
+      // being saved. A till would then show as paired on screen but fail
+      // `isConfigured()` on the next load, or in any other component reading
+      // storage directly. Pairing succeeding is proof this exact address
+      // works, so it is the right moment to save it regardless of how it got
+      // into the field.
+      setTerminalUrl(target);
       setTokens(tokens);
       setPairing({ kind: "paired", tokens });
     } catch (err) {
