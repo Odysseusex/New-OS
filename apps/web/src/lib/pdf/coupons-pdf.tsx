@@ -2,7 +2,6 @@ import React from "react";
 import { Document, Page, Text, View, Image, Font, StyleSheet, pdf } from "@react-pdf/renderer";
 import JsBarcode from "jsbarcode";
 import type { PromotionDto } from "@bakery-os/shared";
-import { formatDate } from "@/lib/format";
 
 // Same Cyrillic-capable font as recipe-pdf.tsx, registered again here
 // because this module is its own dynamically-imported chunk (see
@@ -17,6 +16,7 @@ Font.register({
 });
 
 const COLOR_ACCENT = "#a85333";
+const COLOR_ACCENT_TINT = "#f6ece6";
 const COLOR_FOREGROUND = "#1c1917";
 const COLOR_MUTED = "#78716c";
 const COLOR_BORDER = "#a8a29e";
@@ -30,18 +30,18 @@ const COLOR_BORDER = "#a8a29e";
 // <= A4's 841.89pt) — react-pdf's own line-height rendering runs a bit
 // taller than the nominal font-size math suggests, and a page whose
 // content is even a point too tall silently spills a row onto a phantom
-// extra physical page instead of erroring. Caught exactly this way: 8
-// logical pages of 8 coupons rendered as 15 actual PDF pages until this
-// margin was added.
-const PAGE_PADDING = 20;
+// extra physical page instead of erroring. Caught exactly this way once
+// already: 8 logical pages rendered as 15 actual PDF pages until a real
+// safety margin (not just a tight fit) was built into these numbers.
+const PAGE_PADDING = 16;
 const GUTTER = 8;
 const CARD_WIDTH = 269;
 
 export type CouponDensity = 8 | 10;
 
 const DENSITY_CONFIG: Record<CouponDensity, { rows: number; cardHeight: number; compact: boolean }> = {
-  8: { rows: 4, cardHeight: 185, compact: false },
-  10: { rows: 5, cardHeight: 145, compact: true },
+  8: { rows: 4, cardHeight: 190, compact: false },
+  10: { rows: 5, cardHeight: 151, compact: true },
 };
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -59,11 +59,14 @@ function formatCodeForDisplay(code: string): string {
 }
 
 // Groups this promotion's rules by their percent, so "Хлеб 50%, Выпечка
-// 50%, Торты 30%" prints as "Хлеб, Выпечка −50%" / "Торты −30%" rather than
-// one line per category — three rules sharing two percents is exactly the
-// Merey pilot's own shape, and this reads correctly for any other grouping
-// too, not just that one.
-function groupRulesByPercent(rules: PromotionDto["rules"]): { percent: number; categoryNames: string }[] {
+// 50%, Торты 30%" reads as two clean lines — "ХЛЕБ И ВЫПЕЧКА" / "ТОРТЫ" —
+// rather than one line per category. More than two categories sharing a
+// percent is deliberately NOT spelled out in full ("Хлеб, Выпечка и
+// Пицца, роллы, блины…" is exactly the cluttered, unreadable line this
+// coupon must never print) — it collapses to the first name plus "и
+// другие" instead. The Merey pilot's own shape (two categories at 50%,
+// one at 30%) never hits that fallback at all.
+function groupRulesByPercent(rules: PromotionDto["rules"]): { percent: number; categoryLabel: string }[] {
   const byPercent = new Map<number, string[]>();
   for (const rule of rules) {
     const names = byPercent.get(rule.discountPercent) ?? [];
@@ -74,7 +77,7 @@ function groupRulesByPercent(rules: PromotionDto["rules"]): { percent: number; c
     .sort((a, b) => b[0] - a[0])
     .map(([percent, names]) => ({
       percent,
-      categoryNames: names.length <= 2 ? names.join(" и ") : `${names.slice(0, -1).join(", ")} и ${names[names.length - 1]}`,
+      categoryLabel: (names.length <= 2 ? names.join(" и ") : `${names[0]} и другие`).toUpperCase(),
     }));
 }
 
@@ -110,109 +113,123 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderStyle: "dashed",
     borderColor: COLOR_BORDER,
-    borderRadius: 4,
-    padding: 10,
+    borderRadius: 6,
     marginRight: GUTTER,
     display: "flex",
     flexDirection: "column",
-    justifyContent: "space-between",
+    alignItems: "center",
   },
   cardEmpty: {
     width: CARD_WIDTH,
     marginRight: GUTTER,
   },
-  brand: {
-    color: COLOR_MUTED,
-  },
-  promotionName: {
+  header: {
     fontWeight: "bold",
     color: COLOR_FOREGROUND,
-    marginTop: 1,
+    textAlign: "center",
   },
-  discountLine: {
+  dealsBlock: {
+    width: "100%",
+    alignItems: "center",
+  },
+  deal: {
+    alignItems: "center",
+    backgroundColor: COLOR_ACCENT_TINT,
+    borderRadius: 5,
+    width: "88%",
+  },
+  percent: {
     fontWeight: "bold",
     color: COLOR_ACCENT,
-    marginTop: 2,
+    textAlign: "center",
+  },
+  categoryLabel: {
+    fontWeight: "bold",
+    color: COLOR_FOREGROUND,
+    textAlign: "center",
+    letterSpacing: 0.3,
   },
   code: {
     fontFamily: "Courier",
     fontWeight: "bold",
-    letterSpacing: 1.5,
+    letterSpacing: 2,
     textAlign: "center",
-  },
-  meta: {
-    color: COLOR_MUTED,
   },
   fineprint: {
     color: COLOR_MUTED,
+    textAlign: "center",
   },
 });
 
-// Font sizes and spacing scale down for the denser 10-per-sheet layout
-// (150pt-tall cards vs. 190pt) — without this, the same sizes that fit
-// comfortably at 8-per-sheet clip the barcode or the fine print at 10.
+// Font sizes and spacing scale down for the denser 10-per-sheet layout —
+// without this, the same sizes that fit comfortably at 8-per-sheet clip
+// the barcode or the fine print at 10.
 function textSizes(compact: boolean) {
   return {
-    brand: compact ? 6 : 7,
-    promotionName: compact ? 9.5 : 11,
-    discountLine: compact ? 9.5 : 11,
-    code: compact ? 16 : 19,
-    codeMarginTop: compact ? 2 : 4,
-    barcodeHeight: compact ? 20 : 26,
+    header: compact ? 10 : 11.5,
+    dealsMarginTop: compact ? 5 : 7,
+    dealPaddingV: compact ? 3 : 4,
+    dealGap: compact ? 3 : 4,
+    percent: compact ? 15 : 17,
+    categoryLabel: compact ? 7.5 : 8.5,
+    categoryLabelMarginTop: 1,
+    code: compact ? 15 : 17,
+    codeMarginTop: compact ? 5 : 7,
+    barcodeHeight: compact ? 18 : 22,
     barcodeMarginTop: compact ? 2 : 3,
-    meta: compact ? 6.5 : 7,
-    fineprint: compact ? 6 : 6,
+    fineprint: compact ? 5.5 : 6,
+    fineprintMarginTop: compact ? 3 : 5,
   };
 }
 
 interface CouponCardProps {
   code: string;
   promotion: PromotionDto;
-  ruleGroups: { percent: number; categoryNames: string }[];
+  ruleGroups: { percent: number; categoryLabel: string }[];
   barcodeDataUri: string | null;
-  validity: string;
   height: number;
   compact: boolean;
   lastInRow: boolean;
 }
 
-function CouponCard({ code, promotion, ruleGroups, barcodeDataUri, validity, height, compact, lastInRow }: CouponCardProps) {
+// One physical coupon — the whole point is that it reads as an ad, not a
+// printout: one medium header line ("{promotion.name} / Ar Amir"), the
+// discounts as the dominant visual block (percent big, category small and
+// underneath it, never a paragraph), the code big enough to read and copy
+// at arm's length, and nothing a shopper doesn't need — no dates, no
+// location line, no explanation of the rules. Everything centred, no
+// left-aligned rows of "field: value" that would read as a document.
+function CouponCard({ code, promotion, ruleGroups, barcodeDataUri, height, compact, lastInRow }: CouponCardProps) {
   const sizes = textSizes(compact);
   return (
-    <View style={[styles.card, { height }, lastInRow ? { marginRight: 0 } : {}]} wrap={false}>
-      <View>
-        <Text style={[styles.brand, { fontSize: sizes.brand }]}>Пекарня «Колосок» · ArAmir</Text>
-        <Text style={[styles.promotionName, { fontSize: sizes.promotionName }]}>{promotion.name}</Text>
+    <View style={[styles.card, { height, paddingVertical: compact ? 8 : 10 }, lastInRow ? { marginRight: 0 } : {}]} wrap={false}>
+      <Text style={[styles.header, { fontSize: sizes.header }]}>{promotion.name} / Ar Amir</Text>
+
+      <View style={[styles.dealsBlock, { marginTop: sizes.dealsMarginTop, rowGap: sizes.dealGap }]}>
         {ruleGroups.map((g) => (
-          <Text key={g.percent} style={[styles.discountLine, { fontSize: sizes.discountLine }]}>
-            {g.categoryNames} −{g.percent}%
-          </Text>
+          <View key={g.percent} style={[styles.deal, { paddingVertical: sizes.dealPaddingV }]}>
+            <Text style={[styles.percent, { fontSize: sizes.percent }]}>−{g.percent}%</Text>
+            <Text style={[styles.categoryLabel, { fontSize: sizes.categoryLabel, marginTop: sizes.categoryLabelMarginTop }]}>
+              {g.categoryLabel}
+            </Text>
+          </View>
         ))}
       </View>
-      <View>
-        <Text style={[styles.code, { fontSize: sizes.code, marginTop: sizes.codeMarginTop }]}>
-          {formatCodeForDisplay(code)}
-        </Text>
-        {barcodeDataUri && (
-          // eslint-disable-next-line jsx-a11y/alt-text -- react-pdf's Image is a PDF primitive, not HTML img
-          <Image
-            style={{
-              height: sizes.barcodeHeight,
-              marginTop: sizes.barcodeMarginTop,
-              alignSelf: "center",
-              width: "80%",
-            }}
-            src={barcodeDataUri}
-          />
-        )}
-      </View>
-      <View>
-        <Text style={[styles.meta, { fontSize: sizes.meta }]}>
-          Действует {validity}
-          {promotion.locationName ? ` · ${promotion.locationName}` : ""}
-        </Text>
-        <Text style={[styles.fineprint, { fontSize: sizes.fineprint }]}>1 купон = 1 покупка</Text>
-      </View>
+
+      <Text style={[styles.code, { fontSize: sizes.code, marginTop: sizes.codeMarginTop }]}>
+        {formatCodeForDisplay(code)}
+      </Text>
+      {barcodeDataUri && (
+        // eslint-disable-next-line jsx-a11y/alt-text -- react-pdf's Image is a PDF primitive, not HTML img
+        <Image
+          style={{ height: sizes.barcodeHeight, marginTop: sizes.barcodeMarginTop, width: "78%" }}
+          src={barcodeDataUri}
+        />
+      )}
+
+      <Text style={[styles.fineprint, { fontSize: sizes.fineprint, marginTop: sizes.fineprintMarginTop }]}>
+        1 купон = 1 покупка
+      </Text>
     </View>
   );
 }
@@ -221,12 +238,11 @@ interface CouponsPageProps {
   codes: string[];
   promotion: PromotionDto;
   density: CouponDensity;
-  ruleGroups: { percent: number; categoryNames: string }[];
+  ruleGroups: { percent: number; categoryLabel: string }[];
   barcodeByCode: Map<string, string> | null;
-  validity: string;
 }
 
-function CouponsPage({ codes, promotion, density, ruleGroups, barcodeByCode, validity }: CouponsPageProps) {
+function CouponsPage({ codes, promotion, density, ruleGroups, barcodeByCode }: CouponsPageProps) {
   const rows = chunk(codes, 2);
   const { cardHeight, compact } = DENSITY_CONFIG[density];
   return (
@@ -240,7 +256,6 @@ function CouponsPage({ codes, promotion, density, ruleGroups, barcodeByCode, val
               promotion={promotion}
               ruleGroups={ruleGroups}
               barcodeDataUri={barcodeByCode?.get(code) ?? null}
-              validity={validity}
               height={cardHeight}
               compact={compact}
               lastInRow={colIndex === rowCodes.length - 1}
@@ -267,7 +282,6 @@ function CouponsPdfDocument({ promotion, codes, density, barcodeByCode }: Coupon
   const perSheet = DENSITY_CONFIG[density].rows * 2;
   const pages = chunk(codes, perSheet);
   const ruleGroups = groupRulesByPercent(promotion.rules);
-  const validity = `${formatDate(promotion.startAt)}–${formatDate(promotion.endAt)}`;
 
   return (
     <Document title={`Купоны — ${promotion.name}`} author="ArAmir OS">
@@ -279,7 +293,6 @@ function CouponsPdfDocument({ promotion, codes, density, barcodeByCode }: Coupon
           density={density}
           ruleGroups={ruleGroups}
           barcodeByCode={barcodeByCode}
-          validity={validity}
         />
       ))}
     </Document>
