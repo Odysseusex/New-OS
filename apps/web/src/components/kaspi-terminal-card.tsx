@@ -78,7 +78,12 @@ function isHostname(raw: string): boolean {
 //
 // All of it lives in the browser on the monoblock, because the terminal is on
 // the shop's local network and our server is not.
-export function KaspiTerminalCard() {
+//
+// Deliberately just the form, no card chrome or heading of its own — it has
+// two homes with two different wrappers around it (the Settings card below,
+// and a plain Modal on the till itself, see pos/page.tsx), and a heading
+// baked in here would double up with whichever one hosts it.
+export function TerminalConnectionForm({ onStatusChange }: { onStatusChange?: (paired: boolean) => void }) {
   const [url, setUrl] = useState(DEFAULT_URL);
   const [outcome, setOutcome] = useState<Outcome>({ kind: "idle" });
   const [pairing, setPairing] = useState<Pairing>({ kind: "unpaired" });
@@ -89,6 +94,14 @@ export function KaspiTerminalCard() {
     const tokens = getTokens();
     if (tokens) setPairing({ kind: "paired", tokens });
   }, []);
+
+  // Whichever wrapper hosts this form shows its own glanceable status badge
+  // rather than reaching into this component's state, so it has to be told
+  // every time pairing actually changes — mount included, since that is
+  // when a saved pairing from an earlier visit first becomes known.
+  useEffect(() => {
+    onStatusChange?.(pairing.kind === "paired");
+  }, [pairing.kind, onStatusChange]);
 
   function remember(next: string) {
     setUrl(next);
@@ -188,20 +201,7 @@ export function KaspiTerminalCard() {
   }
 
   return (
-    <div className="rounded-2xl border border-border bg-surface p-5 shadow-card">
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <CreditCard className="h-5 w-5 text-muted" strokeWidth={1.75} />
-          <h2 className="text-sm font-semibold text-foreground">Терминал Kaspi</h2>
-        </div>
-        {pairing.kind === "paired" && (
-          <span className="flex items-center gap-1.5 rounded-lg bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-900">
-            <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
-            Подключён
-          </span>
-        )}
-      </div>
-
+    <>
       <label className="mb-1.5 block text-sm font-medium text-foreground">Адрес терминала</label>
       <div className="flex flex-wrap gap-2">
         <input
@@ -372,6 +372,32 @@ export function KaspiTerminalCard() {
           </>
         )}
       </div>
+    </>
+  );
+}
+
+// The Settings-page home for the form above: full card chrome and a heading,
+// with a status badge that stays live as the form below it connects or
+// disconnects — this card is glanced at from across a longer page of other
+// cards, so the state has to read without opening anything.
+export function KaspiTerminalCard() {
+  const [paired, setPaired] = useState(false);
+
+  return (
+    <div className="rounded-2xl border border-border bg-surface p-5 shadow-card">
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <CreditCard className="h-5 w-5 text-muted" strokeWidth={1.75} />
+          <h2 className="text-sm font-semibold text-foreground">Терминал Kaspi</h2>
+        </div>
+        {paired && (
+          <span className="flex items-center gap-1.5 rounded-lg bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-900">
+            <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
+            Подключён
+          </span>
+        )}
+      </div>
+      <TerminalConnectionForm onStatusChange={setPaired} />
     </div>
   );
 }

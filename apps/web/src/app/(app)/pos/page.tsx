@@ -51,6 +51,7 @@ import {
 } from "@/lib/customer-display";
 import { SaleHistoryModal } from "@/components/sale-history-modal";
 import { TerminalPaymentPanel } from "@/components/terminal-payment-panel";
+import { TerminalConnectionForm } from "@/components/kaspi-terminal-card";
 import { isConfigured as isTerminalConfigured, type KaspiTransaction } from "@/lib/kaspi-terminal";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -154,6 +155,8 @@ export default function PosPage() {
   // An older sale the cashier asked for another copy of. Takes precedence
   // over `lastSale` on the printable slip, and clears itself once printed.
   const [reprintSale, setReprintSale] = useState<SaleDetailDto | null>(null);
+  const [terminalSettingsOpen, setTerminalSettingsOpen] = useState(false);
+  const [terminalPaired, setTerminalPaired] = useState(isTerminalConfigured);
   // A promotion coupon typed in at the till. `appliedCoupon` is only ever a
   // PREVIEW (see api.promotions.lookupCoupon) — it never claims the coupon.
   // The actual claim happens server-side, atomically with the sale, when
@@ -653,6 +656,24 @@ export default function PosPage() {
         >
           <RotateCcw className="h-4 w-4" strokeWidth={1.75} />
         </button>
+        {/* Connecting the terminal used to live only in Настройки, behind
+            OWNER/ADMIN — fine for the one-time first setup, but a terminal
+            that drops overnight (network blip, a reboot, an expired token)
+            leaves a cashier stuck with no owner in the room. The pairing
+            itself still has to happen on this exact machine, standing next
+            to this exact terminal, so it belongs on the one screen a cashier
+            can actually reach — this button, not a role change. */}
+        <button
+          onClick={() => setTerminalSettingsOpen(true)}
+          title="Терминал Kaspi"
+          className="flex shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+        >
+          <CreditCard className="h-4 w-4" strokeWidth={1.75} />
+          <span
+            className={clsx("h-2 w-2 rounded-full", terminalPaired ? "bg-emerald-500" : "bg-red-400")}
+            aria-hidden
+          />
+        </button>
         {/* Which point this till is selling at is shown to EVERYONE, not just
             to whoever may switch it. Prices differ per point, so a cashier
             who cannot see the point cannot tell the prices are the wrong
@@ -1100,6 +1121,18 @@ export default function PosPage() {
           focusScan();
         }}
       />
+    )}
+    {terminalSettingsOpen && (
+      <Modal
+        title="Терминал Kaspi"
+        onClose={() => {
+          setTerminalSettingsOpen(false);
+          focusScan();
+        }}
+        width="max-w-lg"
+      >
+        <TerminalConnectionForm onStatusChange={setTerminalPaired} />
+      </Modal>
     )}
     {screenPicker && (
       <CustomerScreenPickerModal
