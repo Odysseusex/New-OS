@@ -3,15 +3,21 @@ import { Document, Page, Text, View, Image, Font, StyleSheet, pdf } from "@react
 import JsBarcode from "jsbarcode";
 import type { PromotionDto } from "@bakery-os/shared";
 
-// Same Cyrillic-capable font as recipe-pdf.tsx, registered again here
-// because this module is its own dynamically-imported chunk (see
-// downloadCouponsPdf's caller) — @react-pdf's Font registry is per module
-// graph, not shared automatically across separately lazy-loaded chunks.
+// Nunito rather than recipe-pdf.tsx's Liberation Sans — this document is a
+// hand-out for a buyer, not an internal report, so it gets a warmer,
+// friendlier face instead of the neutral one used for admin printouts.
+// Checked (not assumed) to carry every Kazakh Cyrillic letter the category
+// labels below use (Ә, Ғ, Қ, Ң, Ө, Ұ, Ү, Һ, І and their lowercase forms) —
+// several popular sans faces (Manrope among them) are missing exactly these.
+// Registered again here, separately from recipe-pdf.tsx's font, because this
+// module is its own dynamically-imported chunk — @react-pdf's Font registry
+// is per module graph, not shared automatically across separately
+// lazy-loaded chunks.
 Font.register({
-  family: "Liberation Sans",
+  family: "Nunito",
   fonts: [
-    { src: "/fonts/LiberationSans-Regular.ttf", fontWeight: "normal", fontStyle: "normal" },
-    { src: "/fonts/LiberationSans-Bold.ttf", fontWeight: "bold", fontStyle: "normal" },
+    { src: "/fonts/Nunito-Regular.ttf", fontWeight: "normal", fontStyle: "normal" },
+    { src: "/fonts/Nunito-Bold.ttf", fontWeight: "bold", fontStyle: "normal" },
   ],
 });
 
@@ -95,7 +101,9 @@ function groupRulesByPercent(rules: PromotionDto["rules"]): { percent: number; c
           : names.length <= 2
             ? names.join(" и ")
             : `${names[0]} и другие`;
-      return { percent, categoryLabel: label.toUpperCase() };
+      // Not uppercased — Kazakh text in all caps reads worse than the
+      // Cyrillic it shares a script with, per an explicit request.
+      return { percent, categoryLabel: label };
     });
 }
 
@@ -120,7 +128,7 @@ function codeToBarcodeDataUri(code: string): string {
 
 const styles = StyleSheet.create({
   page: {
-    fontFamily: "Liberation Sans",
+    fontFamily: "Nunito",
     padding: PAGE_PADDING,
   },
   row: {

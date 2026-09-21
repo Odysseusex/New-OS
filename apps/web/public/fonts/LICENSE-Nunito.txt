@@ -1,0 +1,4 @@
+Nunito is licensed under the SIL Open Font License, Version 1.1.
+Designed by Vernon Adams, with additions by Cyreal (Jacques Le Bailly).
+Source: Google Fonts (https://fonts.google.com/specimen/Nunito)
+Full license text: https://scripts.sil.org/OFL
