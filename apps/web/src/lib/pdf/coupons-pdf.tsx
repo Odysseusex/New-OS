@@ -65,25 +65,27 @@ function formatCodeForDisplay(code: string): string {
 }
 
 // The coupon is a printed hand-out for a buyer, not the admin panel, so its
-// category wording is Kazakh where a translation is known — per an explicit
-// request — and falls back to the category's own Russian name otherwise, so
-// an untranslated category never prints blank. Keyed by the exact catalogue
-// name; add a line here rather than inventing a general translation system
+// category wording is a friendlier marketing phrase where one is known —
+// per an explicit request — rather than the catalogue's own literal
+// category name(s). Falls back to joining the real names otherwise, so an
+// untranslated category never prints blank. Keyed by the exact catalogue
+// name; add a line here rather than inventing a general rewriting system
 // for what is, so far, one promotion's two category groups.
-const CATEGORY_LABEL_KK: Record<string, string> = {
-  "Хлеб": "Нан өнімдеріне",
-  "Выпечка": "Нан өнімдеріне",
-  "Торты": "Торттар мен кондитерлік өнімдерге",
+const CATEGORY_LABEL_FRIENDLY: Record<string, string> = {
+  "Хлеб": "Хлеб и другие изделия",
+  "Выпечка": "Хлеб и другие изделия",
+  "Торты": "Торты и кондитерские изделия",
 };
 
 // Groups this promotion's rules by their percent, so two categories sharing
 // one percent read as one clean line rather than one per category. If every
-// category in the group translates to the SAME Kazakh phrase (Хлеб/Выпечка
-// both do above), that one phrase is shown once; otherwise falls back to the
-// Russian names, capped the same way — more than two categories sharing a
-// percent is deliberately NOT spelled out in full ("Хлеб, Выпечка и Пицца,
-// роллы, блины…" is exactly the cluttered, unreadable line this coupon must
-// never print) — it collapses to the first name plus "и другие" instead.
+// category in the group maps to the SAME friendly phrase (Хлеб/Выпечка both
+// do above), that one phrase is shown once; otherwise falls back to the
+// catalogue's own names, capped the same way — more than two categories
+// sharing a percent is deliberately NOT spelled out in full ("Хлеб, Выпечка
+// и Пицца, роллы, блины…" is exactly the cluttered, unreadable line this
+// coupon must never print) — it collapses to the first name plus "и
+// другие" instead.
 function groupRulesByPercent(rules: PromotionDto["rules"]): { percent: number; categoryLabel: string }[] {
   const byPercent = new Map<number, string[]>();
   for (const rule of rules) {
@@ -94,15 +96,13 @@ function groupRulesByPercent(rules: PromotionDto["rules"]): { percent: number; c
   return Array.from(byPercent.entries())
     .sort((a, b) => b[0] - a[0])
     .map(([percent, names]) => {
-      const translated = Array.from(new Set(names.map((n) => CATEGORY_LABEL_KK[n])));
+      const friendly = Array.from(new Set(names.map((n) => CATEGORY_LABEL_FRIENDLY[n])));
       const label =
-        translated.length === 1 && translated[0]
-          ? translated[0]
+        friendly.length === 1 && friendly[0]
+          ? friendly[0]
           : names.length <= 2
             ? names.join(" и ")
             : `${names[0]} и другие`;
-      // Not uppercased — Kazakh text in all caps reads worse than the
-      // Cyrillic it shares a script with, per an explicit request.
       return { percent, categoryLabel: label };
     });
 }
@@ -154,6 +154,22 @@ const styles = StyleSheet.create({
     color: COLOR_FOREGROUND,
     textAlign: "center",
   },
+  badge: {
+    borderWidth: 1,
+    borderColor: COLOR_ACCENT,
+    borderRadius: 999,
+    alignSelf: "center",
+  },
+  badgeText: {
+    fontWeight: "bold",
+    color: COLOR_ACCENT,
+    textAlign: "center",
+    letterSpacing: 0.3,
+  },
+  subtitle: {
+    color: COLOR_MUTED,
+    textAlign: "center",
+  },
   dealsBlock: {
     width: "100%",
     alignItems: "center",
@@ -190,21 +206,36 @@ const styles = StyleSheet.create({
 // Font sizes and spacing scale down for the denser 10-per-sheet layout —
 // without this, the same sizes that fit comfortably at 8-per-sheet clip
 // the barcode or the fine print at 10.
+//
+// Every OTHER number here shrank from what it was before the badge and
+// subtitle were added, on purpose: cardHeight (below, in DENSITY_CONFIG) is
+// a fixed box multiplied by the row count, so growing it to fit two new
+// lines is not free — at 4-5 rows a page, a few extra points per card costs
+// many times that at the page level and silently spills rows onto a phantom
+// extra physical page (hit and fixed once already; see the note on
+// cardHeight). Two new lines had to be paid for by shrinking existing ones,
+// not by growing the card.
 function textSizes(compact: boolean) {
   return {
-    header: compact ? 10 : 11.5,
-    dealsMarginTop: compact ? 5 : 7,
-    dealPaddingV: compact ? 3 : 4,
-    dealGap: compact ? 3 : 4,
-    percent: compact ? 15 : 17,
-    categoryLabel: compact ? 7.5 : 8.5,
+    header: compact ? 9 : 10,
+    badgeMarginTop: compact ? 2 : 2.5,
+    badge: compact ? 5.5 : 6,
+    badgePaddingV: compact ? 1.5 : 2,
+    badgePaddingH: compact ? 7 : 8,
+    subtitleMarginTop: compact ? 2 : 2.5,
+    subtitle: compact ? 6 : 6.5,
+    dealsMarginTop: compact ? 3 : 4,
+    dealPaddingV: compact ? 2.5 : 3,
+    dealGap: compact ? 2.5 : 3,
+    percent: compact ? 14 : 16,
+    categoryLabel: compact ? 7 : 8,
     categoryLabelMarginTop: 1,
     code: compact ? 15 : 17,
-    codeMarginTop: compact ? 5 : 7,
+    codeMarginTop: compact ? 3 : 4,
     barcodeHeight: compact ? 18 : 22,
-    barcodeMarginTop: compact ? 2 : 3,
+    barcodeMarginTop: compact ? 1.5 : 2,
     fineprint: compact ? 5.5 : 6,
-    fineprintMarginTop: compact ? 3 : 5,
+    fineprintMarginTop: compact ? 2 : 3,
   };
 }
 
@@ -219,17 +250,30 @@ interface CouponCardProps {
 }
 
 // One physical coupon — the whole point is that it reads as an ad, not a
-// printout: one medium header line ("{promotion.name} / Ar Amir"), the
-// discounts as the dominant visual block (percent big, category small and
-// underneath it, never a paragraph), the code big enough to read and copy
-// at arm's length, and nothing a shopper doesn't need — no dates, no
-// location line, no explanation of the rules. Everything centred, no
-// left-aligned rows of "field: value" that would read as a document.
+// printout: one medium header line ("{promotion.name} / ArAmir"), a small
+// occasion badge and one line of context under it, the discounts as the
+// dominant visual block (percent big, category small and underneath it,
+// never a paragraph), the code big enough to read and copy at arm's length,
+// and nothing a shopper doesn't need — no dates, no location line, no
+// explanation of the rules. Everything centred, no left-aligned rows of
+// "field: value" that would read as a document.
 function CouponCard({ code, promotion, ruleGroups, barcodeDataUri, height, compact, lastInRow }: CouponCardProps) {
   const sizes = textSizes(compact);
   return (
-    <View style={[styles.card, { height, paddingVertical: compact ? 8 : 10 }, lastInRow ? { marginRight: 0 } : {}]} wrap={false}>
-      <Text style={[styles.header, { fontSize: sizes.header }]}>{promotion.name} / Ar Amir</Text>
+    <View style={[styles.card, { height, paddingVertical: compact ? 7 : 9 }, lastInRow ? { marginRight: 0 } : {}]} wrap={false}>
+      <Text style={[styles.header, { fontSize: sizes.header }]}>{promotion.name} / ArAmir</Text>
+
+      <View
+        style={[
+          styles.badge,
+          { marginTop: sizes.badgeMarginTop, paddingVertical: sizes.badgePaddingV, paddingHorizontal: sizes.badgePaddingH },
+        ]}
+      >
+        <Text style={[styles.badgeText, { fontSize: sizes.badge }]}>В ЧЕСТЬ ОТКРЫТИЯ!</Text>
+      </View>
+      <Text style={[styles.subtitle, { fontSize: sizes.subtitle, marginTop: sizes.subtitleMarginTop }]}>
+        Праздничные скидки для вас
+      </Text>
 
       <View style={[styles.dealsBlock, { marginTop: sizes.dealsMarginTop, rowGap: sizes.dealGap }]}>
         {ruleGroups.map((g) => (
