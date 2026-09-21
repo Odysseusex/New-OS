@@ -3,12 +3,14 @@ import { Document, Page, Text, View, Image, Font, StyleSheet, pdf } from "@react
 import JsBarcode from "jsbarcode";
 import type { PromotionDto } from "@bakery-os/shared";
 
-// Nunito rather than recipe-pdf.tsx's Liberation Sans — this document is a
-// hand-out for a buyer, not an internal report, so it gets a warmer,
-// friendlier face instead of the neutral one used for admin printouts.
-// Checked (not assumed) to carry every Kazakh Cyrillic letter the category
-// labels below use (Ә, Ғ, Қ, Ң, Ө, Ұ, Ү, Һ, І and their lowercase forms) —
-// several popular sans faces (Manrope among them) are missing exactly these.
+// Two faces, both checked (not assumed) to carry every Kazakh Cyrillic
+// letter the coupon's text uses (Ә, Ғ, Қ, Ң, Ө, Ұ, Ү, Һ, І and their
+// lowercase forms) before being adopted — several popular faces are missing
+// exactly these (Playfair Display and Manrope both were, ruled out this way).
+// Nunito carries the body text; PT Serif is the header/percent face the
+// design asks for — same ParaType multi-Cyrillic engineering as PT Sans,
+// which is why it was tried first and why it passed.
+//
 // Registered again here, separately from recipe-pdf.tsx's font, because this
 // module is its own dynamically-imported chunk — @react-pdf's Font registry
 // is per module graph, not shared automatically across separately
@@ -18,6 +20,13 @@ Font.register({
   fonts: [
     { src: "/fonts/Nunito-Regular.ttf", fontWeight: "normal", fontStyle: "normal" },
     { src: "/fonts/Nunito-Bold.ttf", fontWeight: "bold", fontStyle: "normal" },
+  ],
+});
+Font.register({
+  family: "PT Serif",
+  fonts: [
+    { src: "/fonts/PTSerif-Regular.ttf", fontWeight: "normal", fontStyle: "normal" },
+    { src: "/fonts/PTSerif-Bold.ttf", fontWeight: "bold", fontStyle: "normal" },
   ],
 });
 
@@ -150,46 +159,69 @@ const styles = StyleSheet.create({
     marginRight: GUTTER,
   },
   header: {
+    fontFamily: "PT Serif",
     fontWeight: "bold",
     color: COLOR_FOREGROUND,
     textAlign: "center",
   },
+  kzLine: {
+    fontWeight: "bold",
+    color: COLOR_ACCENT,
+    textAlign: "center",
+  },
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "72%",
+  },
+  dividerLine: {
+    flex: 1,
+    height: 0.75,
+    backgroundColor: COLOR_BORDER,
+  },
+  dividerDot: {
+    borderRadius: 999,
+    backgroundColor: COLOR_ACCENT,
+  },
   badge: {
-    borderWidth: 1,
-    borderColor: COLOR_ACCENT,
+    backgroundColor: COLOR_ACCENT_TINT,
     borderRadius: 999,
     alignSelf: "center",
   },
   badgeText: {
     fontWeight: "bold",
-    color: COLOR_ACCENT,
+    color: COLOR_FOREGROUND,
     textAlign: "center",
     letterSpacing: 0.3,
-  },
-  subtitle: {
-    color: COLOR_MUTED,
-    textAlign: "center",
   },
   dealsBlock: {
     width: "100%",
     alignItems: "center",
   },
   deal: {
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     backgroundColor: COLOR_ACCENT_TINT,
     borderRadius: 5,
-    width: "88%",
+    width: "90%",
   },
   percent: {
+    fontFamily: "PT Serif",
     fontWeight: "bold",
     color: COLOR_ACCENT,
     textAlign: "center",
   },
+  dealDivider: {
+    width: 0.75,
+    alignSelf: "stretch",
+    backgroundColor: COLOR_BORDER,
+  },
   categoryLabel: {
     fontWeight: "bold",
     color: COLOR_FOREGROUND,
-    textAlign: "center",
-    letterSpacing: 0.3,
+    textAlign: "left",
   },
   code: {
     fontFamily: "Courier",
@@ -201,41 +233,59 @@ const styles = StyleSheet.create({
     color: COLOR_MUTED,
     textAlign: "center",
   },
+  cornerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "90%",
+  },
+  cornerText: {
+    color: COLOR_MUTED,
+    letterSpacing: 0.2,
+  },
 });
 
 // Font sizes and spacing scale down for the denser 10-per-sheet layout —
 // without this, the same sizes that fit comfortably at 8-per-sheet clip
 // the barcode or the fine print at 10.
 //
-// Every OTHER number here shrank from what it was before the badge and
-// subtitle were added, on purpose: cardHeight (below, in DENSITY_CONFIG) is
-// a fixed box multiplied by the row count, so growing it to fit two new
-// lines is not free — at 4-5 rows a page, a few extra points per card costs
-// many times that at the page level and silently spills rows onto a phantom
-// extra physical page (hit and fixed once already; see the note on
-// cardHeight). Two new lines had to be paid for by shrinking existing ones,
-// not by growing the card.
+// Every number here is small on purpose: cardHeight (below, in
+// DENSITY_CONFIG) is a fixed box multiplied by the row count, so growing it
+// to fit more lines is not free — at 4-5 rows a page, a few extra points per
+// card costs many times that at the page level and silently spills rows
+// onto a phantom extra physical page (hit and fixed once already; see the
+// note on cardHeight). This design adds a Kazakh line, a divider, and a
+// corner-taglines row on top of what was already a tight fit — paid for by
+// switching the discount block from two stacked lines (percent, then
+// category underneath) to one row (percent | category side by side), which
+// gives back more height than the new elements cost, and by shrinking
+// nearly everything else besides.
 function textSizes(compact: boolean) {
   return {
-    header: compact ? 9 : 10,
-    badgeMarginTop: compact ? 2 : 2.5,
-    badge: compact ? 5.5 : 6,
+    header: compact ? 9.5 : 10.5,
+    kzLineMarginTop: compact ? 2 : 2.5,
+    kzLine: compact ? 6 : 6.5,
+    dividerMarginTop: compact ? 3 : 3.5,
+    dividerDotSize: compact ? 3 : 3.5,
+    dividerDotMarginH: compact ? 4 : 5,
+    badgeMarginTop: compact ? 2.5 : 3,
     badgePaddingV: compact ? 1.5 : 2,
     badgePaddingH: compact ? 7 : 8,
-    subtitleMarginTop: compact ? 2 : 2.5,
-    subtitle: compact ? 6 : 6.5,
-    dealsMarginTop: compact ? 3 : 4,
-    dealPaddingV: compact ? 2.5 : 3,
+    badge: compact ? 5.5 : 6,
+    dealsMarginTop: compact ? 4 : 5,
+    dealPaddingV: compact ? 3 : 3.5,
+    dealPaddingH: compact ? 6 : 7,
+    dealDividerMarginH: compact ? 6 : 7,
     dealGap: compact ? 2.5 : 3,
-    percent: compact ? 14 : 16,
+    percent: compact ? 15 : 17,
     categoryLabel: compact ? 7 : 8,
-    categoryLabelMarginTop: 1,
-    code: compact ? 15 : 17,
+    code: compact ? 14 : 16,
     codeMarginTop: compact ? 3 : 4,
-    barcodeHeight: compact ? 18 : 22,
+    barcodeHeight: compact ? 16 : 20,
     barcodeMarginTop: compact ? 1.5 : 2,
     fineprint: compact ? 5.5 : 6,
-    fineprintMarginTop: compact ? 2 : 3,
+    fineprintMarginTop: compact ? 2 : 2.5,
+    cornerMarginTop: compact ? 2 : 2.5,
+    corner: compact ? 4.5 : 5,
   };
 }
 
@@ -250,18 +300,37 @@ interface CouponCardProps {
 }
 
 // One physical coupon — the whole point is that it reads as an ad, not a
-// printout: one medium header line ("{promotion.name} / ArAmir"), a small
-// occasion badge and one line of context under it, the discounts as the
-// dominant visual block (percent big, category small and underneath it,
-// never a paragraph), the code big enough to read and copy at arm's length,
-// and nothing a shopper doesn't need — no dates, no location line, no
-// explanation of the rules. Everything centred, no left-aligned rows of
+// printout: a serif header line ("{promotion.name} / Ar Amir"), a Kazakh
+// occasion line under a small ornamental divider, a "today only" badge, the
+// discounts as the dominant visual block (percent and category side by
+// side, never a paragraph), the code big enough to read and copy at arm's
+// length, and nothing a shopper doesn't need — no dates, no location line,
+// no explanation of the rules. Everything centred, no left-aligned rows of
 // "field: value" that would read as a document.
 function CouponCard({ code, promotion, ruleGroups, barcodeDataUri, height, compact, lastInRow }: CouponCardProps) {
   const sizes = textSizes(compact);
   return (
     <View style={[styles.card, { height, paddingVertical: compact ? 7 : 9 }, lastInRow ? { marginRight: 0 } : {}]} wrap={false}>
-      <Text style={[styles.header, { fontSize: sizes.header }]}>{promotion.name} / ArAmir</Text>
+      <Text style={[styles.header, { fontSize: sizes.header }]}>{promotion.name} / Ar Amir</Text>
+
+      <Text style={[styles.kzLine, { fontSize: sizes.kzLine, marginTop: sizes.kzLineMarginTop }]}>
+        АШЫЛУ САЛТАНАТЫНА ОРАЙ
+      </Text>
+
+      <View style={[styles.dividerRow, { marginTop: sizes.dividerMarginTop }]}>
+        <View style={styles.dividerLine} />
+        <View
+          style={[
+            styles.dividerDot,
+            {
+              width: sizes.dividerDotSize,
+              height: sizes.dividerDotSize,
+              marginHorizontal: sizes.dividerDotMarginH,
+            },
+          ]}
+        />
+        <View style={styles.dividerLine} />
+      </View>
 
       <View
         style={[
@@ -269,19 +338,18 @@ function CouponCard({ code, promotion, ruleGroups, barcodeDataUri, height, compa
           { marginTop: sizes.badgeMarginTop, paddingVertical: sizes.badgePaddingV, paddingHorizontal: sizes.badgePaddingH },
         ]}
       >
-        <Text style={[styles.badgeText, { fontSize: sizes.badge }]}>В ЧЕСТЬ ОТКРЫТИЯ!</Text>
+        <Text style={[styles.badgeText, { fontSize: sizes.badge }]}>ТЕК БҮГІН</Text>
       </View>
-      <Text style={[styles.subtitle, { fontSize: sizes.subtitle, marginTop: sizes.subtitleMarginTop }]}>
-        Праздничные скидки для вас
-      </Text>
 
       <View style={[styles.dealsBlock, { marginTop: sizes.dealsMarginTop, rowGap: sizes.dealGap }]}>
         {ruleGroups.map((g) => (
-          <View key={g.percent} style={[styles.deal, { paddingVertical: sizes.dealPaddingV }]}>
+          <View
+            key={g.percent}
+            style={[styles.deal, { paddingVertical: sizes.dealPaddingV, paddingHorizontal: sizes.dealPaddingH }]}
+          >
             <Text style={[styles.percent, { fontSize: sizes.percent }]}>−{g.percent}%</Text>
-            <Text style={[styles.categoryLabel, { fontSize: sizes.categoryLabel, marginTop: sizes.categoryLabelMarginTop }]}>
-              {g.categoryLabel}
-            </Text>
+            <View style={[styles.dealDivider, { marginHorizontal: sizes.dealDividerMarginH }]} />
+            <Text style={[styles.categoryLabel, { fontSize: sizes.categoryLabel }]}>{g.categoryLabel}</Text>
           </View>
         ))}
       </View>
@@ -292,7 +360,7 @@ function CouponCard({ code, promotion, ruleGroups, barcodeDataUri, height, compa
       {barcodeDataUri && (
         // eslint-disable-next-line jsx-a11y/alt-text -- react-pdf's Image is a PDF primitive, not HTML img
         <Image
-          style={{ height: sizes.barcodeHeight, marginTop: sizes.barcodeMarginTop, width: "78%" }}
+          style={{ height: sizes.barcodeHeight, marginTop: sizes.barcodeMarginTop, width: "72%" }}
           src={barcodeDataUri}
         />
       )}
@@ -300,6 +368,15 @@ function CouponCard({ code, promotion, ruleGroups, barcodeDataUri, height, compa
       <Text style={[styles.fineprint, { fontSize: sizes.fineprint, marginTop: sizes.fineprintMarginTop }]}>
         1 купон = 1 покупка
       </Text>
+
+      {/* The full three-line taglines from the design ("Свежий хлеб / Лучшие
+          вкусы / Для вас" and "Качество / Традиции / Забота") don't fit this
+          card's height budget at any density tried — compacted to one line
+          each, kept in the same two corners. */}
+      <View style={[styles.cornerRow, { marginTop: sizes.cornerMarginTop }]}>
+        <Text style={[styles.cornerText, { fontSize: sizes.corner }]}>Свежий хлеб для вас</Text>
+        <Text style={[styles.cornerText, { fontSize: sizes.corner }]}>Качество и традиции</Text>
+      </View>
     </View>
   );
 }
