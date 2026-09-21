@@ -58,14 +58,26 @@ function formatCodeForDisplay(code: string): string {
   return `${code.slice(0, mid)} ${code.slice(mid)}`;
 }
 
-// Groups this promotion's rules by their percent, so "Хлеб 50%, Выпечка
-// 50%, Торты 30%" reads as two clean lines — "ХЛЕБ И ВЫПЕЧКА" / "ТОРТЫ" —
-// rather than one line per category. More than two categories sharing a
-// percent is deliberately NOT spelled out in full ("Хлеб, Выпечка и
-// Пицца, роллы, блины…" is exactly the cluttered, unreadable line this
-// coupon must never print) — it collapses to the first name plus "и
-// другие" instead. The Merey pilot's own shape (two categories at 50%,
-// one at 30%) never hits that fallback at all.
+// The coupon is a printed hand-out for a buyer, not the admin panel, so its
+// category wording is Kazakh where a translation is known — per an explicit
+// request — and falls back to the category's own Russian name otherwise, so
+// an untranslated category never prints blank. Keyed by the exact catalogue
+// name; add a line here rather than inventing a general translation system
+// for what is, so far, one promotion's two category groups.
+const CATEGORY_LABEL_KK: Record<string, string> = {
+  "Хлеб": "Нан өнімдеріне",
+  "Выпечка": "Нан өнімдеріне",
+  "Торты": "Торттар мен кондитерлік өнімдерге",
+};
+
+// Groups this promotion's rules by their percent, so two categories sharing
+// one percent read as one clean line rather than one per category. If every
+// category in the group translates to the SAME Kazakh phrase (Хлеб/Выпечка
+// both do above), that one phrase is shown once; otherwise falls back to the
+// Russian names, capped the same way — more than two categories sharing a
+// percent is deliberately NOT spelled out in full ("Хлеб, Выпечка и Пицца,
+// роллы, блины…" is exactly the cluttered, unreadable line this coupon must
+// never print) — it collapses to the first name plus "и другие" instead.
 function groupRulesByPercent(rules: PromotionDto["rules"]): { percent: number; categoryLabel: string }[] {
   const byPercent = new Map<number, string[]>();
   for (const rule of rules) {
@@ -75,10 +87,16 @@ function groupRulesByPercent(rules: PromotionDto["rules"]): { percent: number; c
   }
   return Array.from(byPercent.entries())
     .sort((a, b) => b[0] - a[0])
-    .map(([percent, names]) => ({
-      percent,
-      categoryLabel: (names.length <= 2 ? names.join(" и ") : `${names[0]} и другие`).toUpperCase(),
-    }));
+    .map(([percent, names]) => {
+      const translated = Array.from(new Set(names.map((n) => CATEGORY_LABEL_KK[n])));
+      const label =
+        translated.length === 1 && translated[0]
+          ? translated[0]
+          : names.length <= 2
+            ? names.join(" и ")
+            : `${names[0]} и другие`;
+      return { percent, categoryLabel: label.toUpperCase() };
+    });
 }
 
 // Renders CODE128 onto an offscreen canvas and reads it back as a PNG data
