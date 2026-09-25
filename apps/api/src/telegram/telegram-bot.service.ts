@@ -9,7 +9,9 @@ import {
   CASH_MOVEMENT_TYPE_LABELS_RU,
   CashMovementType,
   CUSTOMER_VIEW_ROLES,
+  EXPENSE_MANAGE_ROLES,
   EXPENSE_STATUS_LABELS_RU,
+  FinanceCategoryKind,
   FINANCE_VIEW_ROLES,
   INVENTORY_MANAGE_ROLES,
   ORG_WIDE_ROLES,
@@ -35,6 +37,7 @@ import { RecipesService } from "../recipes/recipes.service";
 import { FinanceService } from "../finance/finance.service";
 import { CashAccountsService } from "../finance/cash-accounts.service";
 import { CashMovementsService } from "../finance/cash-movements.service";
+import { FinanceCategoriesService } from "../finance/finance-categories.service";
 import { TelegramAuthResolver } from "./telegram-auth.resolver";
 import { TelegramLinkService } from "./telegram-link.service";
 import { TelegramPendingActionService } from "./telegram-pending-action.service";
@@ -56,6 +59,16 @@ interface PaymentActionPayload {
   saleId: string;
   amount: number;
   customerName: string;
+}
+
+interface ExpenseCreatePayload {
+  locationId?: string;
+  categoryId?: string;
+  categoryName?: string;
+  amount: number;
+  accountId: string;
+  accountName: string;
+  description?: string;
 }
 
 interface ProductionCreatePayload {
@@ -117,6 +130,7 @@ export class TelegramBotService implements OnModuleInit {
     private financeService: FinanceService,
     private cashAccountsService: CashAccountsService,
     private cashMovementsService: CashMovementsService,
+    private financeCategoriesService: FinanceCategoriesService,
     private productionService: ProductionService,
     private recipesService: RecipesService,
   ) {}
@@ -275,6 +289,17 @@ export class TelegramBotService implements OnModuleInit {
     bot.action("fn:pnl", async (ctx) => this.withAuth(ctx, (user) => this.showPnl(ctx, user)));
     bot.action("fn:ar", async (ctx) => this.withAuth(ctx, (user) => this.showAccountsReceivablePayable(ctx, user)));
     bot.action("fn:be", async (ctx) => this.withAuth(ctx, (user) => this.showBreakEven(ctx, user)));
+    bot.action("fn:e:0", async (ctx) => this.withAuth(ctx, (user) => this.startExpenseWizard(ctx, user)));
+    bot.action(/^fn:e:l:(.+)$/, async (ctx) =>
+      this.withAuth(ctx, (user) => this.pickExpenseLocation(ctx, user, ctx.match[1])),
+    );
+    bot.action(/^fn:e:c:(.+)$/, async (ctx) =>
+      this.withAuth(ctx, (user) => this.pickExpenseCategory(ctx, user, ctx.match[1])),
+    );
+    bot.action(/^fn:e:a:(.+)$/, async (ctx) =>
+      this.withAuth(ctx, (user) => this.pickExpenseAccount(ctx, user, ctx.match[1])),
+    );
+    bot.action("fn:e:sk", async (ctx) => this.withAuth(ctx, (user) => this.skipExpenseComment(ctx, user)));
 
     bot.command("analytics", async (ctx) => this.withAuth(ctx, (user) => this.showAnalyticsMenu(ctx, user)));
     bot.action("an:m", async (ctx) => this.withAuth(ctx, (user) => this.showAnalyticsMenu(ctx, user)));
@@ -361,6 +386,7 @@ export class TelegramBotService implements OnModuleInit {
     "production.start": "pr:l",
     "production.complete": "pr:l",
     "sales.create": "l:n",
+    "finance.createExpense": "fn:e:0",
   };
 
   // Attached to every confirm/cancel outcome message so the chat never
@@ -743,6 +769,22 @@ export class TelegramBotService implements OnModuleInit {
       );
       return;
     }
+
+    if (state.step === "expense_amount") {
+      const amount = Number(text.replace(",", "."));
+      if (!Number.isFinite(amount) || amount <= 0) {
+        await this.reply(ctx, "Введите положительную сумму, например 15000");
+        return;
+      }
+      await this.chatState.set(chatId, user.id, "expense_category", { ...data, amount });
+      await this.showExpenseCategoryPicker(ctx, user);
+      return;
+    }
+
+    if (state.step === "expense_comment") {
+      await this.finishExpenseWizard(ctx, user, { ...data, description: text });
+      return;
+    }
   }
 
   private async skipComment(ctx: any, user: AuthenticatedUser, kind: "receive" | "writeoff") {
@@ -966,6 +1008,20 @@ export class TelegramBotService implements OnModuleInit {
         });
         resultId = sale.id;
         resultMessage = `✅ Продажа оформлена: ${escapeHtml(payload.customerName)} — ${formatMoney(sale.totalAmount)}`;
+      } else if (claim.action.actionType === "finance.createExpense") {
+        if (!EXPENSE_MANAGE_ROLES.includes(user.role)) {
+          throw new Error("У вас нет прав на эту операцию.");
+        }
+        const payload = claim.action.payload as unknown as ExpenseCreatePayload;
+        const expense = await this.financeService.createExpense(user, {
+          locationId: payload.locationId,
+          categoryId: payload.categoryId,
+          amount: payload.amount,
+          description: payload.description,
+          accountId: payload.accountId,
+        });
+        resultId = expense.id;
+        resultMessage = `✅ Расход записан: ${formatMoney(payload.amount)} (${escapeHtml(payload.categoryName ?? "без категории")})`;
       } else {
         throw new Error("Неизвестный тип операции.");
       }
@@ -1166,19 +1222,19 @@ export class TelegramBotService implements OnModuleInit {
   private async showFinanceMenu(ctx: any, user: AuthenticatedUser) {
     if (!(await this.assertFinanceAccess(ctx, user))) return;
     await this.chatState.clear(String(ctx.chat?.id ?? ctx.from?.id));
-    await this.reply(
-      ctx,
-      "💵 <b>Финансы</b>",
-      Markup.inlineKeyboard([
-        [Markup.button.callback("💰 Баланс счетов", "fn:acc")],
-        [Markup.button.callback("💵 Cash Flow", "fn:cf")],
-        [Markup.button.callback("📄 Расходы", "fn:exp")],
-        [Markup.button.callback("📊 P&L", "fn:pnl")],
-        [Markup.button.callback("📈 ДЗ/КЗ", "fn:ar")],
-        [Markup.button.callback("⚖️ Точка безубыточности", "fn:be")],
-        [Markup.button.callback("⬅️ Назад", "m")],
-      ]),
-    );
+    const rows = [
+      [Markup.button.callback("💰 Баланс счетов", "fn:acc")],
+      [Markup.button.callback("💵 Cash Flow", "fn:cf")],
+      [Markup.button.callback("📄 Расходы", "fn:exp")],
+      [Markup.button.callback("📊 P&L", "fn:pnl")],
+      [Markup.button.callback("📈 ДЗ/КЗ", "fn:ar")],
+      [Markup.button.callback("⚖️ Точка безубыточности", "fn:be")],
+    ];
+    if (EXPENSE_MANAGE_ROLES.includes(user.role)) {
+      rows.push([Markup.button.callback("➕ Добавить расход", "fn:e:0")]);
+    }
+    rows.push([Markup.button.callback("⬅️ Назад", "m")]);
+    await this.reply(ctx, "💵 <b>Финансы</b>", Markup.inlineKeyboard(rows));
     await this.ackCallback(ctx);
   }
 
@@ -1230,6 +1286,160 @@ export class TelegramBotService implements OnModuleInit {
     );
     await this.reply(ctx, `📄 <b>Расходы</b>\n\n${lines.join("\n")}`);
     await this.ackCallback(ctx);
+  }
+
+  // ---- finance: add expense ------------------------------------------------
+  //
+  // Same shape as the stock/production wizards: chatState carries the
+  // accumulating draft through each step, requireStep() rejects a stale
+  // button from an abandoned run, and the final step hands off to
+  // stageAction() for the usual confirm/cancel round-trip. Category and the
+  // free-text comment are both skippable, since Expense itself treats both
+  // as optional — only amount and the paying account are required, matching
+  // what FinanceService.createExpense actually enforces.
+  //
+  // Unlike the stock/production wizards, there is no "location-scoped role
+  // skips the location step" branch here: EXPENSE_MANAGE_ROLES IS
+  // ORG_WIDE_ROLES (not a superset that also includes location-scoped
+  // roles), so anyone who clears the entry guard below is by definition
+  // org-wide and has no single "own" location to default to — the location
+  // picker (with an explicit "no location" option) always runs.
+  private async startExpenseWizard(ctx: any, user: AuthenticatedUser) {
+    if (!EXPENSE_MANAGE_ROLES.includes(user.role)) {
+      await this.reply(ctx, "У вас нет прав на эту операцию.");
+      await this.ackCallback(ctx);
+      return;
+    }
+    const chatId = String(ctx.chat.id);
+    await this.chatState.set(chatId, user.id, "expense_location", {});
+    const locations = await this.locationsService.findAllForOrganization(user.organizationId);
+    const rows = locations.slice(0, MAX_LIST_ITEMS).map((l) => [Markup.button.callback(l.name, `fn:e:l:${l.id}`)]);
+    rows.push([Markup.button.callback("Без привязки к точке", "fn:e:l:0")]);
+    rows.push([Markup.button.callback("⬅️ Назад", "fn:m")]);
+    await this.reply(ctx, "К какой точке относится расход?", Markup.inlineKeyboard(rows));
+    await this.ackCallback(ctx);
+  }
+
+  private async pickExpenseLocation(ctx: any, user: AuthenticatedUser, locationId: string) {
+    if (!EXPENSE_MANAGE_ROLES.includes(user.role)) {
+      await this.ackCallback(ctx);
+      return;
+    }
+    const chatId = String(ctx.chat.id);
+    if (!(await this.requireStep(ctx, chatId, "expense_location"))) {
+      await this.ackCallback(ctx);
+      return;
+    }
+    await this.chatState.set(chatId, user.id, "expense_amount", {
+      locationId: locationId === "0" ? undefined : locationId,
+    });
+    await this.reply(ctx, "Введите сумму расхода, например 15000:", this.cancelKeyboard());
+    await this.ackCallback(ctx);
+  }
+
+  private async showExpenseCategoryPicker(ctx: any, user: AuthenticatedUser) {
+    const categories = await this.financeCategoriesService.findAll(user.organizationId, FinanceCategoryKind.EXPENSE);
+    const rows = categories.slice(0, MAX_LIST_ITEMS).map((c) => [Markup.button.callback(c.name, `fn:e:c:${c.id}`)]);
+    rows.push([Markup.button.callback("Без категории", "fn:e:c:0")]);
+    await this.reply(ctx, "Выберите категорию расхода:", Markup.inlineKeyboard(rows));
+  }
+
+  private async pickExpenseCategory(ctx: any, user: AuthenticatedUser, categoryId: string) {
+    if (!EXPENSE_MANAGE_ROLES.includes(user.role)) {
+      await this.ackCallback(ctx);
+      return;
+    }
+    const chatId = String(ctx.chat.id);
+    const data = await this.requireStep(ctx, chatId, "expense_category");
+    if (!data) {
+      await this.ackCallback(ctx);
+      return;
+    }
+    await this.chatState.set(chatId, user.id, "expense_account", {
+      ...data,
+      categoryId: categoryId === "0" ? undefined : categoryId,
+    });
+    await this.showExpenseAccountPicker(ctx, user);
+    await this.ackCallback(ctx);
+  }
+
+  private async showExpenseAccountPicker(ctx: any, user: AuthenticatedUser) {
+    const accounts = await this.cashAccountsService.findAll(user.organizationId);
+    if (accounts.length === 0) {
+      await this.chatState.clear(String(ctx.chat.id));
+      await this.reply(ctx, "Нет ни одного активного счёта — сначала добавьте счёт в Настройках ArAmir OS.");
+      return;
+    }
+    const rows = accounts
+      .slice(0, MAX_LIST_ITEMS)
+      .map((a) => [Markup.button.callback(`${CASH_ACCOUNT_TYPE_LABELS_RU[a.type]} «${a.name}»`, `fn:e:a:${a.id}`)]);
+    await this.reply(ctx, "С какого счёта списаны деньги?", Markup.inlineKeyboard(rows));
+  }
+
+  private async pickExpenseAccount(ctx: any, user: AuthenticatedUser, accountId: string) {
+    if (!EXPENSE_MANAGE_ROLES.includes(user.role)) {
+      await this.ackCallback(ctx);
+      return;
+    }
+    const chatId = String(ctx.chat.id);
+    const data = await this.requireStep(ctx, chatId, "expense_account");
+    if (!data) {
+      await this.ackCallback(ctx);
+      return;
+    }
+    await this.chatState.set(chatId, user.id, "expense_comment", { ...data, accountId });
+    await this.reply(
+      ctx,
+      "Комментарий к расходу (необязательно). Отправьте текст или нажмите «Пропустить».",
+      Markup.inlineKeyboard([[Markup.button.callback("Пропустить", "fn:e:sk")]]),
+    );
+    await this.ackCallback(ctx);
+  }
+
+  private async skipExpenseComment(ctx: any, user: AuthenticatedUser) {
+    if (!EXPENSE_MANAGE_ROLES.includes(user.role)) {
+      await this.ackCallback(ctx);
+      return;
+    }
+    const chatId = String(ctx.chat.id);
+    const data = await this.requireStep(ctx, chatId, "expense_comment");
+    if (!data) {
+      await this.ackCallback(ctx);
+      return;
+    }
+    await this.finishExpenseWizard(ctx, user, data);
+    await this.ackCallback(ctx);
+  }
+
+  private async finishExpenseWizard(ctx: any, user: AuthenticatedUser, data: Record<string, unknown>) {
+    const chatId = String(ctx.chat.id);
+    await this.chatState.clear(chatId);
+
+    const accounts = await this.cashAccountsService.findAll(user.organizationId);
+    const account = accounts.find((a) => a.id === data.accountId);
+
+    let categoryName: string | undefined;
+    if (data.categoryId) {
+      const categories = await this.financeCategoriesService.findAll(user.organizationId, FinanceCategoryKind.EXPENSE);
+      categoryName = categories.find((c) => c.id === data.categoryId)?.name;
+    }
+
+    const payload: ExpenseCreatePayload = {
+      locationId: data.locationId as string | undefined,
+      categoryId: data.categoryId as string | undefined,
+      categoryName,
+      amount: Number(data.amount),
+      accountId: String(data.accountId),
+      accountName: account?.name ?? "—",
+      description: data.description as string | undefined,
+    };
+    await this.stageAction(ctx, user, "finance.createExpense", payload as unknown as Record<string, unknown>, [
+      "<b>Новый расход</b>",
+      `Сумма: ${formatMoney(payload.amount)}`,
+      `Категория: ${escapeHtml(payload.categoryName ?? "Без категории")}`,
+      `Счёт: ${escapeHtml(payload.accountName)}`,
+      ...(payload.description ? [`Комментарий: ${escapeHtml(payload.description)}`] : []),
+    ]);
   }
 
   private async showPnl(ctx: any, user: AuthenticatedUser) {

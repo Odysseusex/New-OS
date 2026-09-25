@@ -35,6 +35,8 @@ import { PlannedFixedCostsController } from "./planned-fixed-costs.controller";
   // FinanceService/CashAccountsService are exported so read-only consumers
   // (AiModule) can reuse their existing aggregations (P&L, AR/AP, account
   // balances) instead of re-querying the same tables.
-  exports: [CashMovementsService, FinanceService, CashAccountsService],
+  // FinanceCategoriesService is exported for TelegramModule's "add expense"
+  // wizard, which needs the EXPENSE-kind category list for its picker.
+  exports: [CashMovementsService, FinanceService, CashAccountsService, FinanceCategoriesService],
 })
 export class FinanceModule {}
