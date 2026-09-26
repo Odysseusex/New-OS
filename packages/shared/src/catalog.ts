@@ -131,6 +131,10 @@ export interface ProductDto {
   // here. At most one per organization — the POS hides it from the product
   // grid and offers it as its own button instead.
   isOpenPrice: boolean;
+  // Pins this product as its own one-tap button on the POS screen, ahead of
+  // the category grid — for small incidentals (e.g. Пакет) a cashier needs
+  // without hunting through categories/search.
+  isPosQuickItem: boolean;
   // Goods taken «под реализацию» — somebody else's stock on our shelf. Both
   // fields are set together: the supplier we owe, and how much per unit sold.
   // Null on our own goods.
@@ -177,6 +181,7 @@ export interface CreateProductRequestDto {
   categoryId?: string;
   price: number;
   trackInventory?: boolean;
+  isPosQuickItem?: boolean;
   minQuantity?: number;
   consignmentSupplierId?: string | null;
   consignmentPrice?: number | null;
@@ -192,6 +197,7 @@ export interface UpdateProductRequestDto {
   categoryId?: string | null;
   price?: number;
   trackInventory?: boolean;
+  isPosQuickItem?: boolean;
   minQuantity?: number;
   // Null clears the consignment link — the product becomes our own goods
   // again. Already-recorded debt is unaffected: it lives on the sale lines.

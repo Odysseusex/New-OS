@@ -256,6 +256,7 @@ export class ProductsService {
         ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
         ...(dto.price !== undefined ? { price: dto.price } : {}),
         ...(dto.trackInventory !== undefined ? { trackInventory: dto.trackInventory } : {}),
+        ...(dto.isPosQuickItem !== undefined ? { isPosQuickItem: dto.isPosQuickItem } : {}),
         ...(dto.minQuantity !== undefined ? { minQuantity: dto.minQuantity } : {}),
         ...(dto.consignmentSupplierId !== undefined
           ? { consignmentSupplierId: dto.consignmentSupplierId }
@@ -427,6 +428,7 @@ export class ProductsService {
     isActive: boolean;
     trackInventory: boolean;
     isOpenPrice: boolean;
+    isPosQuickItem: boolean;
     consignmentSupplierId: string | null;
     consignmentSupplier: { name: string } | null;
     consignmentPrice: { toNumber: () => number } | null;
@@ -446,6 +448,7 @@ export class ProductsService {
       isActive: product.isActive,
       trackInventory: product.trackInventory,
       isOpenPrice: product.isOpenPrice,
+      isPosQuickItem: product.isPosQuickItem,
       consignmentSupplierId: product.consignmentSupplierId,
       consignmentSupplierName: product.consignmentSupplier?.name ?? null,
       consignmentPrice: product.consignmentPrice?.toNumber() ?? null,

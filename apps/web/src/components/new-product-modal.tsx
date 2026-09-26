@@ -28,6 +28,7 @@ export function NewProductModal({
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? defaultCategoryId ?? "");
   const [price, setPrice] = useState(product ? String(product.price) : "");
   const [trackInventory, setTrackInventory] = useState(product?.trackInventory ?? true);
+  const [isPosQuickItem, setIsPosQuickItem] = useState(product?.isPosQuickItem ?? false);
   const [minQuantity, setMinQuantity] = useState(String(product?.minQuantity ?? 0));
   // Goods taken under consignment — somebody else's stock on our shelf that
   // we owe them for once it sells. Off by default: almost everything here is
@@ -63,6 +64,7 @@ export function NewProductModal({
         categoryId: categoryId || undefined,
         price: Number(price),
         trackInventory,
+        isPosQuickItem,
         minQuantity: Number(minQuantity),
         // Null, not undefined, so switching a product back to our own goods
         // actually clears the link rather than leaving the old one in place.
@@ -298,6 +300,25 @@ export function NewProductModal({
                 Выключите для ресурсов без физического прихода (например, вода из водопровода) — товар
                 останется доступен в рецептах и расчёте себестоимости, но исчезнет из остатков склада,
                 приёмки, списания и предупреждений о низком остатке
+              </p>
+            </span>
+          </label>
+        </div>
+
+        <div className="mb-5">
+          <label className="flex items-start gap-2.5 text-sm text-foreground">
+            <input
+              type="checkbox"
+              checked={isPosQuickItem}
+              onChange={(e) => setIsPosQuickItem(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-border text-accent focus:ring-accent/20"
+            />
+            <span>
+              <span className="font-medium">Быстрая кнопка на кассе</span>
+              <p className="mt-0.5 text-xs text-muted">
+                Товар появится отдельной кнопкой на экране кассы — всегда на виду, независимо от
+                выбранной категории или поиска. Для мелочи, которую кассир добавляет в чек одним тапом
+                (например, пакет)
               </p>
             </span>
           </label>

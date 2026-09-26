@@ -45,6 +45,10 @@ export class UpdateProductDto {
   trackInventory?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  isPosQuickItem?: boolean;
+
+  @IsOptional()
   @IsNumber()
   @Min(0)
   minQuantity?: number;

@@ -276,6 +276,12 @@ export default function PosPage() {
     return list;
   }, [products, categoryId, normalizedQuery]);
 
+  // Pinned ahead of the category grid, unaffected by the category filter or
+  // search — the whole point is a cashier reaching it in one tap regardless
+  // of what's currently selected. Still present in visibleProducts too (not
+  // exclusive), so browsing/search still finds it normally.
+  const quickItems = useMemo(() => products.filter((p) => p.isPosQuickItem), [products]);
+
   // Category -> percent from the applied coupon's rules, or null when none is
   // applied. A pure lookup table — deciding whether it actually applies to a
   // given line is couponPercentFor() below, since an open-price or
@@ -780,6 +786,22 @@ export default function PosPage() {
               lines. auto-fill just fits as many ~150px tiles as there is
               room for, on both. */}
           <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2.5">
+            {/* Pinned quick-add buttons (e.g. Пакет) — always first, regardless
+                of category/search, so a cashier reaches them in one tap. */}
+            {locationId &&
+              quickItems.map((p) => (
+                <button
+                  key={`quick-${p.id}`}
+                  onClick={() => {
+                    addToCart(p);
+                    focusScan();
+                  }}
+                  className="flex min-h-[5.5rem] flex-col justify-between gap-2 rounded-2xl border border-accent bg-accent/5 p-2.5 text-left transition hover:shadow-card active:scale-[0.98]"
+                >
+                  <span className="line-clamp-3 text-base font-semibold text-foreground">{p.name}</span>
+                  <span className="text-lg font-bold text-accent">{formatMoney(p.effectivePrice)}</span>
+                </button>
+              ))}
             {/* Also gated on a location: without one nothing can be sold at
                 all, and an open-price line would only fill a cart whose
                 payment buttons silently do nothing. */}

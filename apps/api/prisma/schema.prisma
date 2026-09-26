@@ -507,6 +507,12 @@ model Product {
   // trackInventory=false — it stands for goods the system does not know
   // about, so it has no stock to check or decrement.
   isOpenPrice    Boolean     @default(false)
+  // Pins this product as its own one-tap button on the POS screen, shown
+  // ahead of the category grid regardless of which category/search is
+  // active — for small incidentals a cashier is asked for mid-sale (e.g. a
+  // Пакет) that would otherwise cost several taps to find. Not exclusive
+  // with appearing in the normal grid too; purely an additional shortcut.
+  isPosQuickItem Boolean     @default(false)
   // The organization's chosen low-stock threshold for this product, copied
   // onto each StockLevel row (see stockLevel.minQuantity) the first time
   // that product is stocked at a given location, and re-propagated to all
