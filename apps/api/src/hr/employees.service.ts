@@ -6,6 +6,7 @@ import {
   EmployeeDto,
   EmployeeStatus,
   Role,
+  SALARY_VIEW_ROLES,
 } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { resolveLocationScope } from "../common/location-scope";
@@ -16,6 +17,20 @@ import { AddCompensationDto } from "./dto/add-compensation.dto";
 @Injectable()
 export class EmployeesService {
   constructor(private prisma: PrismaService) {}
+
+  // Salary is more sensitive than the rest of an Employee row (see
+  // SALARY_VIEW_ROLES) — the current-rate relation is only fetched for a
+  // caller allowed to see it, so an unauthorized role never receives the
+  // figure in the response at all, not merely a UI-hidden one.
+  private employeeInclude(user: AuthenticatedUser) {
+    return {
+      location: true,
+      user: true,
+      ...(SALARY_VIEW_ROLES.includes(user.role)
+        ? { compensations: { where: { effectiveTo: null }, take: 1 } }
+        : {}),
+    };
+  }
 
   async list(
     user: AuthenticatedUser,
@@ -30,7 +45,7 @@ export class EmployeesService {
         ...(locationId ? { locationId } : {}),
         ...(includeArchived ? {} : { status: EmployeeStatus.ACTIVE }),
       },
-      include: { location: true, user: true },
+      include: this.employeeInclude(user),
       orderBy: { fullName: "asc" },
     });
 
@@ -63,7 +78,7 @@ export class EmployeesService {
         hiredAt: dto.hiredAt ? new Date(dto.hiredAt) : undefined,
         userId: dto.userId,
       },
-      include: { location: true, user: true },
+      include: this.employeeInclude(user),
     });
 
     return this.toDto(employee);
@@ -89,7 +104,7 @@ export class EmployeesService {
         hiredAt: dto.hiredAt ? new Date(dto.hiredAt) : undefined,
         ...(locationId !== undefined ? { locationId } : {}),
       },
-      include: { location: true, user: true },
+      include: this.employeeInclude(user),
     });
 
     return this.toDto(updated);
@@ -203,7 +218,7 @@ export class EmployeesService {
     const updated = await this.prisma.employee.update({
       where: { id: employeeId },
       data: { status },
-      include: { location: true, user: true },
+      include: this.employeeInclude(user),
     });
     return this.toDto(updated);
   }
@@ -219,6 +234,10 @@ export class EmployeesService {
     status: string;
     userId: string | null;
     user: { email: string; role: string } | null;
+    // Absent entirely when the caller isn't SALARY_VIEW_ROLES (see
+    // employeeInclude) — undefined here, not just an empty array, so the DTO
+    // field below correctly ends up absent from the JSON response too.
+    compensations?: { amount: { toNumber: () => number }; paymentType: string }[];
   }): EmployeeDto => ({
     id: employee.id,
     fullName: employee.fullName,
@@ -232,6 +251,16 @@ export class EmployeesService {
     userId: employee.userId,
     userEmail: employee.user?.email ?? null,
     userRole: (employee.user?.role as Role) ?? null,
+    ...(employee.compensations
+      ? {
+          currentCompensation: employee.compensations[0]
+            ? {
+                amount: employee.compensations[0].amount.toNumber(),
+                paymentType: employee.compensations[0].paymentType as CompensationType,
+              }
+            : null,
+        }
+      : {}),
   });
 
   private toCompensationDto = (compensation: {

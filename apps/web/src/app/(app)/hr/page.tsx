@@ -12,6 +12,7 @@ import type {
   UserAccountDto,
 } from "@bakery-os/shared";
 import {
+  COMPENSATION_TYPE_LABELS_RU,
   EMPLOYEE_MANAGE_ROLES,
   HARD_DELETE_ROLES,
   HR_MANAGE_ROLES,
@@ -408,10 +409,21 @@ export default function HrPage() {
                         <td className="px-5 py-3">
                           <button
                             onClick={() => setCompensationEmployee(emp)}
-                            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-muted transition hover:bg-surface-muted hover:text-foreground"
+                            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-left text-xs font-medium text-muted transition hover:bg-surface-muted hover:text-foreground"
                           >
-                            <Wallet className="h-3.5 w-3.5" strokeWidth={1.75} />
-                            Ставка
+                            <Wallet className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+                            {emp.currentCompensation ? (
+                              <span>
+                                <span className="block text-sm font-semibold text-foreground">
+                                  {formatMoney(emp.currentCompensation.amount)}
+                                </span>
+                                <span className="block text-muted">
+                                  {COMPENSATION_TYPE_LABELS_RU[emp.currentCompensation.paymentType]}
+                                </span>
+                              </span>
+                            ) : (
+                              "Указать ставку"
+                            )}
                           </button>
                         </td>
                       )}

@@ -53,6 +53,13 @@ export interface EmployeeDto {
   userId: string | null;
   userEmail: string | null;
   userRole: Role | null;
+  // The employee's currently active rate (effectiveTo === null in the
+  // EmployeeCompensation history), so the staff table can show it directly
+  // instead of requiring a click into every row. Present only when the
+  // requesting user has SALARY_VIEW_ROLES — absent (not just null) for
+  // everyone else, so the field's mere presence never leaks who can afford
+  // to see it. Null (rather than absent) means "no rate set yet".
+  currentCompensation?: { amount: number; paymentType: CompensationType } | null;
 }
 
 export interface CreateEmployeeRequestDto {
