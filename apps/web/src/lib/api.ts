@@ -109,6 +109,12 @@ import type {
   FiscalReconcileResultDto,
   SaleReturnDto,
   CreateSaleReturnRequestDto,
+  DepreciationRunResultDto,
+  DisposeFixedAssetRequestDto,
+  FixedAssetDto,
+  RegisterFixedAssetRequestDto,
+  SetDepreciationTermsRequestDto,
+  UnregisteredCapitalExpenseDto,
   FinancialPeriodDto,
   PeriodPreflightDto,
   PeriodSnapshotDto,
@@ -441,6 +447,22 @@ export const api = {
     archive: (id: string) => request<SupplierDto>(`/suppliers/${id}/archive`, { method: "POST" }),
     restore: (id: string) => request<SupplierDto>(`/suppliers/${id}/restore`, { method: "POST" }),
     remove: (id: string) => request<{ deleted: true }>(`/suppliers/${id}`, { method: "DELETE" }),
+  },
+
+  fixedAssets: {
+    list: () => request<FixedAssetDto[]>("/fixed-assets"),
+    unregistered: () => request<UnregisteredCapitalExpenseDto[]>("/fixed-assets/unregistered-capital-expenses"),
+    register: (dto: RegisterFixedAssetRequestDto) =>
+      request<FixedAssetDto>("/fixed-assets", { method: "POST", body: JSON.stringify(dto) }),
+    setTerms: (id: string, dto: SetDepreciationTermsRequestDto) =>
+      request<FixedAssetDto>(`/fixed-assets/${id}/terms`, { method: "PUT", body: JSON.stringify(dto) }),
+    runDepreciation: (year: number, month: number) =>
+      request<DepreciationRunResultDto>("/fixed-assets/depreciation/run", {
+        method: "POST",
+        body: JSON.stringify({ year, month }),
+      }),
+    dispose: (id: string, dto: DisposeFixedAssetRequestDto) =>
+      request<FixedAssetDto>(`/fixed-assets/${id}/dispose`, { method: "POST", body: JSON.stringify(dto) }),
   },
 
   periods: {

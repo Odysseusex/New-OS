@@ -15,6 +15,7 @@ import { RecipesModule } from "./recipes/recipes.module";
 import { ProductionModule } from "./production/production.module";
 import { SuppliersModule } from "./suppliers/suppliers.module";
 import { ProcurementModule } from "./procurement/procurement.module";
+import { FixedAssetsModule } from "./fixed-assets/fixed-assets.module";
 import { VehiclesModule } from "./vehicles/vehicles.module";
 import { LogisticsModule } from "./logistics/logistics.module";
 import { FinanceModule } from "./finance/finance.module";
@@ -50,6 +51,7 @@ import { StocktakeModule } from "./stocktake/stocktake.module";
     ProductionModule,
     SuppliersModule,
     ProcurementModule,
+    FixedAssetsModule,
     VehiclesModule,
     LogisticsModule,
     FinanceModule,

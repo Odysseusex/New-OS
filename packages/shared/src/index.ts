@@ -25,3 +25,4 @@ export * from "./costing";
 export * from "./financial-classification";
 export * from "./financial-events";
 export * from "./financial-periods";
+export * from "./fixed-assets";

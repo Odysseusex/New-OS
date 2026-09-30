@@ -391,6 +391,7 @@ model Location {
   promotions            Promotion[]
   promotionRedemptions  PromotionCoupon[]
   stocktakes            Stocktake[]
+  fixedAssets           FixedAsset[]
 
   @@index([organizationId])
   @@index([regionId])
@@ -465,6 +466,8 @@ model User {
   periodsClosed             FinancialPeriod[]  @relation("PeriodClosedBy")
   periodsReopened           FinancialPeriod[]  @relation("PeriodReopenedBy")
   periodSnapshotsCreated    PeriodSnapshot[]   @relation("PeriodSnapshotCreatedBy")
+  fixedAssetsCreated        FixedAsset[]       @relation("FixedAssetCreatedBy")
+  depreciationEntriesCreated DepreciationEntry[] @relation("DepreciationEntryCreatedBy")
   purchasePaymentsCreated   PurchaseOrderPayment[] @relation("PurchasePaymentCreatedBy")
   purchasePaymentsReversed  PurchaseOrderPayment[] @relation("PurchasePaymentReversedBy")
 
@@ -1500,6 +1503,7 @@ model Expense {
   createdAt      DateTime        @default(now())
 
   cashMovements CashMovement[]
+  fixedAsset    FixedAsset?
 
   @@index([organizationId, incurredOn])
   @@map("expenses")
@@ -1796,6 +1800,9 @@ model CashMovement {
   // Set on a purchase-order payment AND on the ADJUSTMENT that reverses it.
   purchaseOrderPaymentId String?
   purchaseOrderPayment   PurchaseOrderPayment? @relation(fields: [purchaseOrderPaymentId], references: [id])
+  // Set on the receipt of a fixed asset's disposal proceeds.
+  fixedAssetId           String?
+  fixedAsset             FixedAsset?           @relation(fields: [fixedAssetId], references: [id])
   // Pairs a transfer's two legs (TRANSFER_OUT on the source account,
   // TRANSFER_IN on the destination) — not a separate Transfer entity.
   transferGroupId String?
@@ -2122,4 +2129,78 @@ model PeriodSnapshot {
   @@unique([periodId, version])
   @@index([organizationId])
   @@map("period_snapshots")
+}
+
+// ── Fixed assets ─────────────────────────────────────────────────────────
+// Equipment the business owns and uses for more than a period. A capital
+// purchase is booked as an EXPENSE in a capital category (not a P&L expense,
+// investing cash flow) and then REGISTERED here, which is what makes it an
+// asset. Nothing about depreciation is assumed: an asset depreciates only when
+// its method, useful life, salvage value and start month are all stated —
+// otherwise it simply carries no depreciation.
+
+enum FixedAssetStatus {
+  ACTIVE
+  DISPOSED
+}
+
+model FixedAsset {
+  id              String           @id @default(cuid())
+  organizationId  String
+  name            String
+  note            String?
+  locationId      String?
+  location        Location?        @relation(fields: [locationId], references: [id])
+  acquisitionCost Decimal          @db.Decimal(14, 2)
+  acquiredAt      DateTime
+  // The capital expense it came from. Null only for an OPENING asset — one that
+  // existed before the books started and is part of the declared opening position.
+  sourceExpenseId String?          @unique
+  sourceExpense   Expense?         @relation(fields: [sourceExpenseId], references: [id])
+  isOpening       Boolean          @default(false)
+  status          FixedAssetStatus @default(ACTIVE)
+
+  // Per-asset depreciation terms. NULL = not decided (no depreciation).
+  depreciationMethod     DepreciationMethod?
+  usefulLifeMonths       Int?
+  salvageValue           Decimal?            @db.Decimal(14, 2)
+  depreciationStartYear  Int?
+  depreciationStartMonth Int?
+
+  disposedAt       DateTime?
+  disposalProceeds Decimal?  @db.Decimal(14, 2)
+  // Frozen at disposal: what the asset was carried at, and proceeds − that.
+  disposalBookValue Decimal? @db.Decimal(14, 2)
+  disposalResult    Decimal? @db.Decimal(14, 2)
+
+  createdById String
+  createdBy   User     @relation("FixedAssetCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  depreciation  DepreciationEntry[]
+  cashMovements CashMovement[]
+
+  @@index([organizationId, status])
+  @@map("fixed_assets")
+}
+
+// One month's depreciation of one asset. Unique per (asset, month): running
+// depreciation twice for a month cannot charge it twice.
+model DepreciationEntry {
+  id             String              @id @default(cuid())
+  organizationId String
+  assetId        String
+  asset          FixedAsset          @relation(fields: [assetId], references: [id])
+  year           Int
+  month          Int
+  amount         Decimal             @db.Decimal(14, 2)
+  method         DepreciationMethod
+  createdById    String
+  createdBy      User                @relation("DepreciationEntryCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime            @default(now())
+
+  @@unique([assetId, year, month])
+  @@index([organizationId, year, month])
+  @@map("depreciation_entries")
 }

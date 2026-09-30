@@ -27,6 +27,7 @@ export interface CashMovementSource {
   invoiceId: string | null;
   consignmentPaymentId: string | null;
   purchaseOrderPaymentId?: string | null;
+  fixedAssetId?: string | null;
   saleId: string | null;
   transferGroupId: string | null;
 }
@@ -100,6 +101,22 @@ function cashMovementEventCore(m: CashMovementSource, category: CategoryLike | n
         pnl: [],
         unclassified: false,
       };
+    case CashMovementType.OTHER_INCOME:
+      // Money received for selling a fixed asset: investing cash, and the asset
+      // is realised for that amount. The gain or loss against the book value is
+      // the disposal event's own business (fixed-asset-events.ts).
+      if (m.fixedAssetId) {
+        return {
+          ...base(m),
+          type: FinancialEventType.ASSET_DISPOSAL,
+          description: "Поступление от выбытия основного средства",
+          cash: cashLeg(CashSection.INVESTING),
+          balance: [cashBalance, { line: BalanceLine.FIXED_ASSETS, delta: -signed }],
+          pnl: [],
+          unclassified: false,
+        };
+      }
+      return categoryDrivenEvent(m, category, signed);
     case CashMovementType.ADJUSTMENT:
       // The reversal of a purchase-order payment is not a free-form adjustment:
       // the money comes back and the payable it had settled is owed again.

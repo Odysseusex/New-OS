@@ -4,6 +4,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { CashMovementSource, cashMovementEvent, transferEvent } from "./cash-events";
 import { CategoryLike } from "./rules";
 import { purchaseEvents } from "./purchase-events";
+import { fixedAssetEvents } from "./fixed-asset-events";
 
 export interface ProjectionOptions {
   // Only events that happened at or before this moment. Defaults to everything.
@@ -24,6 +25,7 @@ export class FinancialEventProjector {
     const parts = await Promise.all([
       this.cashEvents(organizationId, opts),
       purchaseEvents(this.prisma, organizationId, opts),
+      fixedAssetEvents(this.prisma, organizationId, opts),
     ]);
     const events = parts.flat();
     // Deterministic order: time, then key. Never insertion order.
@@ -52,6 +54,7 @@ export class FinancialEventProjector {
         invoiceId: row.invoiceId,
         consignmentPaymentId: row.consignmentPaymentId,
         purchaseOrderPaymentId: row.purchaseOrderPaymentId,
+        fixedAssetId: row.fixedAssetId,
         saleId: row.saleId,
         transferGroupId: row.transferGroupId,
       };

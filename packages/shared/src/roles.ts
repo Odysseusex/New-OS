@@ -275,3 +275,9 @@ export const PROMOTION_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.STOR
 // Notifications (low stock, stale documents); AI-центр's cross-module
 // correlation view is deliberately owner/oversight-level only for now.
 export const AI_INSIGHTS_VIEW_ROLES: Role[] = ORG_WIDE_ROLES;
+
+// Fixed assets: registering and depreciating them is bookkeeping; disposal and
+// opening assets declared after go-live change the declared position, so they
+// are the narrow tier.
+export const FIXED_ASSET_MANAGE_ROLES: Role[] = ORG_WIDE_ROLES;
+export const FIXED_ASSET_DISPOSE_ROLES: Role[] = HARD_DELETE_ROLES;

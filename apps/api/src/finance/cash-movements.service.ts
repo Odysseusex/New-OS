@@ -42,6 +42,7 @@ export interface RecordMovementParams {
   invoiceId?: string;
   consignmentPaymentId?: string;
   purchaseOrderPaymentId?: string;
+  fixedAssetId?: string;
   transferGroupId?: string;
   correctsMovementId?: string;
   createdById: string;
@@ -89,6 +90,7 @@ export class CashMovementsService {
         invoiceId: params.invoiceId,
         consignmentPaymentId: params.consignmentPaymentId,
         purchaseOrderPaymentId: params.purchaseOrderPaymentId,
+        fixedAssetId: params.fixedAssetId,
         transferGroupId: params.transferGroupId,
         correctsMovementId: params.correctsMovementId,
         createdById: params.createdById,

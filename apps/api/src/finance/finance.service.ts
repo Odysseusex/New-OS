@@ -3,6 +3,9 @@ import { PrismaService } from "../prisma/prisma.service";
 import { CostingService } from "../costing/costing.service";
 import { FinancialEventProjector } from "./events/projector";
 import { PeriodGuard } from "./periods/period-guard";
+import { AccountingPolicyService } from "./accounting-policy.service";
+import { isExplicitlyNotDepreciated, resolveDepreciableTerms } from "../fixed-assets/depreciation-calculators";
+import { monthRange } from "../common/reporting-period";
 import { signedCashAmount } from "./events/cash-events";
 import { expenseAccrualEffect, isCategoryFullyClassified, pnlLineOfTreatment } from "./events/rules";
 import { buildCashFlowFromEvents } from "./events/cash-flow-statement";
@@ -26,6 +29,7 @@ import {
   NotConfiguredItem,
   PnlLine,
   CostBehavior,
+  DepreciationMethod,
   ExpenseDto,
   ExpenseStatus,
   FinanceDashboardDto,
@@ -66,6 +70,7 @@ export class FinanceService {
     private costing: CostingService = new CostingService(prisma),
     private events: FinancialEventProjector = new FinancialEventProjector(prisma),
     private periodGuard: PeriodGuard = new PeriodGuard(prisma),
+    private policyService: AccountingPolicyService = new AccountingPolicyService(prisma),
   ) {}
 
   async listExpenses(organizationId: string, locationId?: string): Promise<ExpenseDto[]> {
@@ -623,12 +628,65 @@ export class FinanceService {
   // from modules built later (depreciation, financial/other results). Kept as
   // one seam so those phases extend this and nothing else in the P&L.
   private async periodExtras(
-    _organizationId: string,
-    _from: Date,
-    _to: Date,
-    _locationId?: string,
+    organizationId: string,
+    from: Date,
+    to: Date,
+    locationId?: string,
   ): Promise<{ depreciation: number; otherResult: number; notConfigured: NotConfiguredItem[] }> {
-    return { depreciation: 0, otherResult: 0, notConfigured: [] };
+    const scope = locationId ? { OR: [{ locationId }, { locationId: null }] } : {};
+    const [entries, disposals, activeAssets, policy] = await Promise.all([
+      // Depreciation belongs to the month it was posted for, dated the last
+      // instant of that month; it is in the period when that instant is.
+      this.prisma.depreciationEntry.findMany({
+        where: {
+          organizationId,
+          year: { gte: from.getUTCFullYear() - 1, lte: to.getUTCFullYear() + 1 },
+          asset: scope,
+        },
+        select: { year: true, month: true, amount: true },
+      }),
+      this.prisma.fixedAsset.findMany({
+        where: { organizationId, status: "DISPOSED", disposedAt: { gte: from, lte: to }, ...scope },
+        select: { disposalResult: true },
+      }),
+      this.prisma.fixedAsset.findMany({
+        where: { organizationId, status: "ACTIVE", ...scope },
+        select: {
+          acquisitionCost: true,
+          depreciationMethod: true,
+          usefulLifeMonths: true,
+          salvageValue: true,
+          depreciationStartYear: true,
+          depreciationStartMonth: true,
+        },
+      }),
+      this.policyService.get(organizationId),
+    ]);
+
+    const depreciation = round2(
+      entries
+        .filter((e) => {
+          const end = monthRange(e.year, e.month).end.getTime();
+          return end >= from.getTime() && end <= to.getTime();
+        })
+        .reduce((sum, e) => sum + e.amount.toNumber(), 0),
+    );
+    // Gain or loss on assets that left in the period: an "other" result.
+    const otherResult = round2(disposals.reduce((sum, d) => sum + (d.disposalResult?.toNumber() ?? 0), 0));
+
+    // An asset that neither depreciates on stated terms nor is explicitly marked
+    // "not depreciated" is undecided — and the statement says so.
+    const policyMethod =
+      policy.depreciationMethod.source === "APPROVED" ? (policy.depreciationMethod.value as DepreciationMethod) : null;
+    const policyLife = policy.depreciationUsefulLifeMonths.source === "APPROVED" ? policy.depreciationUsefulLifeMonths.value : null;
+    const undecided = activeAssets.some(
+      (a) => !resolveDepreciableTerms(a, policyMethod, policyLife) && !isExplicitlyNotDepreciated(a, policyMethod),
+    );
+    return {
+      depreciation,
+      otherResult,
+      notConfigured: undecided ? [NotConfiguredItem.DEPRECIATION_POLICY] : [],
+    };
   }
 
   // Break-even/contribution-margin analysis for the period — reuses
