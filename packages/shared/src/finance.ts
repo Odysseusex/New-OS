@@ -279,19 +279,104 @@ export interface ProductPnLDto {
   hasCostData: boolean;
 }
 
+// Whether the bottom line is final. It is PRELIMINARY for as long as anything
+// that belongs above it is not configured (income tax policy, …) — the number
+// is then honest but incomplete, and says so instead of looking final.
+export enum NetProfitStatus {
+  COMPLETE = "COMPLETE",
+  PRELIMINARY = "PRELIMINARY",
+}
+
+export const NET_PROFIT_STATUS_LABELS_RU: Record<NetProfitStatus, string> = {
+  [NetProfitStatus.COMPLETE]: "Итоговая",
+  [NetProfitStatus.PRELIMINARY]: "Предварительная",
+};
+
+// What a P&L (or the net-profit line) still lacks. Codes, so the UI decides
+// the wording and a report can be checked mechanically.
+export enum NotConfiguredItem {
+  INCOME_TAX = "INCOME_TAX",
+  DEPRECIATION_POLICY = "DEPRECIATION_POLICY",
+  CARD_COMMISSIONS = "CARD_COMMISSIONS",
+}
+
+export const NOT_CONFIGURED_ITEM_LABELS_RU: Record<NotConfiguredItem, string> = {
+  [NotConfiguredItem.INCOME_TAX]: "Налог на прибыль не настроен",
+  [NotConfiguredItem.DEPRECIATION_POLICY]: "Амортизация: метод не утверждён у части основных средств",
+  [NotConfiguredItem.CARD_COMMISSIONS]: "Комиссии эквайринга не учитываются",
+};
+
+export enum InventoryLossKind {
+  WRITE_OFF = "WRITE_OFF",
+  STOCKTAKE = "STOCKTAKE",
+  ADJUSTMENT = "ADJUSTMENT",
+}
+
+export const INVENTORY_LOSS_KIND_LABELS_RU: Record<InventoryLossKind, string> = {
+  [InventoryLossKind.WRITE_OFF]: "Списания",
+  [InventoryLossKind.STOCKTAKE]: "Недостачи и излишки по инвентаризации",
+  [InventoryLossKind.ADJUSTMENT]: "Ручные корректировки остатков",
+};
+
+export interface InventoryLossLineDto {
+  kind: InventoryLossKind;
+  label: string;
+  // Positive = a loss; negative = a net surplus (gain).
+  amount: number;
+  count: number;
+}
+
+// How the cost behind COGS / losses was obtained.
+export interface CostCoverageDto {
+  // Lines valued from a snapshot taken when the event happened.
+  snapshotLines: number;
+  // Lines with no snapshot (older than snapshots) valued at TODAY's cost —
+  // these can still move when prices change.
+  fallbackLines: number;
+  // Lines with no known cost at all — excluded from cost, never counted as zero.
+  unknownLines: number;
+}
+
 export interface ProfitAndLossDto {
   from: string;
   to: string;
+  // Sales at price before markdowns/promotions.
+  grossRevenue: number;
+  // Markdowns and promotions given on those sales.
+  discountsTotal: number;
+  // Refunds to buyers in the period, at the price they paid.
+  returnsTotal: number;
+  // Gross revenue − discounts − returns.
+  netRevenue: number;
+  // Same number as netRevenue, kept under its original name for existing readers.
   revenue: number;
+  // Cost of goods actually sold: snapshotted cost of sales, minus the cost of
+  // goods that went back on the shelf. A scrapped return keeps its cost.
   cogs: number;
   grossProfit: number;
   grossMarginPercent: number | null;
+  // Write-offs and stocktake/manual shortages (net of surplus), valued at the
+  // cost snapshotted on each movement.
+  inventoryLosses: number;
+  inventoryLossLines: InventoryLossLineDto[];
+  // Loss rows with no known cost — excluded, listed so the gap is visible.
+  unknownCostLossItems: number;
   expensesTotal: number;
-  // = grossProfit - expensesTotal. Named honestly: with no interest/tax/
-  // non-operating items tracked yet, this is operating profit, not net
-  // profit (see FinanceDashboardDto.netProfit, which mirrors it for now).
+  depreciation: number;
+  // = grossProfit − inventoryLosses − expensesTotal − depreciation. NOT the
+  // net profit: interest, other results and tax come after it.
   operatingProfit: number;
+  // Financial and other income/expense. Zero until classified events exist.
+  otherResult: number;
+  profitBeforeTax: number;
+  // null = income tax policy not approved / not configured (never assumed 0%).
+  incomeTax: number | null;
+  netProfit: number;
+  netProfitStatus: NetProfitStatus;
+  notConfigured: NotConfiguredItem[];
   unknownCostLineItems: number;
+  costCoverage: CostCoverageDto;
+  costingMethod: string;
   byProduct: ProductPnLDto[];
 }
 
@@ -521,9 +606,10 @@ export interface FinanceDashboardDto {
   accountsPayable: number;
   grossProfit: number;
   operatingProfit: number;
-  // Equals operatingProfit today — no loans/non-operating items exist yet
-  // to make it diverge (see ProfitAndLossDto.operatingProfit).
+  // After other results and tax. PRELIMINARY while anything is not configured.
   netProfit: number;
+  netProfitStatus: NetProfitStatus;
+  notConfigured: NotConfiguredItem[];
   period: { from: string; to: string };
 }
 

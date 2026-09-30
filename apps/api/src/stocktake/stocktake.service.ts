@@ -226,7 +226,7 @@ export class StocktakeService {
             reason: "Инвентаризация",
             stocktakeId: id,
             createdById: user.id,
-            ...this.costFields(cost),
+            ...this.costing.fields(cost),
           },
         });
 
@@ -272,11 +272,6 @@ export class StocktakeService {
     });
 
     return this.findOne(user, id);
-  }
-
-  // Overridden in Phase 3 once movements carry a cost snapshot.
-  protected costFields(_cost: { unitCost: number } | null): Record<string, unknown> {
-    return {};
   }
 
   private async transition(

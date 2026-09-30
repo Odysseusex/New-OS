@@ -1,4 +1,5 @@
 import { Unit } from "./catalog";
+import type { ProductionCostComponentStatusDto } from "./costing";
 
 export enum ProductionBatchStatus {
   PLANNED = "PLANNED",
@@ -205,6 +206,9 @@ export interface ProductionBatchDto {
   cancelReason: ProductionCancelReason | null;
   cancelNote: string | null;
   createdByName: string;
+  // Cost components of a completed batch (null while not completed). Only
+  // INGREDIENT is computed; the rest are NOT_CONFIGURED until policy D6.
+  costComponents: ProductionCostComponentStatusDto[] | null;
 }
 
 export interface CreateProductionBatchRequestDto {

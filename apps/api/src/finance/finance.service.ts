@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { resolveProductUnitCosts } from "../common/product-costs";
+import { CostingService } from "../costing/costing.service";
+import { round2, round3 } from "../common/money";
 import {
   BreakEvenDto,
   BreakEvenFixedCostLineDto,
@@ -12,6 +13,12 @@ import {
   CashAccountType,
   CashMovementType,
   CompensationType,
+  CostCoverageDto,
+  InventoryLossKind,
+  InventoryLossLineDto,
+  INVENTORY_LOSS_KIND_LABELS_RU,
+  NetProfitStatus,
+  NotConfiguredItem,
   CostBehavior,
   ExpenseDto,
   ExpenseStatus,
@@ -29,6 +36,7 @@ import {
 } from "@bakery-os/shared";
 import {
   EmployeeStatus as PrismaEmployeeStatus,
+  StockMovementType,
   InvoiceStatus as PrismaInvoiceStatus,
 } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
@@ -49,6 +57,7 @@ export class FinanceService {
   constructor(
     private prisma: PrismaService,
     private cashMovementsService: CashMovementsService,
+    private costing: CostingService = new CostingService(prisma),
   ) {}
 
   async listExpenses(organizationId: string, locationId?: string): Promise<ExpenseDto[]> {
@@ -239,20 +248,6 @@ export class FinanceService {
     return this.toExpenseDto(updated);
   }
 
-  // Resolves a per-unit COST (never a sale price) for FINISHED_GOOD
-  // products: recipe-derived cost first, weighted-average purchase cost as
-  // fallback, `null` when neither exists — the same resolution used by P&L
-  // COGS and by inventory valuation (getInventoryValuation), extracted here
-  // so both stay in lockstep instead of drifting apart. Deliberately never
-  // reads Product.price for a FINISHED_GOOD — see the schema comment on
-  // Product.price for why that field cannot stand in for cost.
-  // Moved to common/product-costs.ts so the profitability report computes
-  // margin from the identical number this P&L charges as COGS — see the note
-  // there. Kept as a thin method so every existing call site reads unchanged.
-  private resolveFinishedGoodUnitCosts(organizationId: string): Promise<Map<string, number>> {
-    return resolveProductUnitCosts(this.prisma, organizationId);
-  }
-
   // Values every product currently on hand as an asset — for the "Запуск
   // финансового учёта" opening balance and for anyone wanting a current
   // stock valuation later. RAW_MATERIAL uses Product.price directly (that
@@ -267,20 +262,17 @@ export class FinanceService {
         where: { organizationId, quantity: { gt: 0 } },
         include: { product: true, location: true },
       }),
-      this.resolveFinishedGoodUnitCosts(organizationId),
+      this.costing.currentUnitCosts(organizationId),
     ]);
 
     let totalValue = 0;
     let unknownValueLineItems = 0;
     const byProduct = stockLevels.map((level) => {
       const quantity = level.quantity.toNumber();
-      const unitCost =
-        level.product.type === ProductType.RAW_MATERIAL
-          ? level.product.price.toNumber()
-          : (finishedGoodCosts.get(level.productId) ?? null);
+      const unitCost = finishedGoodCosts.get(level.productId)?.unitCost ?? null;
       const hasCostData = unitCost !== null;
       if (!hasCostData) unknownValueLineItems += 1;
-      const value = hasCostData ? unitCost * quantity : 0;
+      const value = hasCostData ? round2(unitCost * quantity) : 0;
       totalValue += value;
 
       return {
@@ -298,7 +290,7 @@ export class FinanceService {
 
     byProduct.sort((a, b) => b.value - a.value);
 
-    return { totalValue, unknownValueLineItems, byProduct };
+    return { totalValue: round2(totalValue), unknownValueLineItems, byProduct };
   }
 
   async getProfitAndLoss(
@@ -307,7 +299,7 @@ export class FinanceService {
     to: Date,
     locationId?: string,
   ): Promise<ProfitAndLossDto> {
-    const [sales, unitCosts, expenses] = await Promise.all([
+    const [sales, returns, movements, currentCosts, expenses] = await Promise.all([
       this.prisma.sale.findMany({
         where: {
           organizationId,
@@ -316,7 +308,32 @@ export class FinanceService {
         },
         include: { items: { include: { product: true } } },
       }),
-      this.resolveFinishedGoodUnitCosts(organizationId),
+      // Returns belong to the period they were handed back in, not the period
+      // of the sale they reverse.
+      this.prisma.saleReturn.findMany({
+        where: {
+          organizationId,
+          returnedAt: { gte: from, lte: to },
+          ...(locationId ? { locationId } : {}),
+        },
+        include: { items: { include: { product: true } } },
+      }),
+      // Stock that left or was corrected without a sale. A return-linked
+      // WRITE_OFF is only the marker of a scrapped return (zero stock effect,
+      // and its cost stays in COGS) — it is NOT an inventory loss.
+      this.prisma.stockMovement.findMany({
+        where: {
+          organizationId,
+          createdAt: { gte: from, lte: to },
+          ...(locationId ? { locationId } : {}),
+          OR: [
+            { type: StockMovementType.WRITE_OFF, saleReturnId: null },
+            { type: StockMovementType.ADJUSTMENT },
+          ],
+        },
+        select: { productId: true, type: true, quantity: true, unitCost: true, stocktakeId: true },
+      }),
+      this.costing.currentUnitCosts(organizationId),
       // Only confirmed obligations count toward P&L — a draft expense isn't
       // a real cost yet, a cancelled one never was.
       this.prisma.expense.findMany({
@@ -329,72 +346,188 @@ export class FinanceService {
       }),
     ]);
 
-    const costFor = (productId: string): number | null => unitCosts.get(productId) ?? null;
+    // Unit cost for a line: the snapshot taken when it happened; consignment
+    // terms for older consignment lines; only then TODAY's cost. The source is
+    // counted so a report can say how much of its cost can still move.
+    const coverage: CostCoverageDto = { snapshotLines: 0, fallbackLines: 0, unknownLines: 0 };
+    const costOf = (snapshot: { toNumber: () => number } | null, consignment: { toNumber: () => number } | null, productId: string): number | null => {
+      if (snapshot) {
+        coverage.snapshotLines += 1;
+        return snapshot.toNumber();
+      }
+      if (consignment) {
+        coverage.snapshotLines += 1;
+        return consignment.toNumber();
+      }
+      const current = currentCosts.get(productId);
+      if (current) {
+        coverage.fallbackLines += 1;
+        return current.unitCost;
+      }
+      coverage.unknownLines += 1;
+      return null;
+    };
 
     const byProductMap = new Map<string, ProductPnLDto>();
-    let unknownCostLineItems = 0;
+    const productRow = (productId: string, name: string): ProductPnLDto => {
+      let row = byProductMap.get(productId);
+      if (!row) {
+        row = {
+          productId,
+          productName: name,
+          quantitySold: 0,
+          revenue: 0,
+          cogs: 0,
+          grossProfit: 0,
+          marginPercent: null,
+          hasCostData: true,
+        };
+        byProductMap.set(productId, row);
+      }
+      return row;
+    };
 
+    let unknownCostLineItems = 0;
+    let discountsTotal = 0;
     for (const sale of sales) {
       for (const item of sale.items) {
         const quantity = item.quantity.toNumber();
-        const revenue = item.subtotal.toNumber();
-        // Consignment goods cost exactly what we owe their owner for them,
-        // and that is snapshotted on the line — so it is known per sale, not
-        // per product, and it is recognised on the day of the sale rather
-        // than lumped into whichever month the payout happens to fall in.
-        const unitCost = item.consignmentUnitCost?.toNumber() ?? costFor(item.productId);
+        const unitCost = costOf(item.unitCost, item.consignmentUnitCost, item.productId);
         const hasCost = unitCost !== null;
         if (!hasCost) unknownCostLineItems += 1;
-        const cogs = hasCost ? unitCost * quantity : 0;
+        const row = productRow(item.productId, item.product.name);
+        row.quantitySold += quantity;
+        row.revenue += item.subtotal.toNumber();
+        row.cogs += hasCost ? round2(unitCost * quantity) : 0;
+        row.hasCostData = row.hasCostData && hasCost;
+        if (item.fullUnitPrice) {
+          discountsTotal += round2((item.fullUnitPrice.toNumber() - item.unitPrice.toNumber()) * quantity);
+        }
+      }
+    }
 
-        const existing = byProductMap.get(item.productId);
-        if (existing) {
-          existing.quantitySold += quantity;
-          existing.revenue += revenue;
-          existing.cogs += cogs;
-          existing.hasCostData = existing.hasCostData && hasCost;
-        } else {
-          byProductMap.set(item.productId, {
-            productId: item.productId,
-            productName: item.product.name,
-            quantitySold: quantity,
-            revenue,
-            cogs,
-            grossProfit: 0,
-            marginPercent: null,
-            hasCostData: hasCost,
-          });
+    // Returns: revenue always reverses. Cost of goods reverses only when the
+    // goods went back on the shelf — a scrapped return keeps its COGS, the
+    // loaf really was made and is really gone. Cost reverses at what the SALE
+    // booked (copied onto the return line), never at today's cost.
+    for (const ret of returns) {
+      for (const item of ret.items) {
+        const quantity = item.quantity.toNumber();
+        const row = productRow(item.productId, item.product.name);
+        row.quantitySold -= quantity;
+        row.revenue -= item.subtotal.toNumber();
+        if (ret.restocked) {
+          const unitCost = costOf(item.unitCost, item.consignmentUnitCost, item.productId);
+          if (unitCost !== null) row.cogs -= round2(unitCost * quantity);
         }
       }
     }
 
     const byProduct = Array.from(byProductMap.values())
-      .map((p) => ({
-        ...p,
-        grossProfit: p.revenue - p.cogs,
-        marginPercent: p.revenue > 0 ? ((p.revenue - p.cogs) / p.revenue) * 100 : null,
-      }))
+      .map((p) => {
+        const revenue = round2(p.revenue);
+        const cogs = round2(p.cogs);
+        return {
+          ...p,
+          quantitySold: round3(p.quantitySold),
+          revenue,
+          cogs,
+          grossProfit: round2(revenue - cogs),
+          marginPercent: revenue > 0 ? ((revenue - cogs) / revenue) * 100 : null,
+        };
+      })
       .sort((a, b) => b.revenue - a.revenue);
 
-    const revenue = sales.reduce((sum, s) => sum + s.totalAmount.toNumber(), 0);
-    const cogs = byProduct.reduce((sum, p) => sum + p.cogs, 0);
-    const grossProfit = revenue - cogs;
-    const grossMarginPercent = revenue > 0 ? (grossProfit / revenue) * 100 : null;
-    const expensesTotal = expenses.reduce((sum, e) => sum + e.amount.toNumber(), 0);
-    const operatingProfit = grossProfit - expensesTotal;
+    const salesTotal = round2(sales.reduce((sum, s) => sum + s.totalAmount.toNumber(), 0));
+    const returnsTotal = round2(returns.reduce((sum, r) => sum + r.totalAmount.toNumber(), 0));
+    discountsTotal = round2(discountsTotal);
+    const grossRevenue = round2(salesTotal + discountsTotal);
+    const netRevenue = round2(grossRevenue - discountsTotal - returnsTotal);
+    const cogs = round2(byProduct.reduce((sum, p) => sum + p.cogs, 0));
+    const grossProfit = round2(netRevenue - cogs);
+    const grossMarginPercent = netRevenue > 0 ? (grossProfit / netRevenue) * 100 : null;
+
+    // Inventory losses: signed stock effect × the cost stamped on the row.
+    // A shortage is a loss (+), a surplus a gain (−); write-offs are always losses.
+    const lossByKind = new Map<InventoryLossKind, { amount: number; count: number }>();
+    let unknownCostLossItems = 0;
+    for (const m of movements) {
+      const kind =
+        m.type === StockMovementType.WRITE_OFF
+          ? InventoryLossKind.WRITE_OFF
+          : m.stocktakeId
+            ? InventoryLossKind.STOCKTAKE
+            : InventoryLossKind.ADJUSTMENT;
+      // Loss quantity: write-off rows store a positive quantity that leaves
+      // stock; adjustments store the signed delta, so a shortage is negative.
+      const lossQuantity = m.type === StockMovementType.WRITE_OFF ? m.quantity.toNumber() : -m.quantity.toNumber();
+      const unitCost = costOf(m.unitCost, null, m.productId);
+      if (unitCost === null) {
+        unknownCostLossItems += 1;
+        continue;
+      }
+      const entry = lossByKind.get(kind) ?? { amount: 0, count: 0 };
+      entry.amount += round2(lossQuantity * unitCost);
+      entry.count += 1;
+      lossByKind.set(kind, entry);
+    }
+    const inventoryLossLines: InventoryLossLineDto[] = Array.from(lossByKind.entries()).map(([kind, v]) => ({
+      kind,
+      label: INVENTORY_LOSS_KIND_LABELS_RU[kind],
+      amount: round2(v.amount),
+      count: v.count,
+    }));
+    const inventoryLosses = round2(inventoryLossLines.reduce((sum, l) => sum + l.amount, 0));
+
+    const expensesTotal = round2(expenses.reduce((sum, e) => sum + e.amount.toNumber(), 0));
+    const extras = await this.periodExtras(organizationId, from, to, locationId);
+    const operatingProfit = round2(grossProfit - inventoryLosses - expensesTotal - extras.depreciation);
+    const profitBeforeTax = round2(operatingProfit + extras.otherResult);
+    // Income tax has no approved policy: it is not assumed to be 0%, it is
+    // unknown, and the bottom line says so.
+    const incomeTax: number | null = null;
+    const notConfigured = [NotConfiguredItem.INCOME_TAX, ...extras.notConfigured];
 
     return {
       from: from.toISOString(),
       to: to.toISOString(),
-      revenue,
+      grossRevenue,
+      discountsTotal,
+      returnsTotal,
+      netRevenue,
+      revenue: netRevenue,
       cogs,
       grossProfit,
       grossMarginPercent,
+      inventoryLosses,
+      inventoryLossLines,
+      unknownCostLossItems,
       expensesTotal,
+      depreciation: extras.depreciation,
       operatingProfit,
+      otherResult: extras.otherResult,
+      profitBeforeTax,
+      incomeTax,
+      netProfit: round2(profitBeforeTax - (incomeTax ?? 0)),
+      netProfitStatus: notConfigured.length === 0 ? NetProfitStatus.COMPLETE : NetProfitStatus.PRELIMINARY,
+      notConfigured,
       unknownCostLineItems,
+      costCoverage: coverage,
+      costingMethod: this.costing.methodLabel,
       byProduct,
     };
+  }
+
+  // Everything that sits between operating profit and net profit and comes
+  // from modules built later (depreciation, financial/other results). Kept as
+  // one seam so those phases extend this and nothing else in the P&L.
+  private async periodExtras(
+    _organizationId: string,
+    _from: Date,
+    _to: Date,
+    _locationId?: string,
+  ): Promise<{ depreciation: number; otherResult: number; notConfigured: NotConfiguredItem[] }> {
+    return { depreciation: 0, otherResult: 0, notConfigured: [] };
   }
 
   // Break-even/contribution-margin analysis for the period — reuses
@@ -863,7 +996,9 @@ export class FinanceService {
       accountsPayable,
       grossProfit: pnl.grossProfit,
       operatingProfit: pnl.operatingProfit,
-      netProfit: pnl.operatingProfit,
+      netProfit: pnl.netProfit,
+      netProfitStatus: pnl.netProfitStatus,
+      notConfigured: pnl.notConfigured,
       period: { from: periodFrom.toISOString(), to: periodTo.toISOString() },
     };
   }

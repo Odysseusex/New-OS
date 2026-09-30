@@ -6,8 +6,12 @@ import {
   ProductionBatchDto,
   ProductionBatchStatus,
   ProductionCancelReason,
+  ProductionCostComponent,
+  CostBasis,
   Unit,
 } from "@bakery-os/shared";
+import { round2, round4 } from "../common/money";
+import { CostingService } from "../costing/costing.service";
 import { ProductionBatchStatus as PrismaProductionBatchStatus, StockMovementType } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
@@ -133,7 +137,7 @@ export class ProductionService {
         organizationId: user.organizationId,
         ...(locationId ? { locationId } : {}),
       },
-      include: { location: true, recipe: { include: { product: true } }, createdBy: true },
+      include: { location: true, recipe: { include: { product: true } }, createdBy: true, costs: true },
       orderBy: { scheduledFor: "desc" },
       take: 100,
     });
@@ -160,7 +164,7 @@ export class ProductionService {
         scheduledFor: dto.scheduledFor ? new Date(dto.scheduledFor) : undefined,
         createdById: user.id,
       },
-      include: { location: true, recipe: { include: { product: true } }, createdBy: true },
+      include: { location: true, recipe: { include: { product: true } }, createdBy: true, costs: true },
     });
 
     return this.toDto(batch);
@@ -187,7 +191,7 @@ export class ProductionService {
         ...(dto.scheduledFor !== undefined ? { scheduledFor: new Date(dto.scheduledFor) } : {}),
         ...(dto.plannedQuantity !== undefined ? { plannedQuantity: dto.plannedQuantity } : {}),
       },
-      include: { location: true, recipe: { include: { product: true } }, createdBy: true },
+      include: { location: true, recipe: { include: { product: true } }, createdBy: true, costs: true },
     });
 
     return this.toDto(updated);
@@ -243,7 +247,7 @@ export class ProductionService {
     const updated = await this.prisma.productionBatch.update({
       where: { id: batchId },
       data: { status: PrismaProductionBatchStatus.IN_PROGRESS, startedAt: new Date() },
-      include: { location: true, recipe: { include: { product: true } }, createdBy: true },
+      include: { location: true, recipe: { include: { product: true } }, createdBy: true, costs: true },
     });
 
     return this.toDto(updated);
@@ -295,6 +299,19 @@ export class ProductionService {
         );
       }
 
+      // Ingredient cost of this batch: every recipe line (water included, as
+      // in the recipe's own cost) at the ingredient's price today. Frozen onto
+      // the consumption rows, the output row and ProductionBatchCost, so the
+      // finished goods carry what they cost to make even after prices move.
+      // Packaging, labour, utilities, overhead and technological loss are not
+      // computed — their policy (D6) is not approved.
+      const ingredientTotal = round2(
+        batch.recipe.items.reduce(
+          (sum, item) => sum + round2(item.quantity.toNumber() * scale * item.ingredientProduct.price.toNumber()),
+          0,
+        ),
+      );
+
       if (trackedItems.length > 0) {
         await tx.stockMovement.createMany({
           data: trackedItems.map((item) => ({
@@ -306,6 +323,8 @@ export class ProductionService {
             reason: "Расход на производственное задание",
             batchId: batch.id,
             createdById: user.id,
+            unitCost: round4(item.ingredientProduct.price.toNumber()),
+            costBasis: CostBasis.RAW_MATERIAL_PRICE,
           })),
         });
       }
@@ -332,6 +351,17 @@ export class ProductionService {
           reason: "Выпуск по производственному заданию",
           batchId: batch.id,
           createdById: user.id,
+          unitCost: dto.actualQuantity > 0 ? round4(ingredientTotal / dto.actualQuantity) : null,
+          costBasis: dto.actualQuantity > 0 ? CostBasis.PRODUCTION_INGREDIENTS : null,
+        },
+      });
+
+      await tx.productionBatchCost.create({
+        data: {
+          batchId: batch.id,
+          component: ProductionCostComponent.INGREDIENT,
+          amount: ingredientTotal,
+          basis: CostBasis.RAW_MATERIAL_PRICE,
         },
       });
 
@@ -342,7 +372,7 @@ export class ProductionService {
           actualQuantity: dto.actualQuantity,
           completedAt: new Date(),
         },
-        include: { location: true, recipe: { include: { product: true } }, createdBy: true },
+        include: { location: true, recipe: { include: { product: true } }, createdBy: true, costs: true },
       });
 
       return this.toDto(updated);
@@ -378,7 +408,7 @@ export class ProductionService {
           cancelReason: dto.reason,
           cancelNote: dto.note,
         },
-        include: { location: true, recipe: { include: { product: true } }, createdBy: true },
+        include: { location: true, recipe: { include: { product: true } }, createdBy: true, costs: true },
       });
       await recordAudit(tx, {
         organizationId: user.organizationId,
@@ -415,6 +445,7 @@ export class ProductionService {
     cancelReason: string | null;
     cancelNote: string | null;
     createdBy: { fullName: string };
+    costs?: { component: string; amount: { toNumber: () => number } }[];
   }): ProductionBatchDto => ({
     id: batch.id,
     locationId: batch.locationId,
@@ -432,5 +463,13 @@ export class ProductionService {
     cancelReason: batch.cancelReason as ProductionCancelReason | null,
     cancelNote: batch.cancelNote,
     createdByName: batch.createdBy.fullName,
+    // Only a completed batch has a cost; every other component is listed as
+    // NOT_CONFIGURED rather than left out or shown as zero.
+    costComponents:
+      batch.status === "COMPLETED"
+        ? CostingService.componentStatuses(
+            batch.costs?.find((c) => c.component === ProductionCostComponent.INGREDIENT)?.amount.toNumber() ?? null,
+          )
+        : null,
   });
 }

@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { CostingService } from "../costing/costing.service";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   DeliveryRouteDto,
@@ -32,7 +33,10 @@ const ROUTE_INCLUDE = {
 
 @Injectable()
 export class LogisticsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private costing: CostingService = new CostingService(prisma),
+  ) {}
 
   async findAll(user: AuthenticatedUser): Promise<DeliveryRouteDto[]> {
     const where = this.buildVisibilityFilter(user);
@@ -171,6 +175,13 @@ export class LogisticsService {
         });
       }
 
+      // Both legs of a transfer carry the SAME cost: goods moved between our
+      // own points do not change in value, so neither leg may differ.
+      const transferCosts = await this.costing.snapshotCosts(
+        user.organizationId,
+        stop.items.map((i) => i.productId),
+        tx,
+      );
       await tx.stockMovement.createMany({
         data: stop.items.flatMap((item) => [
           {
@@ -182,6 +193,7 @@ export class LogisticsService {
             reason: "Отгрузка по маршруту доставки",
             routeStopId: stop.id,
             createdById: user.id,
+            ...this.costing.fields(transferCosts.get(item.productId)),
           },
           {
             organizationId: user.organizationId,
@@ -192,6 +204,7 @@ export class LogisticsService {
             reason: "Поступление по маршруту доставки",
             routeStopId: stop.id,
             createdById: user.id,
+            ...this.costing.fields(transferCosts.get(item.productId)),
           },
         ]),
       });

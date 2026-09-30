@@ -82,6 +82,9 @@ export class SaleReturnsService {
         // Same idea for a markdown: returning stale bread gives back the
         // money we gave away on it, so the loss must net out.
         fullUnitPrice: number | null;
+        // The cost the sale booked — a restocked return reverses exactly this.
+        unitCost: number | null;
+        costBasis: string | null;
       }
     >();
     for (const item of sale.items) {
@@ -96,6 +99,8 @@ export class SaleReturnsService {
         consignmentSupplierId: item.consignmentSupplierId,
         consignmentUnitCost: item.consignmentUnitCost?.toNumber() ?? null,
         fullUnitPrice: item.fullUnitPrice?.toNumber() ?? null,
+        unitCost: item.unitCost?.toNumber() ?? null,
+        costBasis: item.costBasis,
       });
     }
     const alreadyReturned = new Map<string, number>();
@@ -131,6 +136,8 @@ export class SaleReturnsService {
         consignmentSupplierId: sold.consignmentSupplierId,
         consignmentUnitCost: sold.consignmentUnitCost,
         fullUnitPrice: sold.fullUnitPrice,
+        unitCost: sold.unitCost,
+        costBasis: sold.costBasis,
       };
     });
 
@@ -169,6 +176,8 @@ export class SaleReturnsService {
               consignmentSupplierId: l.consignmentSupplierId,
               consignmentUnitCost: l.consignmentUnitCost,
               fullUnitPrice: l.fullUnitPrice,
+              unitCost: l.unitCost,
+              costBasis: l.costBasis,
             })),
           },
         },
@@ -232,6 +241,8 @@ export class SaleReturnsService {
             reason: restocked ? "Возврат от покупателя" : "Возврат от покупателя — товар списан",
             saleId: sale.id,
             saleReturnId: saleReturn.id,
+            unitCost: line.unitCost,
+            costBasis: line.costBasis,
             createdById: user.id,
           },
         });

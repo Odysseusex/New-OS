@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import {
+  CostBasis,
   BusinessContextPurchaseSupplierRowDto,
   BusinessContextPurchaseProductRowDto,
   BusinessContextPurchasesDto,
@@ -226,6 +227,9 @@ export class ProcurementService {
           reason: "Приёмка по заказу поставщику",
           purchaseOrderId: order.id,
           createdById: user.id,
+          // What this delivery actually cost per unit, on the ordered line.
+          unitCost: item.unitCost,
+          costBasis: CostBasis.PURCHASE_ACTUAL,
         })),
       });
 

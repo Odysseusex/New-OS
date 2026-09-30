@@ -630,6 +630,12 @@ model StockMovement {
   // Set on the ADJUSTMENT rows an approved stocktake wrote (see Stocktake).
   stocktakeId     String?
   stocktake       Stocktake?        @relation(fields: [stocktakeId], references: [id])
+  // Unit cost the movement was valued at WHEN IT HAPPENED (see CostingService).
+  // Null = no cost was known then (never zero) or the row predates snapshots.
+  // Historical valuation reads this, so a later ingredient price change can
+  // never rewrite what a past write-off, count or sale cost.
+  unitCost        Decimal?          @db.Decimal(14, 4)
+  costBasis       String?
   createdById     String
   createdBy       User              @relation(fields: [createdById], references: [id])
   createdAt       DateTime          @default(now())
@@ -843,6 +849,10 @@ model SaleReturnItem {
   consignmentSupplierId String?
   consignmentSupplier   Supplier? @relation(fields: [consignmentSupplierId], references: [id])
   consignmentUnitCost   Decimal?  @db.Decimal(12, 2)
+  // Copied from the original SaleItem: a restocked return reverses cost of
+  // goods at exactly what the sale booked, not at today's cost.
+  unitCost              Decimal?  @db.Decimal(14, 4)
+  costBasis             String?
 
   @@index([consignmentSupplierId])
   @@map("sale_return_items")
@@ -875,6 +885,12 @@ model SaleItem {
   consignmentSupplierId String?
   consignmentSupplier   Supplier? @relation(fields: [consignmentSupplierId], references: [id])
   consignmentUnitCost   Decimal?  @db.Decimal(12, 2)
+  // Cost of one unit at the moment of sale (CostingService). P&L cost of goods
+  // reads this, so it cannot drift when ingredient prices change later.
+  // Null for sales made before snapshots existed and for goods with no known
+  // cost — those fall back to the current calculation and are counted as such.
+  unitCost              Decimal?  @db.Decimal(14, 4)
+  costBasis             String?
 
   // Set only on a line discounted by a Promotion (see below) — never for the
   // MARKDOWN_PERCENT stale-goods discount, which uses fullUnitPrice/unitPrice
@@ -1139,9 +1155,36 @@ model ProductionBatch {
   createdAt       DateTime                @default(now())
 
   stockMovements StockMovement[]
+  costs          ProductionBatchCost[]
 
   @@index([organizationId, locationId])
   @@map("production_batches")
+}
+
+// What a completed batch cost, one row per cost component. Only INGREDIENT is
+// ever written today; the other components exist so labour, utilities and
+// overhead can be added later without reshaping this table — they stay
+// unavailable until the production-costing policy (D6) is approved.
+model ProductionBatchCost {
+  id        String                  @id @default(cuid())
+  batchId   String
+  batch     ProductionBatch         @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  component ProductionCostComponent
+  amount    Decimal                 @db.Decimal(14, 2)
+  basis     String
+  createdAt DateTime                @default(now())
+
+  @@unique([batchId, component])
+  @@map("production_batch_costs")
+}
+
+enum ProductionCostComponent {
+  INGREDIENT
+  PACKAGING
+  LABOR
+  UTILITY
+  OVERHEAD
+  TECHNOLOGICAL_LOSS
 }
 
 model Supplier {

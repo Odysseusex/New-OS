@@ -5,6 +5,7 @@ import {
   CashAccountType,
   CashMovementDto,
   CashMovementType,
+  CostBasis,
   PAYMENT_METHOD_LABELS_RU,
   PaymentMethod,
   PaymentStatus,
@@ -38,6 +39,7 @@ import { deltaPct, previousRangeOf } from "../common/period-range";
 import { resolveProductUnitCosts } from "../common/product-costs";
 import { decrementStockOrThrow } from "../common/stock-guard";
 import { CashMovementsService } from "../finance/cash-movements.service";
+import { CostingService } from "../costing/costing.service";
 import { buildFiscalSaleRequest, FiscalService } from "../fiscal/fiscal.service";
 import { FiscalSettings } from "../fiscal/fiscal.settings";
 import { PromotionsService } from "../promotions/promotions.service";
@@ -87,6 +89,7 @@ export class SalesService {
     private fiscalService: FiscalService,
     private fiscalSettings: FiscalSettings,
     private promotionsService: PromotionsService,
+    private costing: CostingService = new CostingService(prisma),
   ) {}
 
   // CASH sales land in the selling location's own till, auto-created the
@@ -367,7 +370,9 @@ export class SalesService {
     >();
 
     for (const item of items) {
-      const unitCost = unitCosts.get(item.productId);
+      // Same source order as the P&L: the cost stamped at the sale, then
+      // consignment terms, then today's cost only for lines that predate stamps.
+      const unitCost = item.unitCost?.toNumber() ?? item.consignmentUnitCost?.toNumber() ?? unitCosts.get(item.productId);
       const entry = acc.get(item.productId) ?? {
         productName: item.product.name,
         quantity: 0,
@@ -1121,6 +1126,18 @@ export class SalesService {
         }
       }
 
+      // What each unit cost at this moment, stamped onto the line and its
+      // stock movement. P&L cost of goods reads the stamp, never today's
+      // recipe price, so a later ingredient price change cannot rewrite this sale.
+      const costByProduct = await this.costing.snapshotCosts(user.organizationId, productIds, tx);
+      const costFieldsFor = (productId: string) => {
+        const product = productById.get(productId);
+        if (product?.consignmentSupplierId && product.consignmentPrice !== null) {
+          return { unitCost: product.consignmentPrice.toNumber(), costBasis: CostBasis.CONSIGNMENT_TERMS };
+        }
+        return this.costing.fields(costByProduct.get(productId));
+      };
+
       const sale = await tx.sale.create({
         data: {
           organizationId: user.organizationId,
@@ -1155,7 +1172,7 @@ export class SalesService {
                       consignmentUnitCost: product.consignmentPrice,
                     }
                   : {};
-              return { ...item, ...owed };
+              return { ...item, ...owed, ...costFieldsFor(item.productId) };
             }),
           },
           ...(split
@@ -1262,6 +1279,7 @@ export class SalesService {
           reason: "Продажа",
           saleId: sale.id,
           createdById: user.id,
+          ...costFieldsFor(item.productId),
         })),
       });
 

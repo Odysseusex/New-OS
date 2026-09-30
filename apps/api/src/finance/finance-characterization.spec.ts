@@ -221,48 +221,70 @@ describe("cost resolver (common/product-costs.ts)", () => {
 
 describe("profit and loss", () => {
   it("adds up revenue, cost of goods, expenses and profit for the period", async () => {
+    // INTENTIONAL CHANGE (Phase 3): returns now reduce revenue and (when restocked) cost of goods.
     const pnl = await services.finance.getProfitAndLoss(org.organizationId, from, to);
-    // 1 500 + 1 000 + 400 + 1 000 + 250 (the marked-down loaf at its charged price)
-    expect(pnl.revenue).toBe(4150);
-    // bread: (3 + 2 + 1) × 50 = 300, cake 1 × 900 = 900, mystery: no cost → 0
-    expect(pnl.cogs).toBe(1200);
-    expect(pnl.grossProfit).toBe(2950);
+    // Sold: 1 500 + 1 000 + 400 + 1 000 + 250 (the marked-down loaf at its charged price) = 4 150
+    // Gross revenue is at price BEFORE the 250 markdown; returns refunded 2 × 500.
+    expect(pnl.grossRevenue).toBe(4400);
+    expect(pnl.discountsTotal).toBe(250);
+    expect(pnl.returnsTotal).toBe(1000);
+    expect(pnl.netRevenue).toBe(3150);
+    expect(pnl.revenue).toBe(pnl.netRevenue);
+    // bread: 6 × 50 = 300, cake 1 × 900 = 900, mystery: no cost → 0; the RESTOCKED
+    // return gives one loaf's cost (50) back; the SCRAPPED one keeps its cost.
+    expect(pnl.cogs).toBe(1150);
+    expect(pnl.grossProfit).toBe(2000);
     expect(pnl.unknownCostLineItems).toBe(1);
+    expect(pnl.inventoryLosses).toBe(0);
     // Only CONFIRMED expenses count: 300 paid + 200 owed. The DRAFT 500 and the CANCELLED 700 do not.
     expect(pnl.expensesTotal).toBe(500);
-    expect(pnl.operatingProfit).toBe(2450);
+    expect(pnl.operatingProfit).toBe(1500);
+    expect(pnl.profitBeforeTax).toBe(1500);
   });
 
-  it("KNOWN DEFECT (v2 §13): sale returns do not reduce revenue or reverse cost of goods", async () => {
-    // Two loaves came back and 1 000 was refunded, yet revenue is still the
-    // full 4 150 and cost of goods still counts every loaf sold.
+  it("returns reduce revenue; only the restocked one gives cost of goods back; the scrapped one is not an inventory loss", async () => {
     const pnl = await services.finance.getProfitAndLoss(org.organizationId, from, to);
-    expect(pnl.revenue).toBe(4150);
+    expect(pnl.returnsTotal).toBe(1000);
     const refunds = await prisma.cashMovement.aggregate({
       where: { organizationId: org.organizationId, type: "SALE_REFUND" },
       _sum: { amount: true },
     });
     expect(refunds._sum.amount?.toNumber()).toBe(1000);
+    // Refunded money and reported returns agree, and the scrap marker (a
+    // return-linked WRITE_OFF) is kept out of inventory losses.
+    expect(pnl.inventoryLossLines).toEqual([]);
+    expect(pnl.cogs).toBe(1150);
   });
 
-  it("KNOWN DEFECT (v2 §13): has no discount, returns, write-off or net-profit fields", async () => {
+  it("exposes the full P&L ladder and never calls operating profit the net profit", async () => {
     const pnl = await services.finance.getProfitAndLoss(org.organizationId, from, to);
-    for (const missing of ["discounts", "returns", "netRevenue", "inventoryLosses", "netProfit", "profitBeforeTax"]) {
-      expect(pnl).not.toHaveProperty(missing);
+    for (const field of [
+      "grossRevenue", "discountsTotal", "returnsTotal", "netRevenue", "inventoryLosses",
+      "depreciation", "operatingProfit", "otherResult", "profitBeforeTax", "incomeTax", "netProfit",
+      "netProfitStatus", "notConfigured", "costCoverage", "costingMethod",
+    ]) {
+      expect(pnl).toHaveProperty(field);
     }
+    // Tax has no approved policy: unknown (null), not 0%, and the net profit is PRELIMINARY.
+    expect(pnl.incomeTax).toBeNull();
+    expect(pnl.netProfitStatus).toBe("PRELIMINARY");
+    expect(pnl.notConfigured).toContain("INCOME_TAX");
+    expect(pnl.costingMethod).toBe("текущий расчёт (политика не утверждена)");
   });
 
-  it("KNOWN DEFECT (v2 §13): the dashboard's net profit is just the operating profit", async () => {
+  it("the dashboard's net profit carries the same status as the P&L", async () => {
     const dashboard = await services.finance.getDashboard(org.organizationId, from, to);
-    expect(dashboard.grossProfit).toBe(2950);
-    expect(dashboard.operatingProfit).toBe(2450);
-    expect(dashboard.netProfit).toBe(dashboard.operatingProfit);
+    expect(dashboard.grossProfit).toBe(2000);
+    expect(dashboard.operatingProfit).toBe(1500);
+    expect(dashboard.netProfitStatus).toBe("PRELIMINARY");
+    expect(dashboard.notConfigured).toContain("INCOME_TAX");
   });
 
   it("breaks revenue down per product at the price actually charged", async () => {
     const pnl = await services.finance.getProfitAndLoss(org.organizationId, from, to);
     const bread = pnl.byProduct.find((p) => p.productId === breadId)!;
-    expect(bread).toMatchObject({ quantitySold: 6, revenue: 2750, cogs: 300, hasCostData: true });
+    // Net of the two returned loaves: 6 − 2 sold, 2 750 − 1 000, cost 300 − 50 (restocked one only).
+    expect(bread).toMatchObject({ quantitySold: 4, revenue: 1750, cogs: 250, hasCostData: true });
     const mystery = pnl.byProduct.find((p) => p.productId === mysteryId)!;
     expect(mystery).toMatchObject({ revenue: 400, cogs: 0, hasCostData: false });
   });
@@ -354,7 +376,7 @@ describe("receivables and payables", () => {
 });
 
 describe("what does NOT reach the profit and loss statement", () => {
-  it("KNOWN DEFECT (v2 §13): a write-off does not change profit", async () => {
+  it("a write-off is an inventory loss at the cost stamped on the movement", async () => {
     const before = await services.finance.getProfitAndLoss(org.organizationId, from, to);
     await services.inventory.writeOff(org.user, {
       locationId: org.storeId,
@@ -364,29 +386,51 @@ describe("what does NOT reach the profit and loss statement", () => {
       writeOffReason: "DAMAGED" as never,
     });
     const after = await services.finance.getProfitAndLoss(org.organizationId, from, to);
-    expect(after.operatingProfit).toBe(before.operatingProfit);
+    // 5 kg of flour at 100.
+    expect(after.inventoryLosses).toBe(500);
+    expect(after.inventoryLossLines).toEqual([expect.objectContaining({ kind: "WRITE_OFF", amount: 500, count: 1 })]);
+    expect(after.operatingProfit).toBe(before.operatingProfit - 500);
     expect(after.cogs).toBe(before.cogs);
   });
 
-  it("KNOWN DEFECT (v2 §13): a further return still leaves revenue and cost of goods untouched", async () => {
+  it("a further restocked return reduces revenue and gives back the cost it was sold at", async () => {
     const before = await services.finance.getProfitAndLoss(org.organizationId, from, to);
     await services.returns.create(org.user, cashSaleId, { items: [{ productId: breadId, quantity: 1 }] });
     const after = await services.finance.getProfitAndLoss(org.organizationId, from, to);
-    expect(after.revenue).toBe(before.revenue);
-    expect(after.cogs).toBe(before.cogs);
+    expect(after.revenue).toBe(before.revenue - 500);
+    expect(after.cogs).toBe(before.cogs - 50);
   });
 });
 
-describe("history is recomputed, not remembered", () => {
-  it("KNOWN DEFECT (v2 §1, §12 snapshots): editing an ingredient price rewrites the cost of goods of sales already made", async () => {
+describe("history is remembered, not recomputed", () => {
+  it("editing an ingredient price does NOT rewrite the cost of goods of sales already made", async () => {
     const before = await services.finance.getProfitAndLoss(org.organizationId, from, to);
-    expect(before.cogs).toBe(1200);
+    expect(before.cogs).toBe(1100);
     await prisma.product.update({ where: { id: flourId }, data: { price: 200 } });
     try {
       const after = await services.finance.getProfitAndLoss(org.organizationId, from, to);
-      // Loaf cost doubles 50 → 100, so the same six loaves now "cost" 600, not 300.
-      expect(after.cogs).toBe(1500);
-      expect(after.grossProfit).toBe(before.grossProfit - 300);
+      expect(after.cogs).toBe(before.cogs);
+      expect(after.grossProfit).toBe(before.grossProfit);
+      // Every costed line came from a snapshot, none from today's price.
+      expect(after.costCoverage.fallbackLines).toBe(0);
+      expect(after.costCoverage.snapshotLines).toBeGreaterThan(0);
+    } finally {
+      await prisma.product.update({ where: { id: flourId }, data: { price: 100 } });
+    }
+  });
+
+  it("legacy lines without a snapshot fall back to today's cost, and are counted as such", async () => {
+    // Simulate a sale from before snapshots existed.
+    await prisma.saleItem.updateMany({
+      where: { sale: { organizationId: org.organizationId }, productId: breadId, unitCost: { not: null } },
+      data: { unitCost: null, costBasis: null },
+    });
+    const before = await services.finance.getProfitAndLoss(org.organizationId, from, to);
+    expect(before.costCoverage.fallbackLines).toBeGreaterThan(0);
+    await prisma.product.update({ where: { id: flourId }, data: { price: 200 } });
+    try {
+      const after = await services.finance.getProfitAndLoss(org.organizationId, from, to);
+      expect(after.cogs).toBeGreaterThan(before.cogs);
     } finally {
       await prisma.product.update({ where: { id: flourId }, data: { price: 100 } });
     }

@@ -20,14 +20,18 @@ import { PrismaService } from "../prisma/prisma.service";
 export async function resolveProductUnitCosts(
   prisma: PrismaService | Prisma.TransactionClient,
   organizationId: string,
+  // Optional narrowing for hot paths (a sale valuing three loaves must not load
+  // every recipe in the organisation). The result for a listed product is
+  // identical to the unfiltered one.
+  productIds?: string[],
 ): Promise<Map<string, number>> {
   const [recipes, purchaseItems] = await Promise.all([
     prisma.recipe.findMany({
-      where: { organizationId, isActive: true },
+      where: { organizationId, isActive: true, ...(productIds ? { productId: { in: productIds } } : {}) },
       include: { items: { include: { ingredientProduct: true } } },
     }),
     prisma.purchaseOrderItem.findMany({
-      where: { purchaseOrder: { organizationId } },
+      where: { purchaseOrder: { organizationId }, ...(productIds ? { productId: { in: productIds } } : {}) },
     }),
   ]);
 

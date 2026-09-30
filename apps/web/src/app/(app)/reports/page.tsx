@@ -320,10 +320,11 @@ function FinanceReport({ period, locationId }: { period: Period; locationId: str
     >
       <StatRow
         items={[
-          { label: "Выручка", value: formatMoney(pnl.revenue) },
+          { label: "Чистая выручка", value: formatMoney(pnl.netRevenue) },
           { label: "Себестоимость", value: formatMoney(pnl.cogs) },
           { label: "Валовая прибыль", value: formatMoney(pnl.grossProfit) },
           { label: "Операционная прибыль", value: formatMoney(pnl.operatingProfit) },
+          { label: `Чистая прибыль (${pnl.netProfitStatus === "COMPLETE" ? "итоговая" : "предварительная"})`, value: formatMoney(pnl.netProfit) },
         ]}
       />
       <ReportTable

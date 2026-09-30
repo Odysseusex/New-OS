@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { CashMovementType, InvoiceDto, InvoiceSource, InvoiceStatus, PaymentStatus, Unit } from "@bakery-os/shared";
+import { CashMovementType, CostBasis, InvoiceDto, InvoiceSource, InvoiceStatus, PaymentStatus, Unit } from "@bakery-os/shared";
 import { InvoiceStatus as PrismaInvoiceStatus, StockMovementType } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
@@ -122,6 +122,8 @@ export class InvoicesService {
           reason: `Приёмка по накладной №${invoice.number}`,
           invoiceId: invoice.id,
           createdById: user.id,
+          unitCost: item.unitCost,
+          costBasis: CostBasis.PURCHASE_ACTUAL,
         })),
       });
 

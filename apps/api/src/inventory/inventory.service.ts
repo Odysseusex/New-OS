@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { CostingService } from "../costing/costing.service";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   BusinessContextMovementRowDto,
@@ -19,7 +20,10 @@ import { StockMovementType as PrismaStockMovementType } from "@prisma/client";
 
 @Injectable()
 export class InventoryService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private costing: CostingService = new CostingService(prisma),
+  ) {}
 
   // Every stock movement in a period, grouped by type — receipts, sales,
   // write-offs, production output and consumption, transfers, adjustments.
@@ -225,6 +229,9 @@ export class InventoryService {
     }
 
     const movement = await this.prisma.$transaction(async (tx) => {
+      // Valued when it happens, so a write-off or count difference keeps the
+      // cost it had that day (see CostingService).
+      const costs = await this.costing.snapshotCosts(user.organizationId, [params.productId], tx);
       const created = await tx.stockMovement.create({
         data: {
           organizationId: user.organizationId,
@@ -235,6 +242,7 @@ export class InventoryService {
           reason: params.reason,
           writeOffReason: params.writeOffReason,
           createdById: user.id,
+          ...this.costing.fields(costs.get(params.productId)),
         },
         include: { location: true, product: true, createdBy: true },
       });

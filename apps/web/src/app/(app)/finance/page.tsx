@@ -1,5 +1,6 @@
 "use client";
 
+import { PnlLadder } from "@/components/pnl-ladder";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
@@ -642,7 +643,7 @@ export default function FinancePage() {
             />
             <StatCard
               icon={Wallet}
-              label="Чистая прибыль"
+              label={`Чистая прибыль${dashboard?.netProfitStatus === "PRELIMINARY" ? " (предварительная)" : ""}`}
               value={formatMoney(dashboard?.netProfit ?? 0)}
               tone={dashboard && dashboard.netProfit < 0 ? "danger" : "default"}
             />
@@ -1044,22 +1045,7 @@ export default function FinancePage() {
             </div>
           </div>
 
-          <div className="mb-4 grid grid-cols-2 gap-4 md:grid-cols-3">
-            <StatCard icon={TrendingUp} label="Выручка" value={formatMoney(pnl?.revenue ?? 0)} />
-            <StatCard icon={TrendingDown} label="Себестоимость" value={formatMoney(pnl?.cogs ?? 0)} />
-            <StatCard
-              icon={Wallet}
-              label={`Валовая прибыль${pnl?.grossMarginPercent != null ? ` (${pnl.grossMarginPercent.toFixed(0)}%)` : ""}`}
-              value={formatMoney(pnl?.grossProfit ?? 0)}
-            />
-            <StatCard icon={TrendingDown} label="Операционные расходы" value={formatMoney(pnl?.expensesTotal ?? 0)} />
-            <StatCard
-              icon={Wallet}
-              label="Операционная прибыль"
-              value={formatMoney(pnl?.operatingProfit ?? 0)}
-              tone={pnl && pnl.operatingProfit < 0 ? "danger" : "default"}
-            />
-          </div>
+          {pnl && <PnlLadder pnl={pnl} />}
 
           {pnl && pnl.unknownCostLineItems > 0 && (
             <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
