@@ -38,6 +38,8 @@ export interface PeriodDiagnosticsDto {
   eventInvariantViolations: number;
   unclassifiedCashMovements: number;
   unknownCostLines: number;
+  // Net profit from events − net profit from the direct P&L. Zero when both routes agree.
+  pnlParityDifference: number;
   hasIssues: boolean;
 }
 

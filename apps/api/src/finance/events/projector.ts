@@ -5,6 +5,8 @@ import { CashMovementSource, cashMovementEvent, transferEvent } from "./cash-eve
 import { CategoryLike } from "./rules";
 import { purchaseEvents } from "./purchase-events";
 import { fixedAssetEvents } from "./fixed-asset-events";
+import { accrualEvents } from "./accrual-events";
+import { CostingService } from "../../costing/costing.service";
 
 export interface ProjectionOptions {
   // Only events that happened at or before this moment. Defaults to everything.
@@ -17,7 +19,10 @@ export interface ProjectionOptions {
 // gives byte-identical output (invariant I5).
 @Injectable()
 export class FinancialEventProjector {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private costing: CostingService = new CostingService(prisma),
+  ) {}
 
   // Every event family, side by side. Each source returns its own events; the
   // projector only merges and orders them.
@@ -26,6 +31,7 @@ export class FinancialEventProjector {
       this.cashEvents(organizationId, opts),
       purchaseEvents(this.prisma, organizationId, opts),
       fixedAssetEvents(this.prisma, organizationId, opts),
+      accrualEvents(this.prisma, this.costing, organizationId, opts),
     ]);
     const events = parts.flat();
     // Deterministic order: time, then key. Never insertion order.

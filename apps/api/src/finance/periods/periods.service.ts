@@ -23,6 +23,7 @@ import { checkLedgerConsistency } from "../integrity/ledger-consistency";
 import { AccountingPolicyService } from "../accounting-policy.service";
 import { PeriodSectionBuilder } from "./section-builders";
 import { PeriodGuard } from "./period-guard";
+import { pnlFromEvents } from "../events/pnl-from-events";
 
 export const SNAPSHOT_SCHEMA_VERSION = 1;
 // A close that started this long ago and never finished (a crash) may be taken over.
@@ -386,7 +387,12 @@ export class FinancialPeriodsService {
         e.occurredAt <= range.end.toISOString() &&
         e.cash.some((c) => c.section === CashSection.UNCLASSIFIED),
     );
+    // The P&L rebuilt from events against the direct P&L: they read the same
+    // documents by different routes, so any difference is a finding.
+    const fromEvents = pnlFromEvents(events, range.start, range.end);
+    const pnlParityDifference = Math.round((fromEvents.netProfit - (pnl.netProfit - 0)) * 100) / 100;
     const d: PeriodDiagnosticsDto = {
+      pnlParityDifference,
       stockDrifts: ledger.stock.drifts.length,
       cashDrifts: ledger.cash.drifts.length,
       eventCount: invariants.eventCount,
@@ -402,7 +408,8 @@ export class FinancialPeriodsService {
       d.eventInvariantViolations > 0 ||
       d.incompleteEvents > 0 ||
       d.unclassifiedCashMovements > 0 ||
-      d.unknownCostLines > 0;
+      d.unknownCostLines > 0 ||
+      d.pnlParityDifference !== 0;
     return d;
   }
 

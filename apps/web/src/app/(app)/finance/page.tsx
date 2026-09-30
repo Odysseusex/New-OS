@@ -71,6 +71,7 @@ import { NewExpenseModal } from "@/components/new-expense-modal";
 import { CategoryClassificationModal } from "@/components/category-classification-modal";
 import { FinancialPeriodsTab } from "@/components/financial-periods-tab";
 import { FixedAssetsTab } from "@/components/fixed-assets-tab";
+import { BalanceTab } from "@/components/balance-tab";
 import { NewCashAccountModal } from "@/components/new-cash-account-modal";
 import { CashMovementModal } from "@/components/cash-movement-modal";
 import { CashTransferModal } from "@/components/cash-transfer-modal";
@@ -91,7 +92,8 @@ type Tab =
   | "pnl"
   | "breakeven"
   | "periods"
-  | "assets";
+  | "assets"
+  | "balance";
 type Period = "today" | "7d" | "30d" | "month";
 
 const TABS: { id: Tab; label: string }[] = [
@@ -102,6 +104,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "payables", label: "Кредиторская задолженность" },
   { id: "expenses", label: "Расходы" },
   { id: "categories", label: "Статьи ДДС" },
+  { id: "balance", label: "Баланс" },
   { id: "assets", label: "Основные средства" },
   { id: "periods", label: "Периоды" },
   { id: "consignment", label: "Под реализацию" },
@@ -975,6 +978,8 @@ export default function FinancePage() {
       )}
 
       {tab === "consignment" && <ConsignmentTab />}
+
+      {tab === "balance" && <BalanceTab />}
 
       {tab === "assets" && <FixedAssetsTab />}
 

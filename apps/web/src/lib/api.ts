@@ -108,6 +108,9 @@ import type {
   FiscalReceiptDto,
   FiscalReconcileResultDto,
   SaleReturnDto,
+  BalanceSheetDto,
+  InventoryRollForwardDto,
+  MonthlyReportDto,
   CreateSaleReturnRequestDto,
   DepreciationRunResultDto,
   DisposeFixedAssetRequestDto,
@@ -560,6 +563,11 @@ export const api = {
     inventoryValuation: () => request<InventoryValuationDto>("/finance/inventory-valuation"),
     pnl: (from: string, to: string, locationId?: string) =>
       request<ProfitAndLossDto>(withQuery("/finance/pnl", { from, to, locationId })),
+    balance: (asOf?: string) => request<BalanceSheetDto>(withQuery("/finance/balance", { asOf })),
+    inventoryRollForward: (from: string, to: string) =>
+      request<InventoryRollForwardDto>(withQuery("/finance/inventory-rollforward", { from, to })),
+    monthlyReport: (year: number, month: number) =>
+      request<MonthlyReportDto>(withQuery("/finance/monthly-report", { year: String(year), month: String(month) })),
     cashFlow: (from: string, to: string) =>
       request<CashFlowDto>(withQuery("/finance/cash-flow", { from, to })),
     breakEven: (from: string, to: string, locationId?: string) =>

@@ -931,6 +931,14 @@ export class FinanceService {
   // confirmed expenses — same figure the Кредиторская задолженность tab
   // and the dashboard card show.
   async getAccountsPayable(organizationId: string): Promise<number> {
+    const p = await this.getPayablesBreakdown(organizationId);
+    return roundMoney(p.suppliers + p.expenses + p.consignment);
+  }
+
+  // The same figure split the way the balance sheet needs it. Supplier invoices
+  // (legacy) and received purchase orders are separate documents and are each
+  // counted once.
+  async getPayablesBreakdown(organizationId: string): Promise<{ suppliers: number; expenses: number; consignment: number }> {
     const [unpaidInvoices, unpaidExpenses, consignmentOwed, orderPayables] = await Promise.all([
       this.prisma.invoice.findMany({
         where: { organizationId, status: PrismaInvoiceStatus.CONFIRMED },
@@ -947,12 +955,13 @@ export class FinanceService {
       this.getConsignmentOwed(organizationId),
       this.getPurchaseOrderPayables(organizationId),
     ]);
-    return roundMoney(
-      unpaidInvoices.reduce((sum, i) => sum + Math.max(0, i.totalCost.toNumber() - i.amountPaid.toNumber()), 0) +
-        unpaidExpenses.reduce((sum, e) => sum + Math.max(0, e.amount.toNumber() - e.amountPaid.toNumber()), 0) +
-        consignmentOwed +
-        orderPayables,
-    );
+    return {
+      suppliers: roundMoney(
+        unpaidInvoices.reduce((sum, i) => sum + Math.max(0, i.totalCost.toNumber() - i.amountPaid.toNumber()), 0) + orderPayables,
+      ),
+      expenses: roundMoney(unpaidExpenses.reduce((sum, e) => sum + Math.max(0, e.amount.toNumber() - e.amountPaid.toNumber()), 0)),
+      consignment: roundMoney(consignmentOwed),
+    };
   }
 
   // What is owed on purchase orders that were RECEIVED after the purchasing

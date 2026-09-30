@@ -249,6 +249,7 @@ function DiagnosticsList({ d }: { d: PeriodDiagnosticsDto }) {
     ["События без классификации", d.incompleteEvents],
     ["Денежные движения без классификации", d.unclassifiedCashMovements],
     ["Строки без себестоимости", d.unknownCostLines],
+    ["Расхождение чистой прибыли (события и отчёт), ₸", Math.abs(d.pnlParityDifference)],
   ];
   const issues = rows.filter(([, n]) => n > 0);
   if (issues.length === 0) return <p className="text-sm text-green-700">Контрольные проверки: замечаний нет</p>;

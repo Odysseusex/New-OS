@@ -26,3 +26,4 @@ export * from "./financial-classification";
 export * from "./financial-events";
 export * from "./financial-periods";
 export * from "./fixed-assets";
+export * from "./balance";
