@@ -10,6 +10,7 @@ import {
   Truck,
   Map,
   Wallet,
+  Target,
   Users,
   AlertTriangle,
   Handshake,
@@ -98,6 +99,13 @@ export const primaryNav: NavItem[] = [
     icon: Wallet,
     status: "live",
     description: "P&L, себестоимость, маржинальность, расходы",
+  },
+  {
+    href: "/planning",
+    label: "Планирование",
+    icon: Target,
+    status: "live",
+    description: "ABC/XYZ, пополнение запасов, план/факт, финансовая модель",
   },
   {
     href: "/hr",

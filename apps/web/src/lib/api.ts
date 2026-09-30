@@ -111,6 +111,16 @@ import type {
   BalanceSheetDto,
   InventoryRollForwardDto,
   MonthlyReportDto,
+  AbcXyzReportDto,
+  ForecastDto,
+  ModelBaselineDto,
+  ModelDriversDto,
+  PlanFactDto,
+  ReplenishmentReportDto,
+  SaveScenarioRequestDto,
+  ScenarioComparisonDto,
+  ScenarioDto,
+  SetPlanRequestDto,
   CreateSaleReturnRequestDto,
   DepreciationRunResultDto,
   DisposeFixedAssetRequestDto,
@@ -450,6 +460,35 @@ export const api = {
     archive: (id: string) => request<SupplierDto>(`/suppliers/${id}/archive`, { method: "POST" }),
     restore: (id: string) => request<SupplierDto>(`/suppliers/${id}/restore`, { method: "POST" }),
     remove: (id: string) => request<{ deleted: true }>(`/suppliers/${id}`, { method: "DELETE" }),
+  },
+
+  planning: {
+    abcXyz: (from?: string, to?: string) => request<AbcXyzReportDto>(withQuery("/planning/abc-xyz", { from, to })),
+    replenishment: (p: { leadTimeDays?: number; safetyDays?: number; reviewDays?: number; lookbackDays?: number }) =>
+      request<ReplenishmentReportDto>(
+        withQuery("/planning/replenishment", {
+          leadTimeDays: p.leadTimeDays === undefined ? undefined : String(p.leadTimeDays),
+          safetyDays: p.safetyDays === undefined ? undefined : String(p.safetyDays),
+          reviewDays: p.reviewDays === undefined ? undefined : String(p.reviewDays),
+          lookbackDays: p.lookbackDays === undefined ? undefined : String(p.lookbackDays),
+        }),
+      ),
+    planFact: (year: number, month: number) =>
+      request<PlanFactDto>(withQuery("/planning/plan-fact", { year: String(year), month: String(month) })),
+    setPlan: (dto: SetPlanRequestDto) => request<PlanFactDto>("/planning/plan", { method: "PUT", body: JSON.stringify(dto) }),
+    baseline: (months?: number) =>
+      request<ModelBaselineDto>(withQuery("/planning/model/baseline", { months: months === undefined ? undefined : String(months) })),
+    run: (drivers: ModelDriversDto, baselineMonths?: number) =>
+      request<ForecastDto>("/planning/model/run", { method: "POST", body: JSON.stringify({ drivers, baselineMonths }) }),
+    scenarios: () => request<ScenarioDto[]>("/planning/model/scenarios"),
+    saveScenario: (dto: SaveScenarioRequestDto, id?: string) =>
+      request<ScenarioDto>(id ? `/planning/model/scenarios/${id}` : "/planning/model/scenarios", {
+        method: id ? "PUT" : "POST",
+        body: JSON.stringify(dto),
+      }),
+    deleteScenario: (id: string) => request<{ deleted: true }>(`/planning/model/scenarios/${id}`, { method: "DELETE" }),
+    compare: (scenarioIds: string[]) =>
+      request<ScenarioComparisonDto>("/planning/model/compare", { method: "POST", body: JSON.stringify({ scenarioIds }) }),
   },
 
   fixedAssets: {

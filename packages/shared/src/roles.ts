@@ -281,3 +281,7 @@ export const AI_INSIGHTS_VIEW_ROLES: Role[] = ORG_WIDE_ROLES;
 // are the narrow tier.
 export const FIXED_ASSET_MANAGE_ROLES: Role[] = ORG_WIDE_ROLES;
 export const FIXED_ASSET_DISPOSE_ROLES: Role[] = HARD_DELETE_ROLES;
+
+// Planning reads the books to plan the future; it needs the same eyes as finance.
+export const PLANNING_VIEW_ROLES: Role[] = FINANCE_VIEW_ROLES;
+export const PLANNING_MANAGE_ROLES: Role[] = ORG_WIDE_ROLES;

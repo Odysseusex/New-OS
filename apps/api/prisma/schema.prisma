@@ -467,6 +467,8 @@ model User {
   periodsReopened           FinancialPeriod[]  @relation("PeriodReopenedBy")
   periodSnapshotsCreated    PeriodSnapshot[]   @relation("PeriodSnapshotCreatedBy")
   fixedAssetsCreated        FixedAsset[]       @relation("FixedAssetCreatedBy")
+  planLinesCreated          ManagementPlanLine[] @relation("PlanLineCreatedBy")
+  modelScenariosCreated     FinancialModelScenario[] @relation("ModelScenarioCreatedBy")
   depreciationEntriesCreated DepreciationEntry[] @relation("DepreciationEntryCreatedBy")
   purchasePaymentsCreated   PurchaseOrderPayment[] @relation("PurchasePaymentCreatedBy")
   purchasePaymentsReversed  PurchaseOrderPayment[] @relation("PurchasePaymentReversedBy")
@@ -2203,4 +2205,52 @@ model DepreciationEntry {
   @@unique([assetId, year, month])
   @@index([organizationId, year, month])
   @@map("depreciation_entries")
+}
+
+// ── Management layer ─────────────────────────────────────────────────────
+// Planning data that lives BESIDE the books: it reads the accounting figures
+// and never writes to them. Nothing here is a posting, a document or a policy.
+
+enum PlanMetric {
+  NET_REVENUE
+  COGS
+  GROSS_PROFIT
+  OPERATING_EXPENSES
+  OPERATING_PROFIT
+}
+
+// What the owner intends for one month. Compared with the actual figures in the
+// plan-versus-fact view; the actuals are never adjusted towards it.
+model ManagementPlanLine {
+  id             String     @id @default(cuid())
+  organizationId String
+  year           Int
+  month          Int
+  metric         PlanMetric
+  amount         Decimal    @db.Decimal(14, 2)
+  createdById    String
+  createdBy      User       @relation("PlanLineCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@unique([organizationId, year, month, metric])
+  @@map("management_plan_lines")
+}
+
+// A named set of assumptions for the deterministic forecast. Running it reads
+// today's actuals as a baseline and computes a projection; the projection is
+// never stored as accounting data and never posted anywhere.
+model FinancialModelScenario {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  note           String?
+  drivers        Json
+  createdById    String
+  createdBy      User     @relation("ModelScenarioCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("financial_model_scenarios")
 }

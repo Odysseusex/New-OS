@@ -27,3 +27,4 @@ export * from "./financial-events";
 export * from "./financial-periods";
 export * from "./fixed-assets";
 export * from "./balance";
+export * from "./planning";
