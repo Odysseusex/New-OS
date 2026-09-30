@@ -30,7 +30,7 @@ export function buildServices(prisma: PrismaService) {
     inventory: new InventoryService(prisma),
     invoices: new InvoicesService(prisma, cash),
     logistics: new LogisticsService(prisma),
-    procurement: new ProcurementService(prisma),
+    procurement: new ProcurementService(prisma, cash),
     production: new ProductionService(prisma),
     sales: new SalesService(prisma, cash, fiscal, new FiscalSettings(), new PromotionsService(prisma)),
     returns: new SaleReturnsService(prisma, cash, fiscal, new FiscalSettings()),

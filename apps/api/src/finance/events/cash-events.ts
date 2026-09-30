@@ -26,6 +26,7 @@ export interface CashMovementSource {
   expenseId: string | null;
   invoiceId: string | null;
   consignmentPaymentId: string | null;
+  purchaseOrderPaymentId?: string | null;
   saleId: string | null;
   transferGroupId: string | null;
 }
@@ -99,6 +100,21 @@ function cashMovementEventCore(m: CashMovementSource, category: CategoryLike | n
         pnl: [],
         unclassified: false,
       };
+    case CashMovementType.ADJUSTMENT:
+      // The reversal of a purchase-order payment is not a free-form adjustment:
+      // the money comes back and the payable it had settled is owed again.
+      if (m.purchaseOrderPaymentId) {
+        return {
+          ...base(m),
+          type: FinancialEventType.SUPPLIER_PAYMENT,
+          description: "Отмена оплаты поставщику",
+          cash: cashLeg(CashSection.OPERATING),
+          balance: [cashBalance, { line: BalanceLine.SUPPLIER_PAYABLES, delta: signed }],
+          pnl: [],
+          unclassified: false,
+        };
+      }
+      return categoryDrivenEvent(m, category, signed);
     case CashMovementType.EXPENSE_PAYMENT:
       return {
         ...base(m),

@@ -863,7 +863,7 @@ export class FinanceService {
   // confirmed expenses — same figure the Кредиторская задолженность tab
   // and the dashboard card show.
   async getAccountsPayable(organizationId: string): Promise<number> {
-    const [unpaidInvoices, unpaidExpenses, consignmentOwed] = await Promise.all([
+    const [unpaidInvoices, unpaidExpenses, consignmentOwed, orderPayables] = await Promise.all([
       this.prisma.invoice.findMany({
         where: { organizationId, status: PrismaInvoiceStatus.CONFIRMED },
         select: { totalCost: true, amountPaid: true },
@@ -877,11 +877,35 @@ export class FinanceService {
       // sell — so it belongs in Кредиторская задолженность rather than
       // appearing out of nowhere on the day of the payout.
       this.getConsignmentOwed(organizationId),
+      this.getPurchaseOrderPayables(organizationId),
     ]);
-    return (
+    return roundMoney(
       unpaidInvoices.reduce((sum, i) => sum + Math.max(0, i.totalCost.toNumber() - i.amountPaid.toNumber()), 0) +
-      unpaidExpenses.reduce((sum, e) => sum + Math.max(0, e.amount.toNumber() - e.amountPaid.toNumber()), 0) +
-      consignmentOwed
+        unpaidExpenses.reduce((sum, e) => sum + Math.max(0, e.amount.toNumber() - e.amountPaid.toNumber()), 0) +
+        consignmentOwed +
+        orderPayables,
+    );
+  }
+
+  // What is owed on purchase orders that were RECEIVED after the purchasing
+  // cutover: the delivered total minus payments that have not been reversed.
+  // A placed order owes nothing, and one received before the cutover is legacy
+  // (settled outside the system) — neither is counted. Legacy supplier
+  // invoices are counted above, separately, and never through this path, so a
+  // delivery cannot be owed twice.
+  async getPurchaseOrderPayables(organizationId: string): Promise<number> {
+    const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { purchaseCutoverAt: true } });
+    if (!org?.purchaseCutoverAt) return 0;
+    const orders = await this.prisma.purchaseOrder.findMany({
+      where: { organizationId, status: "RECEIVED", receivedAt: { gte: org.purchaseCutoverAt } },
+      select: { totalCost: true, receivedTotal: true, payments: { where: { reversedAt: null }, select: { amount: true } } },
+    });
+    return roundMoney(
+      orders.reduce((sum, o) => {
+        const due = (o.receivedTotal ?? o.totalCost).toNumber();
+        const paid = o.payments.reduce((s, p) => s + p.amount.toNumber(), 0);
+        return sum + Math.max(0, due - paid);
+      }, 0),
     );
   }
 

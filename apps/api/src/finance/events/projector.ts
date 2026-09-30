@@ -3,13 +3,12 @@ import { CashMovementType, FinancialEvent } from "@bakery-os/shared";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CashMovementSource, cashMovementEvent, transferEvent } from "./cash-events";
 import { CategoryLike } from "./rules";
+import { purchaseEvents } from "./purchase-events";
 
 export interface ProjectionOptions {
   // Only events that happened at or before this moment. Defaults to everything.
   upTo?: Date;
 }
-
-type Source = (organizationId: string, opts: ProjectionOptions) => Promise<FinancialEvent[]>;
 
 // Rebuilds the organization's financial events from its source ledgers and
 // documents. Nothing here writes: the result is a pure function of what is
@@ -17,19 +16,15 @@ type Source = (organizationId: string, opts: ProjectionOptions) => Promise<Finan
 // gives byte-identical output (invariant I5).
 @Injectable()
 export class FinancialEventProjector {
-  // Additional event families register themselves here (accrual documents,
-  // inventory, fixed assets…). Each returns its own events; the projector only
-  // merges and orders them.
-  private extraSources: Source[] = [];
-
   constructor(private prisma: PrismaService) {}
 
-  registerSource(source: Source): void {
-    this.extraSources.push(source);
-  }
-
+  // Every event family, side by side. Each source returns its own events; the
+  // projector only merges and orders them.
   async project(organizationId: string, opts: ProjectionOptions = {}): Promise<FinancialEvent[]> {
-    const parts = await Promise.all([this.cashEvents(organizationId, opts), ...this.extraSources.map((s) => s(organizationId, opts))]);
+    const parts = await Promise.all([
+      this.cashEvents(organizationId, opts),
+      purchaseEvents(this.prisma, organizationId, opts),
+    ]);
     const events = parts.flat();
     // Deterministic order: time, then key. Never insertion order.
     events.sort((a, b) => (a.occurredAt === b.occurredAt ? (a.key < b.key ? -1 : a.key > b.key ? 1 : 0) : a.occurredAt < b.occurredAt ? -1 : 1));
@@ -56,6 +51,7 @@ export class FinancialEventProjector {
         expenseId: row.expenseId,
         invoiceId: row.invoiceId,
         consignmentPaymentId: row.consignmentPaymentId,
+        purchaseOrderPaymentId: row.purchaseOrderPaymentId,
         saleId: row.saleId,
         transferGroupId: row.transferGroupId,
       };

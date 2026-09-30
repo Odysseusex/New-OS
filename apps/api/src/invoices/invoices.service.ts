@@ -42,6 +42,19 @@ export class InvoicesService {
   async create(user: AuthenticatedUser, dto: CreateInvoiceDto): Promise<InvoiceDto> {
     const locationId = requireLocationScope(user, dto.locationId);
 
+    // After the purchasing cutover a delivery is entered as an order and its
+    // receipt, not as an invoice. Invoices already in the system stay
+    // readable, confirmable and payable; only NEW ones are refused.
+    const org = await this.prisma.organization.findUnique({
+      where: { id: user.organizationId },
+      select: { purchaseCutoverAt: true },
+    });
+    if (org?.purchaseCutoverAt) {
+      throw new BadRequestException(
+        "Новые накладные больше не создаются — оформите закупку через заказ поставщику и его приёмку",
+      );
+    }
+
     const supplier = await this.prisma.supplier.findFirst({
       where: { id: dto.supplierId, organizationId: user.organizationId },
     });
@@ -97,6 +110,15 @@ export class InvoicesService {
       if (invoice.status !== PrismaInvoiceStatus.DRAFT) {
         throw new BadRequestException("Накладная уже обработана");
       }
+      // Two simultaneous confirmations must not both receive the goods: the
+      // status flip is conditional, and only the one that wins goes on.
+      const flipped = await tx.invoice.updateMany({
+        where: { id: invoice.id, status: PrismaInvoiceStatus.DRAFT },
+        data: { status: PrismaInvoiceStatus.CONFIRMED, confirmedAt: new Date() },
+      });
+      if (flipped.count !== 1) {
+        throw new BadRequestException("Накладная уже обработана");
+      }
 
       for (const item of invoice.items) {
         await tx.stockLevel.upsert({
@@ -127,9 +149,8 @@ export class InvoicesService {
         })),
       });
 
-      const updated = await tx.invoice.update({
+      const updated = await tx.invoice.findUniqueOrThrow({
         where: { id: invoice.id },
-        data: { status: PrismaInvoiceStatus.CONFIRMED, confirmedAt: new Date() },
         include: INVOICE_INCLUDE,
       });
 
@@ -160,11 +181,14 @@ export class InvoicesService {
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
-      const saved = await tx.invoice.update({
-        where: { id: invoiceId },
+      const flipped = await tx.invoice.updateMany({
+        where: { id: invoiceId, status: PrismaInvoiceStatus.DRAFT },
         data: { status: PrismaInvoiceStatus.CANCELLED },
-        include: INVOICE_INCLUDE,
       });
+      if (flipped.count !== 1) {
+        throw new BadRequestException("Накладная уже обработана");
+      }
+      const saved = await tx.invoice.findUniqueOrThrow({ where: { id: invoiceId }, include: INVOICE_INCLUDE });
       await recordAudit(tx, {
         organizationId: user.organizationId,
         actorId: user.id,
@@ -184,19 +208,6 @@ export class InvoicesService {
   // CONFIRMED (that's the point it became a real obligation; a DRAFT one
   // owes nothing yet). Never edits totalCost, only pays it down.
   async recordPayment(user: AuthenticatedUser, invoiceId: string, dto: RecordInvoicePaymentDto): Promise<InvoiceDto> {
-    const invoice = await this.prisma.invoice.findFirst({
-      where: { id: invoiceId, organizationId: user.organizationId },
-    });
-    if (!invoice) {
-      throw new NotFoundException("Накладная не найдена");
-    }
-    if (invoice.status !== PrismaInvoiceStatus.CONFIRMED) {
-      throw new BadRequestException("Оплатить можно только проведённую накладную");
-    }
-    const balanceDue = invoice.totalCost.toNumber() - invoice.amountPaid.toNumber();
-    if (dto.amount > balanceDue) {
-      throw new BadRequestException("Сумма оплаты превышает остаток задолженности");
-    }
     const account = await this.prisma.cashAccount.findFirst({
       where: { id: dto.accountId, organizationId: user.organizationId },
     });
@@ -205,6 +216,22 @@ export class InvoicesService {
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
+      // The balance is read under a row lock, so two payments racing each
+      // other cannot together pay more than is owed.
+      await tx.$queryRaw`SELECT id FROM "invoices" WHERE id = ${invoiceId} FOR UPDATE`;
+      const invoice = await tx.invoice.findFirst({
+        where: { id: invoiceId, organizationId: user.organizationId },
+      });
+      if (!invoice) {
+        throw new NotFoundException("Накладная не найдена");
+      }
+      if (invoice.status !== PrismaInvoiceStatus.CONFIRMED) {
+        throw new BadRequestException("Оплатить можно только проведённую накладную");
+      }
+      const balanceDue = invoice.totalCost.toNumber() - invoice.amountPaid.toNumber();
+      if (dto.amount > balanceDue + 0.005) {
+        throw new BadRequestException("Сумма оплаты превышает остаток задолженности");
+      }
       await this.cashMovementsService.recordMovement(tx, {
         organizationId: user.organizationId,
         accountId: dto.accountId,

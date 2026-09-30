@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
 import { CheckCircle2, Plus, XCircle } from "lucide-react";
-import type { InvoiceDto, LocationDto, ProductDto, PurchaseOrderDto, SupplierDto } from "@bakery-os/shared";
+import type { InvoiceDto, LocationDto, ProductDto, PurchaseOrderDto, PurchaseWorkflowDto, SupplierDto } from "@bakery-os/shared";
 import {
   HARD_DELETE_ROLES,
   INVOICE_MANAGE_ROLES,
   INVOICE_STATUS_LABELS_RU,
   InvoiceStatus,
   ORG_WIDE_ROLES,
+  PAYMENT_STATUS_LABELS_RU,
   PURCHASE_ORDER_MANAGE_ROLES,
   PURCHASE_ORDER_STATUS_LABELS_RU,
   PurchaseOrderStatus,
@@ -19,6 +20,8 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { NewPurchaseOrderModal } from "@/components/new-purchase-order-modal";
+import { ReceiveOrderModal } from "@/components/receive-order-modal";
+import { OrderPaymentModal } from "@/components/order-payment-modal";
 import { NewInvoiceModal } from "@/components/new-invoice-modal";
 import { NewSupplierModal } from "@/components/new-supplier-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
@@ -44,6 +47,25 @@ export default function ProcurementPage() {
   const [modal, setModal] = useState<"order" | "invoice" | "supplier" | null>(null);
   const [editingSupplier, setEditingSupplier] = useState<SupplierDto | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  const [receiving, setReceiving] = useState<PurchaseOrderDto | null>(null);
+  const [paying, setPaying] = useState<PurchaseOrderDto | null>(null);
+  const [workflow, setWorkflow] = useState<PurchaseWorkflowDto | null>(null);
+  const [confirmCutover, setConfirmCutover] = useState(false);
+  const canSwitchWorkflow = user ? HARD_DELETE_ROLES.includes(user.role) : false;
+
+  const loadWorkflow = useCallback(() => {
+    api.procurement.workflow().then(setWorkflow).catch(() => {});
+  }, []);
+  useEffect(loadWorkflow, [loadWorkflow]);
+
+  async function handleActivate() {
+    try {
+      setWorkflow(await api.procurement.activateWorkflow());
+      setConfirmCutover(false);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось переключить порядок закупок");
+    }
+  }
 
   const loadOrders = useCallback(() => {
     api.procurement
@@ -82,13 +104,8 @@ export default function ProcurementPage() {
 
   const fixedLocationId = isOrgWide ? null : (user?.locationId ?? null);
 
-  async function handleReceive(order: PurchaseOrderDto) {
-    try {
-      await api.procurement.receiveOrder(order.id);
-      loadOrders();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Не удалось принять заказ");
-    }
+  function handleReceive(order: PurchaseOrderDto) {
+    setReceiving(order);
   }
 
   async function handleCancel(order: PurchaseOrderDto) {
@@ -198,7 +215,7 @@ export default function ProcurementPage() {
             </button>
           )}
 
-          {tab === "invoices" && canManageInvoices && (
+          {tab === "invoices" && canManageInvoices && !workflow?.activated && (
             <button
               onClick={() => setModal("invoice")}
               className="flex items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
@@ -227,6 +244,37 @@ export default function ProcurementPage() {
         </div>
       </div>
 
+      {tab === "orders" && workflow && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-surface px-5 py-3 text-sm">
+          {workflow.activated ? (
+            <span className="text-muted">Новый порядок закупок с {formatDateTime(workflow.cutoverAt!)}</span>
+          ) : (
+            <span className="text-muted">Порядок закупок: прежний</span>
+          )}
+          {!workflow.activated && canSwitchWorkflow && !confirmCutover && (
+            <button
+              onClick={() => setConfirmCutover(true)}
+              className="rounded-xl border border-border px-3.5 py-2 text-sm font-medium text-foreground hover:bg-surface-muted"
+            >
+              Перейти на новый порядок
+            </button>
+          )}
+          {!workflow.activated && canSwitchWorkflow && confirmCutover && (
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="text-foreground">
+                Новые накладные создаваться не будут; полученные заказы станут задолженностью перед поставщиком. Вернуть нельзя.
+              </span>
+              <button onClick={handleActivate} className="rounded-xl bg-accent px-3.5 py-2 text-sm font-semibold text-accent-foreground">
+                Подтвердить
+              </button>
+              <button onClick={() => setConfirmCutover(false)} className="rounded-xl border border-border px-3.5 py-2 text-sm text-foreground">
+                Назад
+              </button>
+            </span>
+          )}
+        </div>
+      )}
+
       {tab === "orders" && (
         <div className="rounded-2xl border border-border bg-surface shadow-card">
           <table className="w-full text-sm">
@@ -235,6 +283,7 @@ export default function ProcurementPage() {
                 <th className="px-5 py-3 font-medium">Поставщик</th>
                 {isOrgWide && <th className="px-5 py-3 font-medium">Точка</th>}
                 <th className="px-5 py-3 text-right font-medium">Сумма</th>
+                <th className="px-5 py-3 text-right font-medium">К оплате</th>
                 <th className="px-5 py-3 font-medium">Статус</th>
                 <th className="px-5 py-3 font-medium">Дата заказа</th>
                 {canManageOrders && <th className="px-5 py-3 font-medium">Действия</th>}
@@ -246,7 +295,20 @@ export default function ProcurementPage() {
                   <td className="px-5 py-3 font-medium text-foreground">{order.supplierName}</td>
                   {isOrgWide && <td className="px-5 py-3 text-muted">{order.locationName}</td>}
                   <td className="px-5 py-3 text-right text-foreground">
-                    {formatMoney(order.totalCost)}
+                    {formatMoney(order.receivedTotal ?? order.totalCost)}
+                  </td>
+                  <td className="px-5 py-3 text-right">
+                    {order.payableRecognized ? (
+                      <button
+                        onClick={() => setPaying(order)}
+                        className="text-foreground hover:underline"
+                        title={order.paymentStatus ? PAYMENT_STATUS_LABELS_RU[order.paymentStatus] : undefined}
+                      >
+                        {formatMoney(order.balanceDue)}
+                      </button>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
                   </td>
                   <td className="px-5 py-3">
                     <StatusBadge status={order.status} />
@@ -278,7 +340,7 @@ export default function ProcurementPage() {
               ))}
               {orders.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-5 py-8 text-center text-sm text-muted">
+                  <td colSpan={7} className="px-5 py-8 text-center text-sm text-muted">
                     Заказов пока нет
                   </td>
                 </tr>
@@ -439,6 +501,18 @@ export default function ProcurementPage() {
           }}
         />
       )}
+
+      {receiving && (
+        <ReceiveOrderModal
+          order={receiving}
+          onClose={() => setReceiving(null)}
+          onDone={() => {
+            setReceiving(null);
+            loadOrders();
+          }}
+        />
+      )}
+      {paying && <OrderPaymentModal order={paying} onClose={() => setPaying(null)} onChanged={loadOrders} />}
     </div>
   );
 }

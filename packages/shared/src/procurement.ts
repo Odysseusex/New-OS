@@ -44,6 +44,22 @@ export interface PurchaseOrderItemDto {
   quantity: number;
   unitCost: number;
   subtotal: number;
+  // Delivered quantity/cost when they differ from the order (null = as ordered).
+  receivedQuantity: number | null;
+  receivedUnitCost: number | null;
+}
+
+export interface PurchaseOrderPaymentDto {
+  id: string;
+  accountId: string;
+  accountName: string;
+  amount: number;
+  paidAt: string;
+  note: string | null;
+  createdByName: string;
+  // A reversed payment stays in the history; it just no longer counts as paid.
+  reversedAt: string | null;
+  reversalReason: string | null;
 }
 
 export interface PurchaseOrderDto {
@@ -58,6 +74,43 @@ export interface PurchaseOrderDto {
   receivedAt: string | null;
   createdByName: string;
   items: PurchaseOrderItemDto[];
+  // What was actually delivered, valued at delivered costs (null until received).
+  receivedTotal: number | null;
+  // True when this order created a payable: received on/after the purchasing
+  // cutover. An order does NOT owe anything when placed, and an order received
+  // before the cutover is legacy (settled outside the system).
+  payableRecognized: boolean;
+  amountPaid: number;
+  balanceDue: number;
+  paymentStatus: PaymentStatus | null;
+  payments: PurchaseOrderPaymentDto[];
+}
+
+// Optional actuals recorded at receipt; anything omitted is received as ordered.
+export interface ReceivePurchaseOrderItemRequestDto {
+  itemId: string;
+  quantity?: number;
+  unitCost?: number;
+}
+
+export interface ReceivePurchaseOrderRequestDto {
+  items?: ReceivePurchaseOrderItemRequestDto[];
+}
+
+export interface RecordPurchaseOrderPaymentRequestDto {
+  accountId: string;
+  amount: number;
+  note?: string;
+}
+
+export interface ReversePurchaseOrderPaymentRequestDto {
+  reason: string;
+}
+
+export interface PurchaseWorkflowDto {
+  // Null = purchasing cutover not activated (old behaviour).
+  cutoverAt: string | null;
+  activated: boolean;
 }
 
 export interface CreatePurchaseOrderItemRequestDto {

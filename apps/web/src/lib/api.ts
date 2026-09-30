@@ -109,6 +109,10 @@ import type {
   FiscalReconcileResultDto,
   SaleReturnDto,
   CreateSaleReturnRequestDto,
+  ReceivePurchaseOrderRequestDto,
+  RecordPurchaseOrderPaymentRequestDto,
+  ReversePurchaseOrderPaymentRequestDto,
+  PurchaseWorkflowDto,
   StocktakeDto,
   StocktakeSummaryDto,
   CreateStocktakeRequestDto,
@@ -444,8 +448,20 @@ export const api = {
         method: "POST",
         body: JSON.stringify(dto),
       }),
-    receiveOrder: (id: string) =>
-      request<PurchaseOrderDto>(`/procurement/orders/${id}/receive`, { method: "POST" }),
+    receiveOrder: (id: string, dto?: ReceivePurchaseOrderRequestDto) =>
+      request<PurchaseOrderDto>(`/procurement/orders/${id}/receive`, {
+        method: "POST",
+        body: JSON.stringify(dto ?? {}),
+      }),
+    payOrder: (id: string, dto: RecordPurchaseOrderPaymentRequestDto) =>
+      request<PurchaseOrderDto>(`/procurement/orders/${id}/payments`, { method: "POST", body: JSON.stringify(dto) }),
+    reversePayment: (id: string, paymentId: string, dto: ReversePurchaseOrderPaymentRequestDto) =>
+      request<PurchaseOrderDto>(`/procurement/orders/${id}/payments/${paymentId}/reverse`, {
+        method: "POST",
+        body: JSON.stringify(dto),
+      }),
+    workflow: () => request<PurchaseWorkflowDto>("/procurement/workflow"),
+    activateWorkflow: () => request<PurchaseWorkflowDto>("/procurement/workflow/activate", { method: "POST" }),
     cancelOrder: (id: string) =>
       request<PurchaseOrderDto>(`/procurement/orders/${id}/cancel`, { method: "POST" }),
   },
