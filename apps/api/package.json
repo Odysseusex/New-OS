@@ -20,7 +20,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:seed": "ts-node prisma/seed.ts"
+    "prisma:seed": "ts-node prisma/seed.ts",
+    "finance:diagnostics": "ts-node scripts/finance-diagnostics.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
