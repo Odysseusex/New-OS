@@ -236,6 +236,11 @@ export const POLICY_MANAGE_ROLES: Role[] = HARD_DELETE_ROLES;
 // same people who can make those changes permanently.
 export const AUDIT_VIEW_ROLES: Role[] = HARD_DELETE_ROLES;
 
+// Counting is warehouse work; approving a count changes stock value, so a
+// manager of the counted location does not approve their own count.
+export const STOCKTAKE_MANAGE_ROLES: Role[] = INVENTORY_MANAGE_ROLES;
+export const STOCKTAKE_APPROVE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT];
+
 // "Запуск финансового учёта" declares the whole company's opening financial
 // position, once, ever — the most sensitive single action in the app, so it
 // follows the same bar as a permanent hard delete rather than ordinary

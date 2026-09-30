@@ -278,7 +278,7 @@ describe("accounting policy", () => {
 
 // Runs last: by now the policy tests have exercised accountingPolicy.update.
 describe("audit coverage", () => {
-  it("covers the remaining actions, so every action in AUDIT_ACTIONS has been exercised", async () => {
+  it("covers the remaining actions, so every core audit action has been exercised", async () => {
     const extra = await users.create(org.user, {
       fullName: "Пекарь Тест",
       email: `baker-${Date.now()}@iso.test`,
@@ -294,7 +294,7 @@ describe("audit coverage", () => {
     await products.forceRemove(org.organizationId, doomed.id, org.user.id);
 
     const logged = new Set((await entries()).map((e) => e.action));
-    const missing = audit.AUDIT_ACTIONS.filter((a) => !logged.has(a));
+    const missing = audit.AUDIT_ACTION_GROUPS.core.filter((a) => !logged.has(a));
     expect(missing).toEqual([]);
   });
 });

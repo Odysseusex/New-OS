@@ -289,6 +289,7 @@ model Organization {
 
   accountingPolicy AccountingPolicy?
   auditLogs        AuditLog[]
+  stocktakes       Stocktake[]
 
   @@map("organizations")
 }
@@ -348,6 +349,7 @@ model Location {
   productPrices     ProductLocationPrice[]
   promotions            Promotion[]
   promotionRedemptions  PromotionCoupon[]
+  stocktakes            Stocktake[]
 
   @@index([organizationId])
   @@index([regionId])
@@ -417,6 +419,8 @@ model User {
   promotionRedemptions      PromotionCoupon[]
   auditEntries              AuditLog[]         @relation("AuditActor")
   accountingPolicyUpdates   AccountingPolicy[] @relation("AccountingPolicyUpdatedBy")
+  stocktakesCreated         Stocktake[]        @relation("StocktakeCreatedBy")
+  stocktakesApproved        Stocktake[]        @relation("StocktakeApprovedBy")
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -539,6 +543,7 @@ model Product {
   purchaseOrderItems PurchaseOrderItem[]
   invoiceItems       InvoiceItem[]
   routeStopItems     RouteStopItem[]
+  stocktakeLines     StocktakeLine[]
 
   @@unique([organizationId, sku])
   @@index([organizationId])
@@ -622,6 +627,9 @@ model StockMovement {
   routeStop       RouteStop?        @relation(fields: [routeStopId], references: [id])
   invoiceId       String?
   invoice         Invoice?          @relation(fields: [invoiceId], references: [id])
+  // Set on the ADJUSTMENT rows an approved stocktake wrote (see Stocktake).
+  stocktakeId     String?
+  stocktake       Stocktake?        @relation(fields: [stocktakeId], references: [id])
   createdById     String
   createdBy       User              @relation(fields: [createdById], references: [id])
   createdAt       DateTime          @default(now())
@@ -1847,4 +1855,67 @@ model AuditLog {
   @@index([organizationId, createdAt])
   @@index([actorId])
   @@map("audit_logs")
+}
+
+// ── Stocktake / инвентаризация (Phase 2) ───────────────────────────────
+//
+// A physical-count document. StockLevel is never edited by it: approval
+// writes one signed ADJUSTMENT StockMovement per counted line whose count
+// differs from the snapshot, through the same atomic path as every other
+// stock change, so the ledger stays the only history.
+//
+// The difference is `counted − systemQuantity` (the snapshot taken when the
+// count started) and is APPLIED to whatever the level is at approval time —
+// sales and receipts made while people were counting are therefore kept, not
+// overwritten by the count.
+model Stocktake {
+  id             String          @id @default(cuid())
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  locationId     String
+  location       Location        @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  status         StocktakeStatus @default(COUNTING)
+  note           String?
+  snapshotAt     DateTime        @default(now())
+  createdById    String
+  createdBy      User            @relation("StocktakeCreatedBy", fields: [createdById], references: [id])
+  submittedAt    DateTime?
+  approvedAt     DateTime?
+  approvedById   String?
+  approvedBy     User?           @relation("StocktakeApprovedBy", fields: [approvedById], references: [id])
+  cancelledAt    DateTime?
+  cancelReason   String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  lines          StocktakeLine[]
+  stockMovements StockMovement[]
+
+  @@index([organizationId, locationId])
+  @@map("stocktakes")
+}
+
+model StocktakeLine {
+  id              String    @id @default(cuid())
+  stocktakeId     String
+  stocktake       Stocktake @relation(fields: [stocktakeId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  // StockLevel.quantity at snapshotAt (0 when the product had no level row).
+  systemQuantity  Decimal   @db.Decimal(12, 3)
+  // Null = not counted; an uncounted line is ignored at approval.
+  countedQuantity Decimal?  @db.Decimal(12, 3)
+  note            String?
+  // The ADJUSTMENT this line produced at approval (null when no difference).
+  movementId      String?   @unique
+
+  @@unique([stocktakeId, productId])
+  @@map("stocktake_lines")
+}
+
+enum StocktakeStatus {
+  COUNTING
+  REVIEW
+  APPROVED
+  CANCELLED
 }

@@ -20,3 +20,4 @@ export * from "./promotions";
 export * from "./dto";
 export * from "./accounting-policy";
 export * from "./audit";
+export * from "./stocktake";

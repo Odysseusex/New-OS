@@ -30,6 +30,8 @@ import { FiscalModule } from "./fiscal/fiscal.module";
 import { ConsignmentModule } from "./consignment/consignment.module";
 import { PromotionsModule } from "./promotions/promotions.module";
 import { AuditModule } from "./audit/audit.module";
+import { CostingModule } from "./costing/costing.service";
+import { StocktakeModule } from "./stocktake/stocktake.module";
 
 @Module({
   imports: [
@@ -63,6 +65,8 @@ import { AuditModule } from "./audit/audit.module";
     ConsignmentModule,
     PromotionsModule,
     AuditModule,
+    CostingModule,
+    StocktakeModule,
   ],
   controllers: [AppController],
 })

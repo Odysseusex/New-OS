@@ -8,6 +8,10 @@ export enum StockMovementType {
   ADJUSTMENT = "ADJUSTMENT",
   PRODUCTION_CONSUMPTION = "PRODUCTION_CONSUMPTION",
   PRODUCTION_OUTPUT = "PRODUCTION_OUTPUT",
+  // Written in pairs by delivery routes (origin → destination). They were in
+  // the database enum all along; this list simply had not caught up.
+  TRANSFER_OUT = "TRANSFER_OUT",
+  TRANSFER_IN = "TRANSFER_IN",
 }
 
 export const STOCK_MOVEMENT_TYPE_LABELS_RU: Record<StockMovementType, string> = {
@@ -18,6 +22,8 @@ export const STOCK_MOVEMENT_TYPE_LABELS_RU: Record<StockMovementType, string> = 
   [StockMovementType.ADJUSTMENT]: "Корректировка",
   [StockMovementType.PRODUCTION_CONSUMPTION]: "Расход на производство",
   [StockMovementType.PRODUCTION_OUTPUT]: "Выпуск продукции",
+  [StockMovementType.TRANSFER_OUT]: "Перемещение (отгрузка)",
+  [StockMovementType.TRANSFER_IN]: "Перемещение (поступление)",
 };
 
 // Categorizes a write-off so losses can be reported by cause rather than as

@@ -108,6 +108,10 @@ import type {
   FiscalReconcileResultDto,
   SaleReturnDto,
   CreateSaleReturnRequestDto,
+  StocktakeDto,
+  StocktakeSummaryDto,
+  CreateStocktakeRequestDto,
+  UpdateStocktakeLineRequestDto,
   TimeEntryDto,
   UpdateCashAccountRequestDto,
   UpdateCategoryRequestDto,
@@ -247,6 +251,21 @@ export const api = {
         method: "POST",
         body: JSON.stringify(dto),
       }),
+  },
+
+  stocktakes: {
+    list: (locationId?: string) =>
+      request<StocktakeSummaryDto[]>(withQuery("/stocktakes", { locationId })),
+    get: (id: string) => request<StocktakeDto>(`/stocktakes/${id}`),
+    create: (dto: CreateStocktakeRequestDto) =>
+      request<StocktakeDto>("/stocktakes", { method: "POST", body: JSON.stringify(dto) }),
+    updateLine: (id: string, lineId: string, dto: UpdateStocktakeLineRequestDto) =>
+      request<StocktakeDto>(`/stocktakes/${id}/lines/${lineId}`, { method: "PUT", body: JSON.stringify(dto) }),
+    submit: (id: string) => request<StocktakeDto>(`/stocktakes/${id}/submit`, { method: "POST" }),
+    reopen: (id: string) => request<StocktakeDto>(`/stocktakes/${id}/reopen`, { method: "POST" }),
+    approve: (id: string) => request<StocktakeDto>(`/stocktakes/${id}/approve`, { method: "POST" }),
+    cancel: (id: string, reason: string) =>
+      request<StocktakeDto>(`/stocktakes/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }),
   },
 
   quality: {

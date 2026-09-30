@@ -12,15 +12,20 @@ import { FakeFiscalProvider } from "../../src/fiscal/fake-fiscal.provider";
 import { PromotionsService } from "../../src/promotions/promotions.service";
 import { SalesService } from "../../src/sales/sales.service";
 import { SaleReturnsService } from "../../src/sales/sale-returns.service";
+import { CostingService } from "../../src/costing/costing.service";
+import { StocktakeService } from "../../src/stocktake/stocktake.service";
 
 // The same hand-wiring the existing specs use (no Nest container), in one
 // place. Callers must clear FISCALIZATION_ENABLED first so a sale is a plain
 // sale — fiscal behaviour has its own specs.
 export function buildServices(prisma: PrismaService) {
   const cash = new CashMovementsService(prisma);
+  const costing = new CostingService(prisma);
   const fiscal = new FiscalService(prisma, new FakeFiscalProvider(), new FiscalSettings());
   return {
     cash,
+    costing,
+    stocktake: new StocktakeService(prisma, costing),
     finance: new FinanceService(prisma, cash),
     inventory: new InventoryService(prisma),
     invoices: new InvoicesService(prisma, cash),

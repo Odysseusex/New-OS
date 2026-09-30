@@ -1,42 +1,48 @@
 import { Prisma } from "@prisma/client";
 
-// Every audited action, named `<entity>.<verb>`. A closed list so a typo
-// cannot create an action nobody ever filters for.
-export const AUDIT_ACTIONS = [
-  "user.create",
-  "user.update",
-  "user.archive",
-  "user.restore",
-  "product.update",
-  "product.delete",
-  "product.forceDelete",
-  "product.locationPrice.set",
-  "product.locationPrice.clear",
-  "financeCategory.create",
-  "financeCategory.update",
-  "financeCategory.costBehavior",
-  "financeCategory.archive",
-  "financeCategory.restore",
-  "financeCategory.delete",
-  "cashAccount.create",
-  "cashAccount.update",
-  "cashAccount.setDefault",
-  "cashAccount.archive",
-  "cashAccount.restore",
-  "expense.confirm",
-  "expense.cancel",
-  "financeSetup.reconcileInvoices",
-  "financeSetup.complete",
-  "purchaseOrder.receive",
-  "purchaseOrder.cancel",
-  "invoice.confirm",
-  "invoice.cancel",
-  "productionBatch.cancel",
-  "productionBatch.delete",
-  "accountingPolicy.update",
-] as const;
+// Every audited action, named `<entity>.<verb>`, grouped by the domain that
+// writes it. A closed list so a typo cannot create an action nobody filters
+// for; each domain's spec asserts its own group is fully exercised.
+export const AUDIT_ACTION_GROUPS = {
+  core: [
+    "user.create",
+    "user.update",
+    "user.archive",
+    "user.restore",
+    "product.update",
+    "product.delete",
+    "product.forceDelete",
+    "product.locationPrice.set",
+    "product.locationPrice.clear",
+    "financeCategory.create",
+    "financeCategory.update",
+    "financeCategory.costBehavior",
+    "financeCategory.archive",
+    "financeCategory.restore",
+    "financeCategory.delete",
+    "cashAccount.create",
+    "cashAccount.update",
+    "cashAccount.setDefault",
+    "cashAccount.archive",
+    "cashAccount.restore",
+    "expense.confirm",
+    "expense.cancel",
+    "financeSetup.reconcileInvoices",
+    "financeSetup.complete",
+    "purchaseOrder.receive",
+    "purchaseOrder.cancel",
+    "invoice.confirm",
+    "invoice.cancel",
+    "productionBatch.cancel",
+    "productionBatch.delete",
+    "accountingPolicy.update",
+  ],
+  stocktake: ["stocktake.create", "stocktake.submit", "stocktake.reopen", "stocktake.approve", "stocktake.cancel"],
+} as const;
 
-export type AuditAction = (typeof AUDIT_ACTIONS)[number];
+type Groups = typeof AUDIT_ACTION_GROUPS;
+export type AuditAction = Groups[keyof Groups][number];
+export const AUDIT_ACTIONS: readonly AuditAction[] = Object.values(AUDIT_ACTION_GROUPS).flat();
 
 export interface AuditEntry {
   organizationId: string;

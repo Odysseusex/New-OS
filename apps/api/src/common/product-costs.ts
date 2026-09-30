@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 
 // Unit cost per product, resolved the one way the whole app agrees on.
@@ -17,7 +18,7 @@ import { PrismaService } from "../prisma/prisma.service";
 // that as "unknown", never as zero: a zero cost turns into a 100% margin and
 // quietly flatters the whole period.
 export async function resolveProductUnitCosts(
-  prisma: PrismaService,
+  prisma: PrismaService | Prisma.TransactionClient,
   organizationId: string,
 ): Promise<Map<string, number>> {
   const [recipes, purchaseItems] = await Promise.all([
