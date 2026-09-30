@@ -29,6 +29,7 @@ import { TelegramModule } from "./telegram/telegram.module";
 import { FiscalModule } from "./fiscal/fiscal.module";
 import { ConsignmentModule } from "./consignment/consignment.module";
 import { PromotionsModule } from "./promotions/promotions.module";
+import { AuditModule } from "./audit/audit.module";
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { PromotionsModule } from "./promotions/promotions.module";
     FiscalModule,
     ConsignmentModule,
     PromotionsModule,
+    AuditModule,
   ],
   controllers: [AppController],
 })

@@ -228,6 +228,14 @@ export const QUALITY_VIEW_ROLES: Role[] = [
 // otherwise create/edit/archive the same entity type.
 export const HARD_DELETE_ROLES: Role[] = [Role.OWNER, Role.ADMIN];
 
+// Approving an accounting policy changes what the numbers mean, so it is held
+// to the same bar as a permanent delete.
+export const POLICY_MANAGE_ROLES: Role[] = HARD_DELETE_ROLES;
+
+// The audit log shows who changed prices, roles and financial settings — the
+// same people who can make those changes permanently.
+export const AUDIT_VIEW_ROLES: Role[] = HARD_DELETE_ROLES;
+
 // "Запуск финансового учёта" declares the whole company's opening financial
 // position, once, ever — the most sensitive single action in the app, so it
 // follows the same bar as a permanent hard delete rather than ordinary

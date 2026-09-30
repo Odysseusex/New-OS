@@ -15,6 +15,8 @@ import { CreateBatchDto } from "./dto/create-batch.dto";
 import { UpdateBatchDto } from "./dto/update-batch.dto";
 import { CancelBatchDto } from "./dto/cancel-batch.dto";
 import { CompleteBatchDto } from "./dto/complete-batch.dto";
+import { decrementStockOrThrow } from "../common/stock-guard";
+import { recordAudit } from "../audit/audit";
 
 @Injectable()
 export class ProductionService {
@@ -206,7 +208,23 @@ export class ProductionService {
       throw new BadRequestException("Удалить можно только запланированное задание, которое ещё не запущено");
     }
 
-    await this.prisma.productionBatch.delete({ where: { id: batchId } });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.productionBatch.delete({ where: { id: batchId } });
+      await recordAudit(tx, {
+        organizationId: user.organizationId,
+        actorId: user.id,
+        action: "productionBatch.delete",
+        entityType: "ProductionBatch",
+        entityId: batchId,
+        before: {
+          status: batch.status,
+          recipeId: batch.recipeId,
+          locationId: batch.locationId,
+          plannedQuantity: batch.plannedQuantity,
+          scheduledFor: batch.scheduledFor,
+        },
+      });
+    });
     return { deleted: true };
   }
 
@@ -270,10 +288,11 @@ export class ProductionService {
 
       for (const item of trackedItems) {
         const requiredQuantity = item.quantity.toNumber() * scale;
-        await tx.stockLevel.update({
-          where: { locationId_productId: { locationId: batch.locationId, productId: item.ingredientProductId } },
-          data: { quantity: { decrement: requiredQuantity } },
-        });
+        await decrementStockOrThrow(
+          tx,
+          { locationId: batch.locationId, productId: item.ingredientProductId, quantity: requiredQuantity },
+          `Недостаточно ингредиента «${item.ingredientProduct.name}» на точке для этого объёма`,
+        );
       }
 
       if (trackedItems.length > 0) {
@@ -351,14 +370,27 @@ export class ProductionService {
       throw new BadRequestException("Укажите причину прерывания производства");
     }
 
-    const updated = await this.prisma.productionBatch.update({
-      where: { id: batchId },
-      data: {
-        status: PrismaProductionBatchStatus.CANCELLED,
-        cancelReason: dto.reason,
-        cancelNote: dto.note,
-      },
-      include: { location: true, recipe: { include: { product: true } }, createdBy: true },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const saved = await tx.productionBatch.update({
+        where: { id: batchId },
+        data: {
+          status: PrismaProductionBatchStatus.CANCELLED,
+          cancelReason: dto.reason,
+          cancelNote: dto.note,
+        },
+        include: { location: true, recipe: { include: { product: true } }, createdBy: true },
+      });
+      await recordAudit(tx, {
+        organizationId: user.organizationId,
+        actorId: user.id,
+        action: "productionBatch.cancel",
+        entityType: "ProductionBatch",
+        entityId: batchId,
+        before: { status: batch.status },
+        after: { status: saved.status, cancelReason: dto.reason ?? null },
+        reason: dto.note ?? null,
+      });
+      return saved;
     });
 
     return this.toDto(updated);

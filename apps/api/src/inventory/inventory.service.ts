@@ -10,6 +10,7 @@ import {
   WriteOffReason,
 } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
+import { decrementStockOrThrow } from "../common/stock-guard";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
 import { ReceiveStockDto } from "./dto/receive-stock.dto";
 import { WriteOffStockDto } from "./dto/write-off-stock.dto";
@@ -158,6 +159,7 @@ export class InventoryService {
       writeOffReason: dto.writeOffReason,
       type: PrismaStockMovementType.WRITE_OFF,
       delta: -dto.quantity,
+      insufficientMessage: "Недостаточно товара на складе для списания",
     });
   }
 
@@ -186,6 +188,9 @@ export class InventoryService {
       reason: dto.reason,
       type: PrismaStockMovementType.ADJUSTMENT,
       delta,
+      // Only reachable if stock moved between reading it above and writing
+      // the correction: the computed difference is stale, so recount.
+      insufficientMessage: "Остаток изменился во время корректировки — обновите данные и повторите",
     });
   }
 
@@ -209,6 +214,7 @@ export class InventoryService {
       writeOffReason?: WriteOffReason;
       type: PrismaStockMovementType;
       delta: number;
+      insufficientMessage?: string;
     },
   ): Promise<StockMovementDto> {
     const product = await this.prisma.product.findFirst({
@@ -218,8 +224,8 @@ export class InventoryService {
       throw new NotFoundException("Товар не найден");
     }
 
-    const [movement] = await this.prisma.$transaction([
-      this.prisma.stockMovement.create({
+    const movement = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.stockMovement.create({
         data: {
           organizationId: user.organizationId,
           locationId: params.locationId,
@@ -231,21 +237,33 @@ export class InventoryService {
           createdById: user.id,
         },
         include: { location: true, product: true, createdBy: true },
-      }),
-      this.prisma.stockLevel.upsert({
-        where: {
-          locationId_productId: { locationId: params.locationId, productId: params.productId },
-        },
-        update: { quantity: { increment: params.delta } },
-        create: {
-          organizationId: user.organizationId,
-          locationId: params.locationId,
-          productId: params.productId,
-          quantity: params.delta,
-          minQuantity: product.minQuantity,
-        },
-      }),
-    ]);
+      });
+
+      if (params.delta < 0) {
+        // Removing stock is conditional on it being there at the moment of
+        // the write, not at the moment of the earlier read (see stock-guard).
+        await decrementStockOrThrow(
+          tx,
+          { locationId: params.locationId, productId: params.productId, quantity: -params.delta },
+          params.insufficientMessage ?? "Недостаточно товара на складе",
+        );
+      } else {
+        await tx.stockLevel.upsert({
+          where: {
+            locationId_productId: { locationId: params.locationId, productId: params.productId },
+          },
+          update: { quantity: { increment: params.delta } },
+          create: {
+            organizationId: user.organizationId,
+            locationId: params.locationId,
+            productId: params.productId,
+            quantity: params.delta,
+            minQuantity: product.minQuantity,
+          },
+        });
+      }
+      return created;
+    });
 
     return {
       id: movement.id,

@@ -5,6 +5,11 @@ import { ORG_WIDE_ROLES, Role, UserAccountDto } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { CreateUserAccountDto } from "./dto/create-user-account.dto";
 import { UpdateUserAccountDto } from "./dto/update-user-account.dto";
+import { auditFields, recordAudit } from "../audit/audit";
+
+// What the audit log keeps about an account. Never the password hash — a
+// password change is recorded only as the fact that it happened.
+const USER_AUDIT_FIELDS = ["fullName", "email", "role", "title", "locationId", "isActive"] as const;
 
 @Injectable()
 export class UsersService {
@@ -36,17 +41,28 @@ export class UsersService {
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
-    const user = await this.prisma.user.create({
-      data: {
+    const user = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          organizationId: actor.organizationId,
+          fullName: dto.fullName,
+          email: dto.email,
+          passwordHash,
+          role: dto.role,
+          title: dto.title || null,
+          locationId,
+        },
+        include: { location: true },
+      });
+      await recordAudit(tx, {
         organizationId: actor.organizationId,
-        fullName: dto.fullName,
-        email: dto.email,
-        passwordHash,
-        role: dto.role,
-        title: dto.title || null,
-        locationId,
-      },
-      include: { location: true },
+        actorId: actor.id,
+        action: "user.create",
+        entityType: "User",
+        entityId: created.id,
+        after: auditFields(created, USER_AUDIT_FIELDS),
+      });
+      return created;
     });
     return this.toDto(user);
   }
@@ -84,17 +100,30 @@ export class UsersService {
       }
     }
 
-    const updated = await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        fullName: dto.fullName ?? undefined,
-        email: dto.email ?? undefined,
-        role: dto.role ?? undefined,
-        title: dto.title !== undefined ? dto.title || null : undefined,
-        locationId: nextLocationId,
-        passwordHash: dto.password ? await bcrypt.hash(dto.password, 10) : undefined,
-      },
-      include: { location: true },
+    const passwordHash = dto.password ? await bcrypt.hash(dto.password, 10) : undefined;
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const saved = await tx.user.update({
+        where: { id: userId },
+        data: {
+          fullName: dto.fullName ?? undefined,
+          email: dto.email ?? undefined,
+          role: dto.role ?? undefined,
+          title: dto.title !== undefined ? dto.title || null : undefined,
+          locationId: nextLocationId,
+          passwordHash,
+        },
+        include: { location: true },
+      });
+      await recordAudit(tx, {
+        organizationId: actor.organizationId,
+        actorId: actor.id,
+        action: "user.update",
+        entityType: "User",
+        entityId: userId,
+        before: auditFields(target, USER_AUDIT_FIELDS),
+        after: { ...auditFields(saved, USER_AUDIT_FIELDS), ...(passwordHash ? { passwordChanged: true } : {}) },
+      });
+      return saved;
     });
     return this.toDto(updated);
   }
@@ -126,10 +155,22 @@ export class UsersService {
       }
     }
 
-    const updated = await this.prisma.user.update({
-      where: { id: userId },
-      data: { isActive },
-      include: { location: true },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const saved = await tx.user.update({
+        where: { id: userId },
+        data: { isActive },
+        include: { location: true },
+      });
+      await recordAudit(tx, {
+        organizationId: actor.organizationId,
+        actorId: actor.id,
+        action: isActive ? "user.restore" : "user.archive",
+        entityType: "User",
+        entityId: userId,
+        before: { isActive: target.isActive },
+        after: { isActive },
+      });
+      return saved;
     });
     return this.toDto(updated);
   }

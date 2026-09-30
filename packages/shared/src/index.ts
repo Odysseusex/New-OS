@@ -18,3 +18,5 @@ export * from "./fiscal";
 export * from "./consignment";
 export * from "./promotions";
 export * from "./dto";
+export * from "./accounting-policy";
+export * from "./audit";

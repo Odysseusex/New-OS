@@ -287,6 +287,9 @@ model Organization {
 
   plannedFixedCosts PlannedFixedCost[]
 
+  accountingPolicy AccountingPolicy?
+  auditLogs        AuditLog[]
+
   @@map("organizations")
 }
 
@@ -412,6 +415,8 @@ model User {
   telegramNotificationLogs  TelegramNotificationLog[]
   promotionsCreated         Promotion[]
   promotionRedemptions      PromotionCoupon[]
+  auditEntries              AuditLog[]         @relation("AuditActor")
+  accountingPolicyUpdates   AccountingPolicy[] @relation("AccountingPolicyUpdatedBy")
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -1746,4 +1751,100 @@ model TelegramNotificationLog {
 
   @@unique([userId, key])
   @@map("telegram_notification_logs")
+}
+
+// ── Accounting policy (Phase 1) ─────────────────────────────────────────
+//
+// One row per organization, created on the first approved change — never
+// seeded with invented values. Every field is nullable and NULL means "not
+// approved": the system then keeps its CURRENT BEHAVIOUR (reported as such,
+// never as policy). A value exists only once someone with POLICY_MANAGE_ROLES
+// set it, and `approvals` records who and when, per field. Every change is
+// also written to AuditLog in the same transaction.
+//
+// Deliberately absent until the business decides them (additive migrations
+// then): the inventory costing method (D2), production-cost composition
+// (D6), tax treatment (D5) and the residual-value / start-convention rules of
+// depreciation (D4). No field here is read by any calculation yet.
+model AccountingPolicy {
+  id             String       @id @default(cuid())
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  negativeStockPolicy          NegativeStockPolicy?
+  writeOffPresentation         WriteOffPresentation?
+  returnScrapPresentation      ReturnScrapPresentation?
+  balanceControlMode           BalanceControlMode?
+  capitalizationThreshold      Decimal?                 @db.Decimal(14, 2)
+  depreciationMethod           DepreciationMethod?
+  depreciationUsefulLifeMonths Int?
+
+  // { "<fieldName>": { "approvedAt": ISO, "approvedById": userId } }
+  approvals Json @default("{}")
+
+  updatedById String?
+  updatedBy   User?    @relation("AccountingPolicyUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("accounting_policies")
+}
+
+// Only BLOCK is implemented (stock never goes below zero). A second mode is
+// added only when it is built and approved.
+enum NegativeStockPolicy {
+  BLOCK
+}
+
+enum WriteOffPresentation {
+  SEPARATE_LINE
+  IN_COGS
+}
+
+enum ReturnScrapPresentation {
+  KEEP_IN_COGS
+  INVENTORY_LOSS
+}
+
+enum BalanceControlMode {
+  WARN
+  BLOCK
+}
+
+// NOT_DEPRECIATED is an explicit decision ("this is not depreciated"),
+// distinct from NULL ("not decided yet").
+enum DepreciationMethod {
+  STRAIGHT_LINE
+  NOT_DEPRECIATED
+}
+
+// ── Audit log (Phase 1) ─────────────────────────────────────────────────
+//
+// Append-only record of important mutations that no ledger already records:
+// who changed a price, a role, a finance category; who confirmed or cancelled
+// a document; who changed accounting policy. Written with recordAudit() INSIDE
+// the transaction of the mutation it describes, so a rolled-back change leaves
+// no entry and a committed change always has one. Ledger rows (StockMovement,
+// CashMovement) are not duplicated here — they carry their own createdById.
+//
+// `before` / `after` hold only whitelisted fields (never password hashes).
+// Nothing in the application updates or deletes a row of this table.
+model AuditLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actorId        String?
+  actor          User?        @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  action         String
+  entityType     String
+  entityId       String
+  before         Json?
+  after          Json?
+  reason         String?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, entityType, entityId])
+  @@index([organizationId, createdAt])
+  @@index([actorId])
+  @@map("audit_logs")
 }

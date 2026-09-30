@@ -11,6 +11,8 @@ import { FinanceSetupService } from "./finance-setup.service";
 import { FinanceSetupController } from "./finance-setup.controller";
 import { PlannedFixedCostsService } from "./planned-fixed-costs.service";
 import { PlannedFixedCostsController } from "./planned-fixed-costs.controller";
+import { AccountingPolicyService } from "./accounting-policy.service";
+import { AccountingPolicyController } from "./accounting-policy.controller";
 
 @Module({
   providers: [
@@ -20,6 +22,7 @@ import { PlannedFixedCostsController } from "./planned-fixed-costs.controller";
     CashMovementsService,
     FinanceSetupService,
     PlannedFixedCostsService,
+    AccountingPolicyService,
   ],
   controllers: [
     FinanceController,
@@ -28,6 +31,7 @@ import { PlannedFixedCostsController } from "./planned-fixed-costs.controller";
     CashMovementsController,
     FinanceSetupController,
     PlannedFixedCostsController,
+    AccountingPolicyController,
   ],
   // CashMovementsService is the single writer for the money ledger — other
   // modules (Sales, Invoices) inject it to record a movement as part of

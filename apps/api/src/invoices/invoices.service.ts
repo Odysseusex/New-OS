@@ -7,6 +7,7 @@ import { requireLocationScope, resolveLocationScope } from "../common/location-s
 import { CashMovementsService } from "../finance/cash-movements.service";
 import { CreateInvoiceDto } from "./dto/create-invoice.dto";
 import { RecordInvoicePaymentDto } from "./dto/record-invoice-payment.dto";
+import { recordAudit } from "../audit/audit";
 
 const INVOICE_INCLUDE = {
   supplier: true,
@@ -130,6 +131,16 @@ export class InvoicesService {
         include: INVOICE_INCLUDE,
       });
 
+      await recordAudit(tx, {
+        organizationId: user.organizationId,
+        actorId: user.id,
+        action: "invoice.confirm",
+        entityType: "Invoice",
+        entityId: invoice.id,
+        before: { status: invoice.status },
+        after: { status: updated.status, confirmedAt: updated.confirmedAt, totalCost: updated.totalCost },
+      });
+
       return this.toDto(updated);
     });
   }
@@ -146,10 +157,22 @@ export class InvoicesService {
       throw new BadRequestException("Проведённую накладную нельзя отменить — она уже изменила остатки");
     }
 
-    const updated = await this.prisma.invoice.update({
-      where: { id: invoiceId },
-      data: { status: PrismaInvoiceStatus.CANCELLED },
-      include: INVOICE_INCLUDE,
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const saved = await tx.invoice.update({
+        where: { id: invoiceId },
+        data: { status: PrismaInvoiceStatus.CANCELLED },
+        include: INVOICE_INCLUDE,
+      });
+      await recordAudit(tx, {
+        organizationId: user.organizationId,
+        actorId: user.id,
+        action: "invoice.cancel",
+        entityType: "Invoice",
+        entityId: invoiceId,
+        before: { status: invoice.status },
+        after: { status: saved.status },
+      });
+      return saved;
     });
 
     return this.toDto(updated);

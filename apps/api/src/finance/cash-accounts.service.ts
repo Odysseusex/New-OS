@@ -4,6 +4,11 @@ import { CashAccountDto, CashAccountType, CashMovementType } from "@bakery-os/sh
 import { AuthenticatedUser } from "../auth/auth.types";
 import { CreateCashAccountDto } from "./dto/create-cash-account.dto";
 import { UpdateCashAccountDto } from "./dto/update-cash-account.dto";
+import { auditFields, recordAudit } from "../audit/audit";
+
+// currentBalance is deliberately left out: it only ever moves through the
+// cash ledger, which records every change on its own.
+const CASH_ACCOUNT_AUDIT_FIELDS = ["name", "type", "locationId", "isDefault", "isActive"] as const;
 
 const ACCOUNT_INCLUDE = { location: true };
 
@@ -73,6 +78,15 @@ export class CashAccountsService {
         include: ACCOUNT_INCLUDE,
       });
 
+      await recordAudit(tx, {
+        organizationId: user.organizationId,
+        actorId: user.id,
+        action: "cashAccount.create",
+        entityType: "CashAccount",
+        entityId: created.id,
+        after: { ...auditFields(created, CASH_ACCOUNT_AUDIT_FIELDS), openingBalance },
+      });
+
       if (openingBalance !== 0) {
         await tx.cashMovement.create({
           data: {
@@ -92,15 +106,32 @@ export class CashAccountsService {
     return this.toDto(account);
   }
 
-  async update(organizationId: string, accountId: string, dto: UpdateCashAccountDto): Promise<CashAccountDto> {
+  async update(
+    organizationId: string,
+    accountId: string,
+    dto: UpdateCashAccountDto,
+    actorId: string | null,
+  ): Promise<CashAccountDto> {
     const account = await this.prisma.cashAccount.findFirst({ where: { id: accountId, organizationId } });
     if (!account) {
       throw new NotFoundException("Счёт не найден");
     }
-    const updated = await this.prisma.cashAccount.update({
-      where: { id: accountId },
-      data: { name: dto.name },
-      include: ACCOUNT_INCLUDE,
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const saved = await tx.cashAccount.update({
+        where: { id: accountId },
+        data: { name: dto.name },
+        include: ACCOUNT_INCLUDE,
+      });
+      await recordAudit(tx, {
+        organizationId,
+        actorId,
+        action: "cashAccount.update",
+        entityType: "CashAccount",
+        entityId: accountId,
+        before: auditFields(account, CASH_ACCOUNT_AUDIT_FIELDS),
+        after: auditFields(saved, CASH_ACCOUNT_AUDIT_FIELDS),
+      });
+      return saved;
     });
     return this.toDto(updated);
   }
@@ -121,33 +152,60 @@ export class CashAccountsService {
         where: { organizationId: user.organizationId, type: CashAccountType.BANK, isDefault: true },
         data: { isDefault: false },
       });
-      return tx.cashAccount.update({
+      const saved = await tx.cashAccount.update({
         where: { id: accountId },
         data: { isDefault: true },
         include: ACCOUNT_INCLUDE,
       });
+      await recordAudit(tx, {
+        organizationId: user.organizationId,
+        actorId: user.id,
+        action: "cashAccount.setDefault",
+        entityType: "CashAccount",
+        entityId: accountId,
+        before: { isDefault: account.isDefault },
+        after: { isDefault: true },
+      });
+      return saved;
     });
 
     return this.toDto(updated);
   }
 
-  async archive(organizationId: string, accountId: string): Promise<CashAccountDto> {
-    return this.setActive(organizationId, accountId, false);
+  async archive(organizationId: string, accountId: string, actorId: string | null): Promise<CashAccountDto> {
+    return this.setActive(organizationId, accountId, false, actorId);
   }
 
-  async restore(organizationId: string, accountId: string): Promise<CashAccountDto> {
-    return this.setActive(organizationId, accountId, true);
+  async restore(organizationId: string, accountId: string, actorId: string | null): Promise<CashAccountDto> {
+    return this.setActive(organizationId, accountId, true, actorId);
   }
 
-  private async setActive(organizationId: string, accountId: string, isActive: boolean): Promise<CashAccountDto> {
+  private async setActive(
+    organizationId: string,
+    accountId: string,
+    isActive: boolean,
+    actorId: string | null,
+  ): Promise<CashAccountDto> {
     const account = await this.prisma.cashAccount.findFirst({ where: { id: accountId, organizationId } });
     if (!account) {
       throw new NotFoundException("Счёт не найден");
     }
-    const updated = await this.prisma.cashAccount.update({
-      where: { id: accountId },
-      data: { isActive },
-      include: ACCOUNT_INCLUDE,
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const saved = await tx.cashAccount.update({
+        where: { id: accountId },
+        data: { isActive },
+        include: ACCOUNT_INCLUDE,
+      });
+      await recordAudit(tx, {
+        organizationId,
+        actorId,
+        action: isActive ? "cashAccount.restore" : "cashAccount.archive",
+        entityType: "CashAccount",
+        entityId: accountId,
+        before: { isActive: account.isActive },
+        after: { isActive },
+      });
+      return saved;
     });
     return this.toDto(updated);
   }

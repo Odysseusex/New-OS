@@ -51,7 +51,7 @@ export class ProductsController {
     @Param("productId") productId: string,
     @Body() dto: SetLocationPriceDto,
   ) {
-    return this.productsService.setLocationPrice(user.organizationId, locationId, productId, dto.price);
+    return this.productsService.setLocationPrice(user.organizationId, locationId, productId, dto.price, user.id);
   }
 
   @Delete("location-prices/:locationId/:productId")
@@ -61,7 +61,7 @@ export class ProductsController {
     @Param("locationId") locationId: string,
     @Param("productId") productId: string,
   ) {
-    return this.productsService.clearLocationPrice(user.organizationId, locationId, productId);
+    return this.productsService.clearLocationPrice(user.organizationId, locationId, productId, user.id);
   }
 
   // The till needs this row to ring up an item that is not in the catalogue
@@ -83,7 +83,7 @@ export class ProductsController {
   @Patch(":id")
   @Roles(...PRODUCT_MANAGE_ROLES)
   update(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: UpdateProductDto) {
-    return this.productsService.update(user.organizationId, id, dto);
+    return this.productsService.update(user.organizationId, id, dto, user.id);
   }
 
   @Post(":id/archive")
@@ -101,12 +101,12 @@ export class ProductsController {
   @Delete(":id")
   @Roles(...HARD_DELETE_ROLES)
   remove(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.productsService.remove(user.organizationId, id);
+    return this.productsService.remove(user.organizationId, id, user.id);
   }
 
   @Delete(":id/force")
   @Roles(...PRODUCT_FORCE_DELETE_ROLES)
   forceRemove(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.productsService.forceRemove(user.organizationId, id);
+    return this.productsService.forceRemove(user.organizationId, id, user.id);
   }
 }

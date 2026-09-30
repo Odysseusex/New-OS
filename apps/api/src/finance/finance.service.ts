@@ -35,6 +35,7 @@ import { AuthenticatedUser } from "../auth/auth.types";
 import { CashMovementsService } from "./cash-movements.service";
 import { CreateExpenseDto } from "./dto/create-expense.dto";
 import { RecordExpensePaymentDto } from "./dto/record-expense-payment.dto";
+import { recordAudit } from "../audit/audit";
 
 const EXPENSE_INCLUDE = { location: true, categoryRef: true, createdBy: true };
 
@@ -133,7 +134,7 @@ export class FinanceService {
     return this.toExpenseDto(expense);
   }
 
-  async confirmExpense(organizationId: string, expenseId: string): Promise<ExpenseDto> {
+  async confirmExpense(organizationId: string, expenseId: string, actorId: string | null): Promise<ExpenseDto> {
     const expense = await this.prisma.expense.findFirst({ where: { id: expenseId, organizationId } });
     if (!expense) {
       throw new NotFoundException("Расход не найден");
@@ -141,15 +142,27 @@ export class FinanceService {
     if (expense.status !== ExpenseStatus.DRAFT) {
       throw new BadRequestException("Расход уже подтверждён или отменён");
     }
-    const updated = await this.prisma.expense.update({
-      where: { id: expenseId },
-      data: { status: ExpenseStatus.CONFIRMED },
-      include: EXPENSE_INCLUDE,
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const saved = await tx.expense.update({
+        where: { id: expenseId },
+        data: { status: ExpenseStatus.CONFIRMED },
+        include: EXPENSE_INCLUDE,
+      });
+      await recordAudit(tx, {
+        organizationId,
+        actorId,
+        action: "expense.confirm",
+        entityType: "Expense",
+        entityId: expenseId,
+        before: { status: expense.status, amount: expense.amount },
+        after: { status: ExpenseStatus.CONFIRMED, amount: expense.amount },
+      });
+      return saved;
     });
     return this.toExpenseDto(updated);
   }
 
-  async cancelExpense(organizationId: string, expenseId: string): Promise<ExpenseDto> {
+  async cancelExpense(organizationId: string, expenseId: string, actorId: string | null): Promise<ExpenseDto> {
     const expense = await this.prisma.expense.findFirst({ where: { id: expenseId, organizationId } });
     if (!expense) {
       throw new NotFoundException("Расход не найден");
@@ -160,10 +173,22 @@ export class FinanceService {
     if (expense.amountPaid.toNumber() > 0) {
       throw new BadRequestException("Нельзя отменить расход, по которому уже прошла оплата");
     }
-    const updated = await this.prisma.expense.update({
-      where: { id: expenseId },
-      data: { status: ExpenseStatus.CANCELLED },
-      include: EXPENSE_INCLUDE,
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const saved = await tx.expense.update({
+        where: { id: expenseId },
+        data: { status: ExpenseStatus.CANCELLED },
+        include: EXPENSE_INCLUDE,
+      });
+      await recordAudit(tx, {
+        organizationId,
+        actorId,
+        action: "expense.cancel",
+        entityType: "Expense",
+        entityId: expenseId,
+        before: { status: expense.status, amount: expense.amount },
+        after: { status: ExpenseStatus.CANCELLED, amount: expense.amount },
+      });
+      return saved;
     });
     return this.toExpenseDto(updated);
   }

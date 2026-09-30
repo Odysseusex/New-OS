@@ -87,6 +87,9 @@
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node",
+    "setupFiles": [
+      "<rootDir>/../test/support/db-guard.setup.ts"
+    ],
     "maxWorkers": 1
   }
 }

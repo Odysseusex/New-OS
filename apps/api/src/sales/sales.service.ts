@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import {
@@ -36,6 +36,7 @@ import { AuthenticatedUser } from "../auth/auth.types";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
 import { deltaPct, previousRangeOf } from "../common/period-range";
 import { resolveProductUnitCosts } from "../common/product-costs";
+import { decrementStockOrThrow } from "../common/stock-guard";
 import { CashMovementsService } from "../finance/cash-movements.service";
 import { buildFiscalSaleRequest, FiscalService } from "../fiscal/fiscal.service";
 import { FiscalSettings } from "../fiscal/fiscal.settings";
@@ -78,6 +79,8 @@ const SALE_DETAIL_INCLUDE = {
 
 @Injectable()
 export class SalesService {
+  private readonly logger = new Logger(SalesService.name);
+
   constructor(
     private prisma: PrismaService,
     private cashMovementsService: CashMovementsService,
@@ -1232,14 +1235,21 @@ export class SalesService {
             reason: split ? `Продажа (${PAYMENT_METHOD_LABELS_RU[tender.method]})` : "Продажа",
             createdById: user.id,
           });
+        } else {
+          // Never blocks the sale (the till must keep selling); the missing
+          // account is surfaced as a live notification to org-wide roles.
+          this.logger.warn(
+            `Sale ${sale.id}: ${tender.method} tender of ${tender.amount} recorded in no account — no active default BANK account`,
+          );
         }
       }
 
       for (const item of stockedItems) {
-        await tx.stockLevel.update({
-          where: { locationId_productId: { locationId, productId: item.productId } },
-          data: { quantity: { decrement: item.quantity } },
-        });
+        await decrementStockOrThrow(
+          tx,
+          { locationId, productId: item.productId, quantity: item.quantity },
+          `Недостаточно товара «${productById.get(item.productId)?.name ?? item.productId}» на складе точки`,
+        );
       }
 
       await tx.stockMovement.createMany({

@@ -36,6 +36,11 @@ export interface RecordMovementParams {
   transferGroupId?: string;
   correctsMovementId?: string;
   createdById: string;
+  // When set, an outflow only happens if the account holds at least that much
+  // at the moment of the write (one conditional UPDATE); otherwise this message
+  // is thrown. Only meaningful inside a transaction, so the movement row
+  // created just before rolls back with it.
+  insufficientBalanceMessage?: string;
 }
 
 // The single append-only ledger — the financial counterpart of
@@ -81,6 +86,17 @@ export class CashMovementsService {
       include: MOVEMENT_INCLUDE,
     });
 
+    if (params.insufficientBalanceMessage && delta < 0) {
+      const result = await tx.cashAccount.updateMany({
+        where: { id: params.accountId, currentBalance: { gte: -delta } },
+        data: { currentBalance: { increment: delta } },
+      });
+      if (result.count !== 1) {
+        throw new BadRequestException(params.insufficientBalanceMessage);
+      }
+      return movement;
+    }
+
     await tx.cashAccount.update({
       where: { id: params.accountId },
       data: { currentBalance: { increment: delta } },
@@ -104,16 +120,21 @@ export class CashMovementsService {
     return movements.map(this.toDto);
   }
 
+  // The movement row and the balance change commit together or not at all —
+  // previously they were two separate statements, so a failure between them
+  // left a movement with no balance change (or the reverse).
   async deposit(user: AuthenticatedUser, dto: CashDepositDto): Promise<CashMovementDto> {
     await this.assertAccount(user.organizationId, dto.accountId);
-    const movement = await this.recordMovement(this.prisma, {
-      organizationId: user.organizationId,
-      accountId: dto.accountId,
-      type: CashMovementType.CASH_DEPOSIT,
-      amount: dto.amount,
-      reason: dto.reason,
-      createdById: user.id,
-    });
+    const movement = await this.prisma.$transaction((tx) =>
+      this.recordMovement(tx, {
+        organizationId: user.organizationId,
+        accountId: dto.accountId,
+        type: CashMovementType.CASH_DEPOSIT,
+        amount: dto.amount,
+        reason: dto.reason,
+        createdById: user.id,
+      }),
+    );
     return this.toDto(movement);
   }
 
@@ -122,14 +143,19 @@ export class CashMovementsService {
     if (account.currentBalance.toNumber() < dto.amount) {
       throw new BadRequestException("Недостаточно денег на счёте для снятия");
     }
-    const movement = await this.recordMovement(this.prisma, {
-      organizationId: user.organizationId,
-      accountId: dto.accountId,
-      type: CashMovementType.CASH_WITHDRAWAL,
-      amount: dto.amount,
-      reason: dto.reason,
-      createdById: user.id,
-    });
+    // Re-checked at the moment of the write as well: two withdrawals racing
+    // past the read above can no longer overdraw the account together.
+    const movement = await this.prisma.$transaction((tx) =>
+      this.recordMovement(tx, {
+        organizationId: user.organizationId,
+        accountId: dto.accountId,
+        type: CashMovementType.CASH_WITHDRAWAL,
+        amount: dto.amount,
+        reason: dto.reason,
+        createdById: user.id,
+        insufficientBalanceMessage: "Недостаточно денег на счёте для снятия",
+      }),
+    );
     return this.toDto(movement);
   }
 

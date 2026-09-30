@@ -28,36 +28,36 @@ export class FinanceCategoriesController {
   @Post()
   @Roles(...FINANCE_CATEGORY_MANAGE_ROLES)
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateFinanceCategoryDto) {
-    return this.financeCategoriesService.create(user.organizationId, dto);
+    return this.financeCategoriesService.create(user.organizationId, dto, user.id);
   }
 
   @Patch(":id")
   @Roles(...FINANCE_CATEGORY_MANAGE_ROLES)
   update(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: UpdateFinanceCategoryDto) {
-    return this.financeCategoriesService.update(user.organizationId, id, dto);
+    return this.financeCategoriesService.update(user.organizationId, id, dto, user.id);
   }
 
   @Patch(":id/cost-behavior")
   @Roles(...FINANCE_CATEGORY_MANAGE_ROLES)
   setCostBehavior(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: SetCostBehaviorDto) {
-    return this.financeCategoriesService.setCostBehavior(user.organizationId, id, dto.costBehavior);
+    return this.financeCategoriesService.setCostBehavior(user.organizationId, id, dto.costBehavior, user.id);
   }
 
   @Post(":id/archive")
   @Roles(...FINANCE_CATEGORY_MANAGE_ROLES)
   archive(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.financeCategoriesService.archive(user.organizationId, id);
+    return this.financeCategoriesService.archive(user.organizationId, id, user.id);
   }
 
   @Post(":id/restore")
   @Roles(...FINANCE_CATEGORY_MANAGE_ROLES)
   restore(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.financeCategoriesService.restore(user.organizationId, id);
+    return this.financeCategoriesService.restore(user.organizationId, id, user.id);
   }
 
   @Delete(":id")
   @Roles(...HARD_DELETE_ROLES)
   remove(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.financeCategoriesService.remove(user.organizationId, id);
+    return this.financeCategoriesService.remove(user.organizationId, id, user.id);
   }
 }

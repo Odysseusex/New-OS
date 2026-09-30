@@ -1,5 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import {
+  CashAccountType,
+  PaymentMethod,
   PurchaseOrderStatus,
   InvoiceStatus,
   ProductionBatchStatus,
@@ -18,6 +20,7 @@ import { CustomersService } from "../customers/customers.service";
 
 const STALE_PURCHASE_ORDER_DAYS = 3;
 const STALE_INVOICE_DAYS = 3;
+const NON_CASH_LOOKBACK_DAYS = 7;
 
 @Injectable()
 export class NotificationsService {
@@ -72,7 +75,7 @@ export class NotificationsService {
     const staleInvoiceCutoff = new Date(now.getTime() - STALE_INVOICE_DAYS * 24 * 60 * 60 * 1000);
     const stalePurchaseOrderCutoff = new Date(now.getTime() - STALE_PURCHASE_ORDER_DAYS * 24 * 60 * 60 * 1000);
 
-    const [stockLevels, staleInvoices, stalePurchaseOrders, overdueBatches, customers] = await Promise.all([
+    const [stockLevels, staleInvoices, stalePurchaseOrders, overdueBatches, customers, missingBank] = await Promise.all([
       this.inventoryService.getStockLevels(user),
       this.prisma.invoice.findMany({
         where: {
@@ -102,6 +105,7 @@ export class NotificationsService {
         include: { recipe: { include: { product: true } }, location: true },
       }),
       isOrgWide ? this.customersService.findAllForOrganization(user.organizationId) : Promise.resolve([]),
+      isOrgWide ? this.missingBankAccount(user.organizationId, now) : Promise.resolve(null),
     ]);
 
     const notifications: NotificationDto[] = [];
@@ -184,7 +188,47 @@ export class NotificationsService {
       });
     }
 
+    if (missingBank) {
+      const recent = missingBank.recentNonCashSales;
+      notifications.push({
+        key: `missing-bank-account:${user.organizationId}:${today}`,
+        type: NotificationType.MISSING_BANK_ACCOUNT,
+        severity: recent > 0 ? NotificationSeverity.CRITICAL : NotificationSeverity.WARNING,
+        title: "Не выбран банковский счёт по умолчанию",
+        message:
+          recent > 0
+            ? `Безналичные оплаты не зачисляются ни на один счёт. Продаж картой/переводом за ${NON_CASH_LOOKBACK_DAYS} дн.: ${recent}`
+            : "Безналичные оплаты продаж не будут зачислены ни на один счёт",
+        locationId: null,
+        locationName: null,
+        link: "/finance",
+        createdAt: now.toISOString(),
+      });
+    }
+
     return notifications;
+  }
+
+  // Mirrors SalesService.resolveSaleAccountId for CARD/TRANSFER: without an
+  // active default BANK account the sale still goes through (the till is never
+  // blocked), but its non-cash money lands in no account. Null = nothing wrong.
+  private async missingBankAccount(
+    organizationId: string,
+    now: Date,
+  ): Promise<{ recentNonCashSales: number } | null> {
+    const bank = await this.prisma.cashAccount.findFirst({
+      where: { organizationId, type: CashAccountType.BANK, isDefault: true, isActive: true },
+      select: { id: true },
+    });
+    if (bank) return null;
+    const recentNonCashSales = await this.prisma.sale.count({
+      where: {
+        organizationId,
+        paymentMethod: { in: [PaymentMethod.CARD, PaymentMethod.TRANSFER, PaymentMethod.MIXED] },
+        soldAt: { gte: new Date(now.getTime() - NON_CASH_LOOKBACK_DAYS * 24 * 60 * 60 * 1000) },
+      },
+    });
+    return { recentNonCashSales };
   }
 }
 

@@ -142,9 +142,9 @@ beforeAll(async () => {
   }); // CONFIRMED, paid → EXPENSE_PAYMENT 300
   await services.finance.createExpense(user, { amount: 500, categoryId: rentCategoryId, paidImmediately: false }); // stays DRAFT
   const owed = await services.finance.createExpense(user, { amount: 200, categoryId: rentCategoryId, paidImmediately: false });
-  await services.finance.confirmExpense(org.organizationId, owed.id); // CONFIRMED, unpaid 200
+  await services.finance.confirmExpense(org.organizationId, owed.id, org.user.id); // CONFIRMED, unpaid 200
   const cancelled = await services.finance.createExpense(user, { amount: 700, categoryId: rentCategoryId, paidImmediately: false });
-  await services.finance.cancelExpense(org.organizationId, cancelled.id); // CANCELLED
+  await services.finance.cancelExpense(org.organizationId, cancelled.id, org.user.id); // CANCELLED
 
   // ── supplier invoices ────────────────────────────────────────────────────
   const invoice = (status: string, totalCost: number, number: string) =>

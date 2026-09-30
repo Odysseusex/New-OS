@@ -3,6 +3,26 @@ import { PrismaService } from "../prisma/prisma.service";
 import { LocationPriceRowDto, ProductDto, ProductType } from "@bakery-os/shared";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
+import { auditFields, recordAudit } from "../audit/audit";
+
+// Fields the audit log keeps for a product: everything that changes what a
+// product costs, sells for, or how it is counted.
+const PRODUCT_AUDIT_FIELDS = [
+  "name",
+  "sku",
+  "barcode",
+  "ntin",
+  "unit",
+  "type",
+  "categoryId",
+  "price",
+  "trackInventory",
+  "isPosQuickItem",
+  "minQuantity",
+  "consignmentSupplierId",
+  "consignmentPrice",
+  "isActive",
+] as const;
 
 const PRODUCT_INCLUDE = { categoryRef: true, consignmentSupplier: true };
 
@@ -96,6 +116,7 @@ export class ProductsService {
     locationId: string,
     productId: string,
     price: number,
+    actorId: string | null,
   ): Promise<LocationPriceRowDto> {
     if (price < 0) {
       throw new BadRequestException("Цена не может быть отрицательной");
@@ -107,10 +128,24 @@ export class ProductsService {
     if (!location) throw new NotFoundException("Точка не найдена");
     if (!product) throw new NotFoundException("Товар не найден");
 
-    await this.prisma.productLocationPrice.upsert({
-      where: { productId_locationId: { productId, locationId } },
-      create: { organizationId, productId, locationId, price },
-      update: { price },
+    await this.prisma.$transaction(async (tx) => {
+      const previous = await tx.productLocationPrice.findUnique({
+        where: { productId_locationId: { productId, locationId } },
+      });
+      await tx.productLocationPrice.upsert({
+        where: { productId_locationId: { productId, locationId } },
+        create: { organizationId, productId, locationId, price },
+        update: { price },
+      });
+      await recordAudit(tx, {
+        organizationId,
+        actorId,
+        action: "product.locationPrice.set",
+        entityType: "Product",
+        entityId: productId,
+        before: { locationId, price: previous?.price ?? null },
+        after: { locationId, price },
+      });
     });
 
     return {
@@ -130,8 +165,23 @@ export class ProductsService {
     organizationId: string,
     locationId: string,
     productId: string,
+    actorId: string | null,
   ): Promise<{ cleared: true }> {
-    await this.prisma.productLocationPrice.deleteMany({ where: { organizationId, locationId, productId } });
+    await this.prisma.$transaction(async (tx) => {
+      const previous = await tx.productLocationPrice.findFirst({ where: { organizationId, locationId, productId } });
+      await tx.productLocationPrice.deleteMany({ where: { organizationId, locationId, productId } });
+      if (previous) {
+        await recordAudit(tx, {
+          organizationId,
+          actorId,
+          action: "product.locationPrice.clear",
+          entityType: "Product",
+          entityId: productId,
+          before: { locationId, price: previous.price },
+          after: { locationId, price: null },
+        });
+      }
+    });
     return { cleared: true };
   }
 
@@ -217,7 +267,12 @@ export class ProductsService {
     return this.toDto(product);
   }
 
-  async update(organizationId: string, productId: string, dto: UpdateProductDto): Promise<ProductDto> {
+  async update(
+    organizationId: string,
+    productId: string,
+    dto: UpdateProductDto,
+    actorId: string | null,
+  ): Promise<ProductDto> {
     const product = await this.prisma.product.findFirst({ where: { id: productId, organizationId } });
     if (!product) {
       throw new NotFoundException("Товар не найден");
@@ -244,37 +299,50 @@ export class ProductsService {
       dto.consignmentPrice !== undefined ? dto.consignmentPrice : product.consignmentPrice?.toNumber() ?? null,
     );
 
-    const updated = await this.prisma.product.update({
-      where: { id: productId },
-      data: {
-        ...(dto.name !== undefined ? { name: dto.name } : {}),
-        ...(dto.sku !== undefined ? { sku: dto.sku } : {}),
-        ...(dto.barcode !== undefined ? { barcode: normalizeBarcode(dto.barcode) } : {}),
-        ...(dto.ntin !== undefined ? { ntin: normalizeBarcode(dto.ntin) } : {}),
-        ...(dto.unit !== undefined ? { unit: dto.unit } : {}),
-        ...(dto.type !== undefined ? { type: dto.type } : {}),
-        ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
-        ...(dto.price !== undefined ? { price: dto.price } : {}),
-        ...(dto.trackInventory !== undefined ? { trackInventory: dto.trackInventory } : {}),
-        ...(dto.isPosQuickItem !== undefined ? { isPosQuickItem: dto.isPosQuickItem } : {}),
-        ...(dto.minQuantity !== undefined ? { minQuantity: dto.minQuantity } : {}),
-        ...(dto.consignmentSupplierId !== undefined
-          ? { consignmentSupplierId: dto.consignmentSupplierId }
-          : {}),
-        ...(dto.consignmentPrice !== undefined ? { consignmentPrice: dto.consignmentPrice } : {}),
-      },
-      include: PRODUCT_INCLUDE,
-    });
-
-    // minQuantity is meant to behave as one number per product, not per
-    // location — propagate it to every location that already stocks this
-    // product so an existing threshold doesn't stay stuck at the old value.
-    if (dto.minQuantity !== undefined) {
-      await this.prisma.stockLevel.updateMany({
-        where: { productId },
-        data: { minQuantity: dto.minQuantity },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const saved = await tx.product.update({
+        where: { id: productId },
+        data: {
+          ...(dto.name !== undefined ? { name: dto.name } : {}),
+          ...(dto.sku !== undefined ? { sku: dto.sku } : {}),
+          ...(dto.barcode !== undefined ? { barcode: normalizeBarcode(dto.barcode) } : {}),
+          ...(dto.ntin !== undefined ? { ntin: normalizeBarcode(dto.ntin) } : {}),
+          ...(dto.unit !== undefined ? { unit: dto.unit } : {}),
+          ...(dto.type !== undefined ? { type: dto.type } : {}),
+          ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
+          ...(dto.price !== undefined ? { price: dto.price } : {}),
+          ...(dto.trackInventory !== undefined ? { trackInventory: dto.trackInventory } : {}),
+          ...(dto.isPosQuickItem !== undefined ? { isPosQuickItem: dto.isPosQuickItem } : {}),
+          ...(dto.minQuantity !== undefined ? { minQuantity: dto.minQuantity } : {}),
+          ...(dto.consignmentSupplierId !== undefined
+            ? { consignmentSupplierId: dto.consignmentSupplierId }
+            : {}),
+          ...(dto.consignmentPrice !== undefined ? { consignmentPrice: dto.consignmentPrice } : {}),
+        },
+        include: PRODUCT_INCLUDE,
       });
-    }
+
+      // minQuantity is meant to behave as one number per product, not per
+      // location — propagate it to every location that already stocks this
+      // product so an existing threshold doesn't stay stuck at the old value.
+      if (dto.minQuantity !== undefined) {
+        await tx.stockLevel.updateMany({
+          where: { productId },
+          data: { minQuantity: dto.minQuantity },
+        });
+      }
+
+      await recordAudit(tx, {
+        organizationId,
+        actorId,
+        action: "product.update",
+        entityType: "Product",
+        entityId: productId,
+        before: auditFields(product, PRODUCT_AUDIT_FIELDS),
+        after: auditFields(saved, PRODUCT_AUDIT_FIELDS),
+      });
+      return saved;
+    });
 
     return this.toDto(updated);
   }
@@ -287,7 +355,7 @@ export class ProductsService {
     return this.setActive(organizationId, productId, true);
   }
 
-  async remove(organizationId: string, productId: string): Promise<{ deleted: true }> {
+  async remove(organizationId: string, productId: string, actorId: string | null): Promise<{ deleted: true }> {
     const product = await this.prisma.product.findFirst({ where: { id: productId, organizationId } });
     if (!product) {
       throw new NotFoundException("Товар не найден");
@@ -308,7 +376,17 @@ export class ProductsService {
       );
     }
 
-    await this.prisma.product.delete({ where: { id: productId } });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.product.delete({ where: { id: productId } });
+      await recordAudit(tx, {
+        organizationId,
+        actorId,
+        action: "product.delete",
+        entityType: "Product",
+        entityId: productId,
+        before: auditFields(product, PRODUCT_AUDIT_FIELDS),
+      });
+    });
     return { deleted: true };
   }
 
@@ -329,7 +407,7 @@ export class ProductsService {
   //    movement they caused for *other* products (e.g. ingredient
   //    consumption) is preserved and just detached via batchId = null,
   //    since StockMovement is an append-only ledger for those products.
-  async forceRemove(organizationId: string, productId: string): Promise<{ deleted: true }> {
+  async forceRemove(organizationId: string, productId: string, actorId: string | null): Promise<{ deleted: true }> {
     const product = await this.prisma.product.findFirst({ where: { id: productId, organizationId } });
     if (!product) {
       throw new NotFoundException("Товар не найден");
@@ -359,6 +437,15 @@ export class ProductsService {
       await tx.routeStopItem.deleteMany({ where: { productId } });
 
       await tx.product.delete({ where: { id: productId } });
+
+      await recordAudit(tx, {
+        organizationId,
+        actorId,
+        action: "product.forceDelete",
+        entityType: "Product",
+        entityId: productId,
+        before: auditFields(product, PRODUCT_AUDIT_FIELDS),
+      });
     });
 
     return { deleted: true };

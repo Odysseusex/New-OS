@@ -12,6 +12,7 @@ import { PurchaseOrderStatus as PrismaPurchaseOrderStatus, StockMovementType } f
 import { AuthenticatedUser } from "../auth/auth.types";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
 import { CreatePurchaseOrderDto } from "./dto/create-purchase-order.dto";
+import { recordAudit } from "../audit/audit";
 
 @Injectable()
 export class ProcurementService {
@@ -239,6 +240,16 @@ export class ProcurementService {
         },
       });
 
+      await recordAudit(tx, {
+        organizationId: user.organizationId,
+        actorId: user.id,
+        action: "purchaseOrder.receive",
+        entityType: "PurchaseOrder",
+        entityId: order.id,
+        before: { status: order.status },
+        after: { status: updated.status, receivedAt: updated.receivedAt, totalCost: updated.totalCost },
+      });
+
       return this.toDto(updated);
     });
   }
@@ -255,15 +266,27 @@ export class ProcurementService {
       throw new BadRequestException("Заказ уже обработан");
     }
 
-    const updated = await this.prisma.purchaseOrder.update({
-      where: { id: orderId },
-      data: { status: PrismaPurchaseOrderStatus.CANCELLED },
-      include: {
-        supplier: true,
-        location: true,
-        createdBy: true,
-        items: { include: { product: true } },
-      },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const saved = await tx.purchaseOrder.update({
+        where: { id: orderId },
+        data: { status: PrismaPurchaseOrderStatus.CANCELLED },
+        include: {
+          supplier: true,
+          location: true,
+          createdBy: true,
+          items: { include: { product: true } },
+        },
+      });
+      await recordAudit(tx, {
+        organizationId: user.organizationId,
+        actorId: user.id,
+        action: "purchaseOrder.cancel",
+        entityType: "PurchaseOrder",
+        entityId: orderId,
+        before: { status: order.status },
+        after: { status: saved.status },
+      });
+      return saved;
     });
 
     return this.toDto(updated);

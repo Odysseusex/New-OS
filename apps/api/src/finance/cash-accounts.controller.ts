@@ -29,7 +29,7 @@ export class CashAccountsController {
   @Patch(":id")
   @Roles(...CASH_ACCOUNT_MANAGE_ROLES)
   update(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: UpdateCashAccountDto) {
-    return this.cashAccountsService.update(user.organizationId, id, dto);
+    return this.cashAccountsService.update(user.organizationId, id, dto, user.id);
   }
 
   @Post(":id/set-default")
@@ -41,12 +41,12 @@ export class CashAccountsController {
   @Post(":id/archive")
   @Roles(...CASH_ACCOUNT_MANAGE_ROLES)
   archive(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.cashAccountsService.archive(user.organizationId, id);
+    return this.cashAccountsService.archive(user.organizationId, id, user.id);
   }
 
   @Post(":id/restore")
   @Roles(...CASH_ACCOUNT_MANAGE_ROLES)
   restore(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.cashAccountsService.restore(user.organizationId, id);
+    return this.cashAccountsService.restore(user.organizationId, id, user.id);
   }
 }

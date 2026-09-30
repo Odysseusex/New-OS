@@ -81,13 +81,13 @@ export class FinanceController {
   @Post("expenses/:id/confirm")
   @Roles(...EXPENSE_MANAGE_ROLES)
   confirmExpense(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.financeService.confirmExpense(user.organizationId, id);
+    return this.financeService.confirmExpense(user.organizationId, id, user.id);
   }
 
   @Post("expenses/:id/cancel")
   @Roles(...EXPENSE_MANAGE_ROLES)
   cancelExpense(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.financeService.cancelExpense(user.organizationId, id);
+    return this.financeService.cancelExpense(user.organizationId, id, user.id);
   }
 
   @Post("expenses/:id/payments")

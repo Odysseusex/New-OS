@@ -4,6 +4,9 @@ export enum NotificationType {
   STALE_PURCHASE_ORDER = "STALE_PURCHASE_ORDER",
   STALE_INVOICE = "STALE_INVOICE",
   OVERDUE_PRODUCTION_BATCH = "OVERDUE_PRODUCTION_BATCH",
+  // No active default BANK account: card and transfer payments at the till
+  // are sold normally but their money is recorded in no account.
+  MISSING_BANK_ACCOUNT = "MISSING_BANK_ACCOUNT",
 }
 
 export enum NotificationSeverity {

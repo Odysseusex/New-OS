@@ -16,6 +16,7 @@ import {
 } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { requireLocationScope } from "../common/location-scope";
+import { decrementStockOrThrow } from "../common/stock-guard";
 import { CreateDeliveryRouteDto } from "./dto/create-route.dto";
 
 const ROUTE_INCLUDE = {
@@ -150,12 +151,11 @@ export class LogisticsService {
       }
 
       for (const item of stop.items) {
-        await tx.stockLevel.update({
-          where: {
-            locationId_productId: { locationId: route.originLocationId, productId: item.productId },
-          },
-          data: { quantity: { decrement: item.quantity.toNumber() } },
-        });
+        await decrementStockOrThrow(
+          tx,
+          { locationId: route.originLocationId, productId: item.productId, quantity: item.quantity },
+          `Недостаточно товара «${item.product.name}» в точке отправления для этой доставки`,
+        );
         await tx.stockLevel.upsert({
           where: {
             locationId_productId: { locationId: stop.destinationLocationId, productId: item.productId },

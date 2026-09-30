@@ -5,6 +5,7 @@ import { InvoiceStatus as PrismaInvoiceStatus } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { FinanceService } from "./finance.service";
 import { ReconcileInvoicesDto } from "./dto/reconcile-invoices.dto";
+import { recordAudit } from "../audit/audit";
 
 // "Запуск финансового учёта" — see the schema comment on
 // Organization.financeInitializedAt for the full reasoning. This service
@@ -102,11 +103,20 @@ export class FinanceSetupService {
       }
     }
 
-    await this.prisma.$transaction(
-      dto.items.map((item) =>
-        this.prisma.invoice.update({ where: { id: item.invoiceId }, data: { amountPaid: item.amountPaid } }),
-      ),
-    );
+    await this.prisma.$transaction(async (tx) => {
+      for (const item of dto.items) {
+        await tx.invoice.update({ where: { id: item.invoiceId }, data: { amountPaid: item.amountPaid } });
+        await recordAudit(tx, {
+          organizationId: user.organizationId,
+          actorId: user.id,
+          action: "financeSetup.reconcileInvoices",
+          entityType: "Invoice",
+          entityId: item.invoiceId,
+          before: { amountPaid: invoiceById.get(item.invoiceId)!.amountPaid },
+          after: { amountPaid: item.amountPaid },
+        });
+      }
+    });
 
     return { updated: dto.items.length };
   }
@@ -123,15 +133,23 @@ export class FinanceSetupService {
       this.financeService.getAccountsPayable(user.organizationId),
     ]);
 
-    await this.prisma.organization.update({
-      where: { id: user.organizationId },
-      data: {
-        financeInitializedAt: new Date(),
-        financeInitializedById: user.id,
-        openingInventoryValue: inventoryValuation.totalValue,
-        openingReceivablesValue: receivablesValue,
-        openingPayablesValue: payablesValue,
-      },
+    const opening = {
+      financeInitializedAt: new Date(),
+      financeInitializedById: user.id,
+      openingInventoryValue: inventoryValuation.totalValue,
+      openingReceivablesValue: receivablesValue,
+      openingPayablesValue: payablesValue,
+    };
+    await this.prisma.$transaction(async (tx) => {
+      await tx.organization.update({ where: { id: user.organizationId }, data: opening });
+      await recordAudit(tx, {
+        organizationId: user.organizationId,
+        actorId: user.id,
+        action: "financeSetup.complete",
+        entityType: "Organization",
+        entityId: user.organizationId,
+        after: opening,
+      });
     });
 
     return this.getStatus(user.organizationId);
