@@ -34,18 +34,18 @@ export class RecipesController {
   @Post(":id/archive")
   @Roles(...RECIPE_MANAGE_ROLES)
   archive(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.recipesService.archive(user.organizationId, id);
+    return this.recipesService.archive(user.organizationId, id, user.id);
   }
 
   @Post(":id/restore")
   @Roles(...RECIPE_MANAGE_ROLES)
   restore(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.recipesService.restore(user.organizationId, id);
+    return this.recipesService.restore(user.organizationId, id, user.id);
   }
 
   @Delete(":id")
   @Roles(...HARD_DELETE_ROLES)
   remove(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.recipesService.remove(user.organizationId, id);
+    return this.recipesService.remove(user.organizationId, id, user.id);
   }
 }

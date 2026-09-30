@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { audited } from "../audit/audit";
 import { PrismaService } from "../prisma/prisma.service";
 import { CategoryDto } from "@bakery-os/shared";
 import { CreateCategoryDto } from "./dto/create-category.dto";
@@ -60,7 +61,7 @@ export class CategoriesService {
     };
   }
 
-  async update(organizationId: string, categoryId: string, dto: UpdateCategoryDto): Promise<CategoryDto> {
+  async update(organizationId: string, categoryId: string, dto: UpdateCategoryDto, actorId: string | null = null): Promise<CategoryDto> {
     const category = await this.prisma.category.findFirst({ where: { id: categoryId, organizationId } });
     if (!category) {
       throw new NotFoundException("Категория не найдена");
@@ -75,23 +76,30 @@ export class CategoriesService {
       }
     }
 
-    const updated = await this.prisma.category.update({
-      where: { id: categoryId },
-      data: { name: dto.name, ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}) },
-      include: { _count: { select: { products: true } } },
-    });
+    const updated = await audited(
+      this.prisma,
+      { organizationId, actorId, action: "category.update", entityType: "Category", entityId: categoryId, before: { name: category.name, sortOrder: category.sortOrder } },
+      async (tx) => {
+        const saved = await tx.category.update({
+          where: { id: categoryId },
+          data: { name: dto.name, ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}) },
+          include: { _count: { select: { products: true } } },
+        });
+        return { result: saved, after: { name: saved.name, sortOrder: saved.sortOrder } };
+      },
+    );
     return this.toDto(updated);
   }
 
-  async archive(organizationId: string, categoryId: string): Promise<CategoryDto> {
-    return this.setActive(organizationId, categoryId, false);
+  async archive(organizationId: string, categoryId: string, actorId: string | null = null): Promise<CategoryDto> {
+    return this.setActive(organizationId, categoryId, false, actorId);
   }
 
-  async restore(organizationId: string, categoryId: string): Promise<CategoryDto> {
-    return this.setActive(organizationId, categoryId, true);
+  async restore(organizationId: string, categoryId: string, actorId: string | null = null): Promise<CategoryDto> {
+    return this.setActive(organizationId, categoryId, true, actorId);
   }
 
-  async remove(organizationId: string, categoryId: string): Promise<{ deleted: true }> {
+  async remove(organizationId: string, categoryId: string, actorId: string | null = null): Promise<{ deleted: true }> {
     const category = await this.prisma.category.findFirst({
       where: { id: categoryId, organizationId },
       include: { _count: { select: { products: true } } },
@@ -105,7 +113,14 @@ export class CategoriesService {
       );
     }
 
-    await this.prisma.category.delete({ where: { id: categoryId } });
+    await audited(
+      this.prisma,
+      { organizationId, actorId, action: "category.delete", entityType: "Category", entityId: categoryId, before: { name: category.name, sortOrder: category.sortOrder } },
+      async (tx) => {
+        await tx.category.delete({ where: { id: categoryId } });
+        return { result: true };
+      },
+    );
     return { deleted: true };
   }
 
@@ -125,16 +140,23 @@ export class CategoriesService {
     };
   }
 
-  private async setActive(organizationId: string, categoryId: string, isActive: boolean): Promise<CategoryDto> {
+  private async setActive(organizationId: string, categoryId: string, isActive: boolean, actorId: string | null = null): Promise<CategoryDto> {
     const category = await this.prisma.category.findFirst({ where: { id: categoryId, organizationId } });
     if (!category) {
       throw new NotFoundException("Категория не найдена");
     }
-    const updated = await this.prisma.category.update({
-      where: { id: categoryId },
-      data: { isActive },
-      include: { _count: { select: { products: true } } },
-    });
+    const updated = await audited(
+      this.prisma,
+      { organizationId, actorId, action: isActive ? "category.restore" : "category.archive", entityType: "Category", entityId: categoryId, before: { isActive: category.isActive } },
+      async (tx) => {
+        const saved = await tx.category.update({
+          where: { id: categoryId },
+          data: { isActive },
+          include: { _count: { select: { products: true } } },
+        });
+        return { result: saved, after: { isActive: saved.isActive } };
+      },
+    );
     return this.toDto(updated);
   }
 }

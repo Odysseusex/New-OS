@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { audited, auditFields } from "../audit/audit";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   CompensationType,
@@ -95,17 +96,31 @@ export class EmployeesService {
     const locationId =
       dto.locationId !== undefined ? resolveLocationScope(user, dto.locationId) ?? null : undefined;
 
-    const updated = await this.prisma.employee.update({
-      where: { id: employeeId },
-      data: {
-        fullName: dto.fullName,
-        position: dto.position,
-        phone: dto.phone,
-        hiredAt: dto.hiredAt ? new Date(dto.hiredAt) : undefined,
-        ...(locationId !== undefined ? { locationId } : {}),
+    const updated = await audited(
+      this.prisma,
+      {
+        organizationId: user.organizationId,
+        actorId: user.id,
+        action: "employee.update",
+        entityType: "Employee",
+        entityId: employeeId,
+        before: auditFields(employee, ["fullName", "position", "phone", "hiredAt", "locationId", "status"] as const),
       },
-      include: this.employeeInclude(user),
-    });
+      async (tx) => {
+        const saved = await tx.employee.update({
+          where: { id: employeeId },
+          data: {
+            fullName: dto.fullName,
+            position: dto.position,
+            phone: dto.phone,
+            hiredAt: dto.hiredAt ? new Date(dto.hiredAt) : undefined,
+            ...(locationId !== undefined ? { locationId } : {}),
+          },
+          include: this.employeeInclude(user),
+        });
+        return { result: saved, after: auditFields(saved, ["fullName", "position", "phone", "hiredAt", "locationId", "status"] as const) };
+      },
+    );
 
     return this.toDto(updated);
   }
@@ -136,7 +151,21 @@ export class EmployeesService {
       );
     }
 
-    await this.prisma.employee.delete({ where: { id: employeeId } });
+    await audited(
+      this.prisma,
+      {
+        organizationId: user.organizationId,
+        actorId: user.id,
+        action: "employee.delete",
+        entityType: "Employee",
+        entityId: employeeId,
+        before: auditFields(employee, ["fullName", "position", "phone", "hiredAt", "locationId", "status"] as const),
+      },
+      async (tx) => {
+        await tx.employee.delete({ where: { id: employeeId } });
+        return { result: true };
+      },
+    );
     return { deleted: true };
   }
 
@@ -215,11 +244,25 @@ export class EmployeesService {
     if (!employee) {
       throw new NotFoundException("Сотрудник не найден");
     }
-    const updated = await this.prisma.employee.update({
-      where: { id: employeeId },
-      data: { status },
-      include: this.employeeInclude(user),
-    });
+    const updated = await audited(
+      this.prisma,
+      {
+        organizationId: user.organizationId,
+        actorId: user.id,
+        action: status === EmployeeStatus.ACTIVE ? "employee.restore" : "employee.archive",
+        entityType: "Employee",
+        entityId: employeeId,
+        before: { status: employee.status },
+      },
+      async (tx) => {
+        const saved = await tx.employee.update({
+          where: { id: employeeId },
+          data: { status },
+          include: this.employeeInclude(user),
+        });
+        return { result: saved, after: { status: saved.status } };
+      },
+    );
     return this.toDto(updated);
   }
 

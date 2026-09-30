@@ -34,24 +34,24 @@ export class CustomersController {
   @Patch(":id")
   @Roles(...CUSTOMER_MANAGE_ROLES)
   update(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: UpdateCustomerDto) {
-    return this.customersService.update(user.organizationId, id, dto);
+    return this.customersService.update(user.organizationId, id, dto, user.id);
   }
 
   @Post(":id/archive")
   @Roles(...CUSTOMER_MANAGE_ROLES)
   archive(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.customersService.archive(user.organizationId, id);
+    return this.customersService.archive(user.organizationId, id, user.id);
   }
 
   @Post(":id/restore")
   @Roles(...CUSTOMER_MANAGE_ROLES)
   restore(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.customersService.restore(user.organizationId, id);
+    return this.customersService.restore(user.organizationId, id, user.id);
   }
 
   @Delete(":id")
   @Roles(...HARD_DELETE_ROLES)
   remove(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.customersService.remove(user.organizationId, id);
+    return this.customersService.remove(user.organizationId, id, user.id);
   }
 }

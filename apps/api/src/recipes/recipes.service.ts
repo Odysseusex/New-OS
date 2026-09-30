@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { audited, recordAudit } from "../audit/audit";
 import { PrismaService } from "../prisma/prisma.service";
 import { ProductType, RecipeDto, RecipeParameterKind, Unit } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
@@ -39,15 +40,15 @@ export class RecipesService {
     return recipes.map(this.toDto);
   }
 
-  async archive(organizationId: string, recipeId: string): Promise<RecipeDto> {
-    return this.setActive(organizationId, recipeId, false);
+  async archive(organizationId: string, recipeId: string, actorId: string | null = null): Promise<RecipeDto> {
+    return this.setActive(organizationId, recipeId, false, actorId);
   }
 
-  async restore(organizationId: string, recipeId: string): Promise<RecipeDto> {
-    return this.setActive(organizationId, recipeId, true);
+  async restore(organizationId: string, recipeId: string, actorId: string | null = null): Promise<RecipeDto> {
+    return this.setActive(organizationId, recipeId, true, actorId);
   }
 
-  async remove(organizationId: string, recipeId: string): Promise<{ deleted: true }> {
+  async remove(organizationId: string, recipeId: string, actorId: string | null = null): Promise<{ deleted: true }> {
     const recipe = await this.prisma.recipe.findFirst({ where: { id: recipeId, organizationId } });
     if (!recipe) {
       throw new NotFoundException("Рецептура не найдена");
@@ -59,20 +60,30 @@ export class RecipesService {
       );
     }
 
-    await this.prisma.recipe.delete({ where: { id: recipeId } });
+    await audited(
+      this.prisma,
+      { organizationId, actorId, action: "recipe.delete", entityType: "Recipe", entityId: recipeId, before: { productId: recipe.productId, yieldQuantity: recipe.yieldQuantity, isActive: recipe.isActive } },
+      async (tx) => {
+        await tx.recipe.delete({ where: { id: recipeId } });
+        return { result: true };
+      },
+    );
     return { deleted: true };
   }
 
-  private async setActive(organizationId: string, recipeId: string, isActive: boolean): Promise<RecipeDto> {
+  private async setActive(organizationId: string, recipeId: string, isActive: boolean, actorId: string | null = null): Promise<RecipeDto> {
     const recipe = await this.prisma.recipe.findFirst({ where: { id: recipeId, organizationId } });
     if (!recipe) {
       throw new NotFoundException("Рецептура не найдена");
     }
-    const updated = await this.prisma.recipe.update({
-      where: { id: recipeId },
-      data: { isActive },
-      include: RECIPE_INCLUDE,
-    });
+    const updated = await audited(
+      this.prisma,
+      { organizationId, actorId, action: isActive ? "recipe.restore" : "recipe.archive", entityType: "Recipe", entityId: recipeId, before: { isActive: recipe.isActive } },
+      async (tx) => {
+        const saved = await tx.recipe.update({ where: { id: recipeId }, data: { isActive }, include: RECIPE_INCLUDE });
+        return { result: saved, after: { isActive: saved.isActive } };
+      },
+    );
     return this.toDto(updated);
   }
 
@@ -106,7 +117,8 @@ export class RecipesService {
       await this.assertValidStages(organizationId, dto.stages);
     }
 
-    const recipe = await this.prisma.recipe.create({
+    const recipe = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.recipe.create({
       data: {
         organizationId,
         productId: dto.productId,
@@ -127,6 +139,16 @@ export class RecipesService {
         },
       },
       include: RECIPE_INCLUDE,
+    });
+      await recordAudit(tx, {
+        organizationId,
+        actorId: actor.id,
+        action: "recipe.create",
+        entityType: "Recipe",
+        entityId: created.id,
+        after: { productId: created.productId, yieldQuantity: created.yieldQuantity, lossPercent: created.lossPercent },
+      });
+      return created;
     });
 
     return this.toDto(recipe);
@@ -184,7 +206,18 @@ export class RecipesService {
         },
       });
 
-      return tx.recipe.findUniqueOrThrow({ where: { id: recipeId }, include: RECIPE_INCLUDE });
+      const result = await tx.recipe.findUniqueOrThrow({ where: { id: recipeId }, include: RECIPE_INCLUDE });
+      await recordAudit(tx, {
+        organizationId,
+        actorId: actor.id,
+        action: "recipe.update",
+        entityType: "Recipe",
+        entityId: recipeId,
+        before: { yieldQuantity: recipe.yieldQuantity, lossPercent: recipe.lossPercent, shelfLifeDays: recipe.shelfLifeDays },
+        after: { yieldQuantity: result.yieldQuantity, lossPercent: result.lossPercent, shelfLifeDays: result.shelfLifeDays },
+        reason: changeSummary,
+      });
+      return result;
     });
 
     return this.toDto(updated);

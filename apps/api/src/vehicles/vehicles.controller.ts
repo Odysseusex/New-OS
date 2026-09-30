@@ -28,24 +28,24 @@ export class VehiclesController {
   @Patch(":id")
   @Roles(...LOGISTICS_MANAGE_ROLES)
   update(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: UpdateVehicleDto) {
-    return this.vehiclesService.update(user.organizationId, id, dto);
+    return this.vehiclesService.update(user.organizationId, id, dto, user.id);
   }
 
   @Post(":id/archive")
   @Roles(...LOGISTICS_MANAGE_ROLES)
   archive(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.vehiclesService.archive(user.organizationId, id);
+    return this.vehiclesService.archive(user.organizationId, id, user.id);
   }
 
   @Post(":id/restore")
   @Roles(...LOGISTICS_MANAGE_ROLES)
   restore(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.vehiclesService.restore(user.organizationId, id);
+    return this.vehiclesService.restore(user.organizationId, id, user.id);
   }
 
   @Delete(":id")
   @Roles(...HARD_DELETE_ROLES)
   remove(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.vehiclesService.remove(user.organizationId, id);
+    return this.vehiclesService.remove(user.organizationId, id, user.id);
   }
 }

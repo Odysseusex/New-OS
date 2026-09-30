@@ -3,7 +3,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { LocationPriceRowDto, ProductDto, ProductType } from "@bakery-os/shared";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
-import { auditFields, recordAudit } from "../audit/audit";
+import { audited, auditFields, recordAudit } from "../audit/audit";
 
 // Fields the audit log keeps for a product: everything that changes what a
 // product costs, sells for, or how it is counted.
@@ -347,12 +347,12 @@ export class ProductsService {
     return this.toDto(updated);
   }
 
-  async archive(organizationId: string, productId: string): Promise<ProductDto> {
-    return this.setActive(organizationId, productId, false);
+  async archive(organizationId: string, productId: string, actorId: string | null = null): Promise<ProductDto> {
+    return this.setActive(organizationId, productId, false, actorId);
   }
 
-  async restore(organizationId: string, productId: string): Promise<ProductDto> {
-    return this.setActive(organizationId, productId, true);
+  async restore(organizationId: string, productId: string, actorId: string | null = null): Promise<ProductDto> {
+    return this.setActive(organizationId, productId, true, actorId);
   }
 
   async remove(organizationId: string, productId: string, actorId: string | null): Promise<{ deleted: true }> {
@@ -451,16 +451,19 @@ export class ProductsService {
     return { deleted: true };
   }
 
-  private async setActive(organizationId: string, productId: string, isActive: boolean): Promise<ProductDto> {
+  private async setActive(organizationId: string, productId: string, isActive: boolean, actorId: string | null = null): Promise<ProductDto> {
     const product = await this.prisma.product.findFirst({ where: { id: productId, organizationId } });
     if (!product) {
       throw new NotFoundException("Товар не найден");
     }
-    const updated = await this.prisma.product.update({
-      where: { id: productId },
-      data: { isActive },
-      include: PRODUCT_INCLUDE,
-    });
+    const updated = await audited(
+      this.prisma,
+      { organizationId, actorId, action: isActive ? "product.restore" : "product.archive", entityType: "Product", entityId: productId, before: { isActive: product.isActive } },
+      async (tx) => {
+        const saved = await tx.product.update({ where: { id: productId }, data: { isActive }, include: PRODUCT_INCLUDE });
+        return { result: saved, after: { isActive: saved.isActive } };
+      },
+    );
     return this.toDto(updated);
   }
 

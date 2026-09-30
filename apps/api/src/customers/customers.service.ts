@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { audited } from "../audit/audit";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   BusinessContextCustomerRowDto,
@@ -138,26 +139,33 @@ export class CustomersService {
     return this.toCustomerDto(customer, 0);
   }
 
-  async update(organizationId: string, customerId: string, dto: UpdateCustomerDto): Promise<CustomerDto> {
+  async update(organizationId: string, customerId: string, dto: UpdateCustomerDto, actorId: string | null = null): Promise<CustomerDto> {
     const customer = await this.prisma.customer.findFirst({ where: { id: customerId, organizationId } });
     if (!customer) {
       throw new NotFoundException("Клиент не найден");
     }
 
-    const updated = await this.prisma.customer.update({ where: { id: customerId }, data: dto });
+    const updated = await audited(
+      this.prisma,
+      { organizationId, actorId, action: "customer.update", entityType: "Customer", entityId: customerId, before: customer },
+      async (tx) => {
+        const saved = await tx.customer.update({ where: { id: customerId }, data: dto });
+        return { result: saved, after: saved };
+      },
+    );
     const balance = await this.getOutstandingBalance(organizationId, customerId);
     return this.toCustomerDto(updated, balance);
   }
 
-  async archive(organizationId: string, customerId: string): Promise<CustomerDto> {
-    return this.setActive(organizationId, customerId, false);
+  async archive(organizationId: string, customerId: string, actorId: string | null = null): Promise<CustomerDto> {
+    return this.setActive(organizationId, customerId, false, actorId);
   }
 
-  async restore(organizationId: string, customerId: string): Promise<CustomerDto> {
-    return this.setActive(organizationId, customerId, true);
+  async restore(organizationId: string, customerId: string, actorId: string | null = null): Promise<CustomerDto> {
+    return this.setActive(organizationId, customerId, true, actorId);
   }
 
-  async remove(organizationId: string, customerId: string): Promise<{ deleted: true }> {
+  async remove(organizationId: string, customerId: string, actorId: string | null = null): Promise<{ deleted: true }> {
     const customer = await this.prisma.customer.findFirst({ where: { id: customerId, organizationId } });
     if (!customer) {
       throw new NotFoundException("Клиент не найден");
@@ -169,7 +177,14 @@ export class CustomersService {
       );
     }
 
-    await this.prisma.customer.delete({ where: { id: customerId } });
+    await audited(
+      this.prisma,
+      { organizationId, actorId, action: "customer.delete", entityType: "Customer", entityId: customerId, before: customer },
+      async (tx) => {
+        await tx.customer.delete({ where: { id: customerId } });
+        return { result: true };
+      },
+    );
     return { deleted: true };
   }
 
@@ -218,12 +233,19 @@ export class CustomersService {
     return sales.reduce((sum, s) => sum + (s.totalAmount.toNumber() - s.amountPaid.toNumber()), 0);
   }
 
-  private async setActive(organizationId: string, customerId: string, isActive: boolean): Promise<CustomerDto> {
+  private async setActive(organizationId: string, customerId: string, isActive: boolean, actorId: string | null = null): Promise<CustomerDto> {
     const customer = await this.prisma.customer.findFirst({ where: { id: customerId, organizationId } });
     if (!customer) {
       throw new NotFoundException("Клиент не найден");
     }
-    const updated = await this.prisma.customer.update({ where: { id: customerId }, data: { isActive } });
+    const updated = await audited(
+      this.prisma,
+      { organizationId, actorId, action: isActive ? "customer.restore" : "customer.archive", entityType: "Customer", entityId: customerId, before: { isActive: customer.isActive } },
+      async (tx) => {
+        const saved = await tx.customer.update({ where: { id: customerId }, data: { isActive } });
+        return { result: saved, after: { isActive: saved.isActive } };
+      },
+    );
     const balance = await this.getOutstandingBalance(organizationId, customerId);
     return this.toCustomerDto(updated, balance);
   }

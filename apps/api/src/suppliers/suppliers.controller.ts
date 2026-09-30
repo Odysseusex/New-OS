@@ -28,24 +28,24 @@ export class SuppliersController {
   @Patch(":id")
   @Roles(...SUPPLIER_MANAGE_ROLES)
   update(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: UpdateSupplierDto) {
-    return this.suppliersService.update(user.organizationId, id, dto);
+    return this.suppliersService.update(user.organizationId, id, dto, user.id);
   }
 
   @Post(":id/archive")
   @Roles(...SUPPLIER_MANAGE_ROLES)
   archive(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.suppliersService.archive(user.organizationId, id);
+    return this.suppliersService.archive(user.organizationId, id, user.id);
   }
 
   @Post(":id/restore")
   @Roles(...SUPPLIER_MANAGE_ROLES)
   restore(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.suppliersService.restore(user.organizationId, id);
+    return this.suppliersService.restore(user.organizationId, id, user.id);
   }
 
   @Delete(":id")
   @Roles(...HARD_DELETE_ROLES)
   remove(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.suppliersService.remove(user.organizationId, id);
+    return this.suppliersService.remove(user.organizationId, id, user.id);
   }
 }

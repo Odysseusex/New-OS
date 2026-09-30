@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { audited } from "../audit/audit";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   CreateLocationRequestDto,
@@ -50,24 +51,31 @@ export class LocationsService {
     return this.toDto(location);
   }
 
-  async update(organizationId: string, locationId: string, dto: UpdateLocationDto): Promise<LocationDto> {
+  async update(organizationId: string, locationId: string, dto: UpdateLocationDto, actorId: string | null = null): Promise<LocationDto> {
     const location = await this.prisma.location.findFirst({ where: { id: locationId, organizationId } });
     if (!location) {
       throw new NotFoundException("Точка не найдена");
     }
-    const updated = await this.prisma.location.update({ where: { id: locationId }, data: dto });
+    const updated = await audited(
+      this.prisma,
+      { organizationId, actorId, action: "location.update", entityType: "Location", entityId: locationId, before: location },
+      async (tx) => {
+        const saved = await tx.location.update({ where: { id: locationId }, data: dto });
+        return { result: saved, after: saved };
+      },
+    );
     return this.toDto(updated);
   }
 
-  async archive(organizationId: string, locationId: string): Promise<LocationDto> {
-    return this.setActive(organizationId, locationId, false);
+  async archive(organizationId: string, locationId: string, actorId: string | null = null): Promise<LocationDto> {
+    return this.setActive(organizationId, locationId, false, actorId);
   }
 
-  async restore(organizationId: string, locationId: string): Promise<LocationDto> {
-    return this.setActive(organizationId, locationId, true);
+  async restore(organizationId: string, locationId: string, actorId: string | null = null): Promise<LocationDto> {
+    return this.setActive(organizationId, locationId, true, actorId);
   }
 
-  async remove(organizationId: string, locationId: string): Promise<{ deleted: true }> {
+  async remove(organizationId: string, locationId: string, actorId: string | null = null): Promise<{ deleted: true }> {
     const location = await this.prisma.location.findFirst({ where: { id: locationId, organizationId } });
     if (!location) {
       throw new NotFoundException("Точка не найдена");
@@ -121,16 +129,30 @@ export class LocationsService {
       );
     }
 
-    await this.prisma.location.delete({ where: { id: locationId } });
+    await audited(
+      this.prisma,
+      { organizationId, actorId, action: "location.delete", entityType: "Location", entityId: locationId, before: location },
+      async (tx) => {
+        await tx.location.delete({ where: { id: locationId } });
+        return { result: true };
+      },
+    );
     return { deleted: true };
   }
 
-  private async setActive(organizationId: string, locationId: string, isActive: boolean): Promise<LocationDto> {
+  private async setActive(organizationId: string, locationId: string, isActive: boolean, actorId: string | null = null): Promise<LocationDto> {
     const location = await this.prisma.location.findFirst({ where: { id: locationId, organizationId } });
     if (!location) {
       throw new NotFoundException("Точка не найдена");
     }
-    const updated = await this.prisma.location.update({ where: { id: locationId }, data: { isActive } });
+    const updated = await audited(
+      this.prisma,
+      { organizationId, actorId, action: isActive ? "location.restore" : "location.archive", entityType: "Location", entityId: locationId, before: { isActive: location.isActive } },
+      async (tx) => {
+        const saved = await tx.location.update({ where: { id: locationId }, data: { isActive } });
+        return { result: saved, after: { isActive: saved.isActive } };
+      },
+    );
     return this.toDto(updated);
   }
 

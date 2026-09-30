@@ -23,6 +23,8 @@ import { api, ApiError } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import { useAuth } from "@/lib/auth-context";
 import { KaspiTerminalCard } from "@/components/kaspi-terminal-card";
+import { AccountingPolicyCard } from "@/components/accounting-policy-card";
+import { AuditLogCard } from "@/components/audit-log-card";
 import { UserAccountModal } from "@/components/user-account-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 import { PromotionModal } from "@/components/promotion-modal";
@@ -92,6 +94,8 @@ export default function SettingsPage() {
             which is exactly the machine this page is open on. */}
         {canSeeFiscal && <KaspiTerminalCard />}
         {canManagePromotions && <PromotionsCard />}
+        {canSeeFiscal && <AccountingPolicyCard />}
+        {canSeeFiscal && <AuditLogCard />}
       </div>
 
       {!canManage && (

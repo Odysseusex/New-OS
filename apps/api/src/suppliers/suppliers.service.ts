@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { audited } from "../audit/audit";
 import { PrismaService } from "../prisma/prisma.service";
 import { SupplierDto } from "@bakery-os/shared";
 import { CreateSupplierDto } from "./dto/create-supplier.dto";
@@ -25,24 +26,31 @@ export class SuppliersService {
     return this.toDto(supplier);
   }
 
-  async update(organizationId: string, supplierId: string, dto: UpdateSupplierDto): Promise<SupplierDto> {
+  async update(organizationId: string, supplierId: string, dto: UpdateSupplierDto, actorId: string | null = null): Promise<SupplierDto> {
     const supplier = await this.prisma.supplier.findFirst({ where: { id: supplierId, organizationId } });
     if (!supplier) {
       throw new NotFoundException("Поставщик не найден");
     }
-    const updated = await this.prisma.supplier.update({ where: { id: supplierId }, data: dto });
+    const updated = await audited(
+      this.prisma,
+      { organizationId, actorId, action: "supplier.update", entityType: "Supplier", entityId: supplierId, before: supplier },
+      async (tx) => {
+        const saved = await tx.supplier.update({ where: { id: supplierId }, data: dto });
+        return { result: saved, after: saved };
+      },
+    );
     return this.toDto(updated);
   }
 
-  async archive(organizationId: string, supplierId: string): Promise<SupplierDto> {
-    return this.setActive(organizationId, supplierId, false);
+  async archive(organizationId: string, supplierId: string, actorId: string | null = null): Promise<SupplierDto> {
+    return this.setActive(organizationId, supplierId, false, actorId);
   }
 
-  async restore(organizationId: string, supplierId: string): Promise<SupplierDto> {
-    return this.setActive(organizationId, supplierId, true);
+  async restore(organizationId: string, supplierId: string, actorId: string | null = null): Promise<SupplierDto> {
+    return this.setActive(organizationId, supplierId, true, actorId);
   }
 
-  async remove(organizationId: string, supplierId: string): Promise<{ deleted: true }> {
+  async remove(organizationId: string, supplierId: string, actorId: string | null = null): Promise<{ deleted: true }> {
     const supplier = await this.prisma.supplier.findFirst({ where: { id: supplierId, organizationId } });
     if (!supplier) {
       throw new NotFoundException("Поставщик не найден");
@@ -54,16 +62,30 @@ export class SuppliersService {
       );
     }
 
-    await this.prisma.supplier.delete({ where: { id: supplierId } });
+    await audited(
+      this.prisma,
+      { organizationId, actorId, action: "supplier.delete", entityType: "Supplier", entityId: supplierId, before: supplier },
+      async (tx) => {
+        await tx.supplier.delete({ where: { id: supplierId } });
+        return { result: true };
+      },
+    );
     return { deleted: true };
   }
 
-  private async setActive(organizationId: string, supplierId: string, isActive: boolean): Promise<SupplierDto> {
+  private async setActive(organizationId: string, supplierId: string, isActive: boolean, actorId: string | null = null): Promise<SupplierDto> {
     const supplier = await this.prisma.supplier.findFirst({ where: { id: supplierId, organizationId } });
     if (!supplier) {
       throw new NotFoundException("Поставщик не найден");
     }
-    const updated = await this.prisma.supplier.update({ where: { id: supplierId }, data: { isActive } });
+    const updated = await audited(
+      this.prisma,
+      { organizationId, actorId, action: isActive ? "supplier.restore" : "supplier.archive", entityType: "Supplier", entityId: supplierId, before: { isActive: supplier.isActive } },
+      async (tx) => {
+        const saved = await tx.supplier.update({ where: { id: supplierId }, data: { isActive } });
+        return { result: saved, after: { isActive: saved.isActive } };
+      },
+    );
     return this.toDto(updated);
   }
 

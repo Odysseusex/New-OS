@@ -41,6 +41,16 @@ export const AUDIT_ACTION_GROUPS = {
   fixedAssets: ["fixedAsset.register", "fixedAsset.terms", "fixedAsset.dispose", "depreciation.run"],
   periods: ["period.close", "period.reopen"],
   procurement: ["procurement.cutover", "purchaseOrder.payment", "purchaseOrder.paymentReverse"],
+  master: [
+    "supplier.update", "supplier.archive", "supplier.restore", "supplier.delete",
+    "customer.update", "customer.archive", "customer.restore", "customer.delete",
+    "category.update", "category.archive", "category.restore", "category.delete",
+    "location.update", "location.archive", "location.restore", "location.delete",
+    "vehicle.update", "vehicle.archive", "vehicle.restore", "vehicle.delete",
+    "employee.update", "employee.archive", "employee.restore", "employee.delete",
+    "recipe.create", "recipe.update", "recipe.archive", "recipe.restore", "recipe.delete",
+    "product.archive", "product.restore",
+  ],
   stocktake: ["stocktake.create", "stocktake.submit", "stocktake.reopen", "stocktake.approve", "stocktake.cancel"],
 } as const;
 
@@ -92,4 +102,18 @@ export function auditFields<T extends object, K extends keyof T>(source: T | nul
 function toAuditJson(value: unknown): Prisma.InputJsonValue | typeof Prisma.DbNull {
   if (value === undefined || value === null) return Prisma.DbNull;
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
+// One audited change: the work and its audit entry commit or roll back together.
+// `work` returns the result plus what to record as the row's state afterwards.
+export async function audited<T>(
+  prisma: { $transaction<R>(fn: (tx: Prisma.TransactionClient) => Promise<R>): Promise<R> },
+  meta: Omit<AuditEntry, "after">,
+  work: (tx: Prisma.TransactionClient) => Promise<{ result: T; after?: unknown }>,
+): Promise<T> {
+  return prisma.$transaction(async (tx) => {
+    const { result, after } = await work(tx);
+    await recordAudit(tx, { ...meta, after });
+    return result;
+  });
 }

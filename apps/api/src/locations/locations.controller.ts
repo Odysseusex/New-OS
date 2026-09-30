@@ -51,27 +51,27 @@ export class LocationsController {
   @UseGuards(RolesGuard)
   @Roles(...LOCATION_MANAGE_ROLES)
   update(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: UpdateLocationDto) {
-    return this.locationsService.update(user.organizationId, id, dto);
+    return this.locationsService.update(user.organizationId, id, dto, user.id);
   }
 
   @Post(":id/archive")
   @UseGuards(RolesGuard)
   @Roles(...LOCATION_MANAGE_ROLES)
   archive(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.locationsService.archive(user.organizationId, id);
+    return this.locationsService.archive(user.organizationId, id, user.id);
   }
 
   @Post(":id/restore")
   @UseGuards(RolesGuard)
   @Roles(...LOCATION_MANAGE_ROLES)
   restore(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.locationsService.restore(user.organizationId, id);
+    return this.locationsService.restore(user.organizationId, id, user.id);
   }
 
   @Delete(":id")
   @UseGuards(RolesGuard)
   @Roles(...HARD_DELETE_ROLES)
   remove(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.locationsService.remove(user.organizationId, id);
+    return this.locationsService.remove(user.organizationId, id, user.id);
   }
 }

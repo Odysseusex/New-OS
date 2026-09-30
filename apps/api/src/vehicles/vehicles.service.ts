@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { audited } from "../audit/audit";
 import { PrismaService } from "../prisma/prisma.service";
 import { VehicleDto } from "@bakery-os/shared";
 import { CreateVehicleDto } from "./dto/create-vehicle.dto";
@@ -25,24 +26,31 @@ export class VehiclesService {
     return this.toDto(vehicle);
   }
 
-  async update(organizationId: string, vehicleId: string, dto: UpdateVehicleDto): Promise<VehicleDto> {
+  async update(organizationId: string, vehicleId: string, dto: UpdateVehicleDto, actorId: string | null = null): Promise<VehicleDto> {
     const vehicle = await this.prisma.vehicle.findFirst({ where: { id: vehicleId, organizationId } });
     if (!vehicle) {
       throw new NotFoundException("Транспорт не найден");
     }
-    const updated = await this.prisma.vehicle.update({ where: { id: vehicleId }, data: dto });
+    const updated = await audited(
+      this.prisma,
+      { organizationId, actorId, action: "vehicle.update", entityType: "Vehicle", entityId: vehicleId, before: vehicle },
+      async (tx) => {
+        const saved = await tx.vehicle.update({ where: { id: vehicleId }, data: dto });
+        return { result: saved, after: saved };
+      },
+    );
     return this.toDto(updated);
   }
 
-  async archive(organizationId: string, vehicleId: string): Promise<VehicleDto> {
-    return this.setActive(organizationId, vehicleId, false);
+  async archive(organizationId: string, vehicleId: string, actorId: string | null = null): Promise<VehicleDto> {
+    return this.setActive(organizationId, vehicleId, false, actorId);
   }
 
-  async restore(organizationId: string, vehicleId: string): Promise<VehicleDto> {
-    return this.setActive(organizationId, vehicleId, true);
+  async restore(organizationId: string, vehicleId: string, actorId: string | null = null): Promise<VehicleDto> {
+    return this.setActive(organizationId, vehicleId, true, actorId);
   }
 
-  async remove(organizationId: string, vehicleId: string): Promise<{ deleted: true }> {
+  async remove(organizationId: string, vehicleId: string, actorId: string | null = null): Promise<{ deleted: true }> {
     const vehicle = await this.prisma.vehicle.findFirst({ where: { id: vehicleId, organizationId } });
     if (!vehicle) {
       throw new NotFoundException("Транспорт не найден");
@@ -54,16 +62,30 @@ export class VehiclesService {
       );
     }
 
-    await this.prisma.vehicle.delete({ where: { id: vehicleId } });
+    await audited(
+      this.prisma,
+      { organizationId, actorId, action: "vehicle.delete", entityType: "Vehicle", entityId: vehicleId, before: vehicle },
+      async (tx) => {
+        await tx.vehicle.delete({ where: { id: vehicleId } });
+        return { result: true };
+      },
+    );
     return { deleted: true };
   }
 
-  private async setActive(organizationId: string, vehicleId: string, isActive: boolean): Promise<VehicleDto> {
+  private async setActive(organizationId: string, vehicleId: string, isActive: boolean, actorId: string | null = null): Promise<VehicleDto> {
     const vehicle = await this.prisma.vehicle.findFirst({ where: { id: vehicleId, organizationId } });
     if (!vehicle) {
       throw new NotFoundException("Транспорт не найден");
     }
-    const updated = await this.prisma.vehicle.update({ where: { id: vehicleId }, data: { isActive } });
+    const updated = await audited(
+      this.prisma,
+      { organizationId, actorId, action: isActive ? "vehicle.restore" : "vehicle.archive", entityType: "Vehicle", entityId: vehicleId, before: { isActive: vehicle.isActive } },
+      async (tx) => {
+        const saved = await tx.vehicle.update({ where: { id: vehicleId }, data: { isActive } });
+        return { result: saved, after: { isActive: saved.isActive } };
+      },
+    );
     return this.toDto(updated);
   }
 

@@ -121,6 +121,9 @@ import type {
   ScenarioComparisonDto,
   ScenarioDto,
   SetPlanRequestDto,
+  AccountingPolicyDto,
+  AuditLogEntryDto,
+  UpdateAccountingPolicyRequestDto,
   CreateSaleReturnRequestDto,
   DepreciationRunResultDto,
   DisposeFixedAssetRequestDto,
@@ -460,6 +463,24 @@ export const api = {
     archive: (id: string) => request<SupplierDto>(`/suppliers/${id}/archive`, { method: "POST" }),
     restore: (id: string) => request<SupplierDto>(`/suppliers/${id}/restore`, { method: "POST" }),
     remove: (id: string) => request<{ deleted: true }>(`/suppliers/${id}`, { method: "DELETE" }),
+  },
+
+  policy: {
+    get: () => request<AccountingPolicyDto>("/finance/policy"),
+    update: (dto: UpdateAccountingPolicyRequestDto) =>
+      request<AccountingPolicyDto>("/finance/policy", { method: "PUT", body: JSON.stringify(dto) }),
+  },
+
+  audit: {
+    list: (q: { entityType?: string; action?: string; limit?: number; offset?: number }) =>
+      request<AuditLogEntryDto[]>(
+        withQuery("/audit", {
+          entityType: q.entityType,
+          action: q.action,
+          limit: q.limit === undefined ? undefined : String(q.limit),
+          offset: q.offset === undefined ? undefined : String(q.offset),
+        }),
+      ),
   },
 
   planning: {

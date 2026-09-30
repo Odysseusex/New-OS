@@ -89,13 +89,13 @@ export class ProductsController {
   @Post(":id/archive")
   @Roles(...PRODUCT_MANAGE_ROLES)
   archive(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.productsService.archive(user.organizationId, id);
+    return this.productsService.archive(user.organizationId, id, user.id);
   }
 
   @Post(":id/restore")
   @Roles(...PRODUCT_MANAGE_ROLES)
   restore(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.productsService.restore(user.organizationId, id);
+    return this.productsService.restore(user.organizationId, id, user.id);
   }
 
   @Delete(":id")
