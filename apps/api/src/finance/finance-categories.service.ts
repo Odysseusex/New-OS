@@ -1,11 +1,20 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { CostBehavior, FinanceCategoryDto, FinanceCategoryKind } from "@bakery-os/shared";
+import {
+  BalanceTreatment,
+  CashActivity,
+  CategoryClassification,
+  CostBehavior,
+  FinanceCategoryDto,
+  FinanceCategoryKind,
+  PnlTreatment,
+  validateClassification,
+} from "@bakery-os/shared";
 import { CreateFinanceCategoryDto } from "./dto/create-finance-category.dto";
 import { UpdateFinanceCategoryDto } from "./dto/update-finance-category.dto";
 import { auditFields, recordAudit } from "../audit/audit";
 
-const CATEGORY_AUDIT_FIELDS = ["name", "kind", "costBehavior", "isActive"] as const;
+const CATEGORY_AUDIT_FIELDS = ["name", "kind", "costBehavior", "pnlTreatment", "cashActivity", "balanceTreatment", "isActive"] as const;
 
 @Injectable()
 export class FinanceCategoriesService {
@@ -109,6 +118,48 @@ export class FinanceCategoriesService {
     return this.toDto(updated);
   }
 
+  // The three business classifications, set together: a partial or incoherent
+  // combination is refused rather than stored, so a category is either
+  // visibly unclassified or fully and consistently classified.
+  async setClassification(
+    organizationId: string,
+    categoryId: string,
+    classification: CategoryClassification,
+    actorId: string | null,
+    reason?: string,
+  ): Promise<FinanceCategoryDto> {
+    const category = await this.prisma.financeCategory.findFirst({ where: { id: categoryId, organizationId } });
+    if (!category) {
+      throw new NotFoundException("Категория не найдена");
+    }
+    const problem = validateClassification(category.kind as FinanceCategoryKind, classification);
+    if (problem) {
+      throw new BadRequestException(problem);
+    }
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const saved = await tx.financeCategory.update({
+        where: { id: categoryId },
+        data: {
+          pnlTreatment: classification.pnlTreatment,
+          cashActivity: classification.cashActivity,
+          balanceTreatment: classification.balanceTreatment,
+        },
+      });
+      await recordAudit(tx, {
+        organizationId,
+        actorId,
+        action: "financeCategory.classification",
+        entityType: "FinanceCategory",
+        entityId: categoryId,
+        before: auditFields(category, ["pnlTreatment", "cashActivity", "balanceTreatment"] as const),
+        after: auditFields(saved, ["pnlTreatment", "cashActivity", "balanceTreatment"] as const),
+        reason,
+      });
+      return saved;
+    });
+    return this.toDto(updated);
+  }
+
   async archive(organizationId: string, categoryId: string, actorId: string | null): Promise<FinanceCategoryDto> {
     return this.setActive(organizationId, categoryId, false, actorId);
   }
@@ -176,11 +227,17 @@ export class FinanceCategoriesService {
     kind: string;
     isActive: boolean;
     costBehavior: string;
+    pnlTreatment: string;
+    cashActivity: string;
+    balanceTreatment: string;
   }): FinanceCategoryDto => ({
     id: category.id,
     name: category.name,
     kind: category.kind as FinanceCategoryKind,
     isActive: category.isActive,
     costBehavior: category.costBehavior as CostBehavior,
+    pnlTreatment: category.pnlTreatment as PnlTreatment,
+    cashActivity: category.cashActivity as CashActivity,
+    balanceTreatment: category.balanceTreatment as BalanceTreatment,
   });
 }

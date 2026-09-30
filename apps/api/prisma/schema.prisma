@@ -189,6 +189,38 @@ enum CostBehavior {
   UNCLASSIFIED
 }
 
+// How a category shows up in the profit and loss statement.
+enum PnlTreatment {
+  UNCLASSIFIED
+  OPERATING_EXPENSE
+  OTHER_INCOME
+  OTHER_EXPENSE
+  FINANCIAL_INCOME
+  FINANCIAL_EXPENSE
+  INCOME_TAX
+  // Not a result at all: capital purchases, owner and loan flows.
+  NOT_IN_PNL
+}
+
+// Which section of the cash-flow statement the money belongs to.
+enum CashActivity {
+  UNCLASSIFIED
+  OPERATING
+  INVESTING
+  FINANCING
+}
+
+// What the money does to the balance sheet, besides moving cash.
+enum BalanceTreatment {
+  UNCLASSIFIED
+  NONE
+  FIXED_ASSET
+  OWNER_CONTRIBUTION
+  OWNER_WITHDRAWAL
+  LOAN_PROCEEDS
+  LOAN_REPAYMENT
+}
+
 // The closed set of ways a CashMovement can happen. Which side of the
 // account it hits (in vs out) is implicit in the type, the same way
 // StockMovementType conveys direction for StockMovement — no separate
@@ -1617,6 +1649,12 @@ model FinanceCategory {
   // built-in default for well-known seeded categories) sets it explicitly;
   // never inferred from the name at query time.
   costBehavior   CostBehavior        @default(UNCLASSIFIED)
+  // The three independent business classifications (see the enums below).
+  // All default to UNCLASSIFIED and are never inferred from the name; what an
+  // unclassified category does to a statement is an explicit, visible rule.
+  pnlTreatment     PnlTreatment      @default(UNCLASSIFIED)
+  cashActivity     CashActivity      @default(UNCLASSIFIED)
+  balanceTreatment BalanceTreatment  @default(UNCLASSIFIED)
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 

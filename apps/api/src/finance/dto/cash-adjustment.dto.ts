@@ -10,4 +10,7 @@ export class CashAdjustmentDto {
   @IsString()
   @MinLength(1)
   reason!: string;
+
+  @IsString()
+  categoryId!: string;
 }

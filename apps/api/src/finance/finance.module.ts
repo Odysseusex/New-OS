@@ -13,6 +13,7 @@ import { PlannedFixedCostsService } from "./planned-fixed-costs.service";
 import { PlannedFixedCostsController } from "./planned-fixed-costs.controller";
 import { AccountingPolicyService } from "./accounting-policy.service";
 import { AccountingPolicyController } from "./accounting-policy.controller";
+import { FinancialEventProjector } from "./events/projector";
 
 @Module({
   providers: [
@@ -23,6 +24,7 @@ import { AccountingPolicyController } from "./accounting-policy.controller";
     FinanceSetupService,
     PlannedFixedCostsService,
     AccountingPolicyService,
+    FinancialEventProjector,
   ],
   controllers: [
     FinanceController,
@@ -41,6 +43,6 @@ import { AccountingPolicyController } from "./accounting-policy.controller";
   // balances) instead of re-querying the same tables.
   // FinanceCategoriesService is exported for TelegramModule's "add expense"
   // wizard, which needs the EXPENSE-kind category list for its picker.
-  exports: [CashMovementsService, FinanceService, CashAccountsService, FinanceCategoriesService],
+  exports: [CashMovementsService, FinanceService, CashAccountsService, FinanceCategoriesService, FinancialEventProjector],
 })
 export class FinanceModule {}

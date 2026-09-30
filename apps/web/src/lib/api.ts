@@ -8,6 +8,7 @@ import type {
   CancelProductionBatchRequestDto,
   CashAccountDto,
   CashAdjustmentRequestDto,
+  CategoryClassification,
   CashDepositRequestDto,
   CashMovementDto,
   CashTransferRequestDto,
@@ -551,6 +552,11 @@ export const api = {
       archive: (id: string) => request<FinanceCategoryDto>(`/finance/categories/${id}/archive`, { method: "POST" }),
       restore: (id: string) => request<FinanceCategoryDto>(`/finance/categories/${id}/restore`, { method: "POST" }),
       remove: (id: string) => request<{ deleted: true }>(`/finance/categories/${id}`, { method: "DELETE" }),
+      setClassification: (id: string, dto: CategoryClassification & { reason?: string }) =>
+        request<FinanceCategoryDto>(`/finance/categories/${id}/classification`, {
+          method: "PATCH",
+          body: JSON.stringify(dto),
+        }),
       setCostBehavior: (id: string, costBehavior: CostBehavior) =>
         request<FinanceCategoryDto>(`/finance/categories/${id}/cost-behavior`, {
           method: "PATCH",

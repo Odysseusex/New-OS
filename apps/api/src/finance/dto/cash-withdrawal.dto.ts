@@ -11,4 +11,8 @@ export class CashWithdrawalDto {
   @IsOptional()
   @IsString()
   reason?: string;
+
+  @IsOptional()
+  @IsString()
+  categoryId?: string;
 }

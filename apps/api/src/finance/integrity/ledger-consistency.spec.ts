@@ -111,7 +111,22 @@ beforeAll(async () => {
   await services.cash.transfer(user, { fromAccountId: org.cashAccountId, toAccountId: bankAccountId, amount: 300 });
   await services.finance.createExpense(user, { amount: 150, paidImmediately: true, accountId: org.cashAccountId });
   const cashNow = (await prisma.cashAccount.findUniqueOrThrow({ where: { id: org.cashAccountId } })).currentBalance.toNumber();
-  await services.cash.adjust(user, { accountId: org.cashAccountId, actualBalance: cashNow - 40, reason: "Недостача" });
+  const shortageCategory = await prisma.financeCategory.create({
+    data: {
+      organizationId: org.organizationId,
+      name: "Недостача кассы",
+      kind: "EXPENSE",
+      pnlTreatment: "OTHER_EXPENSE",
+      cashActivity: "OPERATING",
+      balanceTreatment: "NONE",
+    },
+  });
+  await services.cash.adjust(user, {
+    accountId: org.cashAccountId,
+    actualBalance: cashNow - 40,
+    reason: "Недостача",
+    categoryId: shortageCategory.id,
+  });
 });
 
 afterAll(async () => {

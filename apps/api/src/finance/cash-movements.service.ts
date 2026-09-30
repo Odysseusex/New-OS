@@ -1,7 +1,15 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
-import { CASH_MOVEMENT_INFLOW_TYPES, CashMovementDto, CashMovementType } from "@bakery-os/shared";
+import {
+  CASH_MOVEMENT_INFLOW_TYPES,
+  CashMovementDto,
+  CashMovementType,
+  CategoryClassification,
+  FinanceCategoryKind,
+  isFullyClassified,
+} from "@bakery-os/shared";
+import { recordAudit } from "../audit/audit";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { CashDepositDto } from "./dto/cash-deposit.dto";
 import { CashWithdrawalDto } from "./dto/cash-withdrawal.dto";
@@ -125,6 +133,7 @@ export class CashMovementsService {
   // left a movement with no balance change (or the reverse).
   async deposit(user: AuthenticatedUser, dto: CashDepositDto): Promise<CashMovementDto> {
     await this.assertAccount(user.organizationId, dto.accountId);
+    if (dto.categoryId) await this.assertCategory(user.organizationId, dto.categoryId, FinanceCategoryKind.INCOME);
     const movement = await this.prisma.$transaction((tx) =>
       this.recordMovement(tx, {
         organizationId: user.organizationId,
@@ -132,6 +141,7 @@ export class CashMovementsService {
         type: CashMovementType.CASH_DEPOSIT,
         amount: dto.amount,
         reason: dto.reason,
+        categoryId: dto.categoryId,
         createdById: user.id,
       }),
     );
@@ -143,6 +153,7 @@ export class CashMovementsService {
     if (account.currentBalance.toNumber() < dto.amount) {
       throw new BadRequestException("Недостаточно денег на счёте для снятия");
     }
+    if (dto.categoryId) await this.assertCategory(user.organizationId, dto.categoryId, FinanceCategoryKind.EXPENSE);
     // Re-checked at the moment of the write as well: two withdrawals racing
     // past the read above can no longer overdraw the account together.
     const movement = await this.prisma.$transaction((tx) =>
@@ -152,6 +163,7 @@ export class CashMovementsService {
         type: CashMovementType.CASH_WITHDRAWAL,
         amount: dto.amount,
         reason: dto.reason,
+        categoryId: dto.categoryId,
         createdById: user.id,
         insufficientBalanceMessage: "Недостаточно денег на счёте для снятия",
       }),
@@ -180,6 +192,9 @@ export class CashMovementsService {
         reason: dto.reason,
         transferGroupId,
         createdById: user.id,
+        // Checked at the moment of the write, not only in the read above, so two
+        // transfers racing past it cannot overdraw the source account together.
+        insufficientBalanceMessage: "Недостаточно денег на счёте списания",
       });
       const inMovement = await this.recordMovement(tx, {
         organizationId: user.organizationId,
@@ -200,20 +215,71 @@ export class CashMovementsService {
   // as a new ADJUSTMENT movement — never edits or removes what came before,
   // same convention as InventoryService.adjust().
   async adjust(user: AuthenticatedUser, dto: CashAdjustmentDto): Promise<CashMovementDto> {
-    const account = await this.assertAccount(user.organizationId, dto.accountId);
-    const delta = dto.actualBalance - account.currentBalance.toNumber();
-    if (delta === 0) {
-      throw new BadRequestException("Фактический остаток совпадает с текущим — корректировка не требуется");
-    }
-    const movement = await this.recordMovement(this.prisma, {
-      organizationId: user.organizationId,
-      accountId: dto.accountId,
-      type: CashMovementType.ADJUSTMENT,
-      amount: delta,
-      reason: dto.reason,
-      createdById: user.id,
+    await this.assertAccount(user.organizationId, dto.accountId);
+    const movement = await this.prisma.$transaction(async (tx) => {
+      // The difference is computed from the balance as it stands at the moment
+      // of the write: the row is locked for the transaction, so a movement
+      // landing between the read and the write cannot make the correction wrong.
+      const locked = await tx.$queryRaw<{ currentBalance: Prisma.Decimal }[]>`
+        SELECT "currentBalance" FROM "cash_accounts" WHERE id = ${dto.accountId} FOR UPDATE`;
+      const delta = Number((dto.actualBalance - Number(locked[0].currentBalance)).toFixed(2));
+      if (delta === 0) {
+        throw new BadRequestException("Фактический остаток совпадает с текущим — корректировка не требуется");
+      }
+      // A shortage is an expense-kind event, an overage an income-kind one, and
+      // either must belong to a category that says what it means.
+      const category = await this.assertCategory(
+        user.organizationId,
+        dto.categoryId,
+        delta > 0 ? FinanceCategoryKind.INCOME : FinanceCategoryKind.EXPENSE,
+        tx,
+      );
+      if (!isFullyClassified(category as unknown as CategoryClassification)) {
+        throw new BadRequestException(
+          "У выбранной категории не настроена классификация — корректировка не может быть отнесена к отчётам",
+        );
+      }
+      const created = await this.recordMovement(tx, {
+        organizationId: user.organizationId,
+        accountId: dto.accountId,
+        type: CashMovementType.ADJUSTMENT,
+        amount: delta,
+        reason: dto.reason,
+        categoryId: dto.categoryId,
+        createdById: user.id,
+      });
+      await recordAudit(tx, {
+        organizationId: user.organizationId,
+        actorId: user.id,
+        action: "cashAccount.adjust",
+        entityType: "CashAccount",
+        entityId: dto.accountId,
+        after: { delta, categoryId: dto.categoryId, movementId: created.id },
+        reason: dto.reason,
+      });
+      return created;
     });
     return this.toDto(movement);
+  }
+
+  private async assertCategory(
+    organizationId: string,
+    categoryId: string,
+    kind: FinanceCategoryKind,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const category = await client.financeCategory.findFirst({ where: { id: categoryId, organizationId } });
+    if (!category || !category.isActive) {
+      throw new BadRequestException("Категория не найдена или заархивирована");
+    }
+    if (category.kind !== kind) {
+      throw new BadRequestException(
+        kind === FinanceCategoryKind.INCOME
+          ? "Для поступления нужна категория доходов"
+          : "Для списания нужна категория расходов",
+      );
+    }
+    return category;
   }
 
   private async assertAccount(organizationId: string, accountId: string) {

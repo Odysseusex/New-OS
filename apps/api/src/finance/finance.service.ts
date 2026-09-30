@@ -1,6 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { CostingService } from "../costing/costing.service";
+import { FinancialEventProjector } from "./events/projector";
+import { signedCashAmount } from "./events/cash-events";
+import { expenseAccrualEffect, isCategoryFullyClassified, pnlLineOfTreatment } from "./events/rules";
+import { buildCashFlowFromEvents } from "./events/cash-flow-statement";
 import { round2, round3 } from "../common/money";
 import {
   BreakEvenDto,
@@ -19,6 +23,7 @@ import {
   INVENTORY_LOSS_KIND_LABELS_RU,
   NetProfitStatus,
   NotConfiguredItem,
+  PnlLine,
   CostBehavior,
   ExpenseDto,
   ExpenseStatus,
@@ -58,6 +63,7 @@ export class FinanceService {
     private prisma: PrismaService,
     private cashMovementsService: CashMovementsService,
     private costing: CostingService = new CostingService(prisma),
+    private events: FinancialEventProjector = new FinancialEventProjector(prisma),
   ) {}
 
   async listExpenses(organizationId: string, locationId?: string): Promise<ExpenseDto[]> {
@@ -343,6 +349,7 @@ export class FinanceService {
           incurredOn: { gte: from, lte: to },
           ...(locationId ? { OR: [{ locationId }, { locationId: null }] } : {}),
         },
+        include: { categoryRef: true },
       }),
     ]);
 
@@ -479,13 +486,21 @@ export class FinanceService {
     }));
     const inventoryLosses = round2(inventoryLossLines.reduce((sum, l) => sum + l.amount, 0));
 
-    const expensesTotal = round2(expenses.reduce((sum, e) => sum + e.amount.toNumber(), 0));
+    // Expenses by what their category says they are (single rule set shared
+    // with the cash-flow statement): operating expense, other/financial result,
+    // recorded income tax, or a capital purchase that never reaches the P&L. A
+    // category with no classification keeps counting as an operating expense —
+    // what the system has always done — and is reported as such.
+    const results = await this.categoryResults(organizationId, from, to, locationId, expenses);
     const extras = await this.periodExtras(organizationId, from, to, locationId);
+    const expensesTotal = round2(results.operatingExpenses);
     const operatingProfit = round2(grossProfit - inventoryLosses - expensesTotal - extras.depreciation);
-    const profitBeforeTax = round2(operatingProfit + extras.otherResult);
-    // Income tax has no approved policy: it is not assumed to be 0%, it is
-    // unknown, and the bottom line says so.
-    const incomeTax: number | null = null;
+    const otherResult = round2(results.otherResult + extras.otherResult);
+    const profitBeforeTax = round2(operatingProfit + otherResult);
+    // Income tax has no approved policy: what was RECORDED is shown; without any
+    // record it is unknown (null), never assumed to be 0%. Either way the bottom
+    // line stays preliminary until the policy exists.
+    const incomeTax: number | null = results.taxRecorded ? round2(results.incomeTax) : null;
     const notConfigured = [NotConfiguredItem.INCOME_TAX, ...extras.notConfigured];
 
     return {
@@ -505,9 +520,11 @@ export class FinanceService {
       expensesTotal,
       depreciation: extras.depreciation,
       operatingProfit,
-      otherResult: extras.otherResult,
+      otherResult,
       profitBeforeTax,
       incomeTax,
+      unclassifiedExpensesTotal: round2(results.unclassifiedExpenses),
+      capitalizedExpensesTotal: round2(results.capitalized),
       netProfit: round2(profitBeforeTax - (incomeTax ?? 0)),
       netProfitStatus: notConfigured.length === 0 ? NetProfitStatus.COMPLETE : NetProfitStatus.PRELIMINARY,
       notConfigured,
@@ -516,6 +533,80 @@ export class FinanceService {
       costingMethod: this.costing.methodLabel,
       byProduct,
     };
+  }
+
+  private async categoryResults(
+    organizationId: string,
+    from: Date,
+    to: Date,
+    locationId: string | undefined,
+    expenses: { amount: { toNumber: () => number }; categoryRef: { pnlTreatment: string; cashActivity: string; balanceTreatment: string } | null }[],
+  ) {
+    const out = {
+      operatingExpenses: 0,
+      otherResult: 0,
+      incomeTax: 0,
+      taxRecorded: false,
+      unclassifiedExpenses: 0,
+      capitalized: 0,
+    };
+    const add = (line: PnlLine | null, amount: number) => {
+      switch (line) {
+        case PnlLine.OPERATING_EXPENSE:
+          out.operatingExpenses += amount;
+          break;
+        case PnlLine.OTHER_EXPENSE:
+        case PnlLine.FINANCIAL_EXPENSE:
+          out.otherResult -= amount;
+          break;
+        case PnlLine.INCOME_TAX:
+          out.incomeTax += amount;
+          out.taxRecorded = true;
+          break;
+        default:
+          out.capitalized += amount;
+      }
+    };
+    for (const e of expenses) {
+      const effect = expenseAccrualEffect(e.categoryRef);
+      const amount = e.amount.toNumber();
+      if (effect.unclassified) out.unclassifiedExpenses += amount;
+      add(effect.pnlLine, amount);
+    }
+
+    // Money that is a result by itself, with no expense document behind it: an
+    // other-income receipt, a classified cash adjustment, a direct withdrawal
+    // booked to an expense category. Only fully classified categories count;
+    // the rest are visible in the cash-flow statement as unclassified.
+    const direct = await this.prisma.cashMovement.findMany({
+      where: {
+        organizationId,
+        occurredAt: { gte: from, lte: to },
+        expenseId: null,
+        type: {
+          in: [
+            CashMovementType.OTHER_INCOME,
+            CashMovementType.OTHER_EXPENSE,
+            CashMovementType.ADJUSTMENT,
+            CashMovementType.CASH_DEPOSIT,
+            CashMovementType.CASH_WITHDRAWAL,
+          ],
+        },
+        categoryRef: { isNot: null },
+        ...(locationId ? { account: { OR: [{ locationId }, { locationId: null }] } } : {}),
+      },
+      include: { categoryRef: true },
+    });
+    for (const m of direct) {
+      const category = m.categoryRef!;
+      if (!isCategoryFullyClassified(category)) continue;
+      const line = pnlLineOfTreatment(category.pnlTreatment);
+      if (!line) continue;
+      const signed = signedCashAmount(m.type, m.amount.toNumber());
+      if (line === PnlLine.OTHER_INCOME || line === PnlLine.FINANCIAL_INCOME) out.otherResult += signed;
+      else add(line, -signed);
+    }
+    return out;
   }
 
   // Everything that sits between operating profit and net profit and comes
@@ -556,6 +647,9 @@ export class FinanceService {
     const fixedByCategory = new Map<string, { categoryName: string; amount: number }>();
 
     for (const expense of expenses) {
+      // Only OPERATING expenses are costs of running the business: a capital
+      // purchase, interest or income tax is not part of break-even.
+      if (expenseAccrualEffect(expense.categoryRef).pnlLine !== PnlLine.OPERATING_EXPENSE) continue;
       const amount = expense.amount.toNumber();
       const behavior = expense.categoryRef?.costBehavior as CostBehavior | undefined;
 
@@ -852,16 +946,21 @@ export class FinanceService {
   // the sign of its amount, not by its type — the same rule the dashboard and
   // the Telegram bot already use.
   async getCashFlow(organizationId: string, from: Date, to: Date): Promise<CashFlowDto> {
-    const [priorMovements, movements] = await Promise.all([
+    const [events, movements, accounts] = await Promise.all([
+      this.events.project(organizationId, { upTo: to }),
       this.prisma.cashMovement.findMany({
-        where: { organizationId, occurredAt: { lt: from } },
-        select: { type: true, amount: true },
-      }),
-      this.prisma.cashMovement.findMany({
-        where: { organizationId, occurredAt: { gte: from, lte: to } },
+        where: {
+          organizationId,
+          occurredAt: { gte: from, lte: to },
+          // Internal transfers and opening balances are not money entering or
+          // leaving the business; they have their own place in the statement.
+          type: { notIn: [CashMovementType.TRANSFER_IN, CashMovementType.TRANSFER_OUT, CashMovementType.OPENING_BALANCE] },
+        },
         include: { categoryRef: true },
       }),
+      this.prisma.cashAccount.findMany({ where: { organizationId }, select: { currentBalance: true } }),
     ]);
+    const statement = buildCashFlowFromEvents(events, from, to);
 
     const signedOf = (type: CashMovementType, amount: number): number =>
       type === CashMovementType.ADJUSTMENT
@@ -870,16 +969,9 @@ export class FinanceService {
           ? amount
           : -amount;
 
-    const openingBalance = priorMovements.reduce(
-      (sum, m) => sum + signedOf(m.type as CashMovementType, m.amount.toNumber()),
-      0,
-    );
-
     const inflowByType = new Map<CashMovementType, { amount: number; count: number }>();
     const outflowByType = new Map<CashMovementType, { amount: number; count: number }>();
     const outflowByCategory = new Map<string | null, { categoryName: string; amount: number; count: number }>();
-    let totalInflow = 0;
-    let totalOutflow = 0;
     let uncategorizedOutflow = 0;
 
     for (const m of movements) {
@@ -895,11 +987,7 @@ export class FinanceService {
       entry.count += 1;
       bucket.set(type, entry);
 
-      if (signed > 0) {
-        totalInflow += magnitude;
-        continue;
-      }
-      totalOutflow += magnitude;
+      if (signed > 0) continue;
       // Grouped by category only on the way out: an inflow's category is
       // almost always just "выручка", while it is spending the owner needs
       // broken down to budget against.
@@ -927,14 +1015,24 @@ export class FinanceService {
         }))
         .sort((a, b) => b.amount - a.amount);
 
+    // The ledger check only applies to a period that runs up to now: the
+    // accounts' current balances describe the present, not an earlier date.
+    const runsToNow = to.getTime() >= Date.now();
+    const accountsBalance = roundMoney(accounts.reduce((sum, a) => sum + a.currentBalance.toNumber(), 0));
+    const difference = roundMoney(statement.closingBalance - accountsBalance);
+
     return {
       from: from.toISOString(),
       to: to.toISOString(),
-      openingBalance: roundMoney(openingBalance),
-      closingBalance: roundMoney(openingBalance + totalInflow - totalOutflow),
-      totalInflow: roundMoney(totalInflow),
-      totalOutflow: roundMoney(totalOutflow),
-      netFlow: roundMoney(totalInflow - totalOutflow),
+      openingBalance: statement.openingBalance,
+      openingDeclaredInPeriod: statement.openingDeclaredInPeriod,
+      closingBalance: statement.closingBalance,
+      totalInflow: statement.totalInflow,
+      totalOutflow: statement.totalOutflow,
+      netFlow: roundMoney(statement.totalInflow - statement.totalOutflow),
+      sections: statement.sections,
+      internalTransfers: statement.internalTransfers,
+      reconciliation: runsToNow ? { accountsBalance, difference, reconciles: difference === 0 } : null,
       inflowByType: toLines(inflowByType),
       outflowByType: toLines(outflowByType),
       outflowByCategory: Array.from(outflowByCategory.entries())

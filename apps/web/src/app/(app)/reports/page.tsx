@@ -22,6 +22,7 @@ import type {
   StockLevelDto,
 } from "@bakery-os/shared";
 import {
+  CASH_SECTION_LABELS_RU,
   CUSTOMER_VIEW_ROLES,
   FINANCE_VIEW_ROLES,
   HR_MANAGE_ROLES,
@@ -1494,19 +1495,51 @@ function CashFlowReport({ period }: { period: Period }) {
         <StatRow items={[{ label: "Чистый денежный поток", value: formatMoney(report.netFlow) }]} />
       </ReportCard>
 
-      <ReportCard title="Поступления">
-        <ReportTable
-          columns={["Статья", "Сумма", "Операций"]}
-          rows={report.inflowByType.map((l) => [l.label, formatMoney(l.amount), String(l.count)])}
-        />
-      </ReportCard>
+      {report.sections
+        .filter((s) => s.section === "UNCLASSIFIED" || s.lines.length > 0)
+        .map((section) => (
+          <ReportCard key={section.section} title={CASH_SECTION_LABELS_RU[section.section]}>
+            <StatRow
+              items={[
+                { label: "Поступления", value: formatMoney(section.inflow) },
+                { label: "Выплаты", value: formatMoney(section.outflow) },
+                { label: "Чистый поток", value: formatMoney(section.net) },
+              ]}
+            />
+            <ReportTable
+              columns={["Статья", "Поступления", "Выплаты", "Операций"]}
+              rows={section.lines.map((l) => [
+                l.label,
+                l.inflow ? formatMoney(l.inflow) : "—",
+                l.outflow ? formatMoney(l.outflow) : "—",
+                String(l.count),
+              ])}
+            />
+            {section.section === "UNCLASSIFIED" && section.lines.length > 0 && (
+              <p className="border-t border-border bg-amber-50 px-5 py-3 text-sm text-amber-800">
+                Движения без классификации: {formatMoney(section.inflow + section.outflow)}
+              </p>
+            )}
+          </ReportCard>
+        ))}
 
-      <ReportCard title="Выплаты">
-        <ReportTable
-          columns={["Статья", "Сумма", "Операций"]}
-          rows={report.outflowByType.map((l) => [l.label, formatMoney(l.amount), String(l.count)])}
-        />
-      </ReportCard>
+      {report.internalTransfers.count > 0 && (
+        <ReportCard title={CASH_SECTION_LABELS_RU.INTERNAL}>
+          <StatRow
+            items={[
+              { label: "Обороты переводов", value: formatMoney(report.internalTransfers.amount) },
+              { label: "Итого по переводам", value: formatMoney(report.internalTransfers.net) },
+              { label: "Переводов", value: String(report.internalTransfers.count) },
+            ]}
+          />
+        </ReportCard>
+      )}
+
+      {report.reconciliation && !report.reconciliation.reconciles && (
+        <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Остаток на конец не сходится с остатками по счетам: расхождение {formatMoney(report.reconciliation.difference)}
+        </p>
+      )}
 
       <ReportCard
         title="Выплаты по категориям"

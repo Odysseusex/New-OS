@@ -1,3 +1,5 @@
+import type { BalanceTreatment, CashActivity, PnlTreatment } from "./financial-classification";
+import type { CashSection } from "./financial-events";
 import { PaymentStatus } from "./customers";
 import { Unit } from "./catalog";
 import { CompensationType } from "./hr";
@@ -94,6 +96,9 @@ export interface FinanceCategoryDto {
   kind: FinanceCategoryKind;
   isActive: boolean;
   costBehavior: CostBehavior;
+  pnlTreatment: PnlTreatment;
+  cashActivity: CashActivity;
+  balanceTreatment: BalanceTreatment;
 }
 
 export interface CreateFinanceCategoryRequestDto {
@@ -180,16 +185,21 @@ export interface CashMovementDto {
   createdByName: string;
 }
 
+// External money put into an account. `categoryId` says what it is (owner
+// contribution, loan, other income…). Without it the movement is visible in
+// the cash-flow statement as UNCLASSIFIED — never guessed.
 export interface CashDepositRequestDto {
   accountId: string;
   amount: number;
   reason?: string;
+  categoryId?: string;
 }
 
 export interface CashWithdrawalRequestDto {
   accountId: string;
   amount: number;
   reason?: string;
+  categoryId?: string;
 }
 
 export interface CashTransferRequestDto {
@@ -205,6 +215,11 @@ export interface CashAdjustmentRequestDto {
   // delta itself, same convention as InventoryService.adjust().
   actualBalance: number;
   reason: string;
+  // REQUIRED: what the difference is. A shortage or overage is a business
+  // event with a meaning, so it needs a fully classified category (income
+  // kind for an overage, expense kind for a shortage) — it is never
+  // silently booked as "other result".
+  categoryId: string;
 }
 
 // ── Expenses — a document with a real lifecycle, same shape as the
@@ -362,6 +377,11 @@ export interface ProfitAndLossDto {
   // Loss rows with no known cost — excluded, listed so the gap is visible.
   unknownCostLossItems: number;
   expensesTotal: number;
+  // Included in expensesTotal because their category has no classification
+  // yet — the system's long-standing treatment, shown so it is not a silent guess.
+  unclassifiedExpensesTotal: number;
+  // Capital purchases (and owner/loan flows booked as expenses): NOT expenses.
+  capitalizedExpensesTotal: number;
   depreciation: number;
   // = grossProfit − inventoryLosses − expensesTotal − depreciation. NOT the
   // net profit: interest, other results and tax come after it.
@@ -644,10 +664,43 @@ export interface CashFlowCategoryLineDto {
   count: number;
 }
 
+export interface CashFlowSectionLineDto {
+  label: string;
+  inflow: number;
+  outflow: number;
+  count: number;
+}
+
+export interface CashFlowSectionDto {
+  section: CashSection;
+  inflow: number;
+  outflow: number;
+  net: number;
+  lines: CashFlowSectionLineDto[];
+}
+
+// Ledger check of the statement: the closing balance against what the accounts
+// themselves hold. Only meaningful when the period runs up to now.
+export interface CashFlowReconciliationDto {
+  accountsBalance: number;
+  difference: number;
+  reconciles: boolean;
+}
+
 export interface CashFlowDto {
   from: string;
   to: string;
+  // Everything before the period plus opening balances dated inside it —
+  // an opening position is never an inflow.
   openingBalance: number;
+  openingDeclaredInPeriod: number;
+  // Operating / Investing / Financing / Unclassified. Unclassified is shown,
+  // never hidden and never folded into another section.
+  sections: CashFlowSectionDto[];
+  // Moves between own accounts: listed apart, cannot inflate inflow/outflow.
+  internalTransfers: { amount: number; net: number; count: number };
+  // null when `to` lies in the past (the accounts' current balances no longer apply).
+  reconciliation: CashFlowReconciliationDto | null;
   closingBalance: number;
   totalInflow: number;
   totalOutflow: number;

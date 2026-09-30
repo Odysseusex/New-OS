@@ -11,4 +11,8 @@ export class CashDepositDto {
   @IsOptional()
   @IsString()
   reason?: string;
+
+  @IsOptional()
+  @IsString()
+  categoryId?: string;
 }

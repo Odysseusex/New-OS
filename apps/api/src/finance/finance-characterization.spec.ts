@@ -169,7 +169,17 @@ beforeAll(async () => {
   await services.cash.deposit(user, { accountId: bankAccountId, amount: 1000, reason: "Взнос" });
   await services.cash.withdraw(user, { accountId: bankAccountId, amount: 200, reason: "Снятие" });
   const cashNow = (await prisma.cashAccount.findUniqueOrThrow({ where: { id: cashAccountId } })).currentBalance.toNumber();
-  await services.cash.adjust(user, { accountId: cashAccountId, actualBalance: cashNow - 40, reason: "Недостача" });
+  const shortageCategory = await prisma.financeCategory.create({
+    data: {
+      organizationId: orgId,
+      name: "Недостача кассы",
+      kind: FinanceCategoryKind.EXPENSE,
+      pnlTreatment: "OTHER_EXPENSE",
+      cashActivity: "OPERATING",
+      balanceTreatment: "NONE",
+    },
+  });
+  await services.cash.adjust(user, { accountId: cashAccountId, actualBalance: cashNow - 40, reason: "Недостача", categoryId: shortageCategory.id });
 
   from = new Date(Date.now() - 3600_000);
   to = new Date(Date.now() + 3600_000);
@@ -239,7 +249,14 @@ describe("profit and loss", () => {
     // Only CONFIRMED expenses count: 300 paid + 200 owed. The DRAFT 500 and the CANCELLED 700 do not.
     expect(pnl.expensesTotal).toBe(500);
     expect(pnl.operatingProfit).toBe(1500);
-    expect(pnl.profitBeforeTax).toBe(1500);
+    // INTENTIONAL CHANGE (Phase 4): the classified 40 till shortage (an OTHER_EXPENSE
+    // category) is now a result line below operating profit.
+    expect(pnl.otherResult).toBe(-40);
+    expect(pnl.profitBeforeTax).toBe(1460);
+    expect(pnl.netProfit).toBe(1460);
+    // The rent category is not classified: its 500 still counts as operating expense, and says so.
+    expect(pnl.unclassifiedExpensesTotal).toBe(500);
+    expect(pnl.capitalizedExpensesTotal).toBe(0);
   });
 
   it("returns reduce revenue; only the restocked one gives cost of goods back; the scrapped one is not an inventory loss", async () => {
@@ -300,10 +317,11 @@ describe("cash flow (ДДС)", () => {
   it("derives the opening balance from movements before the period and reconciles to the closing balance", async () => {
     const flow = await services.finance.getCashFlow(org.organizationId, from, to);
     expect(flow.openingBalance).toBe(15000);
-    // in: receipts 1500 + 1000 + 400 + 250, transfer-in 300, deposit 1000
-    // out: refunds 1000, expense 300, supplier 200, transfer-out 300, withdrawal 200, adjustment 40
-    expect(flow.totalInflow).toBe(4450);
-    expect(flow.totalOutflow).toBe(2040);
+    // INTENTIONAL CHANGE (Phase 4): the 300 transfer is no longer counted on either side.
+    // in: receipts 1500 + 1000 + 400 + 250, deposit 1000
+    // out: refunds 1000, expense 300, supplier 200, withdrawal 200, adjustment 40
+    expect(flow.totalInflow).toBe(4150);
+    expect(flow.totalOutflow).toBe(1740);
     expect(flow.netFlow).toBe(2410);
     expect(flow.closingBalance).toBe(17410);
   });
@@ -313,28 +331,38 @@ describe("cash flow (ДДС)", () => {
     const accounts = await prisma.cashAccount.findMany({ where: { organizationId: org.organizationId } });
     const total = accounts.reduce((sum, a) => sum + a.currentBalance.toNumber(), 0);
     expect(flow.closingBalance).toBe(total);
+    expect(flow.reconciliation).toEqual({ accountsBalance: total, difference: 0, reconciles: true });
   });
 
-  it("KNOWN DEFECT (v2 §14): internal transfers inflate BOTH gross lines (net is unaffected)", async () => {
+  it("internal transfers are listed apart and cannot inflate either gross line", async () => {
     const flow = await services.finance.getCashFlow(org.organizationId, from, to);
-    expect(flow.inflowByType.find((l) => l.type === "TRANSFER_IN")?.amount).toBe(300);
-    expect(flow.outflowByType.find((l) => l.type === "TRANSFER_OUT")?.amount).toBe(300);
-    // Without the transfer the gross figures would be 4 150 and 1 740.
+    expect(flow.inflowByType.find((l) => l.type === "TRANSFER_IN")).toBeUndefined();
+    expect(flow.outflowByType.find((l) => l.type === "TRANSFER_OUT")).toBeUndefined();
+    expect(flow.internalTransfers).toEqual({ amount: 300, net: 0, count: 1 });
   });
 
-  it("KNOWN DEFECT (v2 §14): an opening balance inside the period is reported as an inflow", async () => {
+  it("an opening balance inside the period is part of the opening position, never an inflow", async () => {
     const flow = await services.finance.getCashFlow(org.organizationId, new Date(Date.now() - 40 * DAY), to);
-    expect(flow.openingBalance).toBe(0);
-    expect(flow.inflowByType.find((l) => l.type === "OPENING_BALANCE")?.amount).toBe(15000);
-    expect(flow.totalInflow).toBe(4450 + 15000);
+    expect(flow.openingBalance).toBe(15000);
+    expect(flow.openingDeclaredInPeriod).toBe(15000);
+    expect(flow.inflowByType.find((l) => l.type === "OPENING_BALANCE")).toBeUndefined();
+    expect(flow.totalInflow).toBe(4150);
+    expect(flow.closingBalance).toBe(17410);
   });
 
-  it("has no operating / investing / financing split and no unclassified bucket", async () => {
+  it("splits the statement into operating / investing / financing / unclassified, and unclassified is visible", async () => {
     const flow = await services.finance.getCashFlow(org.organizationId, from, to);
-    for (const missing of ["activities", "operating", "investing", "financing", "unclassified", "internalTransfers"]) {
-      expect(flow).not.toHaveProperty(missing);
-    }
-    // The only "unclassified" idea today is spending with no category.
+    const section = (name: string) => flow.sections.find((s) => s.section === name)!;
+    // Sales, refunds and the supplier payment are inherently operating; the
+    // classified shortage adjustment joins them.
+    expect(section("OPERATING")).toMatchObject({ inflow: 3150, outflow: 1240, net: 1910 });
+    expect(section("INVESTING")).toMatchObject({ inflow: 0, outflow: 0 });
+    expect(section("FINANCING")).toMatchObject({ inflow: 0, outflow: 0 });
+    // The deposit and the withdrawal carry no category, and the rent category is
+    // not classified: their money is shown as UNCLASSIFIED, not folded into operating.
+    expect(section("UNCLASSIFIED")).toMatchObject({ inflow: 1000, outflow: 500, net: 500 });
+    const sum = flow.sections.reduce((s, x) => s + x.net, 0);
+    expect(sum).toBe(flow.netFlow);
     expect(flow.uncategorizedOutflow).toBeGreaterThan(0);
   });
 });

@@ -37,6 +37,7 @@ export const AUDIT_ACTION_GROUPS = {
     "productionBatch.delete",
     "accountingPolicy.update",
   ],
+  classification: ["financeCategory.classification", "cashAccount.adjust"],
   stocktake: ["stocktake.create", "stocktake.submit", "stocktake.reopen", "stocktake.approve", "stocktake.cancel"],
 } as const;
 

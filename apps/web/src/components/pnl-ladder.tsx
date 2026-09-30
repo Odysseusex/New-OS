@@ -66,7 +66,7 @@ export function PnlLadder({ pnl }: { pnl: ProfitAndLossDto }) {
         </tbody>
       </table>
 
-      {(pnl.notConfigured.length > 0 || pnl.costCoverage.fallbackLines > 0 || pnl.unknownCostLossItems > 0) && (
+      {(pnl.notConfigured.length > 0 || pnl.costCoverage.fallbackLines > 0 || pnl.unknownCostLossItems > 0 || pnl.unclassifiedExpensesTotal > 0) && (
         <div className="space-y-1 border-t border-border px-5 py-3 text-xs text-amber-800">
           {pnl.netProfitStatus === NetProfitStatus.PRELIMINARY &&
             pnl.notConfigured.map((item) => (
@@ -81,12 +81,23 @@ export function PnlLadder({ pnl }: { pnl: ProfitAndLossDto }) {
               Строк без зафиксированной себестоимости (по текущим ценам): {pnl.costCoverage.fallbackLines}
             </div>
           )}
+          {pnl.unclassifiedExpensesTotal > 0 && (
+            <div className="flex items-center gap-1.5">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+              Расходы без классификации (учтены как операционные): {formatMoney(pnl.unclassifiedExpensesTotal)}
+            </div>
+          )}
           {pnl.unknownCostLossItems > 0 && (
             <div className="flex items-center gap-1.5">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
               Списаний и корректировок без себестоимости: {pnl.unknownCostLossItems}
             </div>
           )}
+        </div>
+      )}
+      {pnl.capitalizedExpensesTotal > 0 && (
+        <div className="border-t border-border px-5 py-2 text-xs text-muted">
+          Капитализировано (не входит в расходы): {formatMoney(pnl.capitalizedExpensesTotal)}
         </div>
       )}
       <div className="border-t border-border px-5 py-2 text-xs text-muted">Оценка запасов: {pnl.costingMethod}</div>

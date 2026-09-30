@@ -58,6 +58,7 @@ import {
   FINANCE_SETUP_ROLES,
   FINANCE_VIEW_ROLES,
   FinanceCategoryKind,
+  PNL_TREATMENT_LABELS_RU,
   PAYMENT_STATUS_LABELS_RU,
   PaymentStatus,
   SUPPLIER_PAYMENT_ROLES,
@@ -67,6 +68,7 @@ import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
 import { downloadCsv } from "@/lib/csv";
 import { NewExpenseModal } from "@/components/new-expense-modal";
+import { CategoryClassificationModal } from "@/components/category-classification-modal";
 import { NewCashAccountModal } from "@/components/new-cash-account-modal";
 import { CashMovementModal } from "@/components/cash-movement-modal";
 import { CashTransferModal } from "@/components/cash-transfer-modal";
@@ -204,6 +206,7 @@ export default function FinancePage() {
   const [movementModalOpen, setMovementModalOpen] = useState(false);
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [categoryModal, setCategoryModal] = useState<"income" | "expense" | FinanceCategoryDto | null>(null);
+  const [classifyModal, setClassifyModal] = useState<FinanceCategoryDto | null>(null);
   const [payingDebt, setPayingDebt] = useState<PayableRow | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -986,6 +989,7 @@ export default function FinancePage() {
               categories={categories.filter((c) => c.kind === FinanceCategoryKind.INCOME)}
               canManage={canManageCategories}
               onAdd={() => setCategoryModal("income")}
+              onClassify={(c) => setClassifyModal(c)}
               onEdit={(c) => setCategoryModal(c)}
               onArchive={handleArchiveCategory}
               onRestore={handleRestoreCategory}
@@ -996,6 +1000,7 @@ export default function FinancePage() {
               canManage={canManageCategories}
               showCostBehavior
               onAdd={() => setCategoryModal("expense")}
+              onClassify={(c) => setClassifyModal(c)}
               onEdit={(c) => setCategoryModal(c)}
               onArchive={handleArchiveCategory}
               onRestore={handleRestoreCategory}
@@ -1413,6 +1418,17 @@ export default function FinancePage() {
         />
       )}
 
+      {classifyModal && (
+        <CategoryClassificationModal
+          category={classifyModal}
+          onClose={() => setClassifyModal(null)}
+          onSaved={() => {
+            setClassifyModal(null);
+            loadCategories();
+          }}
+        />
+      )}
+
       {plannedCostModalOpen && (
         <PlannedFixedCostModal
           categories={categories}
@@ -1449,6 +1465,7 @@ function CategoryList({
   onArchive,
   onRestore,
   onSetCostBehavior,
+  onClassify,
 }: {
   title: string;
   categories: FinanceCategoryDto[];
@@ -1459,6 +1476,7 @@ function CategoryList({
   onArchive: (c: FinanceCategoryDto) => void;
   onRestore: (c: FinanceCategoryDto) => void;
   onSetCostBehavior?: (c: FinanceCategoryDto, costBehavior: CostBehavior) => void;
+  onClassify?: (c: FinanceCategoryDto) => void;
 }) {
   return (
     <div className="rounded-2xl border border-border bg-surface shadow-card">
@@ -1478,6 +1496,24 @@ function CategoryList({
               {c.name}
             </button>
             <div className="flex items-center gap-2">
+              {onClassify &&
+                (() => {
+                  const unclassified =
+                    c.pnlTreatment === "UNCLASSIFIED" && c.cashActivity === "UNCLASSIFIED" && c.balanceTreatment === "UNCLASSIFIED";
+                  return (
+                    <button
+                      onClick={() => canManage && onClassify(c)}
+                      disabled={!canManage}
+                      className={clsx(
+                        "rounded-full px-2 py-0.5 text-xs font-medium",
+                        unclassified ? "bg-amber-50 text-amber-700" : "bg-surface-muted text-muted",
+                        canManage && "hover:opacity-80",
+                      )}
+                    >
+                      {unclassified ? "Не классифицировано" : PNL_TREATMENT_LABELS_RU[c.pnlTreatment]}
+                    </button>
+                  );
+                })()}
               {showCostBehavior &&
                 (canManage && onSetCostBehavior ? (
                   <select
