@@ -14,6 +14,9 @@ import { PlannedFixedCostsController } from "./planned-fixed-costs.controller";
 import { AccountingPolicyService } from "./accounting-policy.service";
 import { AccountingPolicyController } from "./accounting-policy.controller";
 import { FinancialEventProjector } from "./events/projector";
+import { FinancialPeriodsService } from "./periods/periods.service";
+import { PeriodGuard } from "./periods/period-guard";
+import { FinancialPeriodsController } from "./periods/periods.controller";
 
 @Module({
   providers: [
@@ -25,6 +28,8 @@ import { FinancialEventProjector } from "./events/projector";
     PlannedFixedCostsService,
     AccountingPolicyService,
     FinancialEventProjector,
+    FinancialPeriodsService,
+    PeriodGuard,
   ],
   controllers: [
     FinanceController,
@@ -34,6 +39,7 @@ import { FinancialEventProjector } from "./events/projector";
     FinanceSetupController,
     PlannedFixedCostsController,
     AccountingPolicyController,
+    FinancialPeriodsController,
   ],
   // CashMovementsService is the single writer for the money ledger — other
   // modules (Sales, Invoices) inject it to record a movement as part of
@@ -43,6 +49,6 @@ import { FinancialEventProjector } from "./events/projector";
   // balances) instead of re-querying the same tables.
   // FinanceCategoriesService is exported for TelegramModule's "add expense"
   // wizard, which needs the EXPENSE-kind category list for its picker.
-  exports: [CashMovementsService, FinanceService, CashAccountsService, FinanceCategoriesService, FinancialEventProjector],
+  exports: [CashMovementsService, FinanceService, CashAccountsService, FinanceCategoriesService, FinancialEventProjector, FinancialPeriodsService, PeriodGuard],
 })
 export class FinanceModule {}

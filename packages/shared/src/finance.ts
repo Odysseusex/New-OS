@@ -355,6 +355,8 @@ export interface CostCoverageDto {
 export interface ProfitAndLossDto {
   from: string;
   to: string;
+  // Set when this report is the frozen snapshot of a closed period.
+  frozen?: import("./financial-periods").FrozenReportInfoDto;
   // Sales at price before markdowns/promotions.
   grossRevenue: number;
   // Markdowns and promotions given on those sales.
@@ -690,6 +692,7 @@ export interface CashFlowReconciliationDto {
 export interface CashFlowDto {
   from: string;
   to: string;
+  frozen?: import("./financial-periods").FrozenReportInfoDto;
   // Everything before the period plus opening balances dated inside it —
   // an opening position is never an inflow.
   openingBalance: number;

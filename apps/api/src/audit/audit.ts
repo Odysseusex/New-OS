@@ -38,6 +38,7 @@ export const AUDIT_ACTION_GROUPS = {
     "accountingPolicy.update",
   ],
   classification: ["financeCategory.classification", "cashAccount.adjust"],
+  periods: ["period.close", "period.reopen"],
   procurement: ["procurement.cutover", "purchaseOrder.payment", "purchaseOrder.paymentReverse"],
   stocktake: ["stocktake.create", "stocktake.submit", "stocktake.reopen", "stocktake.approve", "stocktake.cancel"],
 } as const;

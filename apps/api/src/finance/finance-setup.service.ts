@@ -141,7 +141,16 @@ export class FinanceSetupService {
       openingPayablesValue: payablesValue,
     };
     await this.prisma.$transaction(async (tx) => {
-      await tx.organization.update({ where: { id: user.organizationId }, data: opening });
+      // The opening position is written ONCE. The flip is conditional on it not
+      // being set yet, so a double click (or two tabs) cannot let the second
+      // request overwrite what the first one froze.
+      const flipped = await tx.organization.updateMany({
+        where: { id: user.organizationId, financeInitializedAt: null },
+        data: opening,
+      });
+      if (flipped.count !== 1) {
+        throw new ConflictException("Запуск финансового учёта уже завершён");
+      }
       await recordAudit(tx, {
         organizationId: user.organizationId,
         actorId: user.id,

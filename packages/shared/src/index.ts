@@ -24,3 +24,4 @@ export * from "./stocktake";
 export * from "./costing";
 export * from "./financial-classification";
 export * from "./financial-events";
+export * from "./financial-periods";

@@ -330,6 +330,7 @@ model Organization {
   accountingPolicy AccountingPolicy?
   auditLogs        AuditLog[]
   stocktakes       Stocktake[]
+  financialPeriods FinancialPeriod[]
 
   @@map("organizations")
 }
@@ -461,6 +462,9 @@ model User {
   accountingPolicyUpdates   AccountingPolicy[] @relation("AccountingPolicyUpdatedBy")
   stocktakesCreated         Stocktake[]        @relation("StocktakeCreatedBy")
   stocktakesApproved        Stocktake[]        @relation("StocktakeApprovedBy")
+  periodsClosed             FinancialPeriod[]  @relation("PeriodClosedBy")
+  periodsReopened           FinancialPeriod[]  @relation("PeriodReopenedBy")
+  periodSnapshotsCreated    PeriodSnapshot[]   @relation("PeriodSnapshotCreatedBy")
   purchasePaymentsCreated   PurchaseOrderPayment[] @relation("PurchasePaymentCreatedBy")
   purchasePaymentsReversed  PurchaseOrderPayment[] @relation("PurchasePaymentReversedBy")
 
@@ -2051,4 +2055,71 @@ enum StocktakeStatus {
   REVIEW
   APPROVED
   CANCELLED
+}
+
+// ── Financial periods ────────────────────────────────────────────────────
+// A calendar month (in the reporting time zone) that has been closed. A month
+// with no row is simply OPEN. Closing freezes the month's reports into an
+// immutable PeriodSnapshot; it does NOT stop day-to-day business — new sales,
+// payments and corrections keep landing in the CURRENT period. A closed month
+// changes only by an explicit, audited reopen (owner only, latest closed
+// month only), after which the next close produces a new snapshot version.
+
+enum FinancialPeriodStatus {
+  OPEN
+  CLOSING
+  CLOSED
+}
+
+model FinancialPeriod {
+  id               String                @id @default(cuid())
+  organizationId   String
+  organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  year             Int
+  month            Int
+  periodStart      DateTime
+  periodEnd        DateTime
+  status           FinancialPeriodStatus @default(OPEN)
+  // Bumped on every reopen; a snapshot carries the version it was taken at.
+  version          Int                   @default(1)
+  closingStartedAt DateTime?
+  closedAt         DateTime?
+  closedById       String?
+  closedBy         User?                 @relation("PeriodClosedBy", fields: [closedById], references: [id])
+  reopenedAt       DateTime?
+  reopenedById     String?
+  reopenedBy       User?                 @relation("PeriodReopenedBy", fields: [reopenedById], references: [id])
+  reopenReason     String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  snapshots PeriodSnapshot[]
+
+  @@unique([organizationId, year, month])
+  @@index([organizationId, status])
+  @@map("financial_periods")
+}
+
+// What the reports said when the period was closed. Never updated; a reopen
+// only stamps supersededAt on it (the history is kept) and the next close adds
+// the next version. `diagnostics` holds the integrity findings of that moment
+// SEPARATELY from the figures — a mismatch never enters the statements.
+model PeriodSnapshot {
+  id             String          @id @default(cuid())
+  organizationId String
+  periodId       String
+  period         FinancialPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  version        Int
+  schemaVersion  Int
+  payload        Json
+  diagnostics    Json
+  createdAt      DateTime        @default(now())
+  createdById    String
+  createdBy      User            @relation("PeriodSnapshotCreatedBy", fields: [createdById], references: [id])
+  supersededAt   DateTime?
+  supersededReason String?
+
+  @@unique([periodId, version])
+  @@index([organizationId])
+  @@map("period_snapshots")
 }

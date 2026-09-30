@@ -109,6 +109,9 @@ import type {
   FiscalReconcileResultDto,
   SaleReturnDto,
   CreateSaleReturnRequestDto,
+  FinancialPeriodDto,
+  PeriodPreflightDto,
+  PeriodSnapshotDto,
   ReceivePurchaseOrderRequestDto,
   RecordPurchaseOrderPaymentRequestDto,
   ReversePurchaseOrderPaymentRequestDto,
@@ -438,6 +441,23 @@ export const api = {
     archive: (id: string) => request<SupplierDto>(`/suppliers/${id}/archive`, { method: "POST" }),
     restore: (id: string) => request<SupplierDto>(`/suppliers/${id}/restore`, { method: "POST" }),
     remove: (id: string) => request<{ deleted: true }>(`/suppliers/${id}`, { method: "DELETE" }),
+  },
+
+  periods: {
+    list: () => request<FinancialPeriodDto[]>("/finance/periods"),
+    preflight: (year: number, month: number) =>
+      request<PeriodPreflightDto>(`/finance/periods/${year}/${month}/preflight`),
+    snapshot: (year: number, month: number, version?: number) =>
+      request<PeriodSnapshotDto>(withQuery(`/finance/periods/${year}/${month}/snapshot`, { version: version ? String(version) : undefined })),
+    snapshots: (year: number, month: number) =>
+      request<PeriodSnapshotDto[]>(`/finance/periods/${year}/${month}/snapshots`),
+    close: (year: number, month: number) =>
+      request<PeriodSnapshotDto>(`/finance/periods/${year}/${month}/close`, { method: "POST" }),
+    reopen: (year: number, month: number, reason: string) =>
+      request<FinancialPeriodDto>(`/finance/periods/${year}/${month}/reopen`, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      }),
   },
 
   procurement: {

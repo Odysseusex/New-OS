@@ -1,11 +1,12 @@
 import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
-import { EXPENSE_MANAGE_ROLES, FINANCE_VIEW_ROLES } from "@bakery-os/shared";
+import { CashFlowDto, EXPENSE_MANAGE_ROLES, FINANCE_VIEW_ROLES, ProfitAndLossDto } from "@bakery-os/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
 import { Roles } from "../common/decorators/roles.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { FinanceService } from "./finance.service";
+import { FinancialPeriodsService } from "./periods/periods.service";
 import { CreateExpenseDto } from "./dto/create-expense.dto";
 import { RecordExpensePaymentDto } from "./dto/record-expense-payment.dto";
 import { GetPnlQueryDto } from "./dto/get-pnl-query.dto";
@@ -14,7 +15,10 @@ import { GetPnlQueryDto } from "./dto/get-pnl-query.dto";
 @Roles(...FINANCE_VIEW_ROLES)
 @Controller("finance")
 export class FinanceController {
-  constructor(private financeService: FinanceService) {}
+  constructor(
+    private financeService: FinanceService,
+    private periods: FinancialPeriodsService,
+  ) {}
 
   @Get("inventory-valuation")
   getInventoryValuation(@CurrentUser() user: AuthenticatedUser) {
@@ -31,7 +35,14 @@ export class FinanceController {
   }
 
   @Get("pnl")
-  getPnl(@CurrentUser() user: AuthenticatedUser, @Query() query: GetPnlQueryDto) {
+  async getPnl(@CurrentUser() user: AuthenticatedUser, @Query() query: GetPnlQueryDto) {
+    // A whole closed month is served from its frozen snapshot, so what the
+    // owner saw when the month closed cannot drift with later data.
+    if (!query.locationId) {
+      const month = this.periods.matchWholeMonth(new Date(query.from), new Date(query.to));
+      const frozen = month && (await this.periods.frozenSection<ProfitAndLossDto>(user.organizationId, month.year, month.month, "pnl"));
+      if (frozen) return { ...frozen.data, frozen: frozen.info };
+    }
     return this.financeService.getProfitAndLoss(
       user.organizationId,
       new Date(query.from),
@@ -43,7 +54,10 @@ export class FinanceController {
   // ДДС over a period. Gated by the controller's own class-level roles, same
   // as every other finance figure — cash movements are not shop-floor data.
   @Get("cash-flow")
-  getCashFlow(@CurrentUser() user: AuthenticatedUser, @Query() query: GetPnlQueryDto) {
+  async getCashFlow(@CurrentUser() user: AuthenticatedUser, @Query() query: GetPnlQueryDto) {
+    const month = this.periods.matchWholeMonth(new Date(query.from), new Date(query.to));
+    const frozen = month && (await this.periods.frozenSection<CashFlowDto>(user.organizationId, month.year, month.month, "cashFlow"));
+    if (frozen) return { ...frozen.data, frozen: frozen.info };
     return this.financeService.getCashFlow(user.organizationId, new Date(query.from), new Date(query.to));
   }
 

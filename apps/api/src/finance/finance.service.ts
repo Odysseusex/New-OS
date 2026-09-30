@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { PrismaService } from "../prisma/prisma.service";
 import { CostingService } from "../costing/costing.service";
 import { FinancialEventProjector } from "./events/projector";
+import { PeriodGuard } from "./periods/period-guard";
 import { signedCashAmount } from "./events/cash-events";
 import { expenseAccrualEffect, isCategoryFullyClassified, pnlLineOfTreatment } from "./events/rules";
 import { buildCashFlowFromEvents } from "./events/cash-flow-statement";
@@ -64,6 +65,7 @@ export class FinanceService {
     private cashMovementsService: CashMovementsService,
     private costing: CostingService = new CostingService(prisma),
     private events: FinancialEventProjector = new FinancialEventProjector(prisma),
+    private periodGuard: PeriodGuard = new PeriodGuard(prisma),
   ) {}
 
   async listExpenses(organizationId: string, locationId?: string): Promise<ExpenseDto[]> {
@@ -114,6 +116,9 @@ export class FinanceService {
       }
     }
 
+    // An expense dated inside a closed month would change a closed report.
+    if (dto.incurredOn) await this.periodGuard.assertOpen(user.organizationId, new Date(dto.incurredOn));
+
     const expense = await this.prisma.$transaction(async (tx) => {
       const created = await tx.expense.create({
         data: {
@@ -157,12 +162,17 @@ export class FinanceService {
     if (expense.status !== ExpenseStatus.DRAFT) {
       throw new BadRequestException("Расход уже подтверждён или отменён");
     }
+    await this.periodGuard.assertOpen(organizationId, expense.incurredOn);
     const updated = await this.prisma.$transaction(async (tx) => {
-      const saved = await tx.expense.update({
-        where: { id: expenseId },
+      // Conditional, so two simultaneous confirmations cannot both go through.
+      const flipped = await tx.expense.updateMany({
+        where: { id: expenseId, status: ExpenseStatus.DRAFT },
         data: { status: ExpenseStatus.CONFIRMED },
-        include: EXPENSE_INCLUDE,
       });
+      if (flipped.count !== 1) {
+        throw new BadRequestException("Расход уже подтверждён или отменён");
+      }
+      const saved = await tx.expense.findUniqueOrThrow({ where: { id: expenseId }, include: EXPENSE_INCLUDE });
       await recordAudit(tx, {
         organizationId,
         actorId,
