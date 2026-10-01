@@ -53,6 +53,6 @@ import { FinancialPeriodsController } from "./periods/periods.controller";
   // balances) instead of re-querying the same tables.
   // FinanceCategoriesService is exported for TelegramModule's "add expense"
   // wizard, which needs the EXPENSE-kind category list for its picker.
-  exports: [CashMovementsService, FinanceService, CashAccountsService, FinanceCategoriesService, FinancialEventProjector, FinancialPeriodsService, PeriodGuard, BalanceService],
+  exports: [CashMovementsService, FinanceService, CashAccountsService, FinanceCategoriesService, FinancialEventProjector, FinancialPeriodsService, PeriodGuard, BalanceService, AccountingPolicyService],
 })
 export class FinanceModule {}

@@ -139,6 +139,7 @@ import type {
   ReversePurchaseOrderPaymentRequestDto,
   PurchaseWorkflowDto,
   StocktakeDto,
+  StocktakeLineDto,
   StocktakeSummaryDto,
   CreateStocktakeRequestDto,
   UpdateStocktakeLineRequestDto,
@@ -290,7 +291,7 @@ export const api = {
     create: (dto: CreateStocktakeRequestDto) =>
       request<StocktakeDto>("/stocktakes", { method: "POST", body: JSON.stringify(dto) }),
     updateLine: (id: string, lineId: string, dto: UpdateStocktakeLineRequestDto) =>
-      request<StocktakeDto>(`/stocktakes/${id}/lines/${lineId}`, { method: "PUT", body: JSON.stringify(dto) }),
+      request<StocktakeLineDto>(`/stocktakes/${id}/lines/${lineId}`, { method: "PUT", body: JSON.stringify(dto) }),
     submit: (id: string) => request<StocktakeDto>(`/stocktakes/${id}/submit`, { method: "POST" }),
     reopen: (id: string) => request<StocktakeDto>(`/stocktakes/${id}/reopen`, { method: "POST" }),
     approve: (id: string) => request<StocktakeDto>(`/stocktakes/${id}/approve`, { method: "POST" }),

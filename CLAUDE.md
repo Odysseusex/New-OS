@@ -558,6 +558,52 @@ receipt is not a production one, and the org on the test kassa is
 re:Kassa's own ("TOO COMRUN"), not the user's ИП. Production needs its own
 ЗНМ, password and base URL, and real NTIN codes on the products being sold.
 
+## Accounting architecture (Phases 0–9) — what a fresh session must know
+
+Built as one continuous pass on a feature branch, NOT yet merged or deployed.
+Full description of what changed and how to roll it out is in
+`docs/ACCOUNTING-PHASES-2-9.md`. The rules below are the ones that are easy to
+break by accident:
+
+- **No balance plug, ever.** `BalanceService` builds Assets/Liabilities from
+  ledgers/registers/documents and Equity from its OWN history (declared
+  opening + owner flows + accumulated result of events since go-live). It is
+  never Assets − Liabilities. A disagreement is `NOT_BALANCED` with a separate
+  CONTROL block of real comparisons; CONTROL never enters a total.
+- **`FinancialEvent` is projected, never stored** (`finance/events/`). Rules for
+  a category live in one place (`events/rules.ts`) and are read by the P&L, the
+  cash-flow statement and the balance sheet alike. Invariants I1–I5 are in
+  `events/invariants.ts`; an event whose counter-side is unknown is flagged
+  `unclassified` and keeps only what it knows — nothing is invented for it.
+- **One valuation interface: `CostingService`.** Cost is stamped on the sale
+  line / stock movement / return line when the event happens (`unitCost`,
+  `costBasis`) and history is read from the stamp. The method is labelled
+  «текущий расчёт (политика не утверждена)» — inventory cost-flow (D2) is NOT
+  decided; do not add FIFO/average.
+- **Unresolved human decisions stay unresolved** (D1 recipe yield/loss, D2 cost
+  flow, D3 opening completeness, D4 depreciation/capitalisation, D5 tax/VAT, D6
+  production cost components, D7 card commissions, D8 mixed-tender refund).
+  Missing policy = NULL / «Не настроено» / PRELIMINARY, never a silent default.
+- **Purchasing is Order → Receive → Inventory → Pay supplier.** A payable exists
+  only from receipt, only for orders received after `Organization.purchaseCutoverAt`
+  (a one-way switch). New supplier invoices are refused after it; old ones stay
+  readable/payable. Payments are `PurchaseOrderPayment` rows + cash movements,
+  undone by reversal, never edited. Amount owed is derived, never stored.
+- **Periods:** closing a month writes an immutable versioned `PeriodSnapshot`
+  and freezes that month's reports; it does NOT stop current business. Writes
+  dated inside a closed month are refused (`PeriodGuard`); owner-only reopen of
+  the latest closed month, with a reason.
+- **Fixed assets/depreciation assume nothing:** an asset depreciates only when
+  method, life, salvage and start month are all stated on it. Runs are
+  idempotent (unique row per asset+month).
+- **Management layer (`/planning`) reads the books and writes only its own
+  tables.** No LLM. The forecast has no tax driver (D5) and says so.
+- **Every hand-wired spec misses DI.** `src/app-boot.spec.ts` compiles the whole
+  `AppModule` so a provider the container cannot resolve fails in CI, not on
+  the server (this caught a real boot failure).
+- **Audit rows commit with the change** (`audited()` / `recordAudit(tx, …)`);
+  master-data edits, archives and hard deletes are covered.
+
 ## Prisma migration workflow (this sandbox has no direct prod DB access)
 
 Shadow-database diff, not `prisma migrate dev` (which can hang/prompt):
@@ -696,7 +742,8 @@ except `/ai` and `/integrations` (`"soon"`, intentionally deferred — see
 above). Everything else — Dashboard, Sales, Production/Recipes (with
 техкарты), Inventory, Procurement (with Invoices), Logistics, Map, Finance,
 HR, Quality и списания, Customers, Network, Reports, Notifications,
-Settings/Users — is fully implemented, not a placeholder.
+Settings/Users — is fully implemented, not a placeholder. Planning (`/planning`:
+ABC/XYZ, replenishment, plan/fact, financial model) is live too.
 
 One deferred design decision, not yet revisited: `DeliveryRoute`/`RouteStop`
 only reference own Locations, not Customers directly — a sale to a

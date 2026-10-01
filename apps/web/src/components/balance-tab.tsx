@@ -73,9 +73,11 @@ export function BalanceTab() {
             <AlertTriangle className="h-4 w-4" strokeWidth={1.75} />
             Контроль
           </h3>
-          <p className="mb-3 text-sm text-amber-900">
-            Активы − Обязательства − Капитал: <span className="font-semibold">{formatMoney(sheet.control.difference)}</span>
-          </p>
+          {sheet.status !== BalanceStatus.NOT_AVAILABLE && (
+            <p className="mb-3 text-sm text-amber-900">
+              Активы − Обязательства − Капитал: <span className="font-semibold">{formatMoney(sheet.control.difference)}</span>
+            </p>
+          )}
           {sheet.control.lines.length > 0 && (
             <table className="mb-3 w-full text-sm">
               <thead>

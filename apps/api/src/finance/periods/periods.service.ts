@@ -36,9 +36,11 @@ export class FinancialPeriodsService {
     private finance: FinanceService,
     private events: FinancialEventProjector = new FinancialEventProjector(prisma),
     private policy: AccountingPolicyService = new AccountingPolicyService(prisma),
-    // Sections contributed by later modules (balance, inventory roll-forward…).
-    private sections: PeriodSectionBuilder[] = [],
   ) {}
+
+  // Sections contributed by later modules (balance, inventory roll-forward…).
+  // A plain field, not a constructor parameter: the container must not try to inject it.
+  private sections: PeriodSectionBuilder[] = [];
 
   registerSection(builder: PeriodSectionBuilder): void {
     this.sections.push(builder);

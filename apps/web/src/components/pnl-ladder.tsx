@@ -11,25 +11,28 @@ import { formatMoney } from "@/lib/format";
 // The P&L as one ladder, top to bottom, in the order the figures are derived.
 // Operating profit is shown as such and is never the last line: other results,
 // income tax and net profit follow it, and net profit says when it is not final.
+// A deduction shown as a negative — but never "−0".
+const neg = (v: number): number => (v === 0 ? 0 : -v);
+
 export function PnlLadder({ pnl }: { pnl: ProfitAndLossDto }) {
   const rows: { label: string; value: number | null; kind?: "sub" | "total" | "minus"; note?: string }[] = [
     { label: "Валовая выручка", value: pnl.grossRevenue },
-    { label: "Скидки", value: -pnl.discountsTotal, kind: "minus" },
-    { label: "Возвраты", value: -pnl.returnsTotal, kind: "minus" },
+    { label: "Скидки", value: neg(pnl.discountsTotal), kind: "minus" },
+    { label: "Возвраты", value: neg(pnl.returnsTotal), kind: "minus" },
     { label: "Чистая выручка", value: pnl.netRevenue, kind: "total" },
-    { label: "Себестоимость", value: -pnl.cogs, kind: "minus" },
+    { label: "Себестоимость", value: neg(pnl.cogs), kind: "minus" },
     {
       label: `Валовая прибыль${pnl.grossMarginPercent != null ? ` (${pnl.grossMarginPercent.toFixed(0)}%)` : ""}`,
       value: pnl.grossProfit,
       kind: "total",
     },
-    { label: "Потери по запасам", value: -pnl.inventoryLosses, kind: "minus" },
-    { label: "Операционные расходы", value: -pnl.expensesTotal, kind: "minus" },
-    { label: "Амортизация", value: -pnl.depreciation, kind: "minus" },
+    { label: "Потери по запасам", value: neg(pnl.inventoryLosses), kind: "minus" },
+    { label: "Операционные расходы", value: neg(pnl.expensesTotal), kind: "minus" },
+    { label: "Амортизация", value: neg(pnl.depreciation), kind: "minus" },
     { label: "Операционная прибыль", value: pnl.operatingProfit, kind: "total" },
     { label: "Прочие доходы и расходы", value: pnl.otherResult },
     { label: "Прибыль до налогообложения", value: pnl.profitBeforeTax, kind: "total" },
-    { label: "Налог на прибыль", value: pnl.incomeTax === null ? null : -pnl.incomeTax, kind: "minus" },
+    { label: "Налог на прибыль", value: pnl.incomeTax === null ? null : neg(pnl.incomeTax), kind: "minus" },
     {
       label: `Чистая прибыль — ${NET_PROFIT_STATUS_LABELS_RU[pnl.netProfitStatus].toLowerCase()}`,
       value: pnl.netProfit,

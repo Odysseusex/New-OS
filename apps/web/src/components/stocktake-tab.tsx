@@ -212,7 +212,10 @@ function StocktakeDetail({
     if (next === line.countedQuantity) return;
     setError(null);
     try {
-      setSt(await api.stocktakes.updateLine(st.id, line.id, { countedQuantity: next }));
+      // The endpoint answers with the saved line; the totals (counted, shortage,
+      // surplus) are the document's, so the whole document is read back.
+      await api.stocktakes.updateLine(st.id, line.id, { countedQuantity: next });
+      setSt(await api.stocktakes.get(st.id));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось сохранить количество");
     }
