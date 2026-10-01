@@ -102,7 +102,7 @@ Dimensions put on every line from the source document: location, customer, suppl
 
 - Backend: **33 suites / 380 tests pass** (was 25 / 289). `app-boot.spec` (compiles the whole `AppModule`) passes. 0 leftover `iso-*` organizations.
 - `tsc --noEmit`: shared, API, web — clean. `nest build` and `next build`: succeed.
-- Existing tests: all pass. Fourteen assertions were changed **on purpose**, each with its reason in the test (§15.2): the three characterization "KNOWN DEFECT" pins for D1/D2 and the numbers that follow from them (COGS, gross/operating/net profit, inventory valuation), the cost-component count (6 → 7), and the analytics fixture (its purchase orders are now RECEIVED, as a real purchase is).
+- Existing tests: all pass. A small number of expectations were changed **on purpose**, each with its reason written into the test (§15.2): the two characterization "KNOWN DEFECT" pins for D1/D2 (now "FIXED") and the figures that follow from the D2 cost (COGS 1 150 → 550, gross profit 2 000 → 2 600, operating profit 1 500 → 2 100, net profit 1 460 → 2 060, cake inventory 17 100 → 3 800), the cost-method label, the cost-component count (6 → 7), and the analytics fixture (its purchase orders are now RECEIVED, as a real purchase is — it was relying on the defect).
 - Migration: fresh deploy + drift check clean (§4).
 
 ## 12. Accounting diagnostics (result)
