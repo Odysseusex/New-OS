@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
-import { AlertTriangle, ArrowDownCircle, ArrowLeft, ArrowUpCircle, Plus, Search, Wrench, X } from "lucide-react";
+import { AlertTriangle, ArrowDownCircle, ArrowLeft, ArrowUpCircle, Ban, Plus, Search, Wrench, X } from "lucide-react";
 import type { CategoryDto, LocationDto, ProductDto, StockLevelDto, StockMovementDto } from "@bakery-os/shared";
 import {
   HARD_DELETE_ROLES,
+  STOCK_VOID_ROLES,
   INVENTORY_MANAGE_ROLES,
   ORG_WIDE_ROLES,
   PRODUCT_FORCE_DELETE_ROLES,
@@ -27,6 +28,7 @@ import { ForceDeleteProductModal } from "@/components/force-delete-product-modal
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 import { LocationPricesTab } from "@/components/location-prices-tab";
 import { StocktakeTab } from "@/components/stocktake-tab";
+import { StockVoidModal } from "@/components/stock-void-modal";
 
 type Tab = "stock" | "catalog" | "categories" | "prices" | "stocktake";
 
@@ -36,6 +38,7 @@ export default function InventoryPage() {
   const canManageInventory = user ? INVENTORY_MANAGE_ROLES.includes(user.role) : false;
   const canManageProducts = user ? PRODUCT_MANAGE_ROLES.includes(user.role) : false;
   const canDelete = user ? HARD_DELETE_ROLES.includes(user.role) : false;
+  const canVoidStock = user ? STOCK_VOID_ROLES.includes(user.role) : false;
   const canForceDelete = user ? PRODUCT_FORCE_DELETE_ROLES.includes(user.role) : false;
 
   const [tab, setTab] = useState<Tab>("stock");
@@ -47,7 +50,7 @@ export default function InventoryPage() {
   const [locationFilter, setLocationFilter] = useState("");
   const [showArchivedProducts, setShowArchivedProducts] = useState(false);
   const [showArchivedCategories, setShowArchivedCategories] = useState(false);
-  const [modal, setModal] = useState<"receive" | "write-off" | "adjustment" | "product" | "category" | null>(
+  const [modal, setModal] = useState<"receive" | "write-off" | "adjustment" | "product" | "category" | "void" | null>(
     null,
   );
   const [forceDeleteProduct, setForceDeleteProduct] = useState<ProductDto | undefined>(undefined);
@@ -239,6 +242,15 @@ export default function InventoryPage() {
               <Wrench className="h-4 w-4" strokeWidth={1.75} />
               Корректировка
             </button>
+            {canVoidStock && (
+              <button
+                onClick={() => setModal("void")}
+                className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3.5 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+              >
+                <Ban className="h-4 w-4" strokeWidth={1.75} />
+                Аннулировать
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -459,7 +471,10 @@ export default function InventoryPage() {
                     <td className="px-5 py-3 text-muted">{formatDateTime(m.createdAt)}</td>
                     <td className="px-5 py-3 font-medium text-foreground">{m.productName}</td>
                     {isOrgWide && <td className="px-5 py-3 text-muted">{m.locationName}</td>}
-                    <td className="px-5 py-3 text-muted">{STOCK_MOVEMENT_TYPE_LABELS_RU[m.type]}</td>
+                    <td className="px-5 py-3 text-muted">
+                      {STOCK_MOVEMENT_TYPE_LABELS_RU[m.type]}
+                      {m.voided && <span className="ml-2 rounded-full bg-surface-muted px-2 py-0.5 text-xs text-muted">аннулировано</span>}
+                    </td>
                     <td className="px-5 py-3 text-muted">{m.reason ?? "—"}</td>
                     <td
                       className={clsx(
@@ -737,6 +752,17 @@ export default function InventoryPage() {
           fixedLocationId={fixedLocationId}
           onClose={() => setModal(null)}
           onCreated={() => {
+            setModal(null);
+            loadStock();
+          }}
+        />
+      )}
+
+      {modal === "void" && (
+        <StockVoidModal
+          products={products.filter((p) => p.trackInventory)}
+          onClose={() => setModal(null)}
+          onDone={() => {
             setModal(null);
             loadStock();
           }}

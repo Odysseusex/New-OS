@@ -343,6 +343,7 @@ model Organization {
   ledgerAccounts   LedgerAccount[]
   accountingEvents AccountingEvent[]
   journalEntries   JournalEntry[]
+  stockVoids       StockVoid[]
 
   @@map("organizations")
 }
@@ -472,6 +473,7 @@ model User {
   promotionsCreated         Promotion[]
   promotionRedemptions      PromotionCoupon[]
   auditEntries              AuditLog[]         @relation("AuditActor")
+  stockVoidsCreated         StockVoid[]        @relation("StockVoidCreatedBy")
   accountingEventsCreated   AccountingEvent[]  @relation("AccountingEventCreatedBy")
   journalEntriesCreated     JournalEntry[]     @relation("JournalEntryCreatedBy")
   journalEntriesPosted      JournalEntry[]     @relation("JournalEntryPostedBy")
@@ -619,6 +621,8 @@ model Product {
   // reject — and a unique constraint over a nullable column would also have
   // to reason about the many rows that have no barcode at all.
   @@index([organizationId, barcode])
+    stockVoids StockVoid[]
+
   @@map("products")
 }
 
@@ -705,6 +709,10 @@ model StockMovement {
   createdById     String
   createdBy       User              @relation(fields: [createdById], references: [id])
   createdAt       DateTime          @default(now())
+
+  // Set when this row was annulled as part of an erroneous receipt/write-off
+  // pair (see StockVoid). The movement itself is never edited.
+  voidLine StockVoidLine?
 
   @@index([organizationId, locationId])
   @@map("stock_movements")
@@ -2455,4 +2463,42 @@ model JournalLine {
   @@index([journalEntryId])
   @@index([organizationId, locationId])
   @@map("journal_lines")
+}
+
+// ── Stock voids (аннулирование) ─────────────────────────────────────────
+//
+// A receipt that never physically happened and the write-off that only existed
+// to take that phantom stock off again. Stock is already right (the pair nets to
+// zero), so a void MOVES NOTHING: it is an append-only document that links the
+// erroneous movements and takes them out of every loss/valuation figure. The
+// StockMovement rows are never edited or deleted — they stay in the stock
+// history, marked as annulled. A movement can belong to at most one void
+// (unique movementId); there is deliberately no way to undo one.
+model StockVoid {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  reason         String
+  createdById    String
+  createdBy      User         @relation("StockVoidCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime     @default(now())
+
+  lines StockVoidLine[]
+
+  @@index([organizationId, productId])
+  @@map("stock_voids")
+}
+
+model StockVoidLine {
+  id             String        @id @default(cuid())
+  organizationId String
+  voidId         String
+  void           StockVoid     @relation(fields: [voidId], references: [id], onDelete: Cascade)
+  movementId     String        @unique
+  movement       StockMovement @relation(fields: [movementId], references: [id], onDelete: Cascade)
+
+  @@index([voidId])
+  @@map("stock_void_lines")
 }

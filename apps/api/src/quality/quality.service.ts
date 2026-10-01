@@ -21,6 +21,8 @@ export class QualityService {
       where: {
         organizationId: user.organizationId,
         type: PrismaStockMovementType.WRITE_OFF,
+        // Annulled (erroneous) write-offs are not quality losses.
+        voidLine: null,
         ...(locationId ? { locationId } : {}),
         ...(from || to ? { createdAt: { gte: from, lte: to } } : {}),
       },
@@ -57,6 +59,7 @@ export class QualityService {
       where: {
         organizationId: user.organizationId,
         type: PrismaStockMovementType.WRITE_OFF,
+        voidLine: null,
         createdAt: { gte: from, lte: to },
         ...(locationId ? { locationId } : {}),
       },

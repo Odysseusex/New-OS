@@ -294,3 +294,7 @@ export const PLANNING_MANAGE_ROLES: Role[] = ORG_WIDE_ROLES;
 export const LEDGER_VIEW_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT];
 export const LEDGER_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT];
 export const LEDGER_SETUP_ROLES: Role[] = HARD_DELETE_ROLES;
+
+// Annulling an erroneous receipt/write-off pair takes a loss out of the books.
+// That is a decision about the owner's own numbers, so the narrow tier only.
+export const STOCK_VOID_ROLES: Role[] = HARD_DELETE_ROLES;

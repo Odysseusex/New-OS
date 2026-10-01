@@ -284,6 +284,18 @@ async function reverseVanishedSources(
       where: { organizationId: ctx.organizationId, sourceType, sourceId: { in: ids }, status: AccountingEventStatus.POSTED },
       include: { journalEntry: { select: { id: true } } },
     });
+    // An event that never reached the book (not posted yet) and whose source has
+    // gone away is closed out too, so it does not linger as "waiting".
+    await tx.accountingEvent.updateMany({
+      where: {
+        organizationId: ctx.organizationId,
+        sourceType,
+        sourceId: { in: ids },
+        status: { in: [AccountingEventStatus.NOT_POSTED, AccountingEventStatus.EXCEPTION] },
+        eventKey: { notIn: [...alive] },
+      },
+      data: { status: AccountingEventStatus.NO_GL_EFFECT, statusReason: NotPostedReason.SOURCE_CANCELLED },
+    });
     for (const ev of posted) {
       if (alive.has(ev.eventKey) || !ev.journalEntry) continue;
       await reverseJournalEntry(tx, {

@@ -51,6 +51,8 @@ export class InventoryService {
         organizationId: user.organizationId,
         createdAt: { gte: from, lte: to },
         ...(locationId ? { locationId } : {}),
+        // Annulled erroneous receipts/write-offs did not happen.
+        voidLine: null,
       },
       _sum: { quantity: true },
       _count: { _all: true },
@@ -111,7 +113,7 @@ export class InventoryService {
         organizationId: user.organizationId,
         ...(locationId ? { locationId } : {}),
       },
-      include: { location: true, product: true, createdBy: true },
+      include: { location: true, product: true, createdBy: true, voidLine: { select: { voidId: true } } },
       orderBy: { createdAt: "desc" },
       take: limit,
     });
@@ -129,6 +131,7 @@ export class InventoryService {
       writeOffReason: m.writeOffReason as WriteOffReason | null,
       createdByName: m.createdBy.fullName,
       createdAt: m.createdAt.toISOString(),
+      voided: m.voidLine !== null,
     }));
   }
 

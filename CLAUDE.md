@@ -665,6 +665,33 @@ diagnostics compare the two. Rules that are easy to break:
 - `prisma format` rewrites the WHOLE schema file (hundreds of lines of noise):
   don't run it; edit `schema.prisma` by hand.
 
+## Stock voids (аннулирование) — fixing a phantom receipt + the write-off that removed it
+
+Built for a real case: stock received that never physically existed, then written
+off only to take it away again. `StockVoid` / `StockVoidLine` (migration
+`20261001150000_stock_void`), `inventory/stock-void.service.ts`, Склад → «Аннулировать»
+(OWNER/ADMIN only, `STOCK_VOID_ROLES`).
+
+- **It moves nothing.** The selected receipt(s) and write-off(s) must net to ZERO at
+  every location (stock is already right). A void is an append-only link; the
+  `StockMovement` rows are never edited or deleted (they stay in the stock history,
+  flagged `voided`). One movement can be in at most one void (unique `movementId`);
+  there is deliberately NO undo — hiding a loss is a one-way, audited statement
+  (`stockVoid.create`, with a reason of ≥ 5 characters).
+- **What it removes from the figures:** `voidLine: null` is filtered out of the P&L
+  inventory losses (`FinanceService.getProfitAndLoss`), the event projection
+  (`accrual-events.ts`, so the ledger, balance CONTROL and reports never see them),
+  the quality report/summary and the movement summary. Stock-level and consistency
+  checks still count them (the pair nets to zero). If you add a NEW consumer of
+  write-offs/receipts that reports losses, add `voidLine: null` to it.
+- **Only manual movements qualify.** A receipt with a purchase order/invoice behind
+  it (or production, delivery, sale, return, stocktake) is refused — that needs a
+  supplier return, which is not built. Annulled/closed-month movements are refused;
+  a CLOSED month is frozen, so the owner must reopen it first and re-close after.
+- **With the general ledger on**, `postLedgerSources` after the void reverses any
+  already-posted entry for those movements (they no longer project) and closes
+  out a never-posted event as `NO_GL_EFFECT/SOURCE_CANCELLED`.
+
 ## Prisma migration workflow (this sandbox has no direct prod DB access)
 
 Shadow-database diff, not `prisma migrate dev` (which can hang/prompt):

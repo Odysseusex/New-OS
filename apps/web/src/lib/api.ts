@@ -1,5 +1,9 @@
 import type {
   AddEmployeeCompensationRequestDto,
+  CreateStockVoidRequestDto,
+  StockVoidCandidateDto,
+  StockVoidDto,
+  StockVoidPreviewDto,
   CreateLedgerAccountInput,
   EnableLedgerInput,
   GeneralLedgerDto,
@@ -301,6 +305,16 @@ export const api = {
         method: "POST",
         body: JSON.stringify(dto),
       }),
+    voidCandidates: (productId: string) =>
+      request<StockVoidCandidateDto[]>(withQuery("/inventory/voids/candidates", { productId })),
+    previewVoid: (productId: string, movementIds: string[]) =>
+      request<StockVoidPreviewDto>("/inventory/voids/preview", {
+        method: "POST",
+        body: JSON.stringify({ productId, movementIds }),
+      }),
+    createVoid: (dto: CreateStockVoidRequestDto) =>
+      request<StockVoidDto>("/inventory/voids", { method: "POST", body: JSON.stringify(dto) }),
+    voids: (productId?: string) => request<StockVoidDto[]>(withQuery("/inventory/voids", { productId })),
   },
 
   stocktakes: {

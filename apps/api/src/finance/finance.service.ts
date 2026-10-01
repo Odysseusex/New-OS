@@ -356,6 +356,8 @@ export class FinanceService {
           organizationId,
           createdAt: { gte: from, lte: to },
           ...(locationId ? { locationId } : {}),
+          // An erroneous receipt/write-off pair that was annulled is no loss.
+          voidLine: null,
           OR: [
             { type: StockMovementType.WRITE_OFF, saleReturnId: null },
             { type: StockMovementType.ADJUSTMENT },

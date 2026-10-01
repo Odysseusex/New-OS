@@ -71,6 +71,8 @@ export async function accrualEvents(
         organizationId,
         ...only(movementIds),
         ...before("createdAt"),
+        // Annulled erroneous receipts and write-offs are not events at all.
+        voidLine: null,
         OR: [
           { type: "WRITE_OFF", saleReturnId: null },
           { type: "ADJUSTMENT" },
