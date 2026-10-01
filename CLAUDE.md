@@ -646,6 +646,16 @@ diagnostics compare the two. Rules that are easy to break:
   entry arrive in ONE `INSERT` and a statement-level trigger checks balance,
   ≥2 lines and "nothing added later". Corrections are reversals (unique
   `reversalOfEntryId`); a REVERSED event is never auto-reposted.
+- **Posting is batched at the END of the transaction, never per hook.** Production
+  incident: with the ledger ON, a POS sale failed with "Internal server error"
+  (Prisma "Transaction not found") because posting at every hook (~60 round trips)
+  outran Prisma's 5 s interactive-transaction limit. Now `postLedgerSources` only
+  enqueues (`ledger/posting-queue.ts`, AsyncLocalStorage); `PrismaService.$transaction`
+  (wrapper, default `maxWait 10 s / timeout 30 s`) runs ONE batched posting on the
+  same transaction right before commit — still atomic. Always open business
+  transactions through `PrismaService.$transaction`; pass `immediate: true` only
+  where the summary is needed (catch-up, tests). `postEvents` is a fixed handful of
+  queries however many events there are. Never add per-event queries back.
 - **Do NOT use a deferred constraint trigger for balance.** Prisma swallows a
   failure at COMMIT: the transaction rolls back and the caller is told it
   succeeded (a sale that "worked" and does not exist). Reproduced while building

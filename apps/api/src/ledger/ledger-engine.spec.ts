@@ -187,7 +187,7 @@ describe("D–F: no duplicates, reversal instead of edit, posted rows are immuta
     const base = await countEntries(prisma, org, { accountingEvent: { sourceId: sale.id } });
     expect(base).toBe(2); // the sale and its cost
     const run = () =>
-      prisma.$transaction((tx) => postLedgerSources(tx, { organizationId: org.organizationId, actorId: org.user.id, scope: { saleIds: [sale.id] } }));
+      prisma.$transaction((tx) => postLedgerSources(tx, { organizationId: org.organizationId, actorId: org.user.id, scope: { saleIds: [sale.id] }, immediate: true }));
     const results = await Promise.all([run(), run(), run(), run(), run()]);
     expect(results.every((r) => r.posted === 0 && r.alreadyDone === 2)).toBe(true);
     expect(await countEntries(prisma, org, { accountingEvent: { sourceId: sale.id } })).toBe(2);

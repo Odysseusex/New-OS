@@ -63,6 +63,14 @@ export async function lockPostingKey(tx: Prisma.TransactionClient, organizationI
   await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${organizationId + "|" + key}))::text`;
 }
 
+// All the keys of a batch in ONE statement, in sorted order (two postings that
+// need the same keys then queue up rather than deadlock).
+export async function lockPostingKeys(tx: Prisma.TransactionClient, organizationId: string, keys: string[]): Promise<void> {
+  if (keys.length === 0) return;
+  const ids = [...keys].sort().map((k) => organizationId + "|" + k);
+  await tx.$queryRaw`SELECT count(pg_advisory_xact_lock(hashtext(k)))::text AS n FROM unnest(${ids}::text[]) AS k`;
+}
+
 export async function postJournalEntry(tx: Prisma.TransactionClient, input: PostEntryInput): Promise<PostedEntry> {
   // 1. Shape and balance — in memory, before a single row is written.
   validateLines(input.lines);

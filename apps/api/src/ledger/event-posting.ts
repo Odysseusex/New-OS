@@ -1,4 +1,4 @@
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { Prisma } from "@prisma/client";
 import {
   AccountingEventStatus,
@@ -12,7 +12,9 @@ import { PrismaService } from "../prisma/prisma.service";
 import { CostingService } from "../costing/costing.service";
 import { FinancialEventProjector } from "../finance/events/projector";
 import type { ProjectionScope } from "../finance/events/scope";
-import { ensurePeriod, lockPostingKey, postJournalEntry, reverseJournalEntry } from "./journal-core";
+import { ensurePeriod, lockPostingKey, lockPostingKeys, reverseJournalEntry } from "./journal-core";
+import { enqueuePosting, setPostingFlusher } from "./posting-queue";
+import { monthOf } from "../common/reporting-period";
 import { LedgerRejectedError, validateLines } from "./journal-math";
 import { DraftLine, decideEvent, draftFingerprint } from "./posting-rules";
 
@@ -91,7 +93,23 @@ export async function loadPostingContext(
 
 // ── the entry point business modules call ─────────────────────────────────
 
+// Records that these documents need posting. Inside a transaction opened through
+// PrismaService.$transaction (every business operation) it only NOTES the request:
+// the wrapper posts everything the transaction asked for in one go, as its last
+// step, on the same transaction. `immediate` posts right here (the catch-up and
+// tests that want the summary).
 export async function postLedgerSources(
+  tx: Prisma.TransactionClient,
+  args: { organizationId: string; actorId: string; scope: ProjectionScope; immediate?: boolean },
+): Promise<PostSummary> {
+  if (!args.immediate && enqueuePosting({ organizationId: args.organizationId, actorId: args.actorId, scope: args.scope })) {
+    return emptySummary();
+  }
+  return runPosting(tx, args);
+}
+
+// The work itself: one posting for one organization.
+async function runPosting(
   tx: Prisma.TransactionClient,
   args: { organizationId: string; actorId: string; scope: ProjectionScope },
 ): Promise<PostSummary> {
@@ -104,6 +122,11 @@ export async function postLedgerSources(
   summary.reversed += await reverseVanishedSources(tx, ctx, args.scope, events);
   return summary;
 }
+
+// What the transaction wrapper calls once, before commit.
+setPostingFlusher(async (tx, pending) => {
+  for (const p of pending) await runPosting(tx, p);
+});
 
 // For a caller that may hold either a transaction or the plain connection (the
 // cash ledger's single write path accepts both). With the plain connection the
@@ -121,6 +144,10 @@ export async function postLedgerSourcesOn(
 }
 
 // ── posting a batch of events ─────────────────────────────────────────────
+//
+// A fixed handful of queries however many events there are: one read of what is
+// already known, one lock statement, bulk inserts for events, entries and lines,
+// and a single bump of the entry number. (It used to be a dozen queries PER event.)
 
 export async function postEvents(
   tx: Prisma.TransactionClient,
@@ -129,60 +156,74 @@ export async function postEvents(
 ): Promise<PostSummary> {
   const summary = emptySummary();
   const ordered = [...events].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-  const dims = await loadDimensions(tx, ctx.organizationId, ordered);
+  const live = ordered.filter((e) => {
+    if (new Date(e.occurredAt) >= ctx.startsAt) return true;
+    summary.beforeStart += 1;
+    return false;
+  });
+  if (live.length === 0) return summary;
 
-  for (const event of ordered) {
-    const occurredAt = new Date(event.occurredAt);
-    if (occurredAt < ctx.startsAt) {
-      summary.beforeStart += 1;
-      continue;
+  const keys = live.map((e) => e.key);
+  await lockPostingKeys(tx, ctx.organizationId, keys);
+  const [existingRows, dims] = await Promise.all([
+    tx.accountingEvent.findMany({
+      where: { organizationId: ctx.organizationId, eventKey: { in: keys } },
+      select: { id: true, eventKey: true, status: true },
+    }),
+    loadDimensions(tx, ctx.organizationId, live),
+  ]);
+  const existingByKey = new Map(existingRows.map((r) => [r.eventKey, r]));
+  const periods = new Map<string, { id: string; status: string }>();
+  const periodOf = async (date: Date) => {
+    const k = monthOf(date);
+    const cacheKey = `${k.year}-${k.month}`;
+    let p = periods.get(cacheKey);
+    if (!p) {
+      p = await ensurePeriod(tx, ctx.organizationId, date);
+      periods.set(cacheKey, p);
     }
-    await lockPostingKey(tx, ctx.organizationId, event.key);
-    const existing = await tx.accountingEvent.findUnique({
-      where: { organizationId_eventKey: { organizationId: ctx.organizationId, eventKey: event.key } },
-      select: { id: true, status: true },
-    });
+    return p;
+  };
+
+  const creates: Prisma.AccountingEventCreateManyInput[] = [];
+  const updates: { id: string; data: Prisma.AccountingEventUncheckedUpdateInput }[] = [];
+  const pendingEntries: { entryId: string; eventId: string; event: FinancialEvent; date: Date; periodId: string; lines: ReturnType<typeof lineOf>[] }[] = [];
+
+  for (const event of live) {
+    const existing = existingByKey.get(event.key);
     if (existing && FINAL.has(existing.status)) {
       summary.alreadyDone += 1;
       continue;
     }
-
-    const decision = decideEvent(event, ctx.cashKinds);
-    const record = async (
-      status: AccountingEventStatus,
-      reason: string | null,
-      extra: { contentHash?: string | null; periodId?: string | null } = {},
-    ) => {
-      const data = {
-        sourceType: event.sourceType,
-        sourceId: event.sourceId,
-        eventType: event.type,
-        eventDate: occurredAt,
-        accountingPeriodId: extra.periodId ?? null,
-        status,
-        statusReason: reason,
-        contentHash: extra.contentHash ?? null,
-        metadata: { description: event.description, categoryName: event.categoryName ?? null } as Prisma.InputJsonValue,
-      };
-      return existing
-        ? tx.accountingEvent.update({ where: { id: existing.id }, data })
-        : tx.accountingEvent.create({
-            data: { ...data, organizationId: ctx.organizationId, eventKey: event.key, createdById: ctx.actorId },
-          });
+    const occurredAt = new Date(event.occurredAt);
+    const base = {
+      sourceType: event.sourceType,
+      sourceId: event.sourceId,
+      eventType: event.type,
+      eventDate: occurredAt,
+      metadata: { description: event.description, categoryName: event.categoryName ?? null } as Prisma.InputJsonValue,
+    };
+    const record = (status: AccountingEventStatus, reason: string | null, extra: { contentHash?: string | null; periodId?: string | null } = {}) => {
+      const data = { ...base, accountingPeriodId: extra.periodId ?? null, status, statusReason: reason, contentHash: extra.contentHash ?? null };
+      const id = existing?.id ?? randomUUID();
+      if (existing) updates.push({ id, data });
+      else creates.push({ ...data, id, organizationId: ctx.organizationId, eventKey: event.key, createdById: ctx.actorId });
+      return id;
     };
 
+    const decision = decideEvent(event, ctx.cashKinds);
     if (decision.status === AccountingEventStatus.UNAPPROVED) {
-      await record(AccountingEventStatus.UNAPPROVED, decision.reason);
+      record(AccountingEventStatus.UNAPPROVED, decision.reason);
       summary.unapproved += 1;
       continue;
     }
     if (decision.status === AccountingEventStatus.NOT_POSTED) {
-      await record(AccountingEventStatus.NOT_POSTED, decision.detail ? `${decision.reason}:${decision.detail}` : decision.reason);
+      record(AccountingEventStatus.NOT_POSTED, decision.detail ? `${decision.reason}:${decision.detail}` : decision.reason);
       summary.notPosted += 1;
       continue;
     }
     if (decision.status === AccountingEventStatus.NO_GL_EFFECT) {
-      await record(AccountingEventStatus.NO_GL_EFFECT, decision.reason);
+      record(AccountingEventStatus.NO_GL_EFFECT, decision.reason);
       summary.noEffect += 1;
       continue;
     }
@@ -199,7 +240,7 @@ export async function postEvents(
     };
     const resolved = decision.lines.map((l) => ({ draft: l, accountId: accountOf(l.accountKey) }));
     if (missing.length > 0) {
-      await record(AccountingEventStatus.NOT_POSTED, `${NotPostedReason.ACCOUNT_NOT_MAPPED}:${missing.join(",")}`);
+      record(AccountingEventStatus.NOT_POSTED, `${NotPostedReason.ACCOUNT_NOT_MAPPED}:${missing.join(",")}`);
       summary.notPosted += 1;
       continue;
     }
@@ -210,34 +251,86 @@ export async function postEvents(
       validateLines(decision.lines);
     } catch (e) {
       if (e instanceof LedgerRejectedError) {
-        await record(AccountingEventStatus.EXCEPTION, `${NotPostedReason.DOES_NOT_BALANCE}:${e.message}`);
+        record(AccountingEventStatus.EXCEPTION, `${NotPostedReason.DOES_NOT_BALANCE}:${e.message}`);
         summary.exceptions += 1;
         continue;
       }
       throw e;
     }
 
-    const period = await ensurePeriod(tx, ctx.organizationId, occurredAt);
+    const period = await periodOf(occurredAt);
     if (period.status !== "OPEN") {
-      await record(AccountingEventStatus.NOT_POSTED, NotPostedReason.PERIOD_CLOSED, { periodId: period.id });
+      record(AccountingEventStatus.NOT_POSTED, NotPostedReason.PERIOD_CLOSED, { periodId: period.id });
       summary.notPosted += 1;
       continue;
     }
 
     const eventDims = dims.get(event.key) ?? {};
     const hash = createHash("sha256").update(draftFingerprint(event.occurredAt, decision.lines)).digest("hex");
-    const accountingEvent = await record(AccountingEventStatus.POSTED, null, { contentHash: hash, periodId: period.id });
-    await postJournalEntry(tx, {
-      organizationId: ctx.organizationId,
-      entryDate: occurredAt,
-      description: event.description,
-      kind: "STANDARD",
-      reference: `${event.sourceType}:${event.sourceId}`,
-      accountingEventId: accountingEvent.id,
-      actorId: ctx.actorId,
+    const eventId = record(AccountingEventStatus.POSTED, null, { contentHash: hash, periodId: period.id });
+    pendingEntries.push({
+      entryId: randomUUID(),
+      eventId,
+      event,
+      date: occurredAt,
+      periodId: period.id,
       lines: resolved.map(({ draft, accountId }) => lineOf(draft, accountId as string, eventDims)),
     });
     summary.posted += 1;
+  }
+
+  if (creates.length > 0) await tx.accountingEvent.createMany({ data: creates });
+  for (const u of updates) await tx.accountingEvent.update({ where: { id: u.id }, data: u.data });
+
+  if (pendingEntries.length > 0) {
+    // Numbers for the whole batch in one step (gapless: a rolled-back transaction
+    // gives them back).
+    const { journalEntrySequence } = await tx.organization.update({
+      where: { id: ctx.organizationId },
+      data: { journalEntrySequence: { increment: pendingEntries.length } },
+      select: { journalEntrySequence: true },
+    });
+    const first = journalEntrySequence - pendingEntries.length + 1;
+    await tx.journalEntry.createMany({
+      data: pendingEntries.map((p, i) => ({
+        id: p.entryId,
+        organizationId: ctx.organizationId,
+        number: first + i,
+        accountingPeriodId: p.periodId,
+        accountingEventId: p.eventId,
+        entryDate: p.date,
+        description: p.event.description,
+        kind: "STANDARD" as const,
+        reference: `${p.event.sourceType}:${p.event.sourceId}`,
+        createdById: ctx.actorId,
+        postedById: ctx.actorId,
+      })),
+    });
+    // Every line of every entry in ONE statement: the database checks each entry's
+    // set as it arrives (balance, at least two lines, nothing added later).
+    await tx.journalLine.createMany({
+      data: pendingEntries.flatMap((p) =>
+        p.lines.map((l, i) => ({
+          journalEntryId: p.entryId,
+          organizationId: ctx.organizationId,
+          lineNo: i + 1,
+          accountId: l.accountId,
+          debit: l.debit,
+          credit: l.credit,
+          amount: l.debit.plus(l.credit),
+          description: null,
+          cashSection: l.cashSection ?? null,
+          cashAccountId: l.cashAccountId ?? null,
+          locationId: l.locationId ?? null,
+          productId: l.productId ?? null,
+          categoryId: l.categoryId ?? null,
+          customerId: l.customerId ?? null,
+          supplierId: l.supplierId ?? null,
+          employeeId: l.employeeId ?? null,
+          financeCategoryId: l.financeCategoryId ?? null,
+        })),
+      ),
+    });
   }
   return summary;
 }
@@ -255,8 +348,10 @@ function lineOf(draft: DraftLine, accountId: string, dims: JournalDimensions) {
 }
 
 // ── when a source stops being a valid fact ─────────────────────────────────
-// A cancelled expense no longer projects an event. Its journal entry stays (a
-// posted entry is never deleted) and is cancelled by a reversal, linked to it.
+// A cancelled expense (or an annulled stock movement) no longer projects an
+// event. Its journal entry stays (a posted entry is never deleted) and is
+// cancelled by a reversal, linked to it; an event that never reached the book is
+// closed out so it does not linger as "waiting". One read for all of it.
 
 const SCOPE_SOURCES: [keyof ProjectionScope, string][] = [
   ["saleIds", "Sale"],
@@ -276,40 +371,40 @@ async function reverseVanishedSources(
   projected: FinancialEvent[],
 ): Promise<number> {
   const alive = new Set(projected.map((e) => e.key));
-  let reversed = 0;
-  for (const [field, sourceType] of SCOPE_SOURCES) {
-    const ids = scope[field];
-    if (!ids || ids.length === 0) continue;
-    const posted = await tx.accountingEvent.findMany({
-      where: { organizationId: ctx.organizationId, sourceType, sourceId: { in: ids }, status: AccountingEventStatus.POSTED },
-      include: { journalEntry: { select: { id: true } } },
-    });
-    // An event that never reached the book (not posted yet) and whose source has
-    // gone away is closed out too, so it does not linger as "waiting".
+  const families = SCOPE_SOURCES.filter(([field]) => (scope[field]?.length ?? 0) > 0);
+  if (families.length === 0) return 0;
+  const candidates = await tx.accountingEvent.findMany({
+    where: {
+      organizationId: ctx.organizationId,
+      status: { in: [AccountingEventStatus.POSTED, AccountingEventStatus.NOT_POSTED, AccountingEventStatus.EXCEPTION] },
+      OR: families.map(([field, sourceType]) => ({ sourceType, sourceId: { in: scope[field] as string[] } })),
+    },
+    include: { journalEntry: { select: { id: true } } },
+  });
+  const vanished = candidates.filter((c) => !alive.has(c.eventKey));
+  if (vanished.length === 0) return 0;
+
+  const unposted = vanished.filter((c) => c.status !== AccountingEventStatus.POSTED);
+  if (unposted.length > 0) {
     await tx.accountingEvent.updateMany({
-      where: {
-        organizationId: ctx.organizationId,
-        sourceType,
-        sourceId: { in: ids },
-        status: { in: [AccountingEventStatus.NOT_POSTED, AccountingEventStatus.EXCEPTION] },
-        eventKey: { notIn: [...alive] },
-      },
+      where: { id: { in: unposted.map((c) => c.id) } },
       data: { status: AccountingEventStatus.NO_GL_EFFECT, statusReason: NotPostedReason.SOURCE_CANCELLED },
     });
-    for (const ev of posted) {
-      if (alive.has(ev.eventKey) || !ev.journalEntry) continue;
-      await reverseJournalEntry(tx, {
-        organizationId: ctx.organizationId,
-        entryId: ev.journalEntry.id,
-        reason: "Источник операции отменён",
-        actorId: ctx.actorId,
-      });
-      await tx.accountingEvent.update({
-        where: { id: ev.id },
-        data: { status: AccountingEventStatus.REVERSED, statusReason: NotPostedReason.SOURCE_CANCELLED },
-      });
-      reversed += 1;
-    }
+  }
+  let reversed = 0;
+  for (const ev of vanished) {
+    if (ev.status !== AccountingEventStatus.POSTED || !ev.journalEntry) continue;
+    await reverseJournalEntry(tx, {
+      organizationId: ctx.organizationId,
+      entryId: ev.journalEntry.id,
+      reason: "Источник операции отменён",
+      actorId: ctx.actorId,
+    });
+    await tx.accountingEvent.update({
+      where: { id: ev.id },
+      data: { status: AccountingEventStatus.REVERSED, statusReason: NotPostedReason.SOURCE_CANCELLED },
+    });
+    reversed += 1;
   }
   return reversed;
 }
