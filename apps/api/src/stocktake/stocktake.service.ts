@@ -15,6 +15,7 @@ import { stockSignOf } from "../common/ledger-effects";
 import { recordAudit } from "../audit/audit";
 import { CostingService } from "../costing/costing.service";
 import { CreateStocktakeDto, UpdateStocktakeLineDto } from "./dto/stocktake.dto";
+import { postLedgerSources } from "../ledger/event-posting";
 
 const OPEN_STATUSES: PrismaStocktakeStatus[] = [PrismaStocktakeStatus.COUNTING, PrismaStocktakeStatus.REVIEW];
 
@@ -209,6 +210,7 @@ export class StocktakeService {
       let shortageValue = 0;
       let surplusValue = 0;
       let adjustedLines = 0;
+      const movementIds: string[] = [];
 
       for (const line of stocktake.lines) {
         if (line.countedQuantity === null) continue;
@@ -252,8 +254,12 @@ export class StocktakeService {
           shortageValue += cost ? -difference * cost.unitCost : 0;
         }
         await tx.stocktakeLine.update({ where: { id: line.id }, data: { movementId: movement.id } });
+        movementIds.push(movement.id);
         adjustedLines += 1;
       }
+
+      // Count differences are inventory gains/losses: journalised with the approval.
+      await postLedgerSources(tx, { organizationId: user.organizationId, actorId: user.id, scope: { stockMovementIds: movementIds } });
 
       await recordAudit(tx, {
         organizationId: user.organizationId,

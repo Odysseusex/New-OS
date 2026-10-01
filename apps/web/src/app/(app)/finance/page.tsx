@@ -57,6 +57,7 @@ import {
   FINANCE_CATEGORY_MANAGE_ROLES,
   FINANCE_SETUP_ROLES,
   FINANCE_VIEW_ROLES,
+  LEDGER_VIEW_ROLES,
   FinanceCategoryKind,
   PNL_TREATMENT_LABELS_RU,
   PAYMENT_STATUS_LABELS_RU,
@@ -72,6 +73,7 @@ import { CategoryClassificationModal } from "@/components/category-classificatio
 import { FinancialPeriodsTab } from "@/components/financial-periods-tab";
 import { FixedAssetsTab } from "@/components/fixed-assets-tab";
 import { BalanceTab } from "@/components/balance-tab";
+import { LedgerTab } from "@/components/ledger-tab";
 import { NewCashAccountModal } from "@/components/new-cash-account-modal";
 import { CashMovementModal } from "@/components/cash-movement-modal";
 import { CashTransferModal } from "@/components/cash-transfer-modal";
@@ -93,7 +95,8 @@ type Tab =
   | "breakeven"
   | "periods"
   | "assets"
-  | "balance";
+  | "balance"
+  | "ledger";
 type Period = "today" | "7d" | "30d" | "month";
 
 const TABS: { id: Tab; label: string }[] = [
@@ -105,6 +108,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "expenses", label: "Расходы" },
   { id: "categories", label: "Статьи ДДС" },
   { id: "balance", label: "Баланс" },
+  { id: "ledger", label: "Главная книга" },
   { id: "assets", label: "Основные средства" },
   { id: "periods", label: "Периоды" },
   { id: "consignment", label: "Под реализацию" },
@@ -591,7 +595,7 @@ export default function FinancePage() {
       )}
 
       <div className="mb-6 flex flex-wrap items-center gap-1 rounded-xl bg-surface-muted p-1">
-        {TABS.map((t) => (
+        {TABS.filter((t) => t.id !== "ledger" || (user && LEDGER_VIEW_ROLES.includes(user.role))).map((t) => (
           <TabButton key={t.id} active={tab === t.id} onClick={() => setTab(t.id)}>
             {t.label}
           </TabButton>
@@ -980,6 +984,8 @@ export default function FinancePage() {
       {tab === "consignment" && <ConsignmentTab />}
 
       {tab === "balance" && <BalanceTab />}
+
+      {tab === "ledger" && <LedgerTab />}
 
       {tab === "assets" && <FixedAssetsTab />}
 

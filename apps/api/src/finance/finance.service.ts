@@ -54,6 +54,7 @@ import { CashMovementsService } from "./cash-movements.service";
 import { CreateExpenseDto } from "./dto/create-expense.dto";
 import { RecordExpensePaymentDto } from "./dto/record-expense-payment.dto";
 import { recordAudit } from "../audit/audit";
+import { postLedgerSources } from "../ledger/event-posting";
 
 const EXPENSE_INCLUDE = { location: true, categoryRef: true, createdBy: true };
 
@@ -153,6 +154,11 @@ export class FinanceService {
         });
       }
 
+      // A confirmed expense is accrued (payable + its P&L/balance line) at once.
+      if (created.status === ExpenseStatus.CONFIRMED) {
+        await postLedgerSources(tx, { organizationId: user.organizationId, actorId: user.id, scope: { expenseIds: [created.id] } });
+      }
+
       return created;
     });
 
@@ -178,6 +184,7 @@ export class FinanceService {
         throw new BadRequestException("Расход уже подтверждён или отменён");
       }
       const saved = await tx.expense.findUniqueOrThrow({ where: { id: expenseId }, include: EXPENSE_INCLUDE });
+      await postLedgerSources(tx, { organizationId, actorId: actorId ?? saved.createdById, scope: { expenseIds: [expenseId] } });
       await recordAudit(tx, {
         organizationId,
         actorId,
@@ -209,6 +216,8 @@ export class FinanceService {
         data: { status: ExpenseStatus.CANCELLED },
         include: EXPENSE_INCLUDE,
       });
+      // The accrual no longer stands: its entry is cancelled by a reversal.
+      await postLedgerSources(tx, { organizationId, actorId: actorId ?? saved.createdById, scope: { expenseIds: [expenseId] } });
       await recordAudit(tx, {
         organizationId,
         actorId,

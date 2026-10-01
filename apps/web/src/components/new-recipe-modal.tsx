@@ -178,9 +178,9 @@ export function NewRecipeModal({
     return sum + convertUnitQuantity(qty, row.unit, product.unit) * product.price;
   }, 0);
   const liveYieldQuantity = Number(yieldQuantity) || 0;
-  const liveLossPercent = Number(lossPercent) || 0;
-  const liveEffectiveYield = liveYieldQuantity * (1 - liveLossPercent / 100);
-  const liveUnitCost = liveEffectiveYield > 0 ? liveTotalIngredientCost / liveEffectiveYield : 0;
+  // The yield is the normal sellable output, already after normal loss: the
+  // loss percentage is not taken off a second time.
+  const liveUnitCost = liveYieldQuantity > 0 ? liveTotalIngredientCost / liveYieldQuantity : 0;
   const liveProductPrice = products.find((p) => p.id === productId)?.price ?? 0;
   const liveMarginPercent = liveProductPrice > 0 ? ((liveProductPrice - liveUnitCost) / liveProductPrice) * 100 : null;
 

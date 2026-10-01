@@ -1,6 +1,6 @@
 import { BalanceLine, CashSection, FinancialEvent, FinancialEventType } from "@bakery-os/shared";
-import { PrismaService } from "../../prisma/prisma.service";
 import { round2 } from "../../common/money";
+import { scoped, type DbClient } from "./scope";
 import type { ProjectionOptions } from "./projector";
 
 // Purchasing, on the accrual side:
@@ -12,18 +12,21 @@ import type { ProjectionOptions } from "./projector";
 // incomplete instead of inventing a counter-side.
 
 export async function purchaseEvents(
-  prisma: PrismaService,
+  prisma: DbClient,
   organizationId: string,
   opts: ProjectionOptions,
 ): Promise<FinancialEvent[]> {
+  const orderIds = scoped(opts.scope, "purchaseOrderIds");
+  const invoiceIds = scoped(opts.scope, "invoiceIds");
+  if (orderIds && invoiceIds && orderIds.length === 0 && invoiceIds.length === 0) return [];
   const [org, orders, invoices] = await Promise.all([
     prisma.organization.findUnique({ where: { id: organizationId }, select: { purchaseCutoverAt: true } }),
-    prisma.purchaseOrder.findMany({
-      where: { organizationId, status: "RECEIVED", receivedAt: { not: null, ...(opts.upTo ? { lte: opts.upTo } : {}) } },
+    orderIds && orderIds.length === 0 ? Promise.resolve([]) : prisma.purchaseOrder.findMany({
+      where: { organizationId, ...(orderIds ? { id: { in: orderIds } } : {}), status: "RECEIVED", receivedAt: { not: null, ...(opts.upTo ? { lte: opts.upTo } : {}) } },
       select: { id: true, totalCost: true, receivedTotal: true, receivedAt: true },
     }),
-    prisma.invoice.findMany({
-      where: { organizationId, status: "CONFIRMED", confirmedAt: { not: null, ...(opts.upTo ? { lte: opts.upTo } : {}) } },
+    invoiceIds && invoiceIds.length === 0 ? Promise.resolve([]) : prisma.invoice.findMany({
+      where: { organizationId, ...(invoiceIds ? { id: { in: invoiceIds } } : {}), status: "CONFIRMED", confirmedAt: { not: null, ...(opts.upTo ? { lte: opts.upTo } : {}) } },
       select: {
         id: true,
         number: true,

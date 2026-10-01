@@ -25,6 +25,7 @@ import { CashMovementsService } from "../finance/cash-movements.service";
 import { AccountingPolicyService } from "../finance/accounting-policy.service";
 import { PeriodGuard } from "../finance/periods/period-guard";
 import { depreciationCalculators, isExplicitlyNotDepreciated, resolveDepreciableTerms } from "./depreciation-calculators";
+import { postLedgerSources } from "../ledger/event-posting";
 
 type AssetRow = Prisma.FixedAssetGetPayload<{ include: { location: true; depreciation: true } }>;
 
@@ -294,6 +295,14 @@ export class FixedAssetsService {
     await this.prisma.$transaction(async (tx) => {
       const inserted = rows.length > 0 ? await tx.depreciationEntry.createMany({ data: rows, skipDuplicates: true }) : { count: 0 };
       result.created = inserted.count;
+      if (rows.length > 0) {
+        // Each charge is an expense and a reduction of the asset's book value.
+        const entries = await tx.depreciationEntry.findMany({
+          where: { organizationId, OR: rows.map((r) => ({ assetId: r.assetId, year: r.year, month: r.month })) },
+          select: { id: true },
+        });
+        await postLedgerSources(tx, { organizationId, actorId: user.id, scope: { depreciationEntryIds: entries.map((e) => e.id) } });
+      }
       await recordAudit(tx, {
         organizationId,
         actorId: user.id,
@@ -353,6 +362,7 @@ export class FixedAssetsService {
           createdById: user.id,
         });
       }
+      await postLedgerSources(tx, { organizationId, actorId: user.id, scope: { fixedAssetIds: [assetId] } });
       await recordAudit(tx, {
         organizationId,
         actorId: user.id,

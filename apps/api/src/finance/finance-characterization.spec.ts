@@ -198,29 +198,24 @@ describe("cost resolver (common/product-costs.ts)", () => {
     expect(costs.get(breadId)).toBe(50);
   });
 
-  it("KNOWN DEFECT (v2 §1, decision D1): ignores the recipe's lossPercent", async () => {
-    // The recipe screen (recipes.service.ts) divides by (1 − loss/100) and would
-    // give 200 / (4 × 0.9) = 55.56 for this loaf. The resolver P&L and inventory
-    // valuation use gives 50. Two numbers for one loaf; which is right is a
-    // business question, so this is pinned, not fixed.
+  it("FIXED (decision D1, Phase 10): the yield is already net of normal loss, so loss is not taken off twice", async () => {
+    // The recipe screen used to divide by (1 − loss/100) and gave 200 / (4 × 0.9) = 55.56
+    // for this loaf while the resolver gave 50. D1: yieldQuantity IS the normal
+    // sellable output after normal technological loss, so both now say 50.
     const costs = await resolveProductUnitCosts(prisma, org.organizationId);
+    expect(costs.get(breadId)).toBe(50);
     expect(costs.get(breadId)).not.toBeCloseTo(200 / (4 * 0.9), 2);
   });
 
-  it("KNOWN DEFECT: the purchase-average fallback counts PLACED and CANCELLED orders too", async () => {
-    // (3 000 received + 9 000 placed + 15 000 cancelled) ÷ 30 units = 900.
-    // Only the received order is real; the honest average would be 300.
-    const costs = await resolveProductUnitCosts(prisma, org.organizationId);
-    expect(costs.get(cakeId)).toBe(900);
-  });
-
-  it("KNOWN DEFECT: supplier invoices never feed the purchase average", async () => {
-    // A CONFIRMED invoice for the same cake at 100 per unit exists (fixture)
-    // and does not move the 900 above.
+  it("FIXED (decision D2, Phase 10): the purchase average counts only what was received", async () => {
+    // Before: (3 000 received + 9 000 placed + 15 000 cancelled) ÷ 30 units = 900, and
+    // supplier invoices never fed it. Now a PLACED or CANCELLED order has bought nothing,
+    // and a CONFIRMED invoice has: (10 × 300 received order + 10 × 100 confirmed
+    // invoice) ÷ 20 units = 200. The DRAFT invoice (10 × 50) is not counted.
     const invoiceItems = await prisma.invoiceItem.count({ where: { productId: cakeId, invoice: { status: "CONFIRMED" } } });
     expect(invoiceItems).toBe(1);
     const costs = await resolveProductUnitCosts(prisma, org.organizationId);
-    expect(costs.get(cakeId)).toBe(900);
+    expect(costs.get(cakeId)).toBe(200);
   });
 
   it("leaves a product with neither recipe nor purchases without a cost (unknown, never zero)", async () => {
@@ -240,20 +235,22 @@ describe("profit and loss", () => {
     expect(pnl.returnsTotal).toBe(1000);
     expect(pnl.netRevenue).toBe(3150);
     expect(pnl.revenue).toBe(pnl.netRevenue);
-    // bread: 6 × 50 = 300, cake 1 × 900 = 900, mystery: no cost → 0; the RESTOCKED
+    // bread: 6 × 50 = 300, cake 1 × 300 = 300, mystery: no cost → 0; the RESTOCKED
     // return gives one loaf's cost (50) back; the SCRAPPED one keeps its cost.
-    expect(pnl.cogs).toBe(1150);
-    expect(pnl.grossProfit).toBe(2000);
+    // The cake was sold at the average of THAT moment (300, only the received
+    // order existed); the invoice that later brought it to 200 does not rewrite it.
+    expect(pnl.cogs).toBe(550);
+    expect(pnl.grossProfit).toBe(2600);
     expect(pnl.unknownCostLineItems).toBe(1);
     expect(pnl.inventoryLosses).toBe(0);
     // Only CONFIRMED expenses count: 300 paid + 200 owed. The DRAFT 500 and the CANCELLED 700 do not.
     expect(pnl.expensesTotal).toBe(500);
-    expect(pnl.operatingProfit).toBe(1500);
+    expect(pnl.operatingProfit).toBe(2100);
     // INTENTIONAL CHANGE (Phase 4): the classified 40 till shortage (an OTHER_EXPENSE
     // category) is now a result line below operating profit.
     expect(pnl.otherResult).toBe(-40);
-    expect(pnl.profitBeforeTax).toBe(1460);
-    expect(pnl.netProfit).toBe(1460);
+    expect(pnl.profitBeforeTax).toBe(2060);
+    expect(pnl.netProfit).toBe(2060);
     // The rent category is not classified: its 500 still counts as operating expense, and says so.
     expect(pnl.unclassifiedExpensesTotal).toBe(500);
     expect(pnl.capitalizedExpensesTotal).toBe(0);
@@ -270,7 +267,7 @@ describe("profit and loss", () => {
     // Refunded money and reported returns agree, and the scrap marker (a
     // return-linked WRITE_OFF) is kept out of inventory losses.
     expect(pnl.inventoryLossLines).toEqual([]);
-    expect(pnl.cogs).toBe(1150);
+    expect(pnl.cogs).toBe(550);
   });
 
   it("exposes the full P&L ladder and never calls operating profit the net profit", async () => {
@@ -286,13 +283,13 @@ describe("profit and loss", () => {
     expect(pnl.incomeTax).toBeNull();
     expect(pnl.netProfitStatus).toBe("PRELIMINARY");
     expect(pnl.notConfigured).toContain("INCOME_TAX");
-    expect(pnl.costingMethod).toBe("текущий расчёт (политика не утверждена)");
+    expect(pnl.costingMethod).toBe("средневзвешенная стоимость закупок; ингредиенты — по цене из номенклатуры");
   });
 
   it("the dashboard's net profit carries the same status as the P&L", async () => {
     const dashboard = await services.finance.getDashboard(org.organizationId, from, to);
-    expect(dashboard.grossProfit).toBe(2000);
-    expect(dashboard.operatingProfit).toBe(1500);
+    expect(dashboard.grossProfit).toBe(2600);
+    expect(dashboard.operatingProfit).toBe(2100);
     expect(dashboard.netProfitStatus).toBe("PRELIMINARY");
     expect(dashboard.notConfigured).toContain("INCOME_TAX");
   });
@@ -375,10 +372,10 @@ describe("inventory valuation", () => {
     expect(line(flourId)).toMatchObject({ quantity: 100, unitCost: 100, value: 10000, hasCostData: true });
     // bread: 20 received − 6 sold + 1 restocked return = 15 × 50 (the scrapped return added nothing back)
     expect(line(breadId)).toMatchObject({ quantity: 15, unitCost: 50, value: 750 });
-    // cake: 20 − 1 sold = 19 × 900 (the defective average above)
-    expect(line(cakeId)).toMatchObject({ quantity: 19, unitCost: 900, value: 17100 });
+    // cake: 20 − 1 sold = 19 × 200 (the weighted average of what was received, D2)
+    expect(line(cakeId)).toMatchObject({ quantity: 19, unitCost: 200, value: 3800 });
     expect(line(mysteryId)).toMatchObject({ quantity: 18, unitCost: null, value: 0, hasCostData: false });
-    expect(valuation.totalValue).toBe(10000 + 750 + 17100);
+    expect(valuation.totalValue).toBe(10000 + 750 + 3800);
     expect(valuation.unknownValueLineItems).toBe(1);
   });
 });
@@ -433,7 +430,7 @@ describe("what does NOT reach the profit and loss statement", () => {
 describe("history is remembered, not recomputed", () => {
   it("editing an ingredient price does NOT rewrite the cost of goods of sales already made", async () => {
     const before = await services.finance.getProfitAndLoss(org.organizationId, from, to);
-    expect(before.cogs).toBe(1100);
+    expect(before.cogs).toBe(500);
     await prisma.product.update({ where: { id: flourId }, data: { price: 200 } });
     try {
       const after = await services.finance.getProfitAndLoss(org.organizationId, from, to);

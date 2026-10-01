@@ -52,6 +52,18 @@ export const AUDIT_ACTION_GROUPS = {
     "product.archive", "product.restore",
   ],
   stocktake: ["stocktake.create", "stocktake.submit", "stocktake.reopen", "stocktake.approve", "stocktake.cancel"],
+  // Posting from operations is traced by the journal itself (each entry carries
+  // its source, poster and time); these are the deliberate human actions.
+  ledger: [
+    "ledger.enable",
+    "ledger.systemAccounts.init",
+    "ledger.account.create",
+    "ledger.account.update",
+    "ledger.entry.manual",
+    "ledger.entry.opening",
+    "ledger.entry.reverse",
+    "ledger.postPending",
+  ],
 } as const;
 
 type Groups = typeof AUDIT_ACTION_GROUPS;

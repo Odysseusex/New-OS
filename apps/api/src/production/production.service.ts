@@ -21,6 +21,7 @@ import { CancelBatchDto } from "./dto/cancel-batch.dto";
 import { CompleteBatchDto } from "./dto/complete-batch.dto";
 import { decrementStockOrThrow } from "../common/stock-guard";
 import { recordAudit } from "../audit/audit";
+import { recordProductionEvent } from "../ledger/event-posting";
 
 @Injectable()
 export class ProductionService {
@@ -373,6 +374,18 @@ export class ProductionService {
           completedAt: new Date(),
         },
         include: { location: true, recipe: { include: { product: true } }, createdBy: true, costs: true },
+      });
+
+      // Raw materials became finished goods at cost: a real event with no
+      // ledger balance effect under the current (ingredient-only) policy.
+      await recordProductionEvent(tx, {
+        organizationId: user.organizationId,
+        actorId: user.id,
+        batchId: batch.id,
+        completedAt: updated.completedAt ?? new Date(),
+        consumedValue: ingredientTotal,
+        outputValue: dto.actualQuantity > 0 ? round2(round4(ingredientTotal / dto.actualQuantity) * dto.actualQuantity) : 0,
+        outputQuantity: dto.actualQuantity,
       });
 
       return this.toDto(updated);

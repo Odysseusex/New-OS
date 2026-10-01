@@ -14,6 +14,8 @@ import { CashMovementsService } from "../finance/cash-movements.service";
 import { FiscalService, buildFiscalSaleRequest } from "../fiscal/fiscal.service";
 import { FiscalSettings } from "../fiscal/fiscal.settings";
 import { CreateSaleReturnDto } from "./dto/create-sale-return.dto";
+import { allocateRefund, validateRefundOverride } from "./refund-allocation";
+import { postLedgerSources } from "../ledger/event-posting";
 
 const RETURN_INCLUDE = {
   location: true,
@@ -56,7 +58,7 @@ export class SaleReturnsService {
   async create(user: AuthenticatedUser, saleId: string, dto: CreateSaleReturnDto): Promise<SaleReturnDto> {
     const sale = await this.prisma.sale.findFirst({
       where: { id: saleId, organizationId: user.organizationId },
-      include: { items: { include: { product: true } }, location: true, fiscalReceipt: true, returns: { include: { items: true } } },
+      include: { items: { include: { product: true } }, location: true, fiscalReceipt: true, payments: true, returns: { include: { items: true } } },
     });
     if (!sale) throw new NotFoundException("Продажа не найдена");
     resolveLocationScope(user, sale.locationId);
@@ -188,24 +190,34 @@ export class SaleReturnsService {
         await this.fiscalService.linkSaleReturn(tx, receipt.id, saleReturn.id);
       }
 
-      // Money out of the same account the sale's payment landed in.
-      const accountId = await this.resolveRefundAccountId(tx, user.organizationId, sale.locationId, sale.paymentMethod);
-      if (accountId) {
+      // Money goes back the way it came (D8): a single-method sale refunds that
+      // method; a mixed sale refunds each tender in proportion to what it paid,
+      // unless the caller explicitly overrides the split.
+      const tenders = sale.payments.map((p) => ({ method: p.method as string, amount: p.amount.toNumber() }));
+      const refundParts =
+        sale.paymentMethod !== PaymentMethod.MIXED
+          ? [{ method: sale.paymentMethod as string, amount: totalAmount }]
+          : dto.refundSplit && dto.refundSplit.length > 0
+            ? validateRefundOverride(totalAmount, dto.refundSplit, tenders)
+            : allocateRefund(totalAmount, tenders);
+      for (const part of refundParts) {
+        const accountId = await this.resolveRefundAccountId(tx, user.organizationId, sale.locationId, part.method);
+        if (!accountId) continue;
         await this.cashMovementsService.recordMovement(tx, {
           organizationId: user.organizationId,
           accountId,
           type: CashMovementType.SALE_REFUND,
-          amount: totalAmount,
+          amount: part.amount,
           customerId: sale.customerId ?? undefined,
           saleId: sale.id,
           reason: dto.reason ?? "Возврат покупателю",
           createdById: user.id,
         });
-        await tx.cashMovement.updateMany({
-          where: { saleId: sale.id, type: CashMovementType.SALE_REFUND, saleReturnId: null },
-          data: { saleReturnId: saleReturn.id },
-        });
       }
+      await tx.cashMovement.updateMany({
+        where: { saleId: sale.id, type: CashMovementType.SALE_REFUND, saleReturnId: null },
+        data: { saleReturnId: saleReturn.id },
+      });
 
       for (const line of lines) {
         const trackable = await tx.product.findUnique({ where: { id: line.productId } });
@@ -247,6 +259,10 @@ export class SaleReturnsService {
           },
         });
       }
+
+      // Journalise the return (and its cost) with the return itself; the refund
+      // movements above were journalised as they were recorded.
+      await postLedgerSources(tx, { organizationId: user.organizationId, actorId: user.id, scope: { saleReturnIds: [saleReturn.id] } });
 
       return saleReturn;
     });

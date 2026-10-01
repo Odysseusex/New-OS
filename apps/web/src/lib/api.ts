@@ -1,5 +1,24 @@
 import type {
   AddEmployeeCompensationRequestDto,
+  CreateLedgerAccountInput,
+  EnableLedgerInput,
+  GeneralLedgerDto,
+  GlBalanceSheetDto,
+  GlCashFlowDto,
+  GlPnlDto,
+  JournalEntryDto,
+  LedgerAccountDto,
+  LedgerCoverageDto,
+  LedgerDiagnosticsReportDto,
+  LedgerStatusDto,
+  ManualJournalEntryInput,
+  OpeningBalanceInput,
+  OpeningBalanceProposalDto,
+  PnlReconciliationDto,
+  PostPendingResultDto,
+  SystemAccountKey,
+  TrialBalanceDto,
+  UpdateLedgerAccountInput,
   AdjustStockRequestDto,
   AiExecutiveSummaryDto,
   AiInsightsResponseDto,
@@ -527,6 +546,48 @@ export const api = {
       }),
     dispose: (id: string, dto: DisposeFixedAssetRequestDto) =>
       request<FixedAssetDto>(`/fixed-assets/${id}/dispose`, { method: "POST", body: JSON.stringify(dto) }),
+  },
+
+  ledger: {
+    status: () => request<LedgerStatusDto>("/ledger/status"),
+    initSystemAccounts: () => request<{ created: SystemAccountKey[] }>("/ledger/system-accounts", { method: "POST" }),
+    enable: (dto: EnableLedgerInput) => request<LedgerStatusDto>("/ledger/enable", { method: "POST", body: JSON.stringify(dto) }),
+    accounts: () => request<LedgerAccountDto[]>("/ledger/accounts"),
+    createAccount: (dto: CreateLedgerAccountInput) =>
+      request<LedgerAccountDto>("/ledger/accounts", { method: "POST", body: JSON.stringify(dto) }),
+    updateAccount: (id: string, dto: UpdateLedgerAccountInput) =>
+      request<LedgerAccountDto>(`/ledger/accounts/${id}`, { method: "PATCH", body: JSON.stringify(dto) }),
+    accountLedger: (id: string, from?: string, to?: string) =>
+      request<GeneralLedgerDto>(withQuery(`/ledger/accounts/${id}/ledger`, { from, to })),
+    entries: (params: { from?: string; to?: string; accountId?: string; kind?: string; limit?: number; offset?: number } = {}) =>
+      request<JournalEntryDto[]>(
+        withQuery("/ledger/entries", {
+          from: params.from,
+          to: params.to,
+          accountId: params.accountId,
+          kind: params.kind,
+          limit: params.limit !== undefined ? String(params.limit) : undefined,
+          offset: params.offset !== undefined ? String(params.offset) : undefined,
+        }),
+      ),
+    postManual: (dto: ManualJournalEntryInput) =>
+      request<JournalEntryDto>("/ledger/entries", { method: "POST", body: JSON.stringify(dto) }),
+    reverse: (id: string, reason: string) =>
+      request<JournalEntryDto>(`/ledger/entries/${id}/reverse`, { method: "POST", body: JSON.stringify({ reason }) }),
+    trace: (sourceType: string, sourceId: string) =>
+      request<JournalEntryDto[]>(`/ledger/trace/${encodeURIComponent(sourceType)}/${encodeURIComponent(sourceId)}`),
+    openingProposal: () => request<OpeningBalanceProposalDto>("/ledger/opening/proposal"),
+    postOpening: (dto: OpeningBalanceInput) =>
+      request<JournalEntryDto>("/ledger/opening", { method: "POST", body: JSON.stringify(dto) }),
+    postPending: () => request<PostPendingResultDto>("/ledger/post-pending", { method: "POST" }),
+    trialBalance: (from?: string, to?: string) => request<TrialBalanceDto>(withQuery("/ledger/trial-balance", { from, to })),
+    pnl: (from: string, to: string) => request<GlPnlDto>(withQuery("/ledger/reports/pnl", { from, to })),
+    balance: (asOf?: string) => request<GlBalanceSheetDto>(withQuery("/ledger/reports/balance", { asOf })),
+    cashFlow: (from: string, to: string) => request<GlCashFlowDto>(withQuery("/ledger/reports/cash-flow", { from, to })),
+    pnlReconciliation: (from: string, to: string) =>
+      request<PnlReconciliationDto>(withQuery("/ledger/reports/pnl-reconciliation", { from, to })),
+    diagnostics: () => request<LedgerDiagnosticsReportDto>("/ledger/diagnostics"),
+    coverage: () => request<LedgerCoverageDto>("/ledger/coverage"),
   },
 
   periods: {

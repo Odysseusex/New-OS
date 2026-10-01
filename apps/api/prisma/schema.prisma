@@ -332,6 +332,18 @@ model Organization {
   stocktakes       Stocktake[]
   financialPeriods FinancialPeriod[]
 
+  // General ledger (Phase 10). Null = the ledger is OFF: nothing is posted and
+  // every flow behaves exactly as before. Set once, by an explicit owner
+  // action; from then on events dated at or after it are journalised. Events
+  // before it are never converted automatically (NOT_MIGRATED); the position
+  // at this moment enters through an explicit opening-balance entry.
+  ledgerStartsAt       DateTime?
+  journalEntrySequence Int       @default(0)
+
+  ledgerAccounts   LedgerAccount[]
+  accountingEvents AccountingEvent[]
+  journalEntries   JournalEntry[]
+
   @@map("organizations")
 }
 
@@ -460,6 +472,9 @@ model User {
   promotionsCreated         Promotion[]
   promotionRedemptions      PromotionCoupon[]
   auditEntries              AuditLog[]         @relation("AuditActor")
+  accountingEventsCreated   AccountingEvent[]  @relation("AccountingEventCreatedBy")
+  journalEntriesCreated     JournalEntry[]     @relation("JournalEntryCreatedBy")
+  journalEntriesPosted      JournalEntry[]     @relation("JournalEntryPostedBy")
   accountingPolicyUpdates   AccountingPolicy[] @relation("AccountingPolicyUpdatedBy")
   stocktakesCreated         Stocktake[]        @relation("StocktakeCreatedBy")
   stocktakesApproved        Stocktake[]        @relation("StocktakeApprovedBy")
@@ -1236,6 +1251,9 @@ enum ProductionCostComponent {
   UTILITY
   OVERHEAD
   TECHNOLOGICAL_LOSS
+  // Spoilage beyond the normal technological loss (D1). Never part of normal
+  // product cost; its treatment (D6) is not approved, so it is never written.
+  ABNORMAL_LOSS
 }
 
 model Supplier {
@@ -2102,7 +2120,9 @@ model FinancialPeriod {
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
 
-  snapshots PeriodSnapshot[]
+  snapshots        PeriodSnapshot[]
+  accountingEvents AccountingEvent[]
+  journalEntries   JournalEntry[]
 
   @@unique([organizationId, year, month])
   @@index([organizationId, status])
@@ -2253,4 +2273,186 @@ model FinancialModelScenario {
 
   @@index([organizationId])
   @@map("financial_model_scenarios")
+}
+
+// ── General ledger (Phase 10) ───────────────────────────────────────────
+//
+//   business document → AccountingEvent → JournalEntry → JournalLine
+//
+// The ledger is the accounting source of truth for what it has posted. It
+// does NOT replace the operational ledgers (StockMovement, CashMovement): those
+// stay the subledgers, and diagnostics compare the two instead of trusting one.
+// Posted rows are immutable (a database trigger rejects UPDATE); corrections
+// are reversal entries. Every entry balances (a deferred constraint trigger
+// rejects an entry whose debits differ from its credits).
+
+enum LedgerAccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  COGS
+  OPERATING_EXPENSE
+  BELOW_OPERATING
+  TAX
+}
+
+enum NormalBalance {
+  DEBIT
+  CREDIT
+}
+
+// POSTED        a journal entry exists
+// NOT_POSTED    the event is known but could not be journalised yet (see statusReason)
+// UNAPPROVED    the accounting treatment is not an approved policy; nothing is guessed
+// NO_GL_EFFECT  a real event that changes no ledger balance under current policy
+// EXCEPTION     the rules produced something that must not be posted (e.g. does not balance)
+// REVERSED      its journal entry has been reversed
+enum AccountingEventStatus {
+  POSTED
+  NOT_POSTED
+  UNAPPROVED
+  NO_GL_EFFECT
+  EXCEPTION
+  REVERSED
+}
+
+enum JournalEntryKind {
+  STANDARD
+  OPENING_BALANCE
+  MANUAL
+  REVERSAL
+}
+
+enum JournalEntryStatus {
+  POSTED
+}
+
+// The chart of accounts. No production chart is shipped: accounts are created
+// by the organization. `systemAccountKey` marks the few accounts the
+// application itself posts to (cash, inventory, receivables…); everything else
+// is the organization's own.
+model LedgerAccount {
+  id               String            @id @default(cuid())
+  organizationId   String
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  code             String
+  name             String
+  type             LedgerAccountType
+  normalBalance    NormalBalance
+  parentId         String?
+  parent           LedgerAccount?    @relation("LedgerAccountTree", fields: [parentId], references: [id])
+  children         LedgerAccount[]   @relation("LedgerAccountTree")
+  isActive         Boolean           @default(true)
+  systemAccountKey String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  lines JournalLine[]
+
+  @@unique([organizationId, code])
+  @@unique([organizationId, systemAccountKey])
+  @@index([organizationId, type])
+  @@map("ledger_accounts")
+}
+
+// One row per FinancialEvent that the ledger has looked at. `eventKey` is the
+// event's own deterministic key (`sale:<id>`, `cash:<id>`…), which is what makes
+// posting idempotent: the same key can never produce a second entry.
+model AccountingEvent {
+  id                 String                @id @default(cuid())
+  organizationId     String
+  organization       Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  eventKey           String
+  sourceType         String
+  sourceId           String
+  eventType          String
+  eventDate          DateTime
+  accountingPeriodId String?
+  accountingPeriod   FinancialPeriod?      @relation(fields: [accountingPeriodId], references: [id])
+  status             AccountingEventStatus
+  statusReason       String?
+  // Fingerprint of the lines the rules produced when it was posted; a later
+  // difference means the source changed after posting (reported, never rewritten).
+  contentHash        String?
+  metadata           Json?
+  createdById        String?
+  createdBy          User?                 @relation("AccountingEventCreatedBy", fields: [createdById], references: [id])
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  journalEntry JournalEntry?
+
+  @@unique([organizationId, eventKey])
+  @@index([organizationId, sourceType, sourceId])
+  @@index([organizationId, status])
+  @@map("accounting_events")
+}
+
+model JournalEntry {
+  id                 String             @id @default(cuid())
+  organizationId     String
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Per-organization running number, handed out by an atomic increment.
+  number             Int
+  accountingPeriodId String
+  accountingPeriod   FinancialPeriod    @relation(fields: [accountingPeriodId], references: [id])
+  accountingEventId  String?            @unique
+  accountingEvent    AccountingEvent?   @relation(fields: [accountingEventId], references: [id])
+  entryDate          DateTime
+  description        String
+  kind               JournalEntryKind   @default(STANDARD)
+  status             JournalEntryStatus @default(POSTED)
+  reference          String?
+  createdAt          DateTime           @default(now())
+  createdById        String
+  createdBy          User               @relation("JournalEntryCreatedBy", fields: [createdById], references: [id])
+  postedAt           DateTime           @default(now())
+  postedById         String
+  postedBy           User               @relation("JournalEntryPostedBy", fields: [postedById], references: [id])
+  // Set on a reversal entry; unique, so an entry can be reversed at most once.
+  reversalOfEntryId  String?            @unique
+  reversalOf         JournalEntry?      @relation("JournalReversal", fields: [reversalOfEntryId], references: [id])
+  reversedBy         JournalEntry?      @relation("JournalReversal")
+  reversalReason     String?
+
+  lines JournalLine[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, entryDate])
+  @@index([organizationId, accountingPeriodId])
+  @@map("journal_entries")
+}
+
+// Exactly one of debit/credit is positive (a CHECK constraint enforces it);
+// `amount` is that positive figure. Dimensions are plain nullable columns, not
+// foreign keys: a dimension never blocks the guarded delete of the thing it
+// points at, and the entry keeps saying what it said.
+model JournalLine {
+  id                String        @id @default(cuid())
+  organizationId    String
+  journalEntryId    String
+  journalEntry      JournalEntry  @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  lineNo            Int
+  accountId         String
+  account           LedgerAccount @relation(fields: [accountId], references: [id])
+  debit             Decimal       @default(0) @db.Decimal(18, 2)
+  credit            Decimal       @default(0) @db.Decimal(18, 2)
+  amount            Decimal       @db.Decimal(18, 2)
+  description       String?
+  // Cash-flow section of a cash line (OPERATING/INVESTING/FINANCING/INTERNAL/OPENING/UNCLASSIFIED).
+  cashSection       String?
+  cashAccountId     String?
+  locationId        String?
+  productId         String?
+  categoryId        String?
+  customerId        String?
+  supplierId        String?
+  employeeId        String?
+  financeCategoryId String?
+
+  @@index([organizationId, accountId])
+  @@index([journalEntryId])
+  @@index([organizationId, locationId])
+  @@map("journal_lines")
 }

@@ -4,10 +4,10 @@ import {
   FinancialEventType,
   PnlLine,
 } from "@bakery-os/shared";
-import { PrismaService } from "../../prisma/prisma.service";
 import { CostingService } from "../../costing/costing.service";
 import { round2 } from "../../common/money";
 import { expenseAccrualEffect } from "./rules";
+import { scoped, type DbClient } from "./scope";
 import type { ProjectionOptions } from "./projector";
 
 // The accrual side of the catalogue: what the documents say happened,
@@ -27,16 +27,25 @@ import type { ProjectionOptions } from "./projector";
 // only then today's cost.
 
 export async function accrualEvents(
-  prisma: PrismaService,
+  prisma: DbClient,
   costing: CostingService,
   organizationId: string,
   opts: ProjectionOptions,
 ): Promise<FinancialEvent[]> {
   const upTo = opts.upTo;
   const before = (field: string) => (upTo ? { [field]: { lte: upTo } } : {});
+  // A scoped projection (the ledger posting one document) reads only the named
+  // documents; an unscoped one (every report) reads everything, as it always did.
+  const isScoped = opts.scope !== undefined;
+  const saleIds = scoped(opts.scope, "saleIds");
+  const returnIds = scoped(opts.scope, "saleReturnIds");
+  const expenseIds = scoped(opts.scope, "expenseIds");
+  const movementIds = scoped(opts.scope, "stockMovementIds");
+  const only = (ids: string[] | undefined) => (ids ? { id: { in: ids } } : {});
+  const none = (ids: string[] | undefined) => ids !== undefined && ids.length === 0;
 
-  const [org, sales, returns, expenses, movements, currentCosts, openingAssets] = await Promise.all([
-    prisma.organization.findUnique({
+  const [org, sales, returns, expenses, movements, openingAssets] = await Promise.all([
+    isScoped ? Promise.resolve(null) : prisma.organization.findUnique({
       where: { id: organizationId },
       select: {
         financeInitializedAt: true,
@@ -45,21 +54,22 @@ export async function accrualEvents(
         openingPayablesValue: true,
       },
     }),
-    prisma.sale.findMany({
-      where: { organizationId, ...before("soldAt") },
+    none(saleIds) ? Promise.resolve([]) : prisma.sale.findMany({
+      where: { organizationId, ...only(saleIds), ...before("soldAt") },
       include: { items: { include: { product: { select: { trackInventory: true } } } } },
     }),
-    prisma.saleReturn.findMany({
-      where: { organizationId, ...before("returnedAt") },
+    none(returnIds) ? Promise.resolve([]) : prisma.saleReturn.findMany({
+      where: { organizationId, ...only(returnIds), ...before("returnedAt") },
       include: { items: { include: { product: { select: { trackInventory: true } } } } },
     }),
-    prisma.expense.findMany({
-      where: { organizationId, status: "CONFIRMED", ...before("incurredOn") },
+    none(expenseIds) ? Promise.resolve([]) : prisma.expense.findMany({
+      where: { organizationId, ...only(expenseIds), status: "CONFIRMED", ...before("incurredOn") },
       include: { categoryRef: true },
     }),
-    prisma.stockMovement.findMany({
+    none(movementIds) ? Promise.resolve([]) : prisma.stockMovement.findMany({
       where: {
         organizationId,
+        ...only(movementIds),
         ...before("createdAt"),
         OR: [
           { type: "WRITE_OFF", saleReturnId: null },
@@ -69,9 +79,21 @@ export async function accrualEvents(
       },
       select: { id: true, type: true, productId: true, quantity: true, unitCost: true, createdAt: true, stocktakeId: true },
     }),
-    costing.currentUnitCosts(organizationId),
-    prisma.fixedAsset.findMany({ where: { organizationId, isOpening: true }, select: { acquisitionCost: true } }),
+    isScoped ? Promise.resolve([]) : prisma.fixedAsset.findMany({ where: { organizationId, isOpening: true }, select: { acquisitionCost: true } }),
   ]);
+  // Today's cost is only the last resort for a line with no snapshot, so a
+  // scoped projection asks for just the products it touches.
+  const neededProducts = isScoped
+    ? [...new Set([
+        ...sales.flatMap((x) => x.items.map((i) => i.productId)),
+        ...returns.flatMap((x) => x.items.map((i) => i.productId)),
+        ...movements.map((m) => m.productId),
+      ])]
+    : undefined;
+  const currentCosts =
+    neededProducts && neededProducts.length === 0
+      ? new Map()
+      : await costing.currentUnitCosts(organizationId, prisma, neededProducts);
 
   const events: FinancialEvent[] = [];
   const costOf = (snapshot: { toNumber: () => number } | null, consignment: { toNumber: () => number } | null, productId: string): number | null => {

@@ -42,7 +42,9 @@ function services() {
 
 // Gives a product a cost by way of a purchase order, which is the fallback
 // path in resolveProductUnitCosts — cheaper to set up here than a recipe, and
-// it exercises the branch a bought-in good actually takes.
+// it exercises the branch a bought-in good actually takes. The order is RECEIVED:
+// since decision D2 only goods that were really received carry a purchase cost
+// (a merely PLACED order bought nothing and used to be counted all the same).
 async function giveCost(productId: string, unitCost: number, supplierId: string) {
   const po = await prisma.purchaseOrder.create({
     data: {
@@ -50,6 +52,8 @@ async function giveCost(productId: string, unitCost: number, supplierId: string)
       supplierId,
       locationId,
       totalCost: unitCost * 10,
+      status: "RECEIVED",
+      receivedAt: new Date(Date.now() - 30 * 24 * 3600_000),
       createdById: user.id,
     },
   });

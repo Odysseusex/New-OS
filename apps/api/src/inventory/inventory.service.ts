@@ -17,6 +17,7 @@ import { ReceiveStockDto } from "./dto/receive-stock.dto";
 import { WriteOffStockDto } from "./dto/write-off-stock.dto";
 import { AdjustStockDto } from "./dto/adjust-stock.dto";
 import { StockMovementType as PrismaStockMovementType } from "@prisma/client";
+import { postLedgerSources } from "../ledger/event-posting";
 
 @Injectable()
 export class InventoryService {
@@ -270,6 +271,8 @@ export class InventoryService {
           },
         });
       }
+      // Write-offs and corrections change inventory value: journalised with the movement.
+      await postLedgerSources(tx, { organizationId: user.organizationId, actorId: user.id, scope: { stockMovementIds: [created.id] } });
       return created;
     });
 

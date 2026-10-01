@@ -293,10 +293,8 @@ export class BusinessContextService {
     // ── Recipes ────────────────────────────────────────────────────────
     if (has("recipes")) {
       context.recipes = recipes.map((r) => {
-        const effectiveYield =
-          r.lossPercent !== null && r.lossPercent > 0
-            ? r.yieldQuantity * (1 - r.lossPercent / 100)
-            : r.yieldQuantity;
+        // D1: the yield is already the normal sellable output after normal loss.
+        const effectiveYield = r.yieldQuantity;
         return {
           recipeId: r.id,
           productId: r.productId,

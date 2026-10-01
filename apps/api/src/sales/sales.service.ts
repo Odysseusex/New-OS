@@ -45,6 +45,7 @@ import { FiscalSettings } from "../fiscal/fiscal.settings";
 import { PromotionsService } from "../promotions/promotions.service";
 import { CreateSaleDto } from "./dto/create-sale.dto";
 import { RecordPaymentDto } from "./dto/record-payment.dto";
+import { postLedgerSources } from "../ledger/event-posting";
 
 // Calendar days in reports are the owner's days, not the server's. Render runs
 // in UTC, so without this an early-morning delivery in Almaty (UTC+5) would be
@@ -1282,6 +1283,10 @@ export class SalesService {
           ...costFieldsFor(item.productId),
         })),
       });
+
+      // Journalise the sale (revenue, receivable, cost of goods) with the sale
+      // itself: a no-op while the general ledger is off.
+      await postLedgerSources(tx, { organizationId: user.organizationId, actorId: user.id, scope: { saleIds: [sale.id] } });
 
       // The receipt is attached by hand rather than read back: it was linked
       // to this sale a moment ago, after `sale` was loaded, so the included

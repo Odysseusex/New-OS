@@ -406,8 +406,12 @@ export class RecipesService {
       0,
     );
     const lossPercent = recipe.lossPercent ? recipe.lossPercent.toNumber() : null;
-    const effectiveYield = lossPercent ? yieldQuantity * (1 - lossPercent / 100) : yieldQuantity;
-    const unitCost = effectiveYield > 0 ? totalIngredientCost / effectiveYield : 0;
+    // D1: the yield IS the normal sellable output, already after normal
+    // technological loss, so the cost of one unit divides by it directly. The loss
+    // percentage only helps suggest a yield (below); taking it off a second time
+    // would count the same loss twice. Loss beyond the normal is abnormal and is
+    // recorded separately (a write-off), never folded into the unit cost.
+    const unitCost = yieldQuantity > 0 ? totalIngredientCost / yieldQuantity : 0;
     const productPrice = recipe.product.price.toNumber();
     const marginPercent = productPrice > 0 ? ((productPrice - unitCost) / productPrice) * 100 : null;
 

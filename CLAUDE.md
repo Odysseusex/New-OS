@@ -558,11 +558,11 @@ receipt is not a production one, and the org on the test kassa is
 re:Kassa's own ("TOO COMRUN"), not the user's ИП. Production needs its own
 ЗНМ, password and base URL, and real NTIN codes on the products being sold.
 
-## Accounting architecture (Phases 0–9) — what a fresh session must know
+## Accounting architecture (Phases 0–10) — what a fresh session must know
 
-Built as one continuous pass on a feature branch, NOT yet merged or deployed.
-Full description of what changed and how to roll it out is in
-`docs/ACCOUNTING-PHASES-2-9.md`. The rules below are the ones that are easy to
+Phases 2–9 are merged and live on `main`. Phase 10 (general ledger) is on the
+feature branch, NOT merged or deployed. What changed and how to roll it out:
+`docs/ACCOUNTING-PHASES-2-9.md`, `docs/PHASE-10-GENERAL-LEDGER.md`. The rules below are the ones that are easy to
 break by accident:
 
 - **No balance plug, ever.** `BalanceService` builds Assets/Liabilities from
@@ -577,13 +577,24 @@ break by accident:
   `unclassified` and keeps only what it knows — nothing is invented for it.
 - **One valuation interface: `CostingService`.** Cost is stamped on the sale
   line / stock movement / return line when the event happens (`unitCost`,
-  `costBasis`) and history is read from the stamp. The method is labelled
-  «текущий расчёт (политика не утверждена)» — inventory cost-flow (D2) is NOT
-  decided; do not add FIFO/average.
-- **Unresolved human decisions stay unresolved** (D1 recipe yield/loss, D2 cost
-  flow, D3 opening completeness, D4 depreciation/capitalisation, D5 tax/VAT, D6
-  production cost components, D7 card commissions, D8 mixed-tender refund).
-  Missing policy = NULL / «Не настроено» / PRELIMINARY, never a silent default.
+  `costBasis`) and history is read from the stamp. **D2 is APPROVED: weighted
+  average.** It is applied where it is safe — a bought-in product is costed at
+  the average of what was actually RECEIVED (RECEIVED orders at delivered
+  quantity/cost + CONFIRMED invoices; a PLACED/CANCELLED order counts for
+  nothing — it used to). Baked goods still cost from the recipe and ingredients
+  from `Product.price`; per-receipt moving average for those is NOT built and
+  the P&L label says so. Do not add FIFO.
+- **Decisions: approved vs not.** APPROVED — D1 (recipe `yieldQuantity` is the
+  normal sellable output AFTER normal loss: unit cost = ingredients ÷ yield,
+  `lossPercent` only suggests a yield and is never taken off again; abnormal loss
+  is a write-off, never folded into product cost), D2 (above), D7 (card
+  commission is a separate expense, never a revenue reduction — no code
+  special-cases it, it is just a classified expense), D8 (a refund follows the
+  original tender split proportionally, `sales/refund-allocation.ts`, explicit
+  override via `refundSplit`). NOT approved, never defaulted — D3 opening
+  completeness, D4 depreciation/capitalisation, D5 tax/VAT, D6 production cost
+  components (`ABNORMAL_LOSS` exists as a component but is never written).
+  Missing policy = NULL / «Не настроено» / PRELIMINARY / NOT_POSTED.
 - **Purchasing is Order → Receive → Inventory → Pay supplier.** A payable exists
   only from receipt, only for orders received after `Organization.purchaseCutoverAt`
   (a one-way switch). New supplier invoices are refused after it; old ones stay
@@ -603,6 +614,56 @@ break by accident:
   the server (this caught a real boot failure).
 - **Audit rows commit with the change** (`audited()` / `recordAudit(tx, …)`);
   master-data edits, archives and hard deletes are covered.
+
+## General ledger (Phase 10) — double entry over the existing ledgers
+
+`apps/api/src/ledger/`. Posted journal entries are the accounting source of truth
+for what they cover; `StockMovement`/`CashMovement` stay the subledgers and
+diagnostics compare the two. Rules that are easy to break:
+
+- **OFF by default.** `Organization.ledgerStartsAt` null ⇒ every posting hook
+  returns after one read and every flow behaves exactly as before. It is set once
+  (owner/admin, after the system accounts exist). Events dated before it are
+  NEVER converted automatically (`notMigrated` in coverage); the position at the
+  start enters as ONE reviewed opening entry (`proposeOpening` is read-only).
+- **The accounting rules are NOT restated in the ledger.** `FinancialEvent` (each
+  proven to balance by invariant I1) is the single place a business fact's
+  meaning lives; `ledger/posting-rules.ts` only maps its cash/balance/result legs
+  to system accounts. A new kind of fact = a new event; it posts automatically.
+  An event whose other side is unknown (`unclassified`) is NOT_POSTED with a
+  reason — no suspense account, no plug, ever.
+- **Only `journal-core.ts` creates journal rows.** Business modules call the plain
+  function `postLedgerSources(tx, {organizationId, actorId, scope})` inside their
+  own transaction (same pattern as `recordAudit`) naming the documents they just
+  wrote — never lines. Expected conditions (unclassified, no account, closed
+  period) become a NOT_POSTED `AccountingEvent`, never a failed sale; a genuine
+  fault rolls the whole operation back. Every cash movement is hooked once, in
+  `CashMovementsService.recordMovement`.
+- **Idempotency** = `AccountingEvent` unique `(organizationId, eventKey)` + a
+  per-key `pg_advisory_xact_lock`. One event → at most one STANDARD entry.
+- **Immutability is in the database:** `UPDATE` on `journal_entries`/`journal_lines`
+  is rejected by trigger; lines are CHECKed one-sided positive; all lines of an
+  entry arrive in ONE `INSERT` and a statement-level trigger checks balance,
+  ≥2 lines and "nothing added later". Corrections are reversals (unique
+  `reversalOfEntryId`); a REVERSED event is never auto-reposted.
+- **Do NOT use a deferred constraint trigger for balance.** Prisma swallows a
+  failure at COMMIT: the transaction rolls back and the caller is told it
+  succeeded (a sale that "worked" and does not exist). Reproduced while building
+  this; hence the statement-level trigger.
+- **Money is `Prisma.Decimal` end to end** (`journal-math.ts`): >2 decimals is
+  an error, never a rounding. Event amounts (JS numbers, already `round2`) are
+  snapped with `fromComputed`.
+- **Statements from the ledger sit BESIDE the existing reports**, with
+  `reconcilePnl` and the diagnostics comparing them; the owner-facing P&L/balance/ДДС
+  are unchanged. The balance sheet check `A = L + E` is arithmetic; the real
+  tests are the subledger reconciliations (inventory, AP, AR, cash, fixed assets).
+- Dimensions (`locationId`, `productId`, `customerId`, `supplierId`…) are plain
+  nullable columns on the line, not FKs, so they never block a guarded hard
+  delete. Department / project / cost centre do not exist yet.
+- Journal numbers come from an atomic increment on the organization row (gapless,
+  but it serialises postings per organization).
+- `prisma format` rewrites the WHOLE schema file (hundreds of lines of noise):
+  don't run it; edit `schema.prisma` by hand.
 
 ## Prisma migration workflow (this sandbox has no direct prod DB access)
 
@@ -743,7 +804,9 @@ above). Everything else — Dashboard, Sales, Production/Recipes (with
 техкарты), Inventory, Procurement (with Invoices), Logistics, Map, Finance,
 HR, Quality и списания, Customers, Network, Reports, Notifications,
 Settings/Users — is fully implemented, not a placeholder. Planning (`/planning`:
-ABC/XYZ, replenishment, plan/fact, financial model) is live too.
+ABC/XYZ, replenishment, plan/fact, financial model) is live too. The general
+ledger is a tab on Финансы («Главная книга»: план счетов, журнал, книга, ОСВ,
+отчёты, диагностика, покрытие), visible to OWNER/ADMIN/ACCOUNTANT.
 
 One deferred design decision, not yet revisited: `DeliveryRoute`/`RouteStop`
 only reference own Locations, not Customers directly — a sale to a

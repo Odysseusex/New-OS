@@ -15,6 +15,7 @@ import { CashDepositDto } from "./dto/cash-deposit.dto";
 import { CashWithdrawalDto } from "./dto/cash-withdrawal.dto";
 import { CashTransferDto } from "./dto/cash-transfer.dto";
 import { CashAdjustmentDto } from "./dto/cash-adjustment.dto";
+import { postLedgerSourcesOn } from "../ledger/event-posting";
 
 const MOVEMENT_INCLUDE = {
   account: true,
@@ -106,12 +107,19 @@ export class CashMovementsService {
       if (result.count !== 1) {
         throw new BadRequestException(params.insufficientBalanceMessage);
       }
-      return movement;
+    } else {
+      await tx.cashAccount.update({
+        where: { id: params.accountId },
+        data: { currentBalance: { increment: delta } },
+      });
     }
 
-    await tx.cashAccount.update({
-      where: { id: params.accountId },
-      data: { currentBalance: { increment: delta } },
+    // The general ledger follows the cash ledger: every movement is journalised
+    // in the same transaction (a no-op while the ledger is off).
+    await postLedgerSourcesOn(tx, {
+      organizationId: params.organizationId,
+      actorId: params.createdById,
+      scope: { cashMovementIds: [movement.id] },
     });
 
     return movement;

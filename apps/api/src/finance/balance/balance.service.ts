@@ -309,7 +309,7 @@ export class BalanceService implements OnModuleInit {
   // ── ledger-side figures ────────────────────────────────────────────────
 
   // Money in the accounts at a moment: the cash ledger summed up to it.
-  private async cashAt(organizationId: string, asOf: Date): Promise<number> {
+  async cashAt(organizationId: string, asOf: Date): Promise<number> {
     const rows = await this.prisma.cashMovement.findMany({
       where: { organizationId, occurredAt: { lte: asOf } },
       select: { type: true, amount: true },
@@ -320,7 +320,7 @@ export class BalanceService implements OnModuleInit {
   // Stock on hand at a moment × the costing service's cost. Anchored at today's
   // stock levels, with everything recorded after the moment taken back out —
   // so it holds the physical count where the ledger has drifted from it.
-  private async inventoryValueAt(organizationId: string, asOf: Date): Promise<number> {
+  async inventoryValueAt(organizationId: string, asOf: Date): Promise<number> {
     const [levels, after, costs] = await Promise.all([
       this.prisma.stockLevel.findMany({ where: { organizationId, product: { trackInventory: true } }, select: { productId: true, quantity: true } }),
       asOf.getTime() >= Date.now() - NEAR_NOW_MS
@@ -345,7 +345,7 @@ export class BalanceService implements OnModuleInit {
   }
 
   // Cost less depreciation, from the register, for assets that had not left yet.
-  private async fixedAssetsAt(organizationId: string, asOf: Date): Promise<number> {
+  async fixedAssetsAt(organizationId: string, asOf: Date): Promise<number> {
     const assets = await this.prisma.fixedAsset.findMany({
       where: { organizationId },
       include: { depreciation: true },

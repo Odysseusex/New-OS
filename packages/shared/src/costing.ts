@@ -1,11 +1,14 @@
 // Cost valuation vocabulary shared by API and UI.
 //
-// NOTHING here is an approved accounting policy. The inventory cost-flow
-// method (which cost a sold loaf carries: FIFO, weighted average, …) is an
-// undecided business question; the bases below only NAME what the system does
-// today so a report can say where a number came from.
+// Decision D2 (approved): inventory is costed at WEIGHTED AVERAGE. In the
+// system today that applies to goods that are bought (the average of what was
+// actually received: RECEIVED orders and CONFIRMED invoices). A baked product is
+// costed from its recipe, and an ingredient at the price on its product card;
+// moving that to receipt-by-receipt averaging is not done and is reported as
+// such. The bases below NAME where each number came from; a figure already
+// stamped on a sale or movement is never recomputed.
 
-export const COSTING_METHOD_LABEL_RU = "текущий расчёт (политика не утверждена)";
+export const COSTING_METHOD_LABEL_RU = "средневзвешенная стоимость закупок; ингредиенты — по цене из номенклатуры";
 
 export enum CostBasis {
   // Active техкарта at that moment: Σ ingredient qty × ingredient price ÷ yield.
@@ -42,6 +45,9 @@ export enum ProductionCostComponent {
   UTILITY = "UTILITY",
   OVERHEAD = "OVERHEAD",
   TECHNOLOGICAL_LOSS = "TECHNOLOGICAL_LOSS",
+  // Spoilage beyond the normal technological loss. Recorded apart from normal
+  // product cost (D1) and never capitalised automatically (D6).
+  ABNORMAL_LOSS = "ABNORMAL_LOSS",
 }
 
 export const PRODUCTION_COST_COMPONENT_LABELS_RU: Record<ProductionCostComponent, string> = {
@@ -51,6 +57,7 @@ export const PRODUCTION_COST_COMPONENT_LABELS_RU: Record<ProductionCostComponent
   [ProductionCostComponent.UTILITY]: "Коммунальные расходы",
   [ProductionCostComponent.OVERHEAD]: "Накладные расходы",
   [ProductionCostComponent.TECHNOLOGICAL_LOSS]: "Технологические потери",
+  [ProductionCostComponent.ABNORMAL_LOSS]: "Сверхнормативные потери",
 };
 
 export const ACTIVE_PRODUCTION_COST_COMPONENTS: readonly ProductionCostComponent[] = [

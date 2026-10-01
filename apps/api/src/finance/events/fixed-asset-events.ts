@@ -1,7 +1,7 @@
 import { BalanceLine, FinancialEvent, FinancialEventType, PnlLine } from "@bakery-os/shared";
-import { PrismaService } from "../../prisma/prisma.service";
 import { round2 } from "../../common/money";
 import { monthRange } from "../../common/reporting-period";
+import { scoped, type DbClient } from "./scope";
 import type { ProjectionOptions } from "./projector";
 
 // Fixed assets, on the accrual side:
@@ -12,13 +12,24 @@ import type { ProjectionOptions } from "./projector";
 // book value with no amount counted twice.
 
 export async function fixedAssetEvents(
-  prisma: PrismaService,
+  prisma: DbClient,
   organizationId: string,
   opts: ProjectionOptions,
 ): Promise<FinancialEvent[]> {
+  const entryIds = scoped(opts.scope, "depreciationEntryIds");
+  const assetIds = scoped(opts.scope, "fixedAssetIds");
   const [entries, disposals] = await Promise.all([
-    prisma.depreciationEntry.findMany({ where: { organizationId }, include: { asset: { select: { name: true } } } }),
-    prisma.fixedAsset.findMany({ where: { organizationId, status: "DISPOSED", disposedAt: { not: null } } }),
+    entryIds && entryIds.length === 0
+      ? Promise.resolve([])
+      : prisma.depreciationEntry.findMany({
+          where: { organizationId, ...(entryIds ? { id: { in: entryIds } } : {}) },
+          include: { asset: { select: { name: true } } },
+        }),
+    assetIds && assetIds.length === 0
+      ? Promise.resolve([])
+      : prisma.fixedAsset.findMany({
+          where: { organizationId, ...(assetIds ? { id: { in: assetIds } } : {}), status: "DISPOSED", disposedAt: { not: null } },
+        }),
   ]);
   const events: FinancialEvent[] = [];
   const upTo = opts.upTo?.toISOString();

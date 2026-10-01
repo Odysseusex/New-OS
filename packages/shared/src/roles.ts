@@ -285,3 +285,12 @@ export const FIXED_ASSET_DISPOSE_ROLES: Role[] = HARD_DELETE_ROLES;
 // Planning reads the books to plan the future; it needs the same eyes as finance.
 export const PLANNING_VIEW_ROLES: Role[] = FINANCE_VIEW_ROLES;
 export const PLANNING_MANAGE_ROLES: Role[] = ORG_WIDE_ROLES;
+
+// General ledger (Phase 10). Viewing books is narrower than FINANCE_VIEW_ROLES:
+// journal entries expose every posting, so it is the bookkeeping tier only.
+// Posting manual entries / reversals / the opening balance is bookkeeping too;
+// switching the ledger on and creating its system accounts changes how the
+// whole organization is accounted for, so that is the narrow tier.
+export const LEDGER_VIEW_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT];
+export const LEDGER_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT];
+export const LEDGER_SETUP_ROLES: Role[] = HARD_DELETE_ROLES;

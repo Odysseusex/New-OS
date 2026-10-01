@@ -257,7 +257,7 @@ describe("transfers and production", () => {
     const consumption = await prisma.stockMovement.findFirstOrThrow({ where: { batchId: batch.id, type: "PRODUCTION_CONSUMPTION" } });
     expect(consumption.unitCost?.toNumber()).toBe(100);
     // Every other component is listed as not configured — not zero, not omitted.
-    expect(done.costComponents).toHaveLength(6);
+    expect(done.costComponents).toHaveLength(7);
     for (const c of done.costComponents!) {
       if (c.component === ProductionCostComponent.INGREDIENT) {
         expect(c).toMatchObject({ status: "ACTIVE", amount: 400 });

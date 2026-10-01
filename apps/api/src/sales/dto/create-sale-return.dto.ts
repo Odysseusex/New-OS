@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { ArrayMinSize, IsArray, IsBoolean, IsNumber, IsOptional, IsString, Min, ValidateNested } from "class-validator";
+import { ArrayMinSize, IsArray, IsBoolean, IsIn, IsNumber, IsOptional, IsString, Min, ValidateNested } from "class-validator";
 
 class SaleReturnItemDto {
   @IsString()
@@ -8,6 +8,15 @@ class SaleReturnItemDto {
   @IsNumber()
   @Min(0.001)
   quantity!: number;
+}
+
+class RefundSplitDto {
+  @IsIn(["CASH", "CARD", "TRANSFER"])
+  method!: string;
+
+  @IsNumber()
+  @Min(0.01)
+  amount!: number;
 }
 
 export class CreateSaleReturnDto {
@@ -26,4 +35,12 @@ export class CreateSaleReturnDto {
   @IsOptional()
   @IsBoolean()
   restocked?: boolean;
+
+  // Explicit override of how the refund is paid out. Left out, a refund follows
+  // the original tender allocation proportionally (a mixed sale is split).
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RefundSplitDto)
+  refundSplit?: RefundSplitDto[];
 }

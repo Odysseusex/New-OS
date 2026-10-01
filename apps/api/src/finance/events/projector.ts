@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import { CashMovementType, FinancialEvent } from "@bakery-os/shared";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CashMovementSource, cashMovementEvent, transferEvent } from "./cash-events";
@@ -7,10 +7,14 @@ import { purchaseEvents } from "./purchase-events";
 import { fixedAssetEvents } from "./fixed-asset-events";
 import { accrualEvents } from "./accrual-events";
 import { CostingService } from "../../costing/costing.service";
+import { DbClient, ProjectionScope, scoped } from "./scope";
+export type { DbClient, ProjectionScope } from "./scope";
+export { scoped } from "./scope";
 
 export interface ProjectionOptions {
   // Only events that happened at or before this moment. Defaults to everything.
   upTo?: Date;
+  scope?: ProjectionScope;
 }
 
 // Rebuilds the organization's financial events from its source ledgers and
@@ -20,8 +24,9 @@ export interface ProjectionOptions {
 @Injectable()
 export class FinancialEventProjector {
   constructor(
-    private prisma: PrismaService,
-    private costing: CostingService = new CostingService(prisma),
+    // A union type erases the DI token, so it is named explicitly.
+    @Inject(PrismaService) private prisma: DbClient,
+    private costing: CostingService = new CostingService(prisma as PrismaService),
   ) {}
 
   // Every event family, side by side. Each source returns its own events; the
@@ -40,11 +45,25 @@ export class FinancialEventProjector {
   }
 
   private async cashEvents(organizationId: string, opts: ProjectionOptions): Promise<FinancialEvent[]> {
-    const rows = await this.prisma.cashMovement.findMany({
-      where: { organizationId, ...(opts.upTo ? { occurredAt: { lte: opts.upTo } } : {}) },
+    const ids = scoped(opts.scope, "cashMovementIds");
+    if (ids && ids.length === 0) return [];
+    let rows = await this.prisma.cashMovement.findMany({
+      where: { organizationId, ...(ids ? { id: { in: ids } } : {}), ...(opts.upTo ? { occurredAt: { lte: opts.upTo } } : {}) },
       include: { categoryRef: true, expense: { include: { categoryRef: true } } },
       orderBy: [{ occurredAt: "asc" }, { id: "asc" }],
     });
+    if (ids) {
+      // A transfer is one event over two movements: bring the other leg in.
+      const groups = [...new Set(rows.map((r) => r.transferGroupId).filter((g): g is string => !!g))];
+      if (groups.length > 0) {
+        const known = new Set(rows.map((r) => r.id));
+        const legs = await this.prisma.cashMovement.findMany({
+          where: { organizationId, transferGroupId: { in: groups }, id: { notIn: [...known] } },
+          include: { categoryRef: true, expense: { include: { categoryRef: true } } },
+        });
+        rows = [...rows, ...legs];
+      }
+    }
 
     const events: FinancialEvent[] = [];
     const transferGroups = new Map<string, CashMovementSource[]>();

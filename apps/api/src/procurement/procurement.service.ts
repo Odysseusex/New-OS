@@ -21,6 +21,7 @@ import { AuthenticatedUser } from "../auth/auth.types";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
 import { CreatePurchaseOrderDto } from "./dto/create-purchase-order.dto";
 import { recordAudit } from "../audit/audit";
+import { postLedgerSources } from "../ledger/event-posting";
 
 @Injectable()
 export class ProcurementService {
@@ -327,6 +328,9 @@ export class ProcurementService {
         data: { receivedTotal },
         include: ProcurementService.ORDER_INCLUDE,
       });
+
+      // Inventory up, supplier payable up — journalised with the receipt.
+      await postLedgerSources(tx, { organizationId: user.organizationId, actorId: user.id, scope: { purchaseOrderIds: [order.id] } });
 
       const cutoverAt = await this.cutoverAt(user.organizationId, tx);
       await recordAudit(tx, {

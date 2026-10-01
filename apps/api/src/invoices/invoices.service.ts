@@ -8,6 +8,7 @@ import { CashMovementsService } from "../finance/cash-movements.service";
 import { CreateInvoiceDto } from "./dto/create-invoice.dto";
 import { RecordInvoicePaymentDto } from "./dto/record-invoice-payment.dto";
 import { recordAudit } from "../audit/audit";
+import { postLedgerSources } from "../ledger/event-posting";
 
 const INVOICE_INCLUDE = {
   supplier: true,
@@ -148,6 +149,8 @@ export class InvoicesService {
           costBasis: CostBasis.PURCHASE_ACTUAL,
         })),
       });
+
+      await postLedgerSources(tx, { organizationId: user.organizationId, actorId: user.id, scope: { invoiceIds: [invoice.id] } });
 
       const updated = await tx.invoice.findUniqueOrThrow({
         where: { id: invoice.id },
