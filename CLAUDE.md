@@ -752,7 +752,8 @@ Full write-up: `docs/PRODUCT-CLASSIFICATION.md`. The rules that are easy to brea
   names are shown as «Родитель › Подкатегория» (`common/category-label.ts`).
 - `SaleItem.categoryIdSnapshot` is the category at sale time; the sales report
   uses it and falls back to the product's *current* category only where it is
-  NULL (legacy sales — never back-filled). Snapshot any new row that needs a
+  NULL (legacy sales — back-filled once by migration `20261004110000`, so today
+  it is NULL only for products that had no category). Snapshot any new row that needs a
   history-stable category grouping before building a category report.
 - The standard catalogue is offered via an OWNER/ADMIN button and only ADDS: the
   23 approved top-level categories, no subcategories, no «Другое» filler; matched to
@@ -762,8 +763,9 @@ Full write-up: `docs/PRODUCT-CLASSIFICATION.md`. The rules that are easy to brea
   Apply (one transaction, changes ONLY `categoryId`, creates categories/subcategories)
   → Audit (`classification.apply`/`revert`) → Rollback (per-line, conflicts reported).
   Consignment, prices, stock, sales and `CostingService` are never touched. Apply is
-  run by the owner only, and NOT in production before the history-freeze decision
-  (existing sales have a NULL `categoryIdSnapshot`). POS shows main categories only.
+  run by the owner only, after migration `20261004110000` has frozen history (it stamps
+  every legacy NULL `SaleItem.categoryIdSnapshot` with the product's then-current
+  category; the promotions report reads the snapshot too). POS shows main categories only.
   Details: `docs/PRODUCT-CLASSIFICATION.md`.
 
 ## Prisma migration workflow (this sandbox has no direct prod DB access)

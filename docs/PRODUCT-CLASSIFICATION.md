@@ -74,9 +74,14 @@ Tables `classification_batches` / `classification_batch_lines` (migration
   since is reported as a conflict, not overwritten) and removes categories the batch
   created if they are empty. Audited as `classification.revert`.
 * Not touched: price, stock, type, consignment flag, sales, costs, `CostingService`.
-* **Do not press Apply in production before the history-freeze decision**: all existing
-  sales have a NULL `categoryIdSnapshot`, so the demand and promotions reports follow the
-  product's *current* category and would move for reclassified products.
+* **History freeze** (migration `20261004110000_freeze_sale_item_categories`, runs on
+  deploy): every legacy sale line (NULL `categoryIdSnapshot`) is stamped with its
+  product's category as it was before any reclassification. Only that one nullable
+  column is written; amounts, stock, cash, costs and the ledger are untouched, lines
+  that already have a snapshot are skipped, and it is idempotent. After it, moving a
+  product no longer rewrites its sales history. The promotions report now also groups
+  by the snapshot category (it used the current one). **Apply only after this
+  migration has run on the target database.**
 * The POS shows main categories only (no subcategory row).
 
 ## Behaviour that follows the tree

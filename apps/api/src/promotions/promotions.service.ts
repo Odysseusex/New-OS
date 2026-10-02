@@ -342,6 +342,16 @@ export class PromotionsService {
       resolveProductUnitCosts(this.prisma, user.organizationId),
     ]);
 
+    // The category a line had WHEN IT WAS SOLD (snapshot); only a line that
+    // predates the snapshot falls back to the product's current category.
+    const snapshotIds = [...new Set(taggedItems.map((i) => i.categoryIdSnapshot).filter((id): id is string => !!id))];
+    const snapshotNames = new Map(
+      (snapshotIds.length
+        ? await this.prisma.category.findMany({ where: { id: { in: snapshotIds } }, select: { id: true, name: true } })
+        : []
+      ).map((c) => [c.id, c.name]),
+    );
+
     const productAcc = new Map<string, PromotionTopProductRowDto>();
     const categoryAcc = new Map<string, PromotionCategoryDiscountRowDto>();
     const saleIds = new Set<string>();
@@ -376,10 +386,13 @@ export class PromotionsService {
       productRow.revenueAfterDiscount += lineRevenueAfter;
       productAcc.set(item.productId, productRow);
 
-      const categoryId = item.product.categoryId ?? "__uncategorized__";
+      const categoryId = item.categoryIdSnapshot ?? item.product.categoryId ?? "__uncategorized__";
+      const categoryName = item.categoryIdSnapshot
+        ? (snapshotNames.get(item.categoryIdSnapshot) ?? item.product.categoryRef?.name ?? "Без категории")
+        : (item.product.categoryRef?.name ?? "Без категории");
       const categoryRow = categoryAcc.get(categoryId) ?? {
         categoryId,
-        categoryName: item.product.categoryRef?.name ?? "Без категории",
+        categoryName,
         quantity: 0,
         discountTotal: 0,
       };

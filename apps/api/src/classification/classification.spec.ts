@@ -1,3 +1,5 @@
+import { readFileSync } from "fs";
+import { join } from "path";
 import { AUDIT_ACTION_GROUPS } from "../audit/audit";
 import { PaymentMethod, ProductType, Unit } from "@bakery-os/shared";
 import { PrismaService } from "../prisma/prisma.service";
@@ -369,5 +371,66 @@ describe("isolation, listing and audit", () => {
   it("exercises every audit action of its group", async () => {
     const logged = new Set((await prisma.auditLog.findMany({ where: { organizationId: org.organizationId }, select: { action: true } })).map((a) => a.action));
     expect(AUDIT_ACTION_GROUPS.productClassification.filter((a) => !logged.has(a))).toEqual([]);
+  });
+});
+
+describe("history freeze (migration 20261004110000)", () => {
+  const freezeSql = readFileSync(join(__dirname, "../../prisma/migrations/20261004110000_freeze_sale_item_categories/migration.sql"), "utf8");
+
+  it("stamps legacy sale lines with their category so a later move does not rewrite sales history", async () => {
+    const old = await cat("История-старая", FIN);
+    const p = await product(FIN, { categoryId: old.id });
+    await prisma.stockLevel.create({ data: { organizationId: org.organizationId, locationId: org.storeId, productId: p.id, quantity: 20, minQuantity: 0 } });
+    const sale = await services.sales.create(org.user, { locationId: org.storeId, paymentMethod: PaymentMethod.CASH, items: [{ productId: p.id, quantity: 3, unitPrice: 100 }] });
+    // Make it a legacy line: a sale from before snapshots existed.
+    await prisma.saleItem.updateMany({ where: { saleId: sale.id }, data: { categoryIdSnapshot: null } });
+
+    const before = await prisma.saleItem.findMany({ where: { saleId: sale.id }, select: { id: true, quantity: true, unitPrice: true, subtotal: true } });
+    await prisma.$executeRawUnsafe(freezeSql);
+    await prisma.$executeRawUnsafe(freezeSql); // safe to run twice
+    const item = await prisma.saleItem.findFirstOrThrow({ where: { saleId: sale.id } });
+    expect(item.categoryIdSnapshot).toBe(old.id);
+    expect(await prisma.saleItem.findMany({ where: { saleId: sale.id }, select: { id: true, quantity: true, unitPrice: true, subtotal: true } })).toEqual(before);
+
+    await apply([row(p.sku, "Пироги", "Сладкие пироги")]);
+    const from = new Date(Date.now() - 3_600_000);
+    const to = new Date(Date.now() + 3_600_000);
+    const qty = async (categoryId: string) => (await services.sales.demandAnalysis(org.user, from, to, { categoryId })).summary.quantity;
+    expect(await qty(old.id)).toBe(3); // the sale stays where it was sold
+    const pies = await prisma.category.findFirstOrThrow({ where: { organizationId: org.organizationId, name: "Пироги", parentId: null } });
+    expect(await qty(pies.id)).toBe(0);
+  });
+
+  it("leaves lines that already have a snapshot, and products with no category, alone", async () => {
+    const keep = await cat("История-сохранить", FIN);
+    const other2 = await cat("История-другая", FIN);
+    const p = await product(FIN, { categoryId: other2.id });
+    const bare = await product(FIN);
+    await prisma.stockLevel.createMany({ data: [p, bare].map((x) => ({ organizationId: org.organizationId, locationId: org.storeId, productId: x.id, quantity: 20, minQuantity: 0 })) });
+    const s1 = await services.sales.create(org.user, { locationId: org.storeId, paymentMethod: PaymentMethod.CASH, items: [{ productId: p.id, quantity: 1, unitPrice: 100 }] });
+    const s2 = await services.sales.create(org.user, { locationId: org.storeId, paymentMethod: PaymentMethod.CASH, items: [{ productId: bare.id, quantity: 1, unitPrice: 100 }] });
+    await prisma.saleItem.updateMany({ where: { saleId: s1.id }, data: { categoryIdSnapshot: keep.id } });
+    await prisma.saleItem.updateMany({ where: { saleId: s2.id }, data: { categoryIdSnapshot: null } });
+    await prisma.$executeRawUnsafe(freezeSql);
+    expect((await prisma.saleItem.findFirstOrThrow({ where: { saleId: s1.id } })).categoryIdSnapshot).toBe(keep.id);
+    expect((await prisma.saleItem.findFirstOrThrow({ where: { saleId: s2.id } })).categoryIdSnapshot).toBeNull();
+  });
+
+  it("the promotions report groups discounted lines by the category they were sold in", async () => {
+    const tort = await cat("Акция-история", FIN);
+    const p = await product(FIN, { categoryId: tort.id });
+    await prisma.stockLevel.create({ data: { organizationId: org.organizationId, locationId: org.storeId, productId: p.id, quantity: 20, minQuantity: 0 } });
+    const promo = await promotions.create(org.user, {
+      name: "Акция история",
+      locationId: org.storeId,
+      startAt: new Date(Date.now() - 60_000).toISOString(),
+      endAt: new Date(Date.now() + 3_600_000).toISOString(),
+      rules: [{ categoryId: tort.id, discountPercent: 10 }],
+    });
+    const sale = await services.sales.create(org.user, { locationId: org.storeId, paymentMethod: PaymentMethod.CASH, items: [{ productId: p.id, quantity: 1, unitPrice: 100 }] });
+    await prisma.saleItem.updateMany({ where: { saleId: sale.id }, data: { promotionId: promo.id, fullUnitPrice: 100, unitPrice: 90, categoryIdSnapshot: tort.id } });
+    await apply([row(p.sku, "Пироги", "Сладкие пироги")]);
+    const report = await promotions.report(org.user, promo.id, new Date(Date.now() - 3_600_000), new Date(Date.now() + 3_600_000));
+    expect(report.discountByCategory.map((c) => c.categoryName)).toEqual(["Акция-история"]);
   });
 });
