@@ -45,12 +45,39 @@ are byte-identical apart from the new columns).
 
 ## Standard catalogue
 
-Defined once in `packages/shared/src/category-tree.ts` (`STANDARD_CATEGORY_CATALOG`).
-Where: Склад → Категории → «Стандартный каталог» (OWNER/ADMIN), with a preview.
-It only **adds**. A top-level name that already exists with the same type is
-reused as the parent (missing subcategories are added under it); a name that
-exists with another type, no type, or archived is **skipped and reported**.
-Audited as `category.seedStandard`. Idempotent.
+Defined once in `packages/shared/src/category-tree.ts` (`STANDARD_CATEGORY_CATALOG`):
+the **23 approved top-level categories** (11 raw, 5 packaging, 7 finished goods), with
+no subcategories and no «Другое / Прочий…» filler. Where: Склад → Категории →
+«Стандартный каталог» (OWNER/ADMIN), with a preview. It only **adds**. An existing
+top-level category is matched by `normalizeCategoryName` (case, spaces and a trailing
+«…» ignored) and reused; a name that exists with another type, no type, or archived is
+**skipped and reported**. Audited as `category.seedStandard`. Idempotent.
+Subcategories come from the classification file (below), not from the catalogue.
+
+## Mass classification (Preview → Apply → Audit → Rollback)
+
+`apps/api/src/classification/`, Склад → Категории → «Классификация» (OWNER/ADMIN).
+Tables `classification_batches` / `classification_batch_lines` (migration
+`20261004100000`, additive, plain ids, no FKs to products/categories).
+
+* A CSV/TSV keyed by **SKU** (columns: артикул, категория, подкатегория; name/type are
+  informational). The «под реализацию» column is ignored — consignment is never touched.
+* **Preview** writes nothing: per row — to move / unchanged / skipped / rejected /
+  warning, the categories and subcategories that would be created, the products absent
+  from the file, and promotion rules that would lose products.
+* **Apply** is one transaction under an advisory lock: changes **only**
+  `Product.categoryId`, creates the needed categories/subcategories, writes a batch with
+  per-line before/after. A fingerprint of the preview must still match, and each update
+  is optimistic (`updateMany` on the previous category), so a stale preview is refused.
+  Audited as `classification.apply`.
+* **Rollback** restores each product's previous category line by line (a product edited
+  since is reported as a conflict, not overwritten) and removes categories the batch
+  created if they are empty. Audited as `classification.revert`.
+* Not touched: price, stock, type, consignment flag, sales, costs, `CostingService`.
+* **Do not press Apply in production before the history-freeze decision**: all existing
+  sales have a NULL `categoryIdSnapshot`, so the demand and promotions reports follow the
+  product's *current* category and would move for reclassified products.
+* The POS shows main categories only (no subcategory row).
 
 ## Behaviour that follows the tree
 

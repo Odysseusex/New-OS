@@ -52,6 +52,7 @@ export const AUDIT_ACTION_GROUPS = {
     "product.archive", "product.restore",
   ],
   catalog: ["category.seedStandard"],
+  productClassification: ["classification.apply", "classification.revert"],
   stocktake: ["stocktake.create", "stocktake.submit", "stocktake.reopen", "stocktake.approve", "stocktake.cancel"],
   stockVoid: ["stockVoid.create"],
   // Posting from operations is traced by the journal itself (each entry carries

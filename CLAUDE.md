@@ -754,9 +754,17 @@ Full write-up: `docs/PRODUCT-CLASSIFICATION.md`. The rules that are easy to brea
   uses it and falls back to the product's *current* category only where it is
   NULL (legacy sales — never back-filled). Snapshot any new row that needs a
   history-stable category grouping before building a category report.
-- The standard catalogue is offered via an OWNER/ADMIN button and only ADDS
-  (skips clashing branches); existing products are never auto-classified, never
-  by name matching.
+- The standard catalogue is offered via an OWNER/ADMIN button and only ADDS: the
+  23 approved top-level categories, no subcategories, no «Другое» filler; matched to
+  existing ones ignoring case and a trailing «…» (`normalizeCategoryName`).
+- **Mass classification** (`apps/api/src/classification/`, Склад → Категории →
+  «Классификация», OWNER/ADMIN): upload keyed by SKU → Preview (writes nothing) →
+  Apply (one transaction, changes ONLY `categoryId`, creates categories/subcategories)
+  → Audit (`classification.apply`/`revert`) → Rollback (per-line, conflicts reported).
+  Consignment, prices, stock, sales and `CostingService` are never touched. Apply is
+  run by the owner only, and NOT in production before the history-freeze decision
+  (existing sales have a NULL `categoryIdSnapshot`). POS shows main categories only.
+  Details: `docs/PRODUCT-CLASSIFICATION.md`.
 
 ## Prisma migration workflow (this sandbox has no direct prod DB access)
 

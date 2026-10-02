@@ -44,6 +44,12 @@ import type {
   CreateCashAccountRequestDto,
   CreateCategoryRequestDto,
   StandardCatalogResultDto,
+  ClassificationApplyRequestDto,
+  ClassificationBatchDto,
+  ClassificationPreviewDto,
+  ClassificationRevertRequestDto,
+  ClassificationRevertResultDto,
+  ClassificationRowInput,
   CreateCustomerRequestDto,
   CreateDeliveryRouteRequestDto,
   CreateEmployeeRequestDto,
@@ -286,6 +292,16 @@ export const api = {
     remove: (id: string) => request<{ deleted: true }>(`/categories/${id}`, { method: "DELETE" }),
     standardCatalogPreview: () => request<StandardCatalogResultDto>("/categories/standard-catalog"),
     standardCatalogApply: () => request<StandardCatalogResultDto>("/categories/standard-catalog", { method: "POST" }),
+  },
+
+  classification: {
+    preview: (rows: ClassificationRowInput[]) =>
+      request<ClassificationPreviewDto>("/classification/preview", { method: "POST", body: JSON.stringify({ rows }) }),
+    apply: (dto: ClassificationApplyRequestDto) =>
+      request<ClassificationBatchDto>("/classification/apply", { method: "POST", body: JSON.stringify(dto) }),
+    batches: () => request<ClassificationBatchDto[]>("/classification/batches"),
+    revert: (id: string, dto: ClassificationRevertRequestDto) =>
+      request<ClassificationRevertResultDto>(`/classification/batches/${id}/revert`, { method: "POST", body: JSON.stringify(dto) }),
   },
 
   inventory: {

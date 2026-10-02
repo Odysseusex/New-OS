@@ -29,6 +29,7 @@ import { LabelPrintModal } from "@/components/label-print-modal";
 import { NewProductModal } from "@/components/new-product-modal";
 import { CategoryModal } from "@/components/category-modal";
 import { StandardCatalogModal } from "@/components/standard-catalog-modal";
+import { ClassificationModal } from "@/components/classification-modal";
 import { ForceDeleteProductModal } from "@/components/force-delete-product-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 import { LocationPricesTab } from "@/components/location-prices-tab";
@@ -55,7 +56,7 @@ export default function InventoryPage() {
   const [locationFilter, setLocationFilter] = useState("");
   const [showArchivedProducts, setShowArchivedProducts] = useState(false);
   const [showArchivedCategories, setShowArchivedCategories] = useState(false);
-  const [modal, setModal] = useState<"receive" | "write-off" | "adjustment" | "product" | "category" | "void" | "standard-catalog" | null>(
+  const [modal, setModal] = useState<"receive" | "write-off" | "adjustment" | "product" | "category" | "void" | "standard-catalog" | "classification" | null>(
     null,
   );
   const [forceDeleteProduct, setForceDeleteProduct] = useState<ProductDto | undefined>(undefined);
@@ -391,6 +392,14 @@ export default function InventoryPage() {
               className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3.5 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
             >
               Стандартный каталог
+            </button>
+          )}
+          {tab === "categories" && !selectedCategory && canDelete && (
+            <button
+              onClick={() => setModal("classification")}
+              className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3.5 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+            >
+              Классификация
             </button>
           )}
           {tab === "categories" && !selectedCategory && canManageProducts && (
@@ -808,6 +817,13 @@ export default function InventoryPage() {
             setModal(null);
             loadCategories();
           }}
+        />
+      )}
+
+      {modal === "classification" && (
+        <ClassificationModal
+          onClose={() => setModal(null)}
+          onChanged={loadCategories}
         />
       )}
 

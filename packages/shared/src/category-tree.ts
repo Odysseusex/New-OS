@@ -84,39 +84,55 @@ export function buildCategoryTree(categories: CategoryDto[], typeOrder: ProductT
   return groups;
 }
 
+// How two category names are compared when deciding whether a category already
+// exists: ignoring case, surrounding spaces, repeated spaces and a trailing «…»
+// or full stop. «кондитерские изделия» and «Кондитерские изделия», or «Пицца,
+// роллы, блины…» and «Пицца, роллы, блины», are the same category.
+export function normalizeCategoryName(name: string): string {
+  return name
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[….]+$/u, "")
+    .trim()
+    .toLowerCase();
+}
+
 // ── the starting catalogue for ArAmir Bakery ─────────────────────────────
-// Offered, never applied on its own: an owner chooses to add it, and it only
-// ever ADDS — nothing existing is renamed, moved or reclassified, and no
-// product is assigned to any of it.
+// The approved TOP-LEVEL categories of each product type, nothing below them.
+// Offered, never applied on its own: an owner chooses to add it, and it only ever
+// ADDS — nothing existing is renamed, moved or reclassified, and no product is
+// assigned to any of it. Subcategories are not part of it on purpose (no
+// «Другое»/«Прочий…» filler): they are created by a classification, where a
+// product really needs one.
 export interface StandardCatalogCategory {
   type: ProductType;
   name: string;
-  subcategories: string[];
 }
 
 export const STANDARD_CATEGORY_CATALOG: StandardCatalogCategory[] = [
-  { type: ProductType.RAW_MATERIAL, name: "Бакалея", subcategories: ["Мука пшеничная", "Мука ржаная", "Сахар", "Сахарная пудра", "Крахмал", "Сухие смеси", "Крупы", "Макаронные изделия", "Соль", "Другое"] },
-  { type: ProductType.RAW_MATERIAL, name: "Молочная продукция", subcategories: ["Молоко", "Сливки", "Масло сливочное", "Сметана", "Творог", "Сыр", "Сухое молоко", "Другое"] },
-  { type: ProductType.RAW_MATERIAL, name: "Яйца", subcategories: ["Яйцо куриное", "Меланж", "Яичный порошок", "Другое"] },
-  { type: ProductType.RAW_MATERIAL, name: "Масла и жиры", subcategories: ["Растительное масло", "Маргарин", "Спред", "Кондитерские жиры", "Другое"] },
-  { type: ProductType.RAW_MATERIAL, name: "Кондитерское сырьё", subcategories: ["Шоколад", "Какао", "Глазурь", "Карамель", "Сиропы", "Джемы", "Повидло", "Начинки", "Орехи", "Сухофрукты", "Мак", "Кокос", "Другое"] },
-  { type: ProductType.RAW_MATERIAL, name: "Дрожжи и разрыхлители", subcategories: ["Дрожжи свежие", "Дрожжи сухие", "Разрыхлитель", "Сода", "Другое"] },
-  { type: ProductType.RAW_MATERIAL, name: "Добавки и ингредиенты", subcategories: ["Специи", "Ароматизаторы", "Красители", "Загустители", "Стабилизаторы", "Эмульгаторы", "Улучшители", "Другое"] },
-  { type: ProductType.RAW_MATERIAL, name: "Мясо и птица", subcategories: ["Мясо", "Птица", "Колбасные изделия", "Мясные начинки", "Другое"] },
-  { type: ProductType.RAW_MATERIAL, name: "Рыба и морепродукты", subcategories: ["Рыба", "Морепродукты", "Рыбные начинки", "Другое"] },
-  { type: ProductType.RAW_MATERIAL, name: "Овощи и фрукты", subcategories: ["Овощи", "Фрукты", "Ягоды", "Зелень", "Замороженные овощи/фрукты", "Другое"] },
-  { type: ProductType.RAW_MATERIAL, name: "Прочее сырьё", subcategories: ["Другое"] },
+  { type: ProductType.RAW_MATERIAL, name: "Бакалея" },
+  { type: ProductType.RAW_MATERIAL, name: "Молочная продукция" },
+  { type: ProductType.RAW_MATERIAL, name: "Яйца" },
+  { type: ProductType.RAW_MATERIAL, name: "Масла и жиры" },
+  { type: ProductType.RAW_MATERIAL, name: "Кондитерское сырьё" },
+  { type: ProductType.RAW_MATERIAL, name: "Дрожжи и разрыхлители" },
+  { type: ProductType.RAW_MATERIAL, name: "Добавки и ингредиенты" },
+  { type: ProductType.RAW_MATERIAL, name: "Мясо и птица" },
+  { type: ProductType.RAW_MATERIAL, name: "Рыба и морепродукты" },
+  { type: ProductType.RAW_MATERIAL, name: "Овощи и фрукты" },
+  { type: ProductType.RAW_MATERIAL, name: "Прочее сырьё" },
 
-  { type: ProductType.PACKAGING, name: "Пакеты", subcategories: ["Пакеты", "Пакеты с логотипом", "Пакеты прочие"] },
-  { type: ProductType.PACKAGING, name: "Коробки", subcategories: ["Коробки для хлеба", "Коробки для выпечки", "Коробки для тортов", "Коробки прочие"] },
-  { type: ProductType.PACKAGING, name: "Контейнеры", subcategories: ["Пластиковые контейнеры", "Контейнеры для десертов", "Контейнеры прочие"] },
-  { type: ProductType.PACKAGING, name: "Этикетки и маркировка", subcategories: ["Этикетки", "Ценники", "Стикеры", "Маркировка"] },
-  { type: ProductType.PACKAGING, name: "Прочая упаковка", subcategories: ["Плёнка", "Фольга", "Бумага", "Пергамент", "Скотч", "Другое"] },
+  { type: ProductType.PACKAGING, name: "Пакеты" },
+  { type: ProductType.PACKAGING, name: "Коробки" },
+  { type: ProductType.PACKAGING, name: "Контейнеры" },
+  { type: ProductType.PACKAGING, name: "Этикетки и маркировка" },
+  { type: ProductType.PACKAGING, name: "Упаковочные материалы" },
 
-  { type: ProductType.FINISHED_GOOD, name: "Хлеб", subcategories: ["Батон", "Белый хлеб", "Ржано-пшеничный хлеб", "Ржаной хлеб", "Цельнозерновой хлеб", "Авторский хлеб", "Прочий хлеб"] },
-  { type: ProductType.FINISHED_GOOD, name: "Выпечка", subcategories: ["Булочки", "Круассаны", "Слойки", "Пирожки", "Самса", "Лепёшки", "Прочая выпечка"] },
-  { type: ProductType.FINISHED_GOOD, name: "Пироги", subcategories: ["Сладкие пироги", "Пироги с мясом", "Пироги с овощами", "Прочие пироги"] },
-  { type: ProductType.FINISHED_GOOD, name: "Кондитерские изделия", subcategories: ["Торты", "Пирожные", "Десерты", "Печенье", "Кексы", "Маффины", "Прочая кондитерка"] },
-  { type: ProductType.FINISHED_GOOD, name: "Готовая кулинария", subcategories: ["Сэндвичи", "Салаты", "Готовые блюда", "Прочее"] },
-  { type: ProductType.FINISHED_GOOD, name: "Прочая готовая продукция", subcategories: ["Другое"] },
+  { type: ProductType.FINISHED_GOOD, name: "Хлеб" },
+  { type: ProductType.FINISHED_GOOD, name: "Выпечка" },
+  { type: ProductType.FINISHED_GOOD, name: "Пироги" },
+  { type: ProductType.FINISHED_GOOD, name: "Торты" },
+  { type: ProductType.FINISHED_GOOD, name: "Пицца, роллы, блины" },
+  { type: ProductType.FINISHED_GOOD, name: "Кондитерские изделия" },
+  { type: ProductType.FINISHED_GOOD, name: "Готовая кулинария" },
 ];

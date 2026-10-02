@@ -9,6 +9,7 @@ import { LocationsModule } from "./locations/locations.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { ProductsModule } from "./products/products.module";
 import { CategoriesModule } from "./categories/categories.module";
+import { ClassificationModule } from "./classification/classification.module";
 import { InventoryModule } from "./inventory/inventory.module";
 import { SalesModule } from "./sales/sales.module";
 import { RecipesModule } from "./recipes/recipes.module";
@@ -47,6 +48,7 @@ import { StocktakeModule } from "./stocktake/stocktake.module";
     DashboardModule,
     ProductsModule,
     CategoriesModule,
+    ClassificationModule,
     InventoryModule,
     SalesModule,
     RecipesModule,

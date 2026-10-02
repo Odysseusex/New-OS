@@ -134,23 +134,24 @@ export interface UpdateCategoryRequestDto {
   parentId?: string | null;
 }
 
-// One branch of the standard catalogue, and what adding it would do — the same
-// shape for the preview and for the result.
+// One category of the standard catalogue, and what adding it would do — the
+// same shape for the preview and for the result. The catalogue is categories
+// only: subcategories are created where a classification actually needs them.
 export interface StandardCatalogBranchDto {
   type: ProductType;
   category: string;
-  // «created» — new category; «reused» — a category of this type and name
-  // already existed and is kept as the parent; «skipped» — a category with that
-  // name exists but of another or no type, so the branch was left alone.
+  // «created» — a new category; «reused» — a category of this type already
+  // exists under this name (matched ignoring case and a trailing «…») and is
+  // kept as it is; «skipped» — a category with that name exists but of another
+  // type, with no type, or archived, so it was left alone.
   categoryStatus: "created" | "reused" | "skipped";
-  subcategoriesToCreate: string[];
-  subcategoriesExisting: string[];
+  // The existing category's own spelling, when it differs from the catalogue's.
+  existingName: string | null;
 }
 
 export interface StandardCatalogResultDto {
   applied: boolean;
   categoriesCreated: number;
-  subcategoriesCreated: number;
   branches: StandardCatalogBranchDto[];
 }
 

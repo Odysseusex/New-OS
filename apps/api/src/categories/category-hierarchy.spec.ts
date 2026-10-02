@@ -388,63 +388,75 @@ describe("13. archive and delete", () => {
 });
 
 describe("14. the standard catalogue", () => {
-  it("previews without writing, applies once, and is idempotent", async () => {
-    const before = await prisma.category.count({ where: { organizationId: org.organizationId } });
-    const preview = await categories.previewStandardCatalog(org.organizationId);
-    expect(preview.applied).toBe(false);
-    expect(await prisma.category.count({ where: { organizationId: org.organizationId } })).toBe(before);
-    const sky = STANDARD_CATEGORY_CATALOG.length;
-    const subs = STANDARD_CATEGORY_CATALOG.reduce((n, c) => n + c.subcategories.length, 0);
-    expect(preview.categoriesCreated + preview.branches.filter((b) => b.categoryStatus !== "created").length).toBe(sky);
-    expect(preview.subcategoriesCreated).toBeLessThanOrEqual(subs);
+  it("is exactly the approved 23 top-level categories, with no filler", () => {
+    const names = (type: ProductType) => STANDARD_CATEGORY_CATALOG.filter((c) => c.type === type).map((c) => c.name);
+    expect(names(RAW)).toEqual(["Бакалея", "Молочная продукция", "Яйца", "Масла и жиры", "Кондитерское сырьё", "Дрожжи и разрыхлители", "Добавки и ингредиенты", "Мясо и птица", "Рыба и морепродукты", "Овощи и фрукты", "Прочее сырьё"]);
+    expect(names(PACK)).toEqual(["Пакеты", "Коробки", "Контейнеры", "Этикетки и маркировка", "Упаковочные материалы"]);
+    expect(names(FIN)).toEqual(["Хлеб", "Выпечка", "Пироги", "Торты", "Пицца, роллы, блины", "Кондитерские изделия", "Готовая кулинария"]);
+    expect(STANDARD_CATEGORY_CATALOG).toHaveLength(23);
+    // No subcategories ride along, and no «Другое»/«Прочий…» subcategory filler.
+    expect(STANDARD_CATEGORY_CATALOG.every((c) => Object.keys(c).sort().join() === "name,type")).toBe(true);
   });
 
-  it("adds the catalogue under its types, keeps existing categories, and skips a clashing branch", async () => {
-    const isolated = await createIsolatedOrg(prisma, "catalogue");
+  it("previews without writing, applies once, and is idempotent", async () => {
+    const isolated = await createIsolatedOrg(prisma, "catalogue-basic");
     try {
       const orgId = isolated.organizationId;
-      // «Хлеб» already exists and is finished goods → reused. «Бакалея» exists with no type → left alone.
-      const bread = await prisma.category.create({ data: { organizationId: orgId, name: "Хлеб", type: FIN } });
-      const legacyGrocery = await prisma.category.create({ data: { organizationId: orgId, name: "Бакалея" } });
-      const legacyProduct = await prisma.product.create({ data: { organizationId: orgId, name: "Мука", sku: "L-1", unit: "KG", type: RAW, price: 100, categoryId: legacyGrocery.id } });
-
-      const result = await categories.applyStandardCatalog(orgId, isolated.user.id);
-      expect(result.applied).toBe(true);
-      expect(result.branches.find((b) => b.category === "Хлеб")!.categoryStatus).toBe("reused");
-      expect(result.branches.find((b) => b.category === "Бакалея")!.categoryStatus).toBe("skipped");
-
-      const tops = await prisma.category.findMany({ where: { organizationId: orgId, parentId: null } });
-      const byName = new Map(tops.map((c) => [c.name, c]));
-      // Existing rows are exactly as they were.
-      expect(byName.get("Хлеб")!.id).toBe(bread.id);
-      expect(byName.get("Бакалея")).toMatchObject({ id: legacyGrocery.id, type: null });
-      expect(await prisma.product.findUniqueOrThrow({ where: { id: legacyProduct.id } })).toMatchObject({ categoryId: legacyGrocery.id });
-      expect(await prisma.category.count({ where: { organizationId: orgId, parentId: legacyGrocery.id } })).toBe(0);
-      // New branches carry their type, and their subcategories inherit it.
-      const milk = byName.get("Молочная продукция")!;
-      expect(milk.type).toBe(RAW);
-      const butter = await prisma.category.findFirst({ where: { organizationId: orgId, parentId: milk.id, name: "Масло сливочное" } });
-      expect(butter?.type).toBe(RAW);
-      expect(byName.get("Коробки")!.type).toBe(PACK);
-      expect((await prisma.category.findFirst({ where: { organizationId: orgId, parentId: bread.id, name: "Батон" } }))?.type).toBe(FIN);
-      // Names repeated under several parents («Другое») are fine.
-      expect(await prisma.category.count({ where: { organizationId: orgId, name: "Другое" } })).toBeGreaterThan(5);
-
-      // Idempotent: nothing more to add, nothing duplicated.
-      const total = await prisma.category.count({ where: { organizationId: orgId } });
+      const preview = await categories.previewStandardCatalog(orgId);
+      expect(preview).toMatchObject({ applied: false, categoriesCreated: 23 });
+      expect(await prisma.category.count({ where: { organizationId: orgId } })).toBe(0);
+      const applied = await categories.applyStandardCatalog(orgId, isolated.user.id);
+      expect(applied).toMatchObject({ applied: true, categoriesCreated: 23 });
+      const all = await prisma.category.findMany({ where: { organizationId: orgId } });
+      expect(all).toHaveLength(23);
+      expect(all.every((c) => c.parentId === null && c.type !== null)).toBe(true);
       const again = await categories.applyStandardCatalog(orgId, isolated.user.id);
-      expect(again.categoriesCreated + again.subcategoriesCreated).toBe(0);
-      expect(await prisma.category.count({ where: { organizationId: orgId } })).toBe(total);
-
-      // Audited, and the group of audit actions is exercised.
+      expect(again.categoriesCreated).toBe(0);
+      expect(await prisma.category.count({ where: { organizationId: orgId } })).toBe(23);
+      // Audited, and the audit group is exercised.
       const logged = new Set((await prisma.auditLog.findMany({ where: { organizationId: orgId }, select: { action: true } })).map((a) => a.action));
       expect(AUDIT_ACTION_GROUPS.catalog.filter((a) => !logged.has(a))).toEqual([]);
+    } finally {
+      await destroyOrg(prisma, isolated.organizationId);
+    }
+  });
 
-      // And the tree reads back as Type → Category → Subcategory.
+  it("reuses existing categories ignoring case and a trailing «…», keeps their spelling, and skips a clashing type", async () => {
+    const isolated = await createIsolatedOrg(prisma, "catalogue-match");
+    try {
+      const orgId = isolated.organizationId;
+      const lower = await prisma.category.create({ data: { organizationId: orgId, name: "кондитерские изделия", type: FIN } });
+      const ellipsis = await prisma.category.create({ data: { organizationId: orgId, name: "Пицца, роллы, блины…", type: FIN } });
+      const bread = await prisma.category.create({ data: { organizationId: orgId, name: "Хлеб", type: FIN } });
+      const wrongType = await prisma.category.create({ data: { organizationId: orgId, name: "Яйца", type: PACK } });
+      const untyped = await prisma.category.create({ data: { organizationId: orgId, name: "Бакалея" } });
+      const archived = await prisma.category.create({ data: { organizationId: orgId, name: "Выпечка", type: FIN, isActive: false } });
+      const product = await prisma.product.create({ data: { organizationId: orgId, name: "Мука", sku: "L-1", unit: "KG", type: RAW, price: 100, categoryId: untyped.id } });
+
+      const result = await categories.applyStandardCatalog(orgId, isolated.user.id);
+      const status = (name: string) => result.branches.find((b) => b.category === name)!;
+      expect(status("Кондитерские изделия")).toMatchObject({ categoryStatus: "reused", existingName: "кондитерские изделия" });
+      expect(status("Пицца, роллы, блины")).toMatchObject({ categoryStatus: "reused", existingName: "Пицца, роллы, блины…" });
+      expect(status("Хлеб")).toMatchObject({ categoryStatus: "reused", existingName: null });
+      expect(status("Яйца")).toMatchObject({ categoryStatus: "skipped" });
+      expect(status("Бакалея")).toMatchObject({ categoryStatus: "skipped" });
+      expect(status("Выпечка")).toMatchObject({ categoryStatus: "skipped" });
+      // 23 − 3 reused − 3 skipped = 17 new; no duplicates of the reused ones.
+      expect(result.categoriesCreated).toBe(17);
+      const tops = await prisma.category.findMany({ where: { organizationId: orgId, parentId: null } });
+      expect(tops).toHaveLength(6 + 17);
+      expect(tops.filter((c) => /кондитерские изделия/i.test(c.name))).toHaveLength(1);
+      // Existing rows and the products in them are exactly as they were.
+      expect(await prisma.category.findUniqueOrThrow({ where: { id: lower.id } })).toMatchObject({ name: "кондитерские изделия", type: FIN });
+      expect(await prisma.category.findUniqueOrThrow({ where: { id: ellipsis.id } })).toMatchObject({ name: "Пицца, роллы, блины…" });
+      expect(await prisma.category.findUniqueOrThrow({ where: { id: bread.id } })).toMatchObject({ name: "Хлеб", type: FIN });
+      expect(await prisma.category.findUniqueOrThrow({ where: { id: wrongType.id } })).toMatchObject({ type: PACK });
+      expect(await prisma.category.findUniqueOrThrow({ where: { id: untyped.id } })).toMatchObject({ type: null });
+      expect(await prisma.category.findUniqueOrThrow({ where: { id: archived.id } })).toMatchObject({ isActive: false });
+      expect(await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).toMatchObject({ categoryId: untyped.id });
+      // The tree reads back as Type → Category, with the legacy untyped group last.
       const tree = buildCategoryTree(await categories.findAllForOrganization(orgId), [RAW, PACK, FIN]);
       expect(tree.map((g) => g.type)).toEqual([RAW, PACK, FIN, null]);
-      const grocery = tree.find((g) => g.type === null)!.nodes[0];
-      expect(grocery.category.id).toBe(legacyGrocery.id);
     } finally {
       await destroyOrg(prisma, isolated.organizationId);
     }

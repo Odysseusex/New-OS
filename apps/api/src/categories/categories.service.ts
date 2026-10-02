@@ -5,6 +5,7 @@ import {
   PRODUCT_TYPE_LABELS_RU,
   ProductType,
   STANDARD_CATEGORY_CATALOG,
+  normalizeCategoryName,
   StandardCatalogBranchDto,
   StandardCatalogResultDto,
 } from "@bakery-os/shared";
@@ -255,10 +256,12 @@ export class CategoriesService {
 
   // ── the standard catalogue ───────────────────────────────────────────────
   //
-  // ADDS categories and subcategories only. A branch whose top-level name is
-  // already taken by a category of another type, no type, or in the archive is
-  // left entirely alone and reported — nothing existing is renamed, moved or
-  // retyped, and no product is touched.
+  // ADDS top-level categories only (no subcategories — a classification creates
+  // those where needed). A catalogue name matches an existing top-level category
+  // ignoring case and a trailing «…» (see normalizeCategoryName); a match of the
+  // same type is reused untouched. A match of another type, with no type, or in
+  // the archive leaves that category alone and is reported. Nothing existing is
+  // renamed, moved or retyped, and no product is touched.
 
   async previewStandardCatalog(organizationId: string): Promise<StandardCatalogResultDto> {
     const { result } = await this.planStandardCatalog(organizationId);
@@ -266,59 +269,44 @@ export class CategoriesService {
   }
 
   async applyStandardCatalog(organizationId: string, actorId: string | null): Promise<StandardCatalogResultDto> {
-    const { result, plan } = await this.planStandardCatalog(organizationId);
+    const { result, toCreate } = await this.planStandardCatalog(organizationId);
     return audited(
       this.prisma,
       { organizationId, actorId, action: "category.seedStandard", entityType: "Category", entityId: "standard-catalog", before: null },
       async (tx) => {
-        for (const step of plan) {
-          let parentId = step.existingParentId;
-          if (!parentId) {
-            const created = await tx.category.create({ data: { organizationId, name: step.name, type: step.type, parentId: null } });
-            parentId = created.id;
-          }
-          for (const sub of step.toCreate) {
-            await tx.category.create({
-              data: { organizationId, name: sub.name, type: step.type, parentId, sortOrder: sub.sortOrder },
-            });
-          }
+        for (const item of toCreate) {
+          await tx.category.create({ data: { organizationId, name: item.name, type: item.type, parentId: null } });
         }
         const applied = { ...result, applied: true };
-        return { result: applied, after: { categoriesCreated: applied.categoriesCreated, subcategoriesCreated: applied.subcategoriesCreated } };
+        return { result: applied, after: { categoriesCreated: applied.categoriesCreated } };
       },
     );
   }
 
   private async planStandardCatalog(organizationId: string) {
-    const existing = await this.prisma.category.findMany({ where: { organizationId } });
-    const topByName = new Map(existing.filter((c) => c.parentId === null).map((c) => [c.name, c]));
-    const plan: { type: ProductType; name: string; existingParentId: string | null; toCreate: { name: string; sortOrder: number }[] }[] = [];
-    const branches: StandardCatalogBranchDto[] = [];
-    let categoriesCreated = 0;
-    let subcategoriesCreated = 0;
-
-    for (const item of STANDARD_CATEGORY_CATALOG) {
-      const top = topByName.get(item.name);
-      if (top && (top.type !== item.type || !top.isActive)) {
-        branches.push({ type: item.type, category: item.name, categoryStatus: "skipped", subcategoriesToCreate: [], subcategoriesExisting: [] });
-        continue;
-      }
-      const have = new Set(top ? existing.filter((c) => c.parentId === top.id).map((c) => c.name) : []);
-      const toCreate = item.subcategories
-        .map((name, index) => ({ name, sortOrder: index + 1 }))
-        .filter((sub) => !have.has(sub.name));
-      plan.push({ type: item.type, name: item.name, existingParentId: top?.id ?? null, toCreate });
-      branches.push({
-        type: item.type,
-        category: item.name,
-        categoryStatus: top ? "reused" : "created",
-        subcategoriesToCreate: toCreate.map((s) => s.name),
-        subcategoriesExisting: item.subcategories.filter((name) => have.has(name)),
-      });
-      if (!top) categoriesCreated += 1;
-      subcategoriesCreated += toCreate.length;
+    const tops = await this.prisma.category.findMany({ where: { organizationId, parentId: null } });
+    const byKey = new Map<string, typeof tops>();
+    for (const c of tops) {
+      const key = normalizeCategoryName(c.name);
+      byKey.set(key, [...(byKey.get(key) ?? []), c]);
     }
-    return { plan, result: { applied: false, categoriesCreated, subcategoriesCreated, branches } satisfies StandardCatalogResultDto };
+    const toCreate: { type: ProductType; name: string }[] = [];
+    const branches: StandardCatalogBranchDto[] = [];
+    for (const item of STANDARD_CATEGORY_CATALOG) {
+      const matches = byKey.get(normalizeCategoryName(item.name)) ?? [];
+      // Prefer a usable match (same type, active), then the exact spelling.
+      const usable = matches.find((c) => c.type === item.type && c.isActive && c.name === item.name) ?? matches.find((c) => c.type === item.type && c.isActive);
+      const existing = usable ?? matches[0];
+      if (!existing) {
+        toCreate.push(item);
+        branches.push({ type: item.type, category: item.name, categoryStatus: "created", existingName: null });
+      } else if (usable) {
+        branches.push({ type: item.type, category: item.name, categoryStatus: "reused", existingName: existing.name !== item.name ? existing.name : null });
+      } else {
+        branches.push({ type: item.type, category: item.name, categoryStatus: "skipped", existingName: existing.name });
+      }
+    }
+    return { toCreate, result: { applied: false, categoriesCreated: toCreate.length, branches } satisfies StandardCatalogResultDto };
   }
 
   // One category as the screens need it, with its own counts read fresh.
