@@ -424,6 +424,9 @@ export class FinanceService {
     let discountsTotal = 0;
     for (const sale of sales) {
       for (const item of sale.items) {
+        // Somebody else's goods sold «под реализацию»: collected for their owner,
+        // not our revenue, cost or margin.
+        if (item.consignmentSupplierId) continue;
         const quantity = item.quantity.toNumber();
         const unitCost = costOf(item.unitCost, item.consignmentUnitCost, item.productId);
         const hasCost = unitCost !== null;
@@ -445,6 +448,7 @@ export class FinanceService {
     // booked (copied onto the return line), never at today's cost.
     for (const ret of returns) {
       for (const item of ret.items) {
+        if (item.consignmentSupplierId) continue;
         const quantity = item.quantity.toNumber();
         const row = productRow(item.productId, item.product.name);
         row.quantitySold -= quantity;
@@ -471,8 +475,9 @@ export class FinanceService {
       })
       .sort((a, b) => b.revenue - a.revenue);
 
-    const salesTotal = round2(sales.reduce((sum, s) => sum + s.totalAmount.toNumber(), 0));
-    const returnsTotal = round2(returns.reduce((sum, r) => sum + r.totalAmount.toNumber(), 0));
+    // Own sales only: what was collected for consignment goods is not revenue.
+    const salesTotal = round2(sales.reduce((sum, s) => sum + s.totalAmount.toNumber() - s.consignmentAmount.toNumber(), 0));
+    const returnsTotal = round2(returns.reduce((sum, r) => sum + r.totalAmount.toNumber() - r.consignmentAmount.toNumber(), 0));
     discountsTotal = round2(discountsTotal);
     const grossRevenue = round2(salesTotal + discountsTotal);
     const netRevenue = round2(grossRevenue - discountsTotal - returnsTotal);
@@ -997,7 +1002,7 @@ export class FinanceService {
     );
   }
 
-  // Sold, minus returned, minus already paid — the same running balance the
+  // Collected, minus handed back, minus already paid — the same running balance the
   // Расчёты по реализации screen shows, kept here so the dashboard's
   // Кредиторская задолженность and that screen cannot drift apart.
   //
@@ -1007,11 +1012,11 @@ export class FinanceService {
     const [saleItems, returnItems, payments] = await Promise.all([
       this.prisma.saleItem.findMany({
         where: { consignmentSupplierId: { not: null }, sale: { organizationId } },
-        select: { consignmentSupplierId: true, consignmentUnitCost: true, quantity: true },
+        select: { consignmentSupplierId: true, subtotal: true },
       }),
       this.prisma.saleReturnItem.findMany({
         where: { consignmentSupplierId: { not: null }, saleReturn: { organizationId } },
-        select: { consignmentSupplierId: true, consignmentUnitCost: true, quantity: true },
+        select: { consignmentSupplierId: true, subtotal: true },
       }),
       this.prisma.consignmentPayment.findMany({
         where: { organizationId },
@@ -1024,10 +1029,10 @@ export class FinanceService {
       bySupplier.set(supplierId, (bySupplier.get(supplierId) ?? 0) + delta);
 
     for (const item of saleItems) {
-      add(item.consignmentSupplierId!, (item.consignmentUnitCost?.toNumber() ?? 0) * item.quantity.toNumber());
+      add(item.consignmentSupplierId!, item.subtotal.toNumber());
     }
     for (const item of returnItems) {
-      add(item.consignmentSupplierId!, -(item.consignmentUnitCost?.toNumber() ?? 0) * item.quantity.toNumber());
+      add(item.consignmentSupplierId!, -item.subtotal.toNumber());
     }
     for (const payment of payments) {
       add(payment.supplierId, -payment.amount.toNumber());

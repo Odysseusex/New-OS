@@ -166,6 +166,8 @@ export class SaleReturnsService {
           locationId: sale.locationId,
           returnedAt,
           totalAmount,
+          // The refunded part that belongs to consignment goods (SaleReturn.consignmentAmount).
+          consignmentAmount: Number(lines.reduce((sum, l) => sum + (l.consignmentSupplierId ? l.subtotal : 0), 0).toFixed(2)),
           reason: dto.reason,
           restocked,
           createdById: user.id,

@@ -14,9 +14,9 @@ import { CreateConsignmentPaymentDto } from "./dto/create-consignment-payment.dt
 // Расчёты по товарам под реализацию.
 //
 // Goods that belong to somebody else (the village store) sit on our shelf and
-// we owe them for each unit that SELLS. The amount owed is never typed in by
-// a human: it is Σ(sold × the price snapshotted on that sale line), minus the
-// same for returns, minus what has already been paid. That is the whole
+// everything collected for them is theirs. The amount owed is never typed in
+// by a human: it is Σ(sold line subtotals), minus the same for returns, minus
+// what has already been paid. That is the whole
 // model — a running balance, no periods, no settlement acts to reconcile.
 //
 // Why a running balance and not periodic acts: periods have to be defined,
@@ -37,11 +37,11 @@ export class ConsignmentService {
     const [saleItems, returnItems, payments, suppliers] = await Promise.all([
       this.prisma.saleItem.findMany({
         where: { consignmentSupplierId: { not: null }, sale: { organizationId } },
-        select: { consignmentSupplierId: true, consignmentUnitCost: true, quantity: true },
+        select: { consignmentSupplierId: true, subtotal: true, quantity: true },
       }),
       this.prisma.saleReturnItem.findMany({
         where: { consignmentSupplierId: { not: null }, saleReturn: { organizationId } },
-        select: { consignmentSupplierId: true, consignmentUnitCost: true, quantity: true },
+        select: { consignmentSupplierId: true, subtotal: true, quantity: true },
       }),
       this.prisma.consignmentPayment.findMany({
         where: { organizationId },
@@ -71,12 +71,12 @@ export class ConsignmentService {
 
     for (const item of saleItems) {
       const row = ensure(item.consignmentSupplierId!);
-      row.soldAmount += (item.consignmentUnitCost?.toNumber() ?? 0) * item.quantity.toNumber();
+      row.soldAmount += item.subtotal.toNumber();
       row.quantitySold += item.quantity.toNumber();
     }
     for (const item of returnItems) {
       const row = ensure(item.consignmentSupplierId!);
-      row.returnedAmount += (item.consignmentUnitCost?.toNumber() ?? 0) * item.quantity.toNumber();
+      row.returnedAmount += item.subtotal.toNumber();
       row.quantitySold -= item.quantity.toNumber();
     }
     for (const payment of payments) {
@@ -111,7 +111,8 @@ export class ConsignmentService {
         where: { consignmentSupplierId: supplierId, sale: { organizationId } },
         select: {
           productId: true,
-          consignmentUnitCost: true,
+          unitPrice: true,
+          subtotal: true,
           quantity: true,
           product: { select: { name: true } },
         },
@@ -120,7 +121,8 @@ export class ConsignmentService {
         where: { consignmentSupplierId: supplierId, saleReturn: { organizationId } },
         select: {
           productId: true,
-          consignmentUnitCost: true,
+          unitPrice: true,
+          subtotal: true,
           quantity: true,
           product: { select: { name: true } },
         },
@@ -151,15 +153,16 @@ export class ConsignmentService {
       return fresh;
     };
 
+    // Everything collected for this owner, at the price the buyer paid.
     for (const item of saleItems) {
-      const unitCost = item.consignmentUnitCost?.toNumber() ?? 0;
-      const row = ensureRow(item.productId, item.product.name, unitCost);
+      const row = ensureRow(item.productId, item.product.name, item.unitPrice.toNumber());
       row.quantitySold += item.quantity.toNumber();
+      row.amount += item.subtotal.toNumber();
     }
     for (const item of returnItems) {
-      const unitCost = item.consignmentUnitCost?.toNumber() ?? 0;
-      const row = ensureRow(item.productId, item.product.name, unitCost);
+      const row = ensureRow(item.productId, item.product.name, item.unitPrice.toNumber());
       row.quantityReturned += item.quantity.toNumber();
+      row.amount -= item.subtotal.toNumber();
     }
 
     const balance = balances.find((b) => b.supplierId === supplierId) ?? {
@@ -180,7 +183,7 @@ export class ConsignmentService {
           ...row,
           quantitySold: round(row.quantitySold),
           quantityReturned: round(row.quantityReturned),
-          amount: round((row.quantitySold - row.quantityReturned) * row.unitCost),
+          amount: round(row.amount),
         }))
         .sort((a, b) => b.amount - a.amount),
       payments: payments.map((p) => ({

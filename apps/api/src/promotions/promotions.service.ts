@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, PromotionCouponStatus as PrismaPromotionCouponStatus } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { ownAmount } from "../common/own-sales";
 import {
   PromotionCouponDto,
   PromotionCouponPreviewDto,
@@ -391,9 +392,9 @@ export class PromotionsService {
     // move the whole basket, and only counting the discounted part would
     // understate exactly the effect being measured.
     const sales = saleIds.size
-      ? await this.prisma.sale.findMany({ where: { id: { in: Array.from(saleIds) } }, select: { totalAmount: true } })
+      ? await this.prisma.sale.findMany({ where: { id: { in: Array.from(saleIds) } }, select: { totalAmount: true, consignmentAmount: true } })
       : [];
-    const wholeSaleTotal = sales.reduce((sum, s) => sum + s.totalAmount.toNumber(), 0);
+    const wholeSaleTotal = sales.reduce((sum, s) => sum + ownAmount(s), 0);
 
     return {
       promotionId,

@@ -267,7 +267,7 @@ export class HrService {
           ...(locationId ? { locationId } : {}),
         },
         _count: { _all: true },
-        _sum: { totalAmount: true },
+        _sum: { totalAmount: true, consignmentAmount: true },
       }),
       this.prisma.stockMovement.groupBy({
         by: ["createdById"],
@@ -294,7 +294,8 @@ export class HrService {
         userFullName: e.fullName,
         role: e.role as Role,
         salesCount: sales?._count._all ?? 0,
-        salesRevenue: sales?._sum.totalAmount?.toNumber() ?? 0,
+        // Goods sold «под реализацию» are not the seller's revenue.
+        salesRevenue: (sales?._sum.totalAmount?.toNumber() ?? 0) - (sales?._sum.consignmentAmount?.toNumber() ?? 0),
         batchesCompleted: production?._count._all ?? 0,
         unitsProduced: production?._sum.quantity?.toNumber() ?? 0,
       };

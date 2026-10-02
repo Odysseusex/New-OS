@@ -217,12 +217,8 @@ export class BusinessContextService {
           trackInventory: p.trackInventory,
           isActive: p.isActive,
           consignment:
-            p.consignmentSupplierId && p.consignmentPrice !== null
-              ? {
-                  supplierId: p.consignmentSupplierId,
-                  supplierName: p.consignmentSupplierName ?? "Поставщик",
-                  unitCost: p.consignmentPrice,
-                }
+            p.consignmentSupplierId
+              ? { supplierId: p.consignmentSupplierId, supplierName: p.consignmentSupplierName ?? "Поставщик" }
               : null,
       } satisfies BusinessContextProductDto;
     });

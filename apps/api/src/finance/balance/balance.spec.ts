@@ -204,13 +204,18 @@ describe("a realistic run of business", () => {
     expect(costBack[0].balance).toEqual([{ line: "INVENTORY", delta: 50 }]);
   });
 
-  it("a consignment sale creates a payable to the owner instead of drawing down our inventory", async () => {
+  it("a consignment sale is collected for the owner: a payable of the full amount, no revenue, no cost", async () => {
     const events = await allEvents();
-    const cost = events.find((e) => e.type === "SALE_COST" && e.balance.some((b) => b.line === "CONSIGNMENT_PAYABLES"))!;
-    // 2 × 600
-    expect(cost.balance).toEqual([{ line: "CONSIGNMENT_PAYABLES", delta: 1200 }]);
-    expect(cost.pnl).toEqual([{ line: "COGS", amount: -1200 }]);
-    expect(await services.finance.getConsignmentOwed(org.organizationId)).toBe(1200);
+    const sale = events.find((e) => e.type === "SALE" && e.balance.some((b) => b.line === "CONSIGNMENT_PAYABLES"))!;
+    // 2 × 900, all of it the owner's
+    expect(sale.balance).toEqual([
+      { line: "RECEIVABLES", delta: 1800 },
+      { line: "CONSIGNMENT_PAYABLES", delta: 1800 },
+    ]);
+    expect(sale.pnl).toEqual([]);
+    // and no cost event, no inventory movement, for that sale
+    expect(events.some((e) => e.type === "SALE_COST" && e.sourceId === sale.sourceId)).toBe(false);
+    expect(await services.finance.getConsignmentOwed(org.organizationId)).toBe(1800);
   });
 
   it("the cash-flow statement closes on the account ledgers", async () => {
@@ -232,18 +237,18 @@ describe("the balance sheet after the business", () => {
     expect(amount(s.assets.lines, "FIXED_ASSETS")).toBe(10000); // 12 000 oven − 2 × 1 000 depreciation
     expect(amount(s.liabilities.lines, "SUPPLIER_PAYABLES")).toBe(3500); // 5 500 received − 2 000 paid
     expect(amount(s.liabilities.lines, "EXPENSE_PAYABLES")).toBe(500); // 700 − 200
-    expect(amount(s.liabilities.lines, "CONSIGNMENT_PAYABLES")).toBe(1200);
+    expect(amount(s.liabilities.lines, "CONSIGNMENT_PAYABLES")).toBe(1800);
     expect(amount(s.liabilities.lines, "LOANS")).toBe(5500); // 6 000 − 500 repaid
     expect(s.equity.lines.map((l) => l.amount)).toEqual([27000, 3000, -1000]);
-    expect(s.equity.accumulatedResult).toBe(-1360);
-    expect(s.equity.total).toBe(27640);
+    expect(s.equity.accumulatedResult).toBe(-1960); // the former +600 consignment cut is no longer ours
+    expect(s.equity.total).toBe(27040);
     // The 50 kg of flour was received at 110 but the costing service values raw
     // material at its price field (100): a genuine basis difference, in CONTROL,
     // added to nothing.
     expect(s.status).toBe(BalanceStatus.NOT_BALANCED);
     expect(s.control.difference).toBe(-500);
     expect(s.control.lines).toEqual([{ label: expect.stringMatching(/Запасы/), actual: 16100, projected: 16600, effect: -500 }]);
-    expect(s.assets.total - s.liabilities.total).toBe(27140);
+    expect(s.assets.total - s.liabilities.total).toBe(26540); // the owner is owed 1 800, not 1 200
   });
 
   it("assets, liabilities and equity are built from their own sources", async () => {

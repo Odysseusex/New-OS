@@ -37,6 +37,7 @@ import { AuthenticatedUser } from "../auth/auth.types";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
 import { deltaPct, previousRangeOf } from "../common/period-range";
 import { resolveProductUnitCosts } from "../common/product-costs";
+import { OWN_ITEMS, ownAmount } from "../common/own-sales";
 import { decrementStockOrThrow } from "../common/stock-guard";
 import { CashMovementsService } from "../finance/cash-movements.service";
 import { CostingService } from "../costing/costing.service";
@@ -183,9 +184,12 @@ export class SalesService {
       this.prisma.saleReturn.findMany({ where: { ...baseWhere, returnedAt: { gte: startOfToday } } }),
     ]);
 
-    const todayRevenue = todaySales.reduce((sum, s) => sum + s.totalAmount.toNumber(), 0);
-    const last7DaysRevenue = last7DaysSales.reduce((sum, s) => sum + s.totalAmount.toNumber(), 0);
-    const averageTicket = last7DaysSales.length > 0 ? last7DaysRevenue / last7DaysSales.length : 0;
+    // Revenue and ticket counts are ours only; money taken (below) is everything the till received.
+    const isOwnSale = (s: { totalAmount: { toNumber(): number }; consignmentAmount: { toNumber(): number } }) => ownAmount(s) > 0;
+    const todayRevenue = todaySales.reduce((sum, s) => sum + ownAmount(s), 0);
+    const last7DaysRevenue = last7DaysSales.reduce((sum, s) => sum + ownAmount(s), 0);
+    const last7DaysOwnCount = last7DaysSales.filter(isOwnSale).length;
+    const averageTicket = last7DaysOwnCount > 0 ? last7DaysRevenue / last7DaysOwnCount : 0;
 
     // Same rule as create(): a split sale is its payment rows, anything else
     // is its single method for whatever was actually paid. A sale on credit
@@ -216,9 +220,9 @@ export class SalesService {
 
     return {
       todayRevenue,
-      todaySalesCount: todaySales.length,
+      todaySalesCount: todaySales.filter(isOwnSale).length,
       todayTakings,
-      todayRefunds: todayReturns.reduce((sum, r) => sum + r.totalAmount.toNumber(), 0),
+      todayRefunds: todayReturns.reduce((sum, r) => sum + ownAmount(r), 0),
       todayUnpaid,
       last7DaysRevenue,
       averageTicket,
@@ -252,7 +256,9 @@ export class SalesService {
     let markdownQuantity = 0;
 
     for (const sale of sales) {
-      const revenue = sale.totalAmount.toNumber();
+      // Consignment goods are the owner's money, not our revenue.
+      const revenue = ownAmount(sale);
+      if (revenue <= 0) continue;
       totalRevenue += revenue;
 
       const locationEntry = byLocationMap.get(sale.locationId) ?? {
@@ -265,6 +271,7 @@ export class SalesService {
       byLocationMap.set(sale.locationId, locationEntry);
 
       for (const item of sale.items) {
+        if (item.consignmentSupplierId) continue;
         const productEntry = byProductMap.get(item.productId) ?? {
           productName: item.product.name,
           quantity: 0,
@@ -316,7 +323,7 @@ export class SalesService {
       from: from.toISOString(),
       to: to.toISOString(),
       totalRevenue,
-      totalCount: sales.length,
+      totalCount: sales.filter((s) => ownAmount(s) > 0).length,
       markdownLoss: Number(markdownLoss.toFixed(2)),
       markdownQuantity,
       byLocation,
@@ -346,6 +353,7 @@ export class SalesService {
     const [items, unitCosts] = await Promise.all([
       this.prisma.saleItem.findMany({
         where: {
+          ...OWN_ITEMS,
           sale: {
             organizationId: user.organizationId,
             soldAt: { gte: from, lte: to },
@@ -541,6 +549,7 @@ export class SalesService {
       const customerName = sale.customer?.name ?? "Розница";
 
       for (const item of sale.items) {
+        if (item.consignmentSupplierId) continue;
         if (opts.productId && item.productId !== opts.productId) continue;
         if (opts.categoryId && item.product.categoryId !== opts.categoryId) continue;
 
@@ -690,6 +699,7 @@ export class SalesService {
       const dateKey = isCurrent ? this.zonedDateKey(sale.soldAt) : null;
 
       for (const item of sale.items) {
+        if (item.consignmentSupplierId) continue;
         const quantity = item.quantity.toNumber();
         const revenue = item.subtotal.toNumber();
 
@@ -793,21 +803,23 @@ export class SalesService {
     const [sales, previousSales] = await Promise.all([
       this.prisma.sale.findMany({
         where: where({ from, to }),
-        select: { soldAt: true, totalAmount: true },
+        select: { soldAt: true, totalAmount: true, consignmentAmount: true },
       }),
       this.prisma.sale.findMany({
         where: where(previous),
-        select: { totalAmount: true },
+        select: { totalAmount: true, consignmentAmount: true },
       }),
     ]);
+    // A sale made only of consignment goods is not our trade at all.
+    const ownSales = sales.filter((s) => ownAmount(s) > 0);
 
     const byDate = new Map<string, { revenue: number; salesCount: number }>();
     const byHour = new Map<number, { revenue: number; salesCount: number }>();
     const byWeekday = new Map<number, { revenue: number; salesCount: number }>();
     let totalRevenue = 0;
 
-    for (const sale of sales) {
-      const revenue = sale.totalAmount.toNumber();
+    for (const sale of ownSales) {
+      const revenue = ownAmount(sale);
       totalRevenue += revenue;
 
       const dateKey = this.zonedDateKey(sale.soldAt);
@@ -859,7 +871,7 @@ export class SalesService {
     const withSales = points.filter((p) => p.salesCount > 0);
     const sortedByRevenue = [...withSales].sort((a, b) => a.revenue - b.revenue);
 
-    const previousRevenue = previousSales.reduce((sum, s) => sum + s.totalAmount.toNumber(), 0);
+    const previousRevenue = previousSales.reduce((sum, s) => sum + ownAmount(s), 0);
 
     return {
       from: from.toISOString(),
@@ -867,8 +879,8 @@ export class SalesService {
       timeZone: REPORTING_TIME_ZONE,
       points,
       totalRevenue: round2(totalRevenue),
-      totalSalesCount: sales.length,
-      averageTicket: sales.length > 0 ? round2(totalRevenue / sales.length) : null,
+      totalSalesCount: ownSales.length,
+      averageTicket: ownSales.length > 0 ? round2(totalRevenue / ownSales.length) : null,
       completedDays,
       averageRevenuePerDay: completedDays > 0 ? round2(totalRevenue / completedDays) : null,
       // Best/worst over days that actually had sales: a closed day is not the
@@ -896,9 +908,9 @@ export class SalesService {
         from: previous.from.toISOString(),
         to: previous.to.toISOString(),
         revenue: round2(previousRevenue),
-        salesCount: previousSales.length,
+        salesCount: previousSales.filter((x) => ownAmount(x) > 0).length,
         revenueDeltaPct: deltaPct(totalRevenue, previousRevenue),
-        salesCountDeltaPct: deltaPct(sales.length, previousSales.length),
+        salesCountDeltaPct: deltaPct(ownSales.length, previousSales.filter((x) => ownAmount(x) > 0).length),
       },
     };
   }
@@ -1139,12 +1151,23 @@ export class SalesService {
         return this.costing.fields(costByProduct.get(productId));
       };
 
+      // Money collected for somebody else's goods — not our revenue (see Sale.consignmentAmount).
+      const consignmentAmount = Number(
+        items
+          .reduce((sum, item) => {
+            const p = productById.get(item.productId);
+            return sum + (p?.consignmentSupplierId ? item.subtotal : 0);
+          }, 0)
+          .toFixed(2),
+      );
+
       const sale = await tx.sale.create({
         data: {
           organizationId: user.organizationId,
           locationId,
           customerId: dto.customerId,
           totalAmount,
+          consignmentAmount,
           amountPaid,
           paymentMethod,
           createdById: user.id,
@@ -1166,13 +1189,12 @@ export class SalesService {
           items: {
             create: items.map((item) => {
               const product = productById.get(item.productId);
-              const owed =
-                product?.consignmentSupplierId && product.consignmentPrice !== null
-                  ? {
-                      consignmentSupplierId: product.consignmentSupplierId,
-                      consignmentUnitCost: product.consignmentPrice,
-                    }
-                  : {};
+              const owed = product?.consignmentSupplierId
+                ? {
+                    consignmentSupplierId: product.consignmentSupplierId,
+                    consignmentUnitCost: product.consignmentPrice,
+                  }
+                : {};
               return { ...item, ...owed, ...costFieldsFor(item.productId) };
             }),
           },

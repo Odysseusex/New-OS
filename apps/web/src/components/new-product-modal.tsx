@@ -35,11 +35,6 @@ export function NewProductModal({
   // our own.
   const [isConsignment, setIsConsignment] = useState(Boolean(product?.consignmentSupplierId));
   const [consignmentSupplierId, setConsignmentSupplierId] = useState(product?.consignmentSupplierId ?? "");
-  const [consignmentPrice, setConsignmentPrice] = useState(
-    product?.consignmentPrice !== null && product?.consignmentPrice !== undefined
-      ? String(product.consignmentPrice)
-      : "",
-  );
   const [suppliers, setSuppliers] = useState<SupplierDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -69,7 +64,7 @@ export function NewProductModal({
         // Null, not undefined, so switching a product back to our own goods
         // actually clears the link rather than leaving the old one in place.
         consignmentSupplierId: isConsignment ? consignmentSupplierId : null,
-        consignmentPrice: isConsignment ? Number(consignmentPrice) : null,
+        consignmentPrice: null,
       };
       const trimmedBarcode = barcode.trim();
       const trimmedNtin = ntin.trim();
@@ -240,14 +235,14 @@ export function NewProductModal({
               <span>
                 <span className="font-medium">Товар под реализацию</span>
                 <p className="mt-0.5 text-xs text-muted">
-                  Товар чужой: платим поставщику за каждую проданную единицу, а не за привезённую.
-                  Долг система считает сама по продажам — вручную ничего сводить не нужно
+                  Товар чужой: вся выручка с него принадлежит поставщику и в отчёты о выручке и
+                  прибыли не входит
                 </p>
               </span>
             </label>
 
             {isConsignment && (
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div className="mt-3 grid gap-3">
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-foreground">Поставщик</label>
                   <select
@@ -263,23 +258,6 @@ export function NewProductModal({
                       </option>
                     ))}
                   </select>
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-foreground">
-                    Цена поставщику, ₸
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    required
-                    value={consignmentPrice}
-                    onChange={(e) => setConsignmentPrice(e.target.value)}
-                    className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-                  />
-                  <p className="mt-1.5 text-xs text-muted">
-                    Сколько отдаём с одной проданной единицы. Разница с ценой продажи — ваш заработок
-                  </p>
                 </div>
               </div>
             )}

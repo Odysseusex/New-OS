@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { audited } from "../audit/audit";
 import { PrismaService } from "../prisma/prisma.service";
+import { ownAmount } from "../common/own-sales";
 import {
   BusinessContextCustomerRowDto,
   BusinessContextCustomersDto,
@@ -38,15 +39,25 @@ export class CustomersService {
       ...(locationId ? { locationId } : {}),
     };
 
-    const [grouped, activeCount] = await Promise.all([
-      this.prisma.sale.groupBy({
-        by: ["customerId"],
+    const [periodSales, activeCount] = await Promise.all([
+      this.prisma.sale.findMany({
         where: scope,
-        _sum: { totalAmount: true },
-        _count: { _all: true },
+        select: { customerId: true, totalAmount: true, consignmentAmount: true },
       }),
       this.prisma.customer.count({ where: { organizationId, isActive: true } }),
     ]);
+    // Revenue is ours only: goods sold «под реализацию» are collected for their
+    // owner, and a sale made only of them is not our trade at all.
+    const groupedMap = new Map<string | null, { customerId: string | null; revenue: number; count: number }>();
+    for (const sale of periodSales) {
+      const own = ownAmount(sale);
+      if (own <= 0) continue;
+      const entry = groupedMap.get(sale.customerId) ?? { customerId: sale.customerId, revenue: 0, count: 0 };
+      entry.revenue += own;
+      entry.count += 1;
+      groupedMap.set(sale.customerId, entry);
+    }
+    const grouped = [...groupedMap.values()];
 
     const customerIds = grouped.map((g) => g.customerId).filter((id): id is string => id !== null);
     const customers = customerIds.length
@@ -83,8 +94,8 @@ export class CustomersService {
       .filter((g): g is typeof g & { customerId: string } => g.customerId !== null)
       .map((g) => {
         const customer = byId.get(g.customerId);
-        const revenue = g._sum.totalAmount?.toNumber() ?? 0;
-        const salesCount = g._count._all;
+        const revenue = g.revenue;
+        const salesCount = g.count;
         const outstanding = debtById.get(g.customerId) ?? 0;
         totalOutstanding += outstanding;
         return {
@@ -102,8 +113,8 @@ export class CustomersService {
     return {
       activeCount,
       totalOutstanding: money(totalOutstanding),
-      retailRevenue: money(retail?._sum.totalAmount?.toNumber() ?? 0),
-      retailSalesCount: retail?._count._all ?? 0,
+      retailRevenue: money(retail?.revenue ?? 0),
+      retailSalesCount: retail?.count ?? 0,
       byCustomer,
     };
   }

@@ -484,16 +484,11 @@ export class ProductsService {
     supplierId: string | null | undefined,
     price: number | null | undefined,
   ): Promise<void> {
-    const hasSupplier = Boolean(supplierId);
-    const hasPrice = price !== null && price !== undefined;
-    if (!hasSupplier && !hasPrice) return;
-
-    if (hasSupplier !== hasPrice) {
-      throw new BadRequestException(
-        "Для товара под реализацию нужно указать и поставщика, и цену поставщику",
-      );
-    }
-    if (price! < 0) {
+    // «Под реализацию» is the supplier alone: all the money collected for the
+    // goods is owed to them, so there is no price of theirs to agree on. An old
+    // price on an existing product is kept as data and used for nothing.
+    if (!supplierId) return;
+    if (price !== null && price !== undefined && price < 0) {
       throw new BadRequestException("Цена поставщику не может быть отрицательной");
     }
     const supplier = await this.prisma.supplier.findFirst({

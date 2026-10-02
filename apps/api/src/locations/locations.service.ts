@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { audited } from "../audit/audit";
 import { PrismaService } from "../prisma/prisma.service";
+import { ownAmount } from "../common/own-sales";
 import {
   CreateLocationRequestDto,
   isStockLow,
@@ -178,9 +179,12 @@ export class LocationsService {
     const revenueByLocation = new Map<string, number>();
     const salesCountByLocation = new Map<string, number>();
     for (const sale of sales) {
+      // Goods sold «под реализацию» are not our revenue; a sale made only of them is not our trade.
+      const own = ownAmount(sale);
+      if (own <= 0) continue;
       revenueByLocation.set(
         sale.locationId,
-        (revenueByLocation.get(sale.locationId) ?? 0) + sale.totalAmount.toNumber(),
+        (revenueByLocation.get(sale.locationId) ?? 0) + own,
       );
       salesCountByLocation.set(sale.locationId, (salesCountByLocation.get(sale.locationId) ?? 0) + 1);
     }
@@ -242,7 +246,7 @@ export class LocationsService {
     for (const sale of todaySales) {
       revenueByLocation.set(
         sale.locationId,
-        (revenueByLocation.get(sale.locationId) ?? 0) + sale.totalAmount.toNumber(),
+        (revenueByLocation.get(sale.locationId) ?? 0) + ownAmount(sale),
       );
     }
 

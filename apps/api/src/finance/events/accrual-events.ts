@@ -14,9 +14,13 @@ import type { ProjectionOptions } from "./projector";
 // independent of when money moved.
 //
 //   opening        the declared opening position (inventory, receivables, payables, opening assets)
-//   sale           Receivables ↑, Revenue ↑, Discounts ↓
-//   sale cost      Inventory ↓ (or a consignment payable ↑), Cost of goods ↓
-//   sale return    Receivables ↓, Returns ↓ ; if restocked, the cost comes back
+//   sale           Receivables ↑, Revenue ↑, Discounts ↓ — for OUR goods. Goods sold
+//                  «под реализацию» are collected for their owner: the same
+//                  Receivables ↑ is matched by a consignment payable ↑ of the
+//                  full amount, and nothing reaches revenue, cost or discounts.
+//   sale cost      Inventory ↓, Cost of goods ↓ (own goods only)
+//   sale return    Receivables ↓, Returns ↓ (consignment payable ↓ for such lines);
+//                  if restocked, the cost comes back
 //   expense        Expense payable ↑, and the P&L line or balance line its category says
 //   stock loss     write-offs and count shortages: Inventory ↓, Inventory loss ↓ (a surplus is the reverse)
 //   manual receipt stock received with no purchase document: Inventory ↑ and NOTHING to balance it
@@ -135,13 +139,20 @@ export async function accrualEvents(
   // ── sales ──────────────────────────────────────────────────────────────
   for (const sale of sales) {
     let discounts = 0;
+    let consignment = 0;
     for (const item of sale.items) {
+      if (item.consignmentSupplierId) {
+        consignment += item.subtotal.toNumber();
+        continue;
+      }
       if (item.fullUnitPrice) {
         discounts += round2((item.fullUnitPrice.toNumber() - item.unitPrice.toNumber()) * item.quantity.toNumber());
       }
     }
     discounts = round2(discounts);
+    consignment = round2(consignment);
     const total = round2(sale.totalAmount.toNumber());
+    const own = round2(total - consignment);
     events.push({
       key: `sale:${sale.id}`,
       type: FinancialEventType.SALE,
@@ -150,9 +161,12 @@ export async function accrualEvents(
       sourceId: sale.id,
       description: "Продажа",
       cash: [],
-      balance: [{ line: BalanceLine.RECEIVABLES, delta: total }],
+      balance: [
+        { line: BalanceLine.RECEIVABLES, delta: total },
+        ...(consignment !== 0 ? [{ line: BalanceLine.CONSIGNMENT_PAYABLES, delta: consignment }] : []),
+      ],
       pnl: [
-        { line: PnlLine.REVENUE, amount: round2(total + discounts) },
+        ...(round2(own + discounts) !== 0 ? [{ line: PnlLine.REVENUE, amount: round2(own + discounts) }] : []),
         ...(discounts !== 0 ? [{ line: PnlLine.DISCOUNTS, amount: -discounts }] : []),
       ],
       unclassified: false,
@@ -163,6 +177,7 @@ export async function accrualEvents(
   // ── returns ────────────────────────────────────────────────────────────
   for (const ret of returns) {
     const total = round2(ret.totalAmount.toNumber());
+    const consignment = round2(ret.items.reduce((sum, i) => sum + (i.consignmentSupplierId ? i.subtotal.toNumber() : 0), 0));
     events.push({
       key: `saleReturn:${ret.id}`,
       type: FinancialEventType.SALE_RETURN,
@@ -173,8 +188,11 @@ export async function accrualEvents(
       cash: [],
       // Receivable falls first: a return against an unpaid balance simply
       // shrinks it; against a paid one it goes negative until the refund settles it.
-      balance: [{ line: BalanceLine.RECEIVABLES, delta: -total }],
-      pnl: [{ line: PnlLine.RETURNS, amount: -total }],
+      balance: [
+        { line: BalanceLine.RECEIVABLES, delta: -total },
+        ...(consignment !== 0 ? [{ line: BalanceLine.CONSIGNMENT_PAYABLES, delta: -consignment }] : []),
+      ],
+      pnl: [{ line: PnlLine.RETURNS, amount: -round2(total - consignment) }],
       unclassified: false,
     });
     // Cost comes back only when the goods went back on the shelf; a scrapped
@@ -258,6 +276,7 @@ function costEvents(
     productId: string;
     quantity: { toNumber: () => number };
     unitCost: { toNumber: () => number } | null;
+    consignmentSupplierId: string | null;
     consignmentUnitCost: { toNumber: () => number } | null;
     product: { trackInventory: boolean };
   }[],
@@ -266,35 +285,30 @@ function costEvents(
 ): FinancialEvent[] {
   const sign = direction === "OUT" ? 1 : -1; // OUT: cost expense (−), IN: cost returned (+)
   let inventory = 0;
-  let consignment = 0;
   let untracked = 0;
   for (const item of items) {
+    // Goods sold «под реализацию» have no cost of ours: nothing to draw down,
+    // and what is owed to their owner is booked with the sale itself.
+    if (item.consignmentSupplierId) continue;
     const unitCost = costOf(item.unitCost, item.consignmentUnitCost, item.productId);
     if (unitCost === null) continue;
     const value = round2(unitCost * item.quantity.toNumber());
-    // Goods held on consignment are not ours: selling one creates a payable to
-    // its owner instead of drawing down our inventory.
-    if (item.consignmentUnitCost) consignment += value;
-    else if (!item.product.trackInventory) untracked += value;
+    if (!item.product.trackInventory) untracked += value;
     else inventory += value;
   }
   inventory = round2(inventory);
-  consignment = round2(consignment);
   untracked = round2(untracked);
   const type = kind === "sale" ? FinancialEventType.SALE_COST : FinancialEventType.SALE_RETURN_COST;
   const base = { occurredAt: at.toISOString(), sourceType: kind === "sale" ? "Sale" : "SaleReturn", sourceId: id, type };
   const out: FinancialEvent[] = [];
-  if (inventory !== 0 || consignment !== 0) {
+  if (inventory !== 0) {
     out.push({
       ...base,
       key: `${kind}:${id}:cost`,
       description: kind === "sale" ? "Себестоимость проданного" : "Себестоимость возвращённого на склад",
       cash: [],
-      balance: [
-        ...(inventory !== 0 ? [{ line: BalanceLine.INVENTORY, delta: -sign * inventory }] : []),
-        ...(consignment !== 0 ? [{ line: BalanceLine.CONSIGNMENT_PAYABLES, delta: sign * consignment }] : []),
-      ],
-      pnl: [{ line: PnlLine.COGS, amount: -sign * round2(inventory + consignment) }],
+      balance: [{ line: BalanceLine.INVENTORY, delta: -sign * inventory }],
+      pnl: [{ line: PnlLine.COGS, amount: -sign * inventory }],
       unclassified: false,
     });
   }

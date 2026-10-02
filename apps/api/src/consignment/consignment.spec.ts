@@ -52,7 +52,7 @@ beforeAll(async () => {
   });
   supplierId = supplier.id;
 
-  // Sells for 500, of which 300 belongs to the village: our cut is 200.
+  // Sells for 500, all of which is the village's: goods «под реализацию» carry no cut of ours.
   const product = await prisma.product.create({
     data: {
       organizationId: ORG,
@@ -86,7 +86,7 @@ afterAll(async () => {
 });
 
 describe("ConsignmentService", () => {
-  it("owes the supplier for what sold, at the price snapshotted on the sale", async () => {
+  it("owes the supplier everything collected for their goods, at the price they sold for", async () => {
     const { sales } = services();
     const sale = await sales.create(user, {
       locationId,
@@ -96,9 +96,9 @@ describe("ConsignmentService", () => {
     createdSaleIds.push(sale.id);
 
     const balance = await balanceOf();
-    // 4 × 300 owed, not 4 × 500 — the sale price is ours, the cost is theirs.
-    expect(balance?.soldAmount).toBe(1200);
-    expect(balance?.balance).toBe(1200);
+    // Everything collected is the owner's: 4 × 500, with no cut of ours.
+    expect(balance?.soldAmount).toBe(2000);
+    expect(balance?.balance).toBe(2000);
   });
 
   it("does not change what is owed when the product's price is edited afterwards", async () => {
@@ -106,7 +106,7 @@ describe("ConsignmentService", () => {
     // history every time the village changes what it charges.
     await prisma.product.update({ where: { id: productId }, data: { consignmentPrice: 400 } });
     const balance = await balanceOf();
-    expect(balance?.soldAmount).toBe(1200);
+    expect(balance?.soldAmount).toBe(2000);
     await prisma.product.update({ where: { id: productId }, data: { consignmentPrice: 300 } });
   });
 
@@ -116,8 +116,8 @@ describe("ConsignmentService", () => {
     await returns.create(user, saleId, { items: [{ productId, quantity: 1 }] });
 
     const balance = await balanceOf();
-    expect(balance?.returnedAmount).toBe(300);
-    expect(balance?.balance).toBe(900);
+    expect(balance?.returnedAmount).toBe(500);
+    expect(balance?.balance).toBe(1500);
   });
 
   it("records a payout, and refuses to pay more than is owed", async () => {
@@ -130,7 +130,7 @@ describe("ConsignmentService", () => {
     await consignment.pay(user, { supplierId, amount: 400 });
     const balance = await balanceOf();
     expect(balance?.paidAmount).toBe(400);
-    expect(balance?.balance).toBe(500);
+    expect(balance?.balance).toBe(1100);
 
     // The money really left an account rather than only being noted here.
     const movement = await prisma.cashMovement.findFirst({
@@ -144,6 +144,6 @@ describe("ConsignmentService", () => {
     // whatever day someone remembers to pay.
     const { consignment } = services();
     const owed = (await consignment.balances(ORG)).find((r) => r.supplierId === supplierId)?.balance;
-    expect(owed).toBe(500);
+    expect(owed).toBe(1100);
   });
 });

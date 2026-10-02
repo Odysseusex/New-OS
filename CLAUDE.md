@@ -702,6 +702,34 @@ off only to take it away again. `StockVoid` / `StockVoidLine` (migration
   already-posted entry for those movements (they no longer project) and closes
   out a never-posted event as `NO_GL_EFFECT/SOURCE_CANCELLED`.
 
+## Goods «под реализацию» (consignment) — an agent model, not a trade
+
+Somebody else's goods (the village shop's) sold on our shelf. **They are in NO
+revenue, cost, margin or sales-analytics figure** — the owner decided this
+explicitly ("вообще не участвовали в отчётах, расчётах"), with the markup not
+ours either: **everything collected is owed to the supplier** (a product is
+consignment by `consignmentSupplierId` alone; `consignmentPrice` is retired).
+
+- `Sale.consignmentAmount` / `SaleReturn.consignmentAmount` = the part of the
+  total that is such goods (Σ `subtotal` of lines with a `consignmentSupplierId`,
+  set once at creation; migration `20261002100000` backfilled history). Our
+  figure is `totalAmount − consignmentAmount` — use `common/own-sales.ts`
+  (`ownAmount`, `OWN_ITEMS`). Item-level loops skip `consignmentSupplierId` lines.
+- **Money questions keep the full total** (till takings by method, customer
+  receivable/credit, refunds paid out, cash/bank, ДДС): the cash really moved.
+  **Revenue/cost/margin/analytics questions use own amounts** (P&L, sales
+  report/summary/dynamics, profitability, customer trend, locations, HR revenue,
+  ABC/XYZ, replenishment, promotions' average ticket, AI weekday anomalies).
+  A basket made only of consignment goods is not one of our sales (not counted).
+- Events (`accrual-events.ts`): the SALE event carries `RECEIVABLES +total` and
+  `CONSIGNMENT_PAYABLES +consignment` (net P&L = own revenue only); no COGS or
+  inventory event for those lines; a return reverses the payable, not revenue.
+  The debt (`getConsignmentOwed`, `ConsignmentService`) is Σ line `subtotal` −
+  returns − payments. The general ledger follows from the events automatically.
+- Rolling this out on a ledger that is already ON: consignment sales posted
+  before the change keep their old entries, and diagnostics show SOURCE_DRIFT
+  (a WARNING) for them — reverse and repost those, never edit.
+
 ## Prisma migration workflow (this sandbox has no direct prod DB access)
 
 Shadow-database diff, not `prisma migrate dev` (which can hang/prompt):

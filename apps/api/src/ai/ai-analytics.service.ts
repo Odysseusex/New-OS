@@ -17,6 +17,7 @@ import {
   LocationType,
 } from "@bakery-os/shared";
 import { PrismaService } from "../prisma/prisma.service";
+import { ownAmount } from "../common/own-sales";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { resolveLocationScope } from "../common/location-scope";
 import { currentAndPreviousPeriod, deltaPct, PeriodRange } from "../common/period-range";
@@ -412,7 +413,7 @@ export class AiAnalyticsService {
 
     const sales = await this.prisma.sale.findMany({
       where: { organizationId: user.organizationId, soldAt: { gte: lookbackStart, lte: now }, ...(requestedLocationId ? { locationId: requestedLocationId } : {}) },
-      select: { soldAt: true, totalAmount: true, locationId: true, location: { select: { name: true } } },
+      select: { soldAt: true, totalAmount: true, consignmentAmount: true, locationId: true, location: { select: { name: true } } },
     });
 
     const todayWeekday = now.getDay();
@@ -422,10 +423,10 @@ export class AiAnalyticsService {
       if (sale.soldAt.getDay() !== todayWeekday) continue;
       const entry = byLocation.get(sale.locationId) ?? { name: sale.location.name, byWeek: new Map<string, number>(), today: 0 };
       if (sale.soldAt.toDateString() === now.toDateString()) {
-        entry.today += sale.totalAmount.toNumber();
+        entry.today += ownAmount(sale);
       } else {
         const wk = weekBucketKey(sale.soldAt);
-        entry.byWeek.set(wk, (entry.byWeek.get(wk) ?? 0) + sale.totalAmount.toNumber());
+        entry.byWeek.set(wk, (entry.byWeek.get(wk) ?? 0) + ownAmount(sale));
       }
       byLocation.set(sale.locationId, entry);
     }

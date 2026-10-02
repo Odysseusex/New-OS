@@ -21,6 +21,7 @@ import {
   Unit,
 } from "@bakery-os/shared";
 import { PrismaService } from "../prisma/prisma.service";
+import { OWN_ITEMS } from "../common/own-sales";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { FinanceService } from "../finance/finance.service";
 import { AccountingPolicyService } from "../finance/accounting-policy.service";
@@ -54,7 +55,7 @@ export class PlanningService {
     const [pnl, items] = await Promise.all([
       this.finance.getProfitAndLoss(organizationId, from, to, locationId),
       this.prisma.saleItem.findMany({
-        where: { sale: { organizationId, soldAt: { gte: from, lte: to }, ...(locationId ? { locationId } : {}) } },
+        where: { ...OWN_ITEMS, sale: { organizationId, soldAt: { gte: from, lte: to }, ...(locationId ? { locationId } : {}) } },
         select: { productId: true, quantity: true, sale: { select: { soldAt: true } } },
       }),
     ]);
@@ -156,7 +157,7 @@ export class PlanningService {
       }),
       this.prisma.saleItem.groupBy({
         by: ["productId"],
-        where: { sale: { organizationId, soldAt: { gte: since }, ...(params.locationId ? { locationId: params.locationId } : {}) } },
+        where: { ...OWN_ITEMS, sale: { organizationId, soldAt: { gte: since }, ...(params.locationId ? { locationId: params.locationId } : {}) } },
         _sum: { quantity: true },
       }),
       this.prisma.purchaseOrderItem.groupBy({
@@ -164,7 +165,8 @@ export class PlanningService {
         where: { purchaseOrder: { organizationId, status: "PLACED", ...(params.locationId ? { locationId: params.locationId } : {}) } },
         _sum: { quantity: true },
       }),
-      this.prisma.product.findMany({ where: { organizationId, trackInventory: true, isActive: true }, select: { id: true, name: true, unit: true, minQuantity: true } }),
+      // Somebody else's goods «под реализацию» are not ours to reorder.
+      this.prisma.product.findMany({ where: { organizationId, trackInventory: true, isActive: true, consignmentSupplierId: null }, select: { id: true, name: true, unit: true, minQuantity: true } }),
     ]);
     const onHand = new Map(levels.map((l) => [l.productId, l._sum.quantity?.toNumber() ?? 0]));
     const soldQty = new Map(sold.map((s) => [s.productId, s._sum.quantity?.toNumber() ?? 0]));

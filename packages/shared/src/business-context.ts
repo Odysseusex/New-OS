@@ -134,7 +134,7 @@ export interface BusinessContextProductDto {
   minQuantity: number;
   trackInventory: boolean;
   isActive: boolean;
-  consignment: { supplierId: string; supplierName: string; unitCost: number } | null;
+  consignment: { supplierId: string; supplierName: string } | null;
 }
 
 export interface BusinessContextRecipeIngredientDto {

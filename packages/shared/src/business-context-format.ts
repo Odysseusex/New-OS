@@ -173,7 +173,6 @@ export function formatBusinessContext(
       "min_qty",
       "tracked",
       "consignment_supplier",
-      `consignment_unit_cost_${meta.currency}`,
     ],
     context.products.map((p) => [
       p.id,
@@ -191,7 +190,6 @@ export function formatBusinessContext(
       num(p.minQuantity),
       p.trackInventory ? "yes" : "no",
       p.consignment ? p.consignment.supplierName : "n/a",
-      p.consignment ? num(p.consignment.unitCost) : "n/a",
     ]),
   );
 

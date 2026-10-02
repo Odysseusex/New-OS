@@ -566,13 +566,13 @@ model Product {
   // StockMovement: there is no stock to move.
   trackInventory Boolean     @default(true)
   // Goods taken «под реализацию»: they belong to someone else (the village
-  // shop) until sold, and we owe that supplier `consignmentPrice` for every
-  // unit that actually SELLS — not for what was delivered. Set together or
-  // not at all; when set, this is somebody else's stock on our shelf.
+  // shop) until sold. The supplier alone makes a product consignment: every
+  // tenge collected for it is owed to them, and none of it is our revenue,
+  // cost or margin (see Sale.consignmentAmount). `consignmentPrice` is a
+  // retired field — old values are kept as data, nothing reads them.
   //
-  // Nothing computes the debt from here after the fact: each sale and return
-  // snapshots the price onto its own line, so editing this price later
-  // cannot silently rewrite what is already owed.
+  // Each sale and return snapshots the supplier onto its own line, so
+  // reassigning the product later cannot rewrite what is already owed.
   consignmentSupplierId String?
   consignmentSupplier   Supplier?   @relation(fields: [consignmentSupplierId], references: [id])
   consignmentPrice      Decimal?    @db.Decimal(12, 2)
@@ -727,6 +727,12 @@ model Sale {
   customer       Customer? @relation(fields: [customerId], references: [id])
   soldAt         DateTime  @default(now())
   totalAmount    Decimal   @db.Decimal(12, 2)
+  // The part of totalAmount that is somebody else's goods sold «под реализацию»
+  // (Σ subtotal of the lines carrying a consignmentSupplierId). That money is
+  // collected for the owner, not earned: it is excluded from every revenue,
+  // cost and profit figure, and all of it is owed to them. Own revenue is
+  // totalAmount − consignmentAmount. Written once at creation from the lines.
+  consignmentAmount Decimal @default(0) @db.Decimal(12, 2)
   // How much of totalAmount has been collected so far. Walk-in retail sales
   // are always paid in full at creation; wholesale customer orders may be
   // placed on credit and paid down over time via recordPayment().
@@ -882,6 +888,9 @@ model SaleReturn {
   returnedAt     DateTime @default(now())
   // Money handed back, always positive.
   totalAmount    Decimal  @db.Decimal(12, 2)
+  // The part of totalAmount refunded for goods sold «под реализацию» — it
+  // cancels the debt to their owner instead of reducing our revenue.
+  consignmentAmount Decimal @default(0) @db.Decimal(12, 2)
   reason         String?
   // Whether the goods went back on the shelf. False for anything a buyer
   // already carried home and cannot be resold — bread, mostly — in which
