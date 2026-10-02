@@ -35,6 +35,8 @@ import {
   MARKDOWN_PERCENT,
   markdownPrice,
   applyDiscountPercent,
+  categoryIdsWithDescendants,
+  resolveCategoryRule,
   SALE_CREATE_ROLES,
   UNIT_LABELS_RU,
 } from "@bakery-os/shared";
@@ -112,6 +114,7 @@ export default function PosPage() {
   const [locations, setLocations] = useState<LocationDto[]>([]);
   const [locationId, setLocationId] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  const [subcategoryId, setSubcategoryId] = useState("");
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -256,15 +259,35 @@ export default function PosPage() {
   // Only categories that actually hold something sellable. Without this the
   // till offers chips like «Сырьё», which can only ever show an empty grid,
   // since raw materials are never rung up here.
+  // Top-level categories only, a category counting as used when it, or any
+  // subcategory under it, holds something sellable. Choosing one shows its
+  // subcategories as a second row.
   const sellableCategories = useMemo(() => {
     const usedIds = new Set(products.map((p) => p.categoryId).filter(Boolean));
-    return categories.filter((c) => c.isActive && usedIds.has(c.id));
+    const parentOf = new Map(categories.map((c) => [c.id, c.parentId]));
+    const topUsed = new Set<string>();
+    usedIds.forEach((id) => {
+      const parentId = parentOf.get(id as string);
+      topUsed.add((parentId ?? id) as string);
+    });
+    return categories.filter((c) => c.isActive && !c.parentId && topUsed.has(c.id));
   }, [categories, products]);
+
+  const sellableSubcategories = useMemo(() => {
+    if (!categoryId) return [];
+    const usedIds = new Set(products.map((p) => p.categoryId).filter(Boolean));
+    return categories.filter((c) => c.isActive && c.parentId === categoryId && usedIds.has(c.id));
+  }, [categories, products, categoryId]);
 
   const normalizedQuery = query.trim().toLowerCase();
   const visibleProducts = useMemo(() => {
     let list = products;
-    if (categoryId) list = list.filter((p) => p.categoryId === categoryId);
+    // The chosen category covers its subcategories; a chosen subcategory only itself.
+    if (subcategoryId) list = list.filter((p) => p.categoryId === subcategoryId);
+    else if (categoryId) {
+      const ids = new Set(categoryIdsWithDescendants(categories, categoryId));
+      list = list.filter((p) => p.categoryId !== null && ids.has(p.categoryId));
+    }
     if (normalizedQuery) {
       list = list.filter(
         (p) =>
@@ -274,7 +297,7 @@ export default function PosPage() {
       );
     }
     return list;
-  }, [products, categoryId, normalizedQuery]);
+  }, [products, categories, categoryId, subcategoryId, normalizedQuery]);
 
   // Pinned ahead of the category grid, unaffected by the category filter or
   // search — the whole point is a cashier reaching it in one tap regardless
@@ -299,7 +322,11 @@ export default function PosPage() {
     if (!couponRuleByCategory || line.markedDown || line.product.isOpenPrice || !line.product.categoryId) {
       return null;
     }
-    return couponRuleByCategory.get(line.product.categoryId) ?? null;
+    // A rule on a category also covers its subcategories; one on the
+    // subcategory itself wins — the same lookup the server makes.
+    return (
+      resolveCategoryRule(couponRuleByCategory, line.product.categoryId, (id) => categories.find((c) => c.id === id)?.parentId) ?? null
+    );
   }
 
   // This is a LIVE PREVIEW only, computed with the same shared formula the
@@ -768,15 +795,40 @@ export default function PosPage() {
       <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
         <div>
           <div className="mb-3 flex flex-wrap items-center gap-1 rounded-xl bg-surface-muted p-1">
-            <CategoryChip active={categoryId === ""} onClick={() => setCategoryId("")}>
+            <CategoryChip
+              active={categoryId === ""}
+              onClick={() => {
+                setCategoryId("");
+                setSubcategoryId("");
+              }}
+            >
               Все
             </CategoryChip>
             {sellableCategories.map((c) => (
-              <CategoryChip key={c.id} active={categoryId === c.id} onClick={() => setCategoryId(c.id)}>
+              <CategoryChip
+                key={c.id}
+                active={categoryId === c.id}
+                onClick={() => {
+                  setCategoryId(c.id);
+                  setSubcategoryId("");
+                }}
+              >
                 {c.name}
               </CategoryChip>
             ))}
           </div>
+          {sellableSubcategories.length > 0 && (
+            <div className="mb-3 flex flex-wrap items-center gap-1 rounded-xl bg-surface-muted p-1">
+              <CategoryChip active={subcategoryId === ""} onClick={() => setSubcategoryId("")}>
+                Все
+              </CategoryChip>
+              {sellableSubcategories.map((c) => (
+                <CategoryChip key={c.id} active={subcategoryId === c.id} onClick={() => setSubcategoryId(c.id)}>
+                  {c.name}
+                </CategoryChip>
+              ))}
+            </div>
+          )}
 
           {/* Column count follows the width of THIS column, not the width of
               the window. Breakpoints answered the wrong question: on the

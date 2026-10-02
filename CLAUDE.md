@@ -730,6 +730,34 @@ consignment by `consignmentSupplierId` alone; `consignmentPrice` is retired).
   before the change keep their old entries, and diagnostics show SOURCE_DRIFT
   (a WARNING) for them — reverse and repost those, never edit.
 
+## Product classification — Type → Category → Subcategory → Product
+
+Full write-up: `docs/PRODUCT-CLASSIFICATION.md`. The rules that are easy to break:
+
+- `ProductType` is `RAW_MATERIAL | PACKAGING | FINISHED_GOOD`. Packaging is a
+  stock item only: never a recipe ingredient (recipes accept RAW only), not sold,
+  `CostingService` untouched (purchase average else unknown). Don't invent
+  packaging accounting or consumption without a fresh request.
+- `Category.type` + `Category.parentId`: **two levels only**; a subcategory takes
+  its parent's type; a typed category's type is immutable; a legacy category with
+  `type = NULL` is open to any type until typed (and only if what it holds
+  agrees). Top-level names are unique per organization (partial unique index),
+  siblings unique per parent — so «Другое» can repeat under different parents.
+  Don't restore the old `organizationId_name` unique lookup; use `findFirst`.
+- Products may only sit in a category of their own type (`ProductsService
+  .assertCategoryFits`); an unrelated edit never re-judges an existing category.
+- **A filter on a category means it AND its subcategories** (`categoryIdsWith
+  Descendants`, `CategoriesService.idsWithDescendants`); a coupon rule on a parent
+  covers children, the child's own rule wins (`resolveCategoryRule`). Category
+  names are shown as «Родитель › Подкатегория» (`common/category-label.ts`).
+- `SaleItem.categoryIdSnapshot` is the category at sale time; the sales report
+  uses it and falls back to the product's *current* category only where it is
+  NULL (legacy sales — never back-filled). Snapshot any new row that needs a
+  history-stable category grouping before building a category report.
+- The standard catalogue is offered via an OWNER/ADMIN button and only ADDS
+  (skips clashing branches); existing products are never auto-classified, never
+  by name matching.
+
 ## Prisma migration workflow (this sandbox has no direct prod DB access)
 
 Shadow-database diff, not `prisma migrate dev` (which can hang/prompt):

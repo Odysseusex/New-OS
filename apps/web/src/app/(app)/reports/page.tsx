@@ -29,6 +29,9 @@ import {
   ORG_WIDE_ROLES,
   PROMOTION_MANAGE_ROLES,
   ProductType,
+  buildCategoryTree,
+  categoryAcceptsType,
+  categoryIdsWithDescendants,
   QUALITY_VIEW_ROLES,
   UNIT_LABELS_RU,
   WRITE_OFF_REASON_LABELS_RU,
@@ -483,14 +486,31 @@ function SalesDemandCard({ period, locationId }: { period: Period; locationId: s
       .catch(() => {});
   }, [period, locationId, customerId, categoryId, productId]);
 
-  const productsInCategory = categoryId ? products.filter((p) => p.categoryId === categoryId) : products;
+  // Only categories of finished goods are offered (plus old ones with no type
+  // yet), laid out as a category with its subcategories indented beneath it.
+  // Choosing a category means it AND everything below it — the server expands it
+  // the same way.
+  const categoryOptions = buildCategoryTree(
+    categories.filter((c) => categoryAcceptsType(c.type, ProductType.FINISHED_GOOD)),
+    [ProductType.FINISHED_GOOD],
+  ).flatMap((group) =>
+    group.nodes.flatMap((node) => [
+      { id: node.category.id, label: node.category.name },
+      ...node.children.map((child) => ({ id: child.id, label: `— ${child.name}` })),
+    ]),
+  );
+  const categoryIdSet = categoryId ? new Set(categoryIdsWithDescendants(categories, categoryId)) : null;
+  const productsInCategory = categoryIdSet
+    ? products.filter((p) => p.categoryId !== null && categoryIdSet.has(p.categoryId))
+    : products;
 
   function handleCategoryChange(value: string) {
     setCategoryId(value);
     // Clear a product selection that no longer belongs to the new category
     // rather than silently keep filtering by a hidden productId.
     if (value && productId) {
-      const stillValid = products.some((p) => p.id === productId && p.categoryId === value);
+      const ids = new Set(categoryIdsWithDescendants(categories, value));
+      const stillValid = products.some((p) => p.id === productId && p.categoryId !== null && ids.has(p.categoryId));
       if (!stillValid) setProductId("");
     }
   }
@@ -545,9 +565,9 @@ function SalesDemandCard({ period, locationId }: { period: Period; locationId: s
           className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
         >
           <option value="">Все категории</option>
-          {categories.map((c) => (
+          {categoryOptions.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.name}
+              {c.label}
             </option>
           ))}
         </select>

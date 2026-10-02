@@ -1,6 +1,7 @@
 export * from "./roles";
 export * from "./location";
 export * from "./catalog";
+export * from "./category-tree";
 export * from "./inventory";
 export * from "./customers";
 export * from "./sales";

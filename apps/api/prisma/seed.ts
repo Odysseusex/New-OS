@@ -348,14 +348,19 @@ async function main() {
     });
   }
 
-  const categoryNames = ["Хлеб", "Выпечка", "Торты", "Сырьё"];
+  // The demo catalogue's own flat categories, each with the type its products
+  // have. (Top-level names are unique per organization; the lookup is by name
+  // among top-level categories.)
+  const categorySeeds: [string, ProductType][] = [
+    ["Хлеб", ProductType.FINISHED_GOOD],
+    ["Выпечка", ProductType.FINISHED_GOOD],
+    ["Торты", ProductType.FINISHED_GOOD],
+    ["Сырьё", ProductType.RAW_MATERIAL],
+  ];
   const categoriesByName = new Map<string, string>();
-  for (const name of categoryNames) {
-    const category = await prisma.category.upsert({
-      where: { organizationId_name: { organizationId: org.id, name } },
-      update: {},
-      create: { organizationId: org.id, name },
-    });
+  for (const [name, type] of categorySeeds) {
+    const existing = await prisma.category.findFirst({ where: { organizationId: org.id, parentId: null, name } });
+    const category = existing ?? (await prisma.category.create({ data: { organizationId: org.id, name, type } }));
     categoriesByName.set(name, category.id);
   }
 

@@ -70,16 +70,28 @@ export function convertUnitQuantity(value: number, fromUnit: Unit, toUnit: Unit)
 
 // RAW_MATERIAL: can be used as a recipe ingredient.
 // FINISHED_GOOD: can be the output of a recipe, sold, or invoiced.
-// Purely functional — separate from Category, which is just for browsing.
+// PACKAGING: a stock item (bought, counted, written off) that is neither a
+//            recipe ingredient nor sold on its own.
+// Purely functional — separate from Category, which is just for browsing. A
+// category belongs to exactly one type (see CategoryDto.type).
 export enum ProductType {
   RAW_MATERIAL = "RAW_MATERIAL",
+  PACKAGING = "PACKAGING",
   FINISHED_GOOD = "FINISHED_GOOD",
 }
 
 export const PRODUCT_TYPE_LABELS_RU: Record<ProductType, string> = {
   [ProductType.RAW_MATERIAL]: "Сырьё",
+  [ProductType.PACKAGING]: "Упаковка",
   [ProductType.FINISHED_GOOD]: "Готовая продукция",
 };
+
+// The order types are shown in, everywhere a list is grouped by type.
+export const PRODUCT_TYPE_ORDER: ProductType[] = [
+  ProductType.RAW_MATERIAL,
+  ProductType.PACKAGING,
+  ProductType.FINISHED_GOOD,
+];
 
 export interface CategoryDto {
   id: string;
@@ -89,11 +101,23 @@ export interface CategoryDto {
   // — so a catalogue nobody has ordered reads exactly as it always did.
   sortOrder: number | null;
   isActive: boolean;
+  // Products filed directly under this category (not counting subcategories).
   productCount: number;
+  // The product type it holds. Null only for a category that predates types and
+  // could not be typed from its products — usable by any type until set.
+  type: ProductType | null;
+  // Null for a top-level category; the parent's id for a subcategory.
+  parentId: string | null;
+  // Products under this category AND its subcategories.
+  totalProductCount: number;
 }
 
 export interface CreateCategoryRequestDto {
   name: string;
+  // Required for a top-level category; a subcategory takes its parent's.
+  type?: ProductType;
+  // Set to make a subcategory.
+  parentId?: string | null;
   // Null clears the position and sends the category back to the unplaced
   // group; omitted leaves whatever is stored alone.
   sortOrder?: number | null;
@@ -102,6 +126,32 @@ export interface CreateCategoryRequestDto {
 export interface UpdateCategoryRequestDto {
   name: string;
   sortOrder?: number | null;
+  // Only a category with no type yet can be given one (and only when everything
+  // in it already is of that type).
+  type?: ProductType;
+  // Omitted leaves the parent alone; null makes it top-level; an id moves it
+  // under that category.
+  parentId?: string | null;
+}
+
+// One branch of the standard catalogue, and what adding it would do — the same
+// shape for the preview and for the result.
+export interface StandardCatalogBranchDto {
+  type: ProductType;
+  category: string;
+  // «created» — new category; «reused» — a category of this type and name
+  // already existed and is kept as the parent; «skipped» — a category with that
+  // name exists but of another or no type, so the branch was left alone.
+  categoryStatus: "created" | "reused" | "skipped";
+  subcategoriesToCreate: string[];
+  subcategoriesExisting: string[];
+}
+
+export interface StandardCatalogResultDto {
+  applied: boolean;
+  categoriesCreated: number;
+  subcategoriesCreated: number;
+  branches: StandardCatalogBranchDto[];
 }
 
 export interface ProductDto {

@@ -19,6 +19,20 @@ export class CategoriesController {
     return this.categoriesService.findAllForOrganization(user.organizationId, includeArchived === "true");
   }
 
+  // The starting catalogue, offered not forced: preview what it would add, then
+  // apply. Owner/admin only — it adds dozens of categories in one go.
+  @Get("standard-catalog")
+  @Roles(...HARD_DELETE_ROLES)
+  previewStandardCatalog(@CurrentUser() user: AuthenticatedUser) {
+    return this.categoriesService.previewStandardCatalog(user.organizationId);
+  }
+
+  @Post("standard-catalog")
+  @Roles(...HARD_DELETE_ROLES)
+  applyStandardCatalog(@CurrentUser() user: AuthenticatedUser) {
+    return this.categoriesService.applyStandardCatalog(user.organizationId, user.id);
+  }
+
   @Post()
   @Roles(...PRODUCT_MANAGE_ROLES)
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateCategoryDto) {

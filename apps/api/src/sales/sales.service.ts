@@ -9,6 +9,7 @@ import {
   PAYMENT_METHOD_LABELS_RU,
   PaymentMethod,
   PaymentStatus,
+  resolveCategoryRule,
   ProductProfitabilityDto,
   ProductProfitabilityRowDto,
   applyDiscountPercent,
@@ -511,6 +512,8 @@ export class SalesService {
         throw new NotFoundException("Товар не найден");
       }
     }
+    // Filtering by a category means that category and everything below it.
+    let categoryIds: Set<string> | null = null;
     if (opts.categoryId) {
       const category = await this.prisma.category.findFirst({
         where: { id: opts.categoryId, organizationId: user.organizationId },
@@ -518,6 +521,11 @@ export class SalesService {
       if (!category) {
         throw new NotFoundException("Категория не найдена");
       }
+      const children = await this.prisma.category.findMany({
+        where: { organizationId: user.organizationId, parentId: category.id },
+        select: { id: true },
+      });
+      categoryIds = new Set([category.id, ...children.map((c) => c.id)]);
     }
 
     const sales = await this.prisma.sale.findMany({
@@ -551,7 +559,12 @@ export class SalesService {
       for (const item of sale.items) {
         if (item.consignmentSupplierId) continue;
         if (opts.productId && item.productId !== opts.productId) continue;
-        if (opts.categoryId && item.product.categoryId !== opts.categoryId) continue;
+        // The category the line had WHEN IT WAS SOLD; only sales that predate
+        // that snapshot (null) fall back to the product's current category.
+        if (categoryIds) {
+          const lineCategoryId = item.categoryIdSnapshot ?? item.product.categoryId;
+          if (!lineCategoryId || !categoryIds.has(lineCategoryId)) continue;
+        }
 
         const quantity = item.quantity.toNumber();
         const revenue = item.subtotal.toNumber();
@@ -1009,6 +1022,7 @@ export class SalesService {
     // Category + this location's own price per product — only fetched when a
     // coupon is actually in play, so an ordinary sale pays nothing extra.
     let categoryByProduct: Map<string, string | null> | null = null;
+    let parentByCategory = new Map<string, string | null>();
     let priceByProduct: Map<string, number> | null = null;
     if (discountRuleByCategory) {
       const [products, overrides] = await Promise.all([
@@ -1020,6 +1034,11 @@ export class SalesService {
         }),
       ]);
       categoryByProduct = new Map(products.map((p) => [p.id, p.categoryId]));
+      // A coupon rule on a category also covers the subcategories under it.
+      const categoryIds = [...new Set(products.map((p) => p.categoryId).filter((id): id is string => !!id))];
+      parentByCategory = new Map(
+        (await this.prisma.category.findMany({ where: { id: { in: categoryIds } }, select: { id: true, parentId: true } })).map((c) => [c.id, c.parentId]),
+      );
       const overrideByProduct = new Map(overrides.map((o) => [o.productId, o.price.toNumber()]));
       priceByProduct = new Map(products.map((p) => [p.id, overrideByProduct.get(p.id) ?? p.price.toNumber()]));
     }
@@ -1042,7 +1061,7 @@ export class SalesService {
       // coupon's own rule for that one line.
       if (discountRuleByCategory && categoryByProduct && priceByProduct && item.fullUnitPrice === undefined) {
         const categoryId = categoryByProduct.get(item.productId);
-        const percent = categoryId ? discountRuleByCategory.get(categoryId) : undefined;
+        const percent = resolveCategoryRule(discountRuleByCategory, categoryId, (id) => parentByCategory.get(id));
         if (percent !== undefined) {
           const full = priceByProduct.get(item.productId) ?? item.unitPrice;
           unitPrice = applyDiscountPercent(full, percent);
@@ -1195,7 +1214,9 @@ export class SalesService {
                     consignmentUnitCost: product.consignmentPrice,
                   }
                 : {};
-              return { ...item, ...owed, ...costFieldsFor(item.productId) };
+              // Where the product sat at this moment, so a later re-filing cannot
+              // move this sale between categories in a report.
+              return { ...item, ...owed, ...costFieldsFor(item.productId), categoryIdSnapshot: product?.categoryId ?? null };
             }),
           },
           ...(split

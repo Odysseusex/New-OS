@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, PromotionCouponStatus as PrismaPromotionCouponStatus } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { CATEGORY_WITH_PARENT, categoryLabel } from "../common/category-label";
 import { ownAmount } from "../common/own-sales";
 import {
   PromotionCouponDto,
@@ -23,7 +24,7 @@ const round2 = (value: number): number => Number(value.toFixed(2));
 const PROMOTION_INCLUDE = {
   location: true,
   createdBy: true,
-  rules: { include: { category: true } },
+  rules: { include: { category: CATEGORY_WITH_PARENT } },
 };
 
 type PromotionWithRelations = Prisma.PromotionGetPayload<{ include: typeof PROMOTION_INCLUDE }> & {
@@ -272,7 +273,7 @@ export class PromotionsService {
       rules: promotion.rules.map((r) => ({
         id: r.id,
         categoryId: r.categoryId,
-        categoryName: r.category.name,
+        categoryName: categoryLabel(r.category) ?? r.category.name,
         discountPercent: r.discountPercent,
       })),
     };
@@ -287,7 +288,7 @@ export class PromotionsService {
   async resolveActiveCoupon(organizationId: string, locationId: string, code: string) {
     const coupon = await this.prisma.promotionCoupon.findFirst({
       where: { organizationId, code: code.trim().toUpperCase() },
-      include: { promotion: { include: { rules: { include: { category: true } } } } },
+      include: { promotion: { include: { rules: { include: { category: CATEGORY_WITH_PARENT } } } } },
     });
     if (!coupon) throw new BadRequestException("Купон не найден");
     if (coupon.status === PrismaPromotionCouponStatus.REDEEMED) {
@@ -451,7 +452,7 @@ export class PromotionsService {
       rules: promotion.rules.map((r) => ({
         id: r.id,
         categoryId: r.categoryId,
-        categoryName: r.category.name,
+        categoryName: categoryLabel(r.category) ?? r.category.name,
         discountPercent: r.discountPercent,
       })),
       couponsIssued,

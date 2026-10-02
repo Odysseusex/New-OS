@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
 import { AlertTriangle, ArrowDownCircle, ArrowLeft, ArrowUpCircle, Ban, Plus, Search, Wrench, X } from "lucide-react";
-import type { CategoryDto, LocationDto, ProductDto, StockLevelDto, StockMovementDto } from "@bakery-os/shared";
+import type { CategoryDto, CategoryTypeGroup, LocationDto, ProductDto, StockLevelDto, StockMovementDto } from "@bakery-os/shared";
 import {
   HARD_DELETE_ROLES,
   STOCK_VOID_ROLES,
@@ -12,7 +12,11 @@ import {
   PRODUCT_FORCE_DELETE_ROLES,
   PRODUCT_MANAGE_ROLES,
   PRODUCT_TYPE_LABELS_RU,
+  PRODUCT_TYPE_ORDER,
   ProductType,
+  buildCategoryTree,
+  categoryIdsWithDescendants,
+  categoryPathLabel,
   STOCK_MOVEMENT_TYPE_LABELS_RU,
   StockMovementType,
   UNIT_LABELS_RU,
@@ -24,6 +28,7 @@ import { StockMovementModal } from "@/components/stock-movement-modal";
 import { LabelPrintModal } from "@/components/label-print-modal";
 import { NewProductModal } from "@/components/new-product-modal";
 import { CategoryModal } from "@/components/category-modal";
+import { StandardCatalogModal } from "@/components/standard-catalog-modal";
 import { ForceDeleteProductModal } from "@/components/force-delete-product-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 import { LocationPricesTab } from "@/components/location-prices-tab";
@@ -50,13 +55,16 @@ export default function InventoryPage() {
   const [locationFilter, setLocationFilter] = useState("");
   const [showArchivedProducts, setShowArchivedProducts] = useState(false);
   const [showArchivedCategories, setShowArchivedCategories] = useState(false);
-  const [modal, setModal] = useState<"receive" | "write-off" | "adjustment" | "product" | "category" | "void" | null>(
+  const [modal, setModal] = useState<"receive" | "write-off" | "adjustment" | "product" | "category" | "void" | "standard-catalog" | null>(
     null,
   );
   const [forceDeleteProduct, setForceDeleteProduct] = useState<ProductDto | undefined>(undefined);
   const [editingProduct, setEditingProduct] = useState<ProductDto | undefined>(undefined);
   const [labelProduct, setLabelProduct] = useState<ProductDto | undefined>(undefined);
   const [editingCategory, setEditingCategory] = useState<CategoryDto | undefined>(undefined);
+  // Where a new category starts: under a type's own «Добавить», or under a category as its subcategory.
+  const [newCategoryType, setNewCategoryType] = useState<ProductType | undefined>(undefined);
+  const [newCategoryParentId, setNewCategoryParentId] = useState<string | undefined>(undefined);
   const [newProductCategoryId, setNewProductCategoryId] = useState<string | undefined>(undefined);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [productSearch, setProductSearch] = useState("");
@@ -93,9 +101,19 @@ export default function InventoryPage() {
   const selectedCategory = selectedCategoryId
     ? categories.find((c) => c.id === selectedCategoryId) ?? null
     : null;
-  const categoryProducts = selectedCategoryId
-    ? products.filter((p) => p.categoryId === selectedCategoryId)
+  // Opening a category shows what is in it AND in its subcategories.
+  const categoryIdSet = selectedCategoryId ? new Set(categoryIdsWithDescendants(categories, selectedCategoryId)) : null;
+  const categoryProducts = categoryIdSet
+    ? products.filter((p) => p.categoryId !== null && categoryIdSet.has(p.categoryId))
     : [];
+  const categoryTree = buildCategoryTree(categories, PRODUCT_TYPE_ORDER);
+
+  function startCategory(type?: ProductType, parentId?: string) {
+    setEditingCategory(undefined);
+    setNewCategoryType(type);
+    setNewCategoryParentId(parentId);
+    setModal("category");
+  }
 
   function openTab(nextTab: Tab) {
     setTab(nextTab);
@@ -367,12 +385,17 @@ export default function InventoryPage() {
               Новый товар
             </button>
           )}
+          {tab === "categories" && !selectedCategory && canDelete && (
+            <button
+              onClick={() => setModal("standard-catalog")}
+              className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3.5 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+            >
+              Стандартный каталог
+            </button>
+          )}
           {tab === "categories" && !selectedCategory && canManageProducts && (
             <button
-              onClick={() => {
-                setEditingCategory(undefined);
-                setModal("category");
-              }}
+              onClick={() => startCategory()}
               className="flex items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
             >
               <Plus className="h-4 w-4" strokeWidth={1.75} />
@@ -600,47 +623,24 @@ export default function InventoryPage() {
                 {canManageProducts && <th className="px-5 py-3 font-medium">Действия</th>}
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
-              {categories.map((c) => (
-                <tr
-                  key={c.id}
-                  onClick={() => setSelectedCategoryId(c.id)}
-                  className={clsx("cursor-pointer transition hover:bg-surface-muted", !c.isActive && "opacity-60")}
-                >
-                  <td className="px-5 py-3 font-medium text-foreground">
-                    <div className="flex items-center gap-2">
-                      {c.name}
-                      {!c.isActive && <ArchivedBadge />}
-                    </div>
-                  </td>
-                  {/* The list is already sorted by this, so the column is
-                      really there to show which categories have been ordered
-                      at all — a screen of zeroes means nobody has. */}
-                  <td className="px-5 py-3 text-right text-muted">{c.sortOrder ?? "—"}</td>
-                  <td className="px-5 py-3 text-right text-muted">{c.productCount}</td>
-                  {canManageProducts && (
-                    <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
-                      <RowActions
-                        isActive={c.isActive}
-                        onEdit={() => {
-                          setEditingCategory(c);
-                          setModal("category");
-                        }}
-                        onArchive={() => handleCategoryArchive(c)}
-                        onRestore={() => handleCategoryRestore(c)}
-                        onDelete={canDelete ? () => handleCategoryDelete(c) : undefined}
-                      />
-                    </td>
-                  )}
-                </tr>
+            <tbody>
+              {categoryTree.map((group) => (
+                <CategoryGroupRows
+                  key={group.type ?? "legacy"}
+                  group={group}
+                  canManage={canManageProducts}
+                  canDelete={canDelete}
+                  onSelect={(c) => setSelectedCategoryId(c.id)}
+                  onAdd={(type, parentId) => startCategory(type, parentId)}
+                  onEdit={(c) => {
+                    setEditingCategory(c);
+                    setModal("category");
+                  }}
+                  onArchive={handleCategoryArchive}
+                  onRestore={handleCategoryRestore}
+                  onDelete={handleCategoryDelete}
+                />
               ))}
-              {categories.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-5 py-8 text-center text-sm text-muted">
-                    Категорий пока нет
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
@@ -658,7 +658,7 @@ export default function InventoryPage() {
                 Категории
               </button>
               <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                {selectedCategory.name}
+                {categoryPathLabel(selectedCategory, categories)}
                 {!selectedCategory.isActive && <ArchivedBadge />}
               </h2>
             </div>
@@ -790,8 +790,21 @@ export default function InventoryPage() {
       {modal === "category" && (
         <CategoryModal
           category={editingCategory}
+          categories={categories}
+          defaultType={newCategoryType}
+          defaultParentId={newCategoryParentId}
           onClose={() => setModal(null)}
           onSaved={() => {
+            setModal(null);
+            loadCategories();
+          }}
+        />
+      )}
+
+      {modal === "standard-catalog" && (
+        <StandardCatalogModal
+          onClose={() => setModal(null)}
+          onDone={() => {
             setModal(null);
             loadCategories();
           }}
@@ -806,6 +819,105 @@ export default function InventoryPage() {
         />
       )}
     </div>
+  );
+}
+
+// One product type's block of the category tree: the type header, then each
+// category with its subcategories indented beneath it.
+function CategoryGroupRows({
+  group,
+  canManage,
+  canDelete,
+  onSelect,
+  onAdd,
+  onEdit,
+  onArchive,
+  onRestore,
+  onDelete,
+}: {
+  group: CategoryTypeGroup;
+  canManage: boolean;
+  canDelete: boolean;
+  onSelect: (c: CategoryDto) => void;
+  onAdd: (type: ProductType | undefined, parentId?: string) => void;
+  onEdit: (c: CategoryDto) => void;
+  onArchive: (c: CategoryDto) => void;
+  onRestore: (c: CategoryDto) => void;
+  onDelete: (c: CategoryDto) => void;
+}) {
+  const row = (c: CategoryDto, indent: boolean, count: number) => (
+    <tr
+      key={c.id}
+      onClick={() => onSelect(c)}
+      className={clsx("cursor-pointer border-b border-border transition last:border-0 hover:bg-surface-muted", !c.isActive && "opacity-60")}
+    >
+      <td className={clsx("py-3 pr-5 text-foreground", indent ? "pl-12" : "pl-9 font-medium")}>
+        <div className="flex items-center gap-2">
+          {c.name}
+          {!c.isActive && <ArchivedBadge />}
+        </div>
+      </td>
+      {/* The list is already sorted by this, so the column is really there to
+          show which categories have been ordered at all. */}
+      <td className="px-5 py-3 text-right text-muted">{c.sortOrder ?? "—"}</td>
+      <td className="px-5 py-3 text-right text-muted">{count}</td>
+      {canManage && (
+        <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-2">
+            {!indent && c.isActive && c.type !== null && (
+              <button
+                onClick={() => onAdd(undefined, c.id)}
+                className="rounded-lg px-2 py-1 text-xs font-medium text-accent transition hover:bg-surface-muted"
+              >
+                + Подкатегория
+              </button>
+            )}
+            <RowActions
+              isActive={c.isActive}
+              onEdit={() => onEdit(c)}
+              onArchive={() => onArchive(c)}
+              onRestore={() => onRestore(c)}
+              onDelete={canDelete ? () => onDelete(c) : undefined}
+            />
+          </div>
+        </td>
+      )}
+    </tr>
+  );
+
+  return (
+    <>
+      <tr className="border-b border-border bg-surface-muted/60">
+        <td colSpan={canManage ? 3 : 3} className="px-5 py-2 text-xs font-semibold uppercase tracking-wide text-muted">
+          {group.type ? PRODUCT_TYPE_LABELS_RU[group.type] : "Без типа (прежние категории)"}
+        </td>
+        {canManage && (
+          <td className="px-5 py-2">
+            {group.type && (
+              <button
+                onClick={() => onAdd(group.type ?? undefined)}
+                className="rounded-lg px-2 py-1 text-xs font-medium text-accent transition hover:bg-surface"
+              >
+                + Категория
+              </button>
+            )}
+          </td>
+        )}
+      </tr>
+      {group.nodes.length === 0 && (
+        <tr className="border-b border-border">
+          <td colSpan={canManage ? 4 : 3} className="px-9 py-3 text-sm text-muted">
+            Категорий пока нет
+          </td>
+        </tr>
+      )}
+      {group.nodes.map((node) => (
+        <Fragment key={node.category.id}>
+          {row(node.category, false, node.category.totalProductCount)}
+          {node.children.map((child) => row(child, true, child.productCount))}
+        </Fragment>
+      ))}
+    </>
   );
 }
 

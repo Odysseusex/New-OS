@@ -50,6 +50,11 @@ enum Unit {
 enum ProductType {
   RAW_MATERIAL
   FINISHED_GOOD
+  // Boxes, bags, labels, film. A separate stock item type: it is bought and
+  // counted like any other stock, but it is NOT a recipe ingredient and not
+  // sold on its own. Cost comes from actual purchases only (CostingService is
+  // untouched) — no accounting treatment of its own has been decided.
+  PACKAGING
 }
 
 enum StockMovementType {
@@ -495,13 +500,25 @@ model User {
   @@map("users")
 }
 
-// A user-managed grouping for the product catalog (e.g. "Мука", "Хлеб",
-// "Упаковка"). Purely organizational — does not affect recipe logic, unlike
+// A user-managed grouping for the product catalog, one level of nesting deep:
+// Category → Subcategory → Product, inside a product TYPE. A management
+// dimension only — it affects no recipe, cost or accounting figure, unlike
 // ProductType below.
 model Category {
   id             String   @id @default(cuid())
   organizationId String
   name           String
+  // The product type this category holds. Null ONLY on categories that existed
+  // before types were introduced and could not be typed deterministically
+  // (empty, or holding products of several types): they stay usable by any
+  // type until someone sets one. Every new category has a type, and a
+  // subcategory always has its parent's.
+  type           ProductType?
+  // Null for a top-level category. Application rules keep the tree two levels
+  // deep (a parent must itself be top-level, same type, same organization).
+  parentId       String?
+  parent         Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children       Category[] @relation("CategoryTree")
   // Where the category sits in every list that shows categories — above all,
   // the till's row of tabs, where the cashier's most-used category has to be
   // the nearest one. Lower comes first, and NULL means "unplaced" and sorts
@@ -518,8 +535,14 @@ model Category {
   products       Product[]
   promotionRules PromotionRule[]
 
-  @@unique([organizationId, name])
+  // A name is unique among its siblings. Top-level names stay unique across the
+  // whole organization exactly as before — that half is a partial unique index
+  // in the migration (WHERE "parentId" IS NULL), because Postgres treats NULLs
+  // in this constraint as distinct. «Другое» can therefore exist under many
+  // parents.
+  @@unique([organizationId, parentId, name])
   @@index([organizationId])
+  @@index([parentId])
   @@map("categories")
 }
 
@@ -960,6 +983,12 @@ model SaleItem {
   // stored: it is derivable from these two, and a second copy of the same
   // fact is a second thing that can drift.
   fullUnitPrice Decimal? @db.Decimal(12, 2)
+  // The product's category at the moment of sale (the leaf: a subcategory when
+  // it had one). A plain id with no foreign key, like the ledger dimensions, so
+  // it can never block a category's deletion. Null on every sale made before
+  // this field existed — those are legacy rows, and category reports fall back
+  // to the product's CURRENT category for them (and only them).
+  categoryIdSnapshot String?
   // Snapshot of the consignment terms at the moment of sale — null for our
   // own goods. Selling one unit of somebody else's goods is what creates the
   // debt, so the amount owed is Σ(quantity × consignmentUnitCost) over these

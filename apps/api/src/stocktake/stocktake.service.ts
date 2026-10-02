@@ -8,6 +8,7 @@ import {
   Unit,
 } from "@bakery-os/shared";
 import { PrismaService } from "../prisma/prisma.service";
+import { CATEGORY_WITH_PARENT, categoryLabel } from "../common/category-label";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
 import { decrementStockOrThrow } from "../common/stock-guard";
@@ -23,7 +24,7 @@ const STOCKTAKE_INCLUDE = {
   location: true,
   createdBy: true,
   approvedBy: true,
-  lines: { include: { product: { include: { categoryRef: true } } } },
+  lines: { include: { product: { include: { categoryRef: CATEGORY_WITH_PARENT } } } },
 } satisfies Prisma.StocktakeInclude;
 
 type StocktakeWithLines = Prisma.StocktakeGetPayload<{ include: typeof STOCKTAKE_INCLUDE }>;
@@ -70,13 +71,21 @@ export class StocktakeService {
         throw new ConflictException("На этой точке уже идёт инвентаризация — завершите или отмените её");
       }
 
+      // A stocktake of a category counts everything under it: the category and
+      // its subcategories.
+      const categoryIds = dto.categoryId
+        ? [
+            dto.categoryId,
+            ...(await tx.category.findMany({ where: { organizationId: user.organizationId, parentId: dto.categoryId }, select: { id: true } })).map((c) => c.id),
+          ]
+        : null;
       const [levels, products] = await Promise.all([
         tx.stockLevel.findMany({ where: { organizationId: user.organizationId, locationId } }),
         tx.product.findMany({
           where: {
             organizationId: user.organizationId,
             trackInventory: true,
-            ...(dto.categoryId ? { categoryId: dto.categoryId } : {}),
+            ...(categoryIds ? { categoryId: { in: categoryIds } } : {}),
           },
           select: { id: true, isActive: true },
         }),
@@ -139,7 +148,7 @@ export class StocktakeService {
         ...(dto.countedQuantity !== undefined ? { countedQuantity: dto.countedQuantity } : {}),
         ...(dto.note !== undefined ? { note: dto.note?.trim() || null } : {}),
       },
-      include: { product: { include: { categoryRef: true } } },
+      include: { product: { include: { categoryRef: CATEGORY_WITH_PARENT } } },
     });
     const costs = await this.costing.currentUnitCosts(user.organizationId);
     return this.toLineDto(updated, costs.get(updated.productId)?.unitCost ?? null);
@@ -394,7 +403,7 @@ export class StocktakeService {
       productName: line.product.name,
       sku: line.product.sku,
       unit: line.product.unit as Unit,
-      categoryName: line.product.categoryRef?.name ?? null,
+      categoryName: categoryLabel(line.product.categoryRef),
       systemQuantity,
       countedQuantity,
       difference,

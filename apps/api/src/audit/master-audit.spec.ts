@@ -60,7 +60,7 @@ describe("master data changes are audited", () => {
     await customers.restore(org.organizationId, c.id, org.user.id);
     await customers.remove(org.organizationId, c.id, org.user.id);
 
-    const cat = await categories.create(org.organizationId, { name: "Выпечка" } as never);
+    const cat = await categories.create(org.organizationId, { name: "Выпечка", type: "FINISHED_GOOD" } as never);
     await categories.update(org.organizationId, cat.id, { name: "Выпечка 2" } as never, org.user.id);
     await categories.archive(org.organizationId, cat.id, org.user.id);
     await categories.restore(org.organizationId, cat.id, org.user.id);

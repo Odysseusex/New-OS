@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import type { CategoryDto, LocationDto, PromotionDto } from "@bakery-os/shared";
+import { categoryPathLabel } from "@bakery-os/shared";
 import { Modal } from "./modal";
 import { api, ApiError } from "@/lib/api";
 import { toDatetimeLocalValue } from "@/lib/format";
@@ -208,7 +209,7 @@ export function PromotionModal({
                     .filter((c): c is CategoryDto => !!c)
                     .map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.name}
+                        {categoryPathLabel(c, categories)}
                       </option>
                     ))}
                 </select>

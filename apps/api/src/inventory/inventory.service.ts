@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { CostingService } from "../costing/costing.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { CATEGORY_WITH_PARENT, categoryLabel } from "../common/category-label";
 import {
   BusinessContextMovementRowDto,
   isStockLow,
@@ -82,7 +83,7 @@ export class InventoryService {
         ...(locationId ? { locationId } : {}),
         product: { trackInventory: true },
       },
-      include: { location: true, product: { include: { categoryRef: true } } },
+      include: { location: true, product: { include: { categoryRef: CATEGORY_WITH_PARENT } } },
       orderBy: [{ location: { name: "asc" } }, { product: { name: "asc" } }],
     });
 
@@ -94,7 +95,7 @@ export class InventoryService {
       productName: level.product.name,
       sku: level.product.sku,
       unit: level.product.unit as Unit,
-      categoryName: level.product.categoryRef?.name ?? null,
+      categoryName: categoryLabel(level.product.categoryRef),
       quantity: level.quantity.toNumber(),
       minQuantity: level.minQuantity.toNumber(),
       isLow: isStockLow(level.quantity.toNumber(), level.minQuantity.toNumber()),

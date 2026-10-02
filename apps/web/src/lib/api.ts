@@ -43,6 +43,7 @@ import type {
   CostBehavior,
   CreateCashAccountRequestDto,
   CreateCategoryRequestDto,
+  StandardCatalogResultDto,
   CreateCustomerRequestDto,
   CreateDeliveryRouteRequestDto,
   CreateEmployeeRequestDto,
@@ -283,6 +284,8 @@ export const api = {
     archive: (id: string) => request<CategoryDto>(`/categories/${id}/archive`, { method: "POST" }),
     restore: (id: string) => request<CategoryDto>(`/categories/${id}/restore`, { method: "POST" }),
     remove: (id: string) => request<{ deleted: true }>(`/categories/${id}`, { method: "DELETE" }),
+    standardCatalogPreview: () => request<StandardCatalogResultDto>("/categories/standard-catalog"),
+    standardCatalogApply: () => request<StandardCatalogResultDto>("/categories/standard-catalog", { method: "POST" }),
   },
 
   inventory: {

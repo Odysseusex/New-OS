@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { CategoryDto, ProductDto, SupplierDto } from "@bakery-os/shared";
-import { PRODUCT_TYPE_LABELS_RU, ProductType, Unit, UNIT_LABELS_RU } from "@bakery-os/shared";
+import { PRODUCT_TYPE_LABELS_RU, PRODUCT_TYPE_ORDER, ProductType, Unit, UNIT_LABELS_RU, categoryAcceptsType } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
 
@@ -24,8 +24,13 @@ export function NewProductModal({
   const [barcode, setBarcode] = useState(product?.barcode ?? "");
   const [ntin, setNtin] = useState(product?.ntin ?? "");
   const [unit, setUnit] = useState<Unit>(product?.unit ?? Unit.PCS);
-  const [type, setType] = useState<ProductType>(product?.type ?? ProductType.FINISHED_GOOD);
-  const [categoryId, setCategoryId] = useState(product?.categoryId ?? defaultCategoryId ?? "");
+  // Type → Category → Subcategory. The product itself is filed under the
+  // subcategory when one is chosen, otherwise under the category.
+  const initialCategory = categories.find((c) => c.id === (product?.categoryId ?? defaultCategoryId));
+  // A product started from inside a category begins with that category's type.
+  const [type, setType] = useState<ProductType>(product?.type ?? initialCategory?.type ?? ProductType.FINISHED_GOOD);
+  const [parentCategoryId, setParentCategoryId] = useState(initialCategory?.parentId ?? initialCategory?.id ?? "");
+  const [subcategoryId, setSubcategoryId] = useState(initialCategory?.parentId ? initialCategory.id : "");
   const [price, setPrice] = useState(product ? String(product.price) : "");
   const [trackInventory, setTrackInventory] = useState(product?.trackInventory ?? true);
   const [isPosQuickItem, setIsPosQuickItem] = useState(product?.isPosQuickItem ?? false);
@@ -38,6 +43,30 @@ export function NewProductModal({
   const [suppliers, setSuppliers] = useState<SupplierDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Only categories of the chosen type (and old ones with no type yet) are
+  // offered, so a product can never be filed under another type's category. The
+  // product's current category stays selectable even if it has since been archived.
+  const topCategories = categories.filter(
+    (c) => !c.parentId && categoryAcceptsType(c.type, type) && (c.isActive || c.id === parentCategoryId),
+  );
+  const subcategories = categories.filter(
+    (c) => c.parentId === parentCategoryId && (c.isActive || c.id === subcategoryId),
+  );
+
+  function handleTypeChange(next: ProductType) {
+    setType(next);
+    const parent = categories.find((c) => c.id === parentCategoryId);
+    if (parent && !categoryAcceptsType(parent.type, next)) {
+      setParentCategoryId("");
+      setSubcategoryId("");
+    }
+  }
+
+  function handleCategoryChange(id: string) {
+    setParentCategoryId(id);
+    setSubcategoryId("");
+  }
 
   // Only fetched when the switch is on: an ordinary product form has no
   // business loading the supplier list.
@@ -56,7 +85,7 @@ export function NewProductModal({
         sku: sku.trim() || undefined,
         unit,
         type,
-        categoryId: categoryId || undefined,
+        categoryId: subcategoryId || parentCategoryId || undefined,
         price: Number(price),
         trackInventory,
         isPosQuickItem,
@@ -171,30 +200,47 @@ export function NewProductModal({
           </div>
         </div>
 
+        <div className="mb-4">
+          <label className="mb-1.5 block text-sm font-medium text-foreground">Тип</label>
+          <select
+            value={type}
+            onChange={(e) => handleTypeChange(e.target.value as ProductType)}
+            className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+          >
+            {PRODUCT_TYPE_ORDER.map((t) => (
+              <option key={t} value={t}>
+                {PRODUCT_TYPE_LABELS_RU[t]}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <div className="mb-4 grid grid-cols-2 gap-3">
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-foreground">Тип</label>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">Категория</label>
             <select
-              value={type}
-              onChange={(e) => setType(e.target.value as ProductType)}
+              value={parentCategoryId}
+              onChange={(e) => handleCategoryChange(e.target.value)}
               className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
             >
-              {Object.values(ProductType).map((t) => (
-                <option key={t} value={t}>
-                  {PRODUCT_TYPE_LABELS_RU[t]}
+              <option value="">Без категории</option>
+              {topCategories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
                 </option>
               ))}
             </select>
           </div>
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-foreground">Категория</label>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">Подкатегория</label>
             <select
-              value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
-              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+              value={subcategoryId}
+              onChange={(e) => setSubcategoryId(e.target.value)}
+              disabled={subcategories.length === 0}
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:opacity-50"
             >
-              <option value="">Без категории</option>
-              {categories.map((c) => (
+              <option value="">Без подкатегории</option>
+              {subcategories.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
@@ -205,7 +251,7 @@ export function NewProductModal({
 
         <div className="mb-5">
           <label className="mb-1.5 block text-sm font-medium text-foreground">
-            {type === ProductType.RAW_MATERIAL ? "Цена закупки, ₸ за ед." : "Цена продажи, ₸"}
+            {type === ProductType.FINISHED_GOOD ? "Цена продажи, ₸" : "Цена закупки, ₸ за ед."}
           </label>
           <input
             type="number"
@@ -219,7 +265,9 @@ export function NewProductModal({
           <p className="mt-1.5 text-xs text-muted">
             {type === ProductType.RAW_MATERIAL
               ? "Используется для автоматического расчёта себестоимости в рецептах — держите в актуальном состоянии по факту закупки"
-              : "Цена, по которой товар продаётся клиенту"}
+              : type === ProductType.PACKAGING
+                ? "Справочная цена — себестоимость упаковки берётся из фактических закупок"
+                : "Цена, по которой товар продаётся клиенту"}
           </p>
         </div>
 

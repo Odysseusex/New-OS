@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { LocationPriceRowDto, ProductDto, ProductType } from "@bakery-os/shared";
+import { CATEGORY_WITH_PARENT, categoryLabel } from "../common/category-label";
+import { LocationPriceRowDto, PRODUCT_TYPE_LABELS_RU, ProductDto, ProductType, categoryAcceptsType } from "@bakery-os/shared";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 import { audited, auditFields, recordAudit } from "../audit/audit";
@@ -24,10 +25,13 @@ const PRODUCT_AUDIT_FIELDS = [
   "isActive",
 ] as const;
 
-const PRODUCT_INCLUDE = { categoryRef: true, consignmentSupplier: true };
+// The category comes with its parent so a product can name where it sits as
+// «Бакалея › Мука пшеничная» wherever a category name is shown.
+const PRODUCT_INCLUDE = { categoryRef: CATEGORY_WITH_PARENT, consignmentSupplier: true };
 
 const SKU_PREFIX_BY_TYPE: Record<ProductType, string> = {
   [ProductType.RAW_MATERIAL]: "ING",
+  [ProductType.PACKAGING]: "PKG",
   [ProductType.FINISHED_GOOD]: "PRD",
 };
 
@@ -105,7 +109,7 @@ export class ProductsService {
       productId: product.id,
       productName: product.name,
       sku: product.sku,
-      categoryName: product.categoryRef?.name ?? null,
+      categoryName: categoryLabel(product.categoryRef),
       basePrice: product.price.toNumber(),
       locationPrice: priceByProduct.get(product.id) ?? null,
     }));
@@ -152,7 +156,7 @@ export class ProductsService {
       productId: product.id,
       productName: product.name,
       sku: product.sku,
-      categoryName: product.categoryRef?.name ?? null,
+      categoryName: categoryLabel(product.categoryRef),
       basePrice: product.price.toNumber(),
       locationPrice: price,
     };
@@ -246,7 +250,7 @@ export class ProductsService {
     }
 
     if (dto.categoryId) {
-      await this.assertCategoryExists(organizationId, dto.categoryId);
+      await this.assertCategoryFits(organizationId, dto.categoryId, dto.type, true);
     }
     await this.assertConsignmentValid(organizationId, dto.consignmentSupplierId, dto.consignmentPrice);
 
@@ -287,8 +291,16 @@ export class ProductsService {
       }
     }
 
-    if (dto.categoryId) {
-      await this.assertCategoryExists(organizationId, dto.categoryId);
+    // The category must fit the type the product WILL have, whichever of the two
+    // changed — but an unrelated edit (a rename, a price) never re-judges a
+    // category the product already had.
+    if (dto.categoryId || (dto.type !== undefined && dto.type !== product.type && product.categoryId)) {
+      await this.assertCategoryFits(
+        organizationId,
+        dto.categoryId || (product.categoryId as string),
+        dto.type ?? (product.type as ProductType),
+        Boolean(dto.categoryId) && dto.categoryId !== product.categoryId,
+      );
     }
     // Checked against what the product will BE, not just what was sent:
     // clearing only one of the two fields would otherwise leave a product
@@ -467,18 +479,31 @@ export class ProductsService {
     return this.toDto(updated);
   }
 
-  private async assertCategoryExists(organizationId: string, categoryId: string): Promise<void> {
+  // A category belongs to one product type; a product may only sit in a category
+  // of its own type (or in a legacy one that has no type yet). `assignment` marks
+  // a category being newly chosen, which must also not be archived.
+  private async assertCategoryFits(
+    organizationId: string,
+    categoryId: string,
+    productType: ProductType,
+    assignment: boolean,
+  ): Promise<void> {
     const category = await this.prisma.category.findFirst({ where: { id: categoryId, organizationId } });
     if (!category) {
       throw new NotFoundException("Категория не найдена");
     }
+    if (assignment && !category.isActive) {
+      throw new BadRequestException(`Категория «${category.name}» в архиве — выберите другую`);
+    }
+    if (!categoryAcceptsType(category.type as ProductType | null, productType)) {
+      throw new BadRequestException(
+        `Категория «${category.name}» относится к типу «${PRODUCT_TYPE_LABELS_RU[category.type as ProductType]}», а товар — «${PRODUCT_TYPE_LABELS_RU[productType]}». Выберите категорию того же типа.`,
+      );
+    }
   }
 
-  // The supplier and the price are meaningless apart: a product marked as
-  // somebody else's goods with no price would accrue a zero debt on every
-  // sale — silently, and unrecoverably, since each sale snapshots the price
-  // it saw. Refusing the half-filled pair is the only way to keep that from
-  // ever reaching the ledger.
+  // «Под реализацию» is the supplier alone (see Product.consignmentSupplierId);
+  // a price is optional and used for nothing.
   private async assertConsignmentValid(
     organizationId: string,
     supplierId: string | null | undefined,
@@ -508,7 +533,7 @@ export class ProductsService {
     unit: string;
     type: string;
     categoryId: string | null;
-    categoryRef: { name: string } | null;
+    categoryRef: { name: string; parent?: { name: string } | null } | null;
     price: { toNumber: () => number };
     isActive: boolean;
     trackInventory: boolean;
@@ -528,7 +553,7 @@ export class ProductsService {
       unit: product.unit as ProductDto["unit"],
       type: product.type as ProductDto["type"],
       categoryId: product.categoryId,
-      categoryName: product.categoryRef?.name ?? null,
+      categoryName: categoryLabel(product.categoryRef),
       price: product.price.toNumber(),
       isActive: product.isActive,
       trackInventory: product.trackInventory,
