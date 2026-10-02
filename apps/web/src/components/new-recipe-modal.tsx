@@ -72,7 +72,8 @@ export function NewRecipeModal({
 }) {
   const source = recipe ?? duplicateFrom;
   const outputOptions = products.filter(
-    (p) => p.type === ProductType.FINISHED_GOOD && !existingRecipeProductIds.includes(p.id),
+    // Somebody else's goods «под реализацию» are not produced here, so they get no recipe.
+    (p) => p.type === ProductType.FINISHED_GOOD && !p.consignmentSupplierId && !existingRecipeProductIds.includes(p.id),
   );
   const ingredientOptions = products.filter((p) => p.type === ProductType.RAW_MATERIAL);
 

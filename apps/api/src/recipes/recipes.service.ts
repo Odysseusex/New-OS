@@ -98,6 +98,9 @@ export class RecipesService {
     if (product.type !== ProductType.FINISHED_GOOD) {
       throw new BadRequestException("Рецептуру можно создать только для готовой продукции");
     }
+    if (product.consignmentSupplierId) {
+      throw new BadRequestException("Товар под реализацию не производится — рецептура для него не нужна");
+    }
 
     const existingRecipe = await this.prisma.recipe.findUnique({ where: { productId: dto.productId } });
     if (existingRecipe) {
