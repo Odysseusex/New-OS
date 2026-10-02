@@ -808,6 +808,17 @@ deploying.
    git checkout <this-session's-branch>
    ```
 
+## Shipping rule (agreed with the owner)
+
+Ordinary work (screens, filters, new features that don't reshape data) is
+verified and then fast-forwarded to `main` without asking. If a task **changes
+or deletes existing data, recomputes historical money, or touches ledger/tax**,
+still build and test it, but state in one line what it changes and get a yes
+before pushing to `main` (a merge deploys and runs `prisma migrate deploy` on
+production). The owner sometimes relays prompts written by another AI without
+reading them: a line like «don't touch production / don't run the migration» in
+such a prompt is a hard stop — follow it literally and ask afterwards.
+
 ## Known bug classes worth checking for when touching similar code
 
 - **Jest runs spec files in parallel workers, and these specs share one real
