@@ -313,38 +313,42 @@ export default function FinancePage() {
   useEffect(() => {
     if (!canView) return;
     api.locations.list().then(setLocations).catch(() => {});
-    loadAccounts();
-    loadCategories();
-    loadDebts();
     if (canRunSetup) {
       api.finance.setup.status().then(setSetupStatus).catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canView, canRunSetup]);
 
+  // Each tab loads only its own figures. The profit, break-even and summary
+  // calculations are the heavy ones; running all of them whenever the page
+  // opens made the whole section slow and starved the other requests.
   useEffect(() => {
-    if (canView) loadDashboard();
-  }, [canView, loadDashboard]);
+    if (canView && tab === "summary") loadDashboard();
+  }, [canView, tab, loadDashboard]);
 
   useEffect(() => {
-    if (canView) loadPnl();
-  }, [canView, loadPnl]);
+    if (canView && tab === "pnl") loadPnl();
+  }, [canView, tab, loadPnl]);
 
   useEffect(() => {
-    if (canView) loadBreakEven();
-  }, [canView, loadBreakEven]);
+    if (canView && tab === "breakeven" && breakEvenMode === "fact") loadBreakEven();
+  }, [canView, tab, breakEvenMode, loadBreakEven]);
 
   useEffect(() => {
-    if (canView) loadPlannedBreakEven();
-  }, [canView, loadPlannedBreakEven]);
+    if (canView && tab === "breakeven" && breakEvenMode === "plan") loadPlannedBreakEven();
+  }, [canView, tab, breakEvenMode, loadPlannedBreakEven]);
 
   useEffect(() => {
-    if (canView) loadPlannedFixedCosts();
-  }, [canView, loadPlannedFixedCosts]);
+    if (canView && tab === "breakeven" && breakEvenMode === "plan") loadPlannedFixedCosts();
+  }, [canView, tab, breakEvenMode, loadPlannedFixedCosts]);
 
   useEffect(() => {
-    if (canView) loadExpenses();
-  }, [canView, loadExpenses]);
+    if (canView && (tab === "expenses" || tab === "payables")) loadExpenses();
+  }, [canView, tab, loadExpenses]);
+
+  useEffect(() => {
+    if (canView && (tab === "receivables" || tab === "payables")) loadDebts();
+  }, [canView, tab, loadDebts]);
 
   useEffect(() => {
     if (canView) loadAccounts();
@@ -359,14 +363,19 @@ export default function FinancePage() {
   }, [canView, loadCategories]);
 
   function refreshAll() {
-    loadDashboard();
     loadAccounts();
     loadMovements();
-    loadExpenses();
-    loadDebts();
-    loadPnl();
-    loadBreakEven();
-    loadPlannedBreakEven();
+    if (tab === "summary") loadDashboard();
+    if (tab === "expenses" || tab === "payables") loadExpenses();
+    if (tab === "receivables" || tab === "payables") loadDebts();
+    if (tab === "pnl") loadPnl();
+    if (tab === "breakeven") {
+      if (breakEvenMode === "fact") loadBreakEven();
+      else {
+        loadPlannedBreakEven();
+        loadPlannedFixedCosts();
+      }
+    }
   }
 
   async function handleClosePlannedFixedCost(row: PlannedFixedCostDto) {
