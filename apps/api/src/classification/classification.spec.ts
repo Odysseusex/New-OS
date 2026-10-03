@@ -434,3 +434,28 @@ describe("history freeze (migration 20261004110000)", () => {
     expect(report.discountByCategory.map((c) => c.categoryName)).toEqual(["Акция-история"]);
   });
 });
+
+describe("a real-size batch", () => {
+  it("applies and reverts ~180 products with a handful of queries, not one per product", async () => {
+    const tops = ["Хлеб", "Выпечка", "Торты", "Пироги", "Кондитерские изделия", "Готовая кулинария", "Пицца, роллы, блины"];
+    const rows: object[] = [];
+    const ids: string[] = [];
+    for (let i = 0; i < 180; i++) {
+      const p = await product(FIN);
+      ids.push(p.id);
+      rows.push(row(p.sku, tops[i % 7], `Размер ${i % 40}-${i % 7}`));
+    }
+    const before = await snapshot();
+    const p = await preview(rows);
+    expect(p.summary).toMatchObject({ toMove: 180, rejected: 0 });
+    const batch = await classification.apply(org.user, { rows, fingerprint: p.fingerprint } as never);
+    expect(batch.productsMoved).toBe(180);
+    const moved = await prisma.product.findMany({ where: { id: { in: ids } }, select: { categoryId: true } });
+    expect(moved.every((m) => m.categoryId)).toBe(true);
+    expect(await prisma.auditLog.count({ where: { organizationId: org.organizationId, reason: `Классификация, пакет ${batch.id}` } })).toBe(180);
+    const result = await classification.revert(org.user, batch.id, { removeEmptyCategories: true });
+    expect(result).toMatchObject({ restored: 180, categoriesRemoved: expect.any(Number) });
+    expect(result.conflicts).toEqual([]);
+    expect(await snapshot()).toMatchObject({ products: before.products, categories: before.categories });
+  });
+});

@@ -103,6 +103,25 @@ export async function recordAudit(tx: Prisma.TransactionClient, entry: AuditEntr
   });
 }
 
+// Many entries in ONE query. Mass operations (a classification batch touches
+// hundreds of products) must not pay a network round trip per row — against a
+// remote database that alone outruns the transaction time limit.
+export async function recordAuditMany(tx: Prisma.TransactionClient, entries: AuditEntry[]): Promise<void> {
+  if (entries.length === 0) return;
+  await tx.auditLog.createMany({
+    data: entries.map((entry) => ({
+      organizationId: entry.organizationId,
+      actorId: entry.actorId,
+      action: entry.action,
+      entityType: entry.entityType,
+      entityId: entry.entityId,
+      before: toAuditJson(entry.before),
+      after: toAuditJson(entry.after),
+      reason: entry.reason ?? null,
+    })),
+  });
+}
+
 // Copies only the named fields — the whitelist is what keeps secrets such as
 // password hashes out of the log.
 export function auditFields<T extends object, K extends keyof T>(source: T | null | undefined, fields: readonly K[]) {

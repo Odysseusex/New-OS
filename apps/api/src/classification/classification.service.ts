@@ -1,4 +1,4 @@
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import {
@@ -14,11 +14,21 @@ import {
   normalizeCategoryName,
 } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
-import { recordAudit } from "../audit/audit";
+import { recordAudit, recordAuditMany } from "../audit/audit";
 import { PrismaService } from "../prisma/prisma.service";
 import { ClassificationApplyDto, ClassificationPreviewDto as PreviewRequest, ClassificationRevertDto, ClassificationRowDto } from "./dto/classification.dto";
 
 type Db = Prisma.TransactionClient;
+
+interface CategoryChange {
+  id: string;
+  from: string | null;
+  to: string | null;
+}
+
+// A batch can touch hundreds of rows; give it room beyond the default so a slow
+// network to the database cannot cut it off half way (it would roll back whole).
+const MASS_TRANSACTION = { maxWait: 15_000, timeout: 120_000 };
 
 // Re-files products by SKU: Preview → Apply → Audit → Rollback.
 //
@@ -118,21 +128,28 @@ export class ClassificationService {
       });
 
       // Categories first: the approved top-level ones the file needs, then the
-      // subcategories under them (new or existing parents).
+      // subcategories under them (new or existing parents). Ids are made here so
+      // each level is ONE insert instead of one round trip per category.
       const createdIds: string[] = [];
       const idByRef = new Map<string, string>();
+      const topData: Prisma.CategoryCreateManyInput[] = [];
       for (const [ref, c] of plan.createTops) {
-        const created = await tx.category.create({ data: { organizationId, name: c.name, type: c.type, parentId: null } });
-        idByRef.set(ref, created.id);
-        createdIds.push(created.id);
+        const id = randomUUID();
+        idByRef.set(ref, id);
+        createdIds.push(id);
+        topData.push({ id, organizationId, name: c.name, type: c.type, parentId: null });
       }
+      const subData: Prisma.CategoryCreateManyInput[] = [];
       for (const [ref, c] of plan.createSubs) {
         const parentId = c.parentRef.startsWith("id:") ? c.parentRef.slice(3) : idByRef.get(c.parentRef);
         if (!parentId) throw new Error(`parent category missing for ${ref}`);
-        const created = await tx.category.create({ data: { organizationId, name: c.name, type: c.type, parentId } });
-        idByRef.set(ref, created.id);
-        createdIds.push(created.id);
+        const id = randomUUID();
+        idByRef.set(ref, id);
+        createdIds.push(id);
+        subData.push({ id, organizationId, name: c.name, type: c.type, parentId });
       }
+      if (topData.length) await tx.category.createMany({ data: topData });
+      if (subData.length) await tx.category.createMany({ data: subData });
       const resolve = (r: { id: string | null; ref: string }): string => {
         const id = r.id ?? idByRef.get(r.ref);
         if (!id) throw new Error(`category missing for ${r.ref}`);
@@ -140,18 +157,14 @@ export class ClassificationService {
       };
 
       // Products: ONLY categoryId changes, and only if the product still sits
-      // where the plan saw it.
+      // where the plan saw it — all in one statement.
       const lines: Prisma.ClassificationBatchLineCreateManyInput[] = [];
+      const audits: Parameters<typeof recordAuditMany>[1] = [];
+      const changes: CategoryChange[] = [];
       for (const row of moves) {
         const afterId = resolve(row.sub ?? (row.top as TopRef));
-        const updated = await tx.product.updateMany({
-          where: { id: row.productId as string, organizationId, categoryId: row.beforeCategoryId },
-          data: { categoryId: afterId },
-        });
-        if (updated.count !== 1) {
-          throw new ConflictException(`Товар ${row.sku} изменился во время применения — сделайте предпросмотр заново`);
-        }
-        await recordAudit(tx, {
+        changes.push({ id: row.productId as string, from: row.beforeCategoryId, to: afterId });
+        audits.push({
           organizationId,
           actorId: user.id,
           action: "product.update",
@@ -172,6 +185,12 @@ export class ClassificationService {
           afterLabel: row.targetPath as string,
         });
       }
+      const done = await this.moveProducts(tx, organizationId, changes);
+      if (done.size !== changes.length) {
+        const missed = moves.find((r) => !done.has(r.productId as string));
+        throw new ConflictException(`Товар ${missed?.sku ?? ""} изменился во время применения — сделайте предпросмотр заново`);
+      }
+      await recordAuditMany(tx, audits);
       await tx.classificationBatchLine.createMany({ data: lines });
       await tx.classificationBatch.update({ where: { id: batch.id }, data: { createdCategoryIds: createdIds } });
 
@@ -184,8 +203,21 @@ export class ClassificationService {
         after: { productsMoved: lines.length, categoriesCreated: createdIds.length, rejectedRows: rejected, note: dto.note ?? null },
       });
       return batch.id;
-    });
+    }, MASS_TRANSACTION);
     return (await this.listBatches(organizationId)).find((b) => b.id === batchId) as ClassificationBatchDto;
+  }
+
+  // Moves every product in ONE statement, each only if it still sits in `from`.
+  // Returns the ids that really moved. Only categoryId (and updatedAt) is written.
+  private async moveProducts(tx: Db, organizationId: string, changes: CategoryChange[]): Promise<Set<string>> {
+    if (changes.length === 0) return new Set();
+    const rows = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+      UPDATE "products" AS p
+      SET "categoryId" = v."to_id", "updatedAt" = NOW()
+      FROM (VALUES ${Prisma.join(changes.map((c) => Prisma.sql`(${c.id}::text, ${c.from}::text, ${c.to}::text)`))}) AS v("id", "from_id", "to_id")
+      WHERE p."id" = v."id" AND p."organizationId" = ${organizationId} AND p."categoryId" IS NOT DISTINCT FROM v."from_id"
+      RETURNING p."id"`);
+    return new Set(rows.map((r) => r.id));
   }
 
   // ── rollback ─────────────────────────────────────────────────────────────
@@ -210,26 +242,31 @@ export class ClassificationService {
       let restored = 0;
       const conflicts: { sku: string; productName: string; reason: string }[] = [];
       const now = new Date();
-      for (const line of batch.lines) {
-        if (line.revertedAt) continue;
-        const product = await tx.product.findFirst({ where: { id: line.productId, organizationId }, select: { id: true, categoryId: true } });
+      const open = batch.lines.filter((l) => !l.revertedAt);
+      const products = await tx.product.findMany({ where: { id: { in: open.map((l) => l.productId) }, organizationId }, select: { id: true, categoryId: true } });
+      const currentOf = new Map(products.map((p) => [p.id, p.categoryId]));
+      const categoryIds = new Set(categories.map((c) => c.id));
+      const candidates: typeof open = [];
+      for (const line of open) {
         let reason: string | null = null;
-        if (!product) reason = "Товар удалён";
-        else if (product.categoryId !== line.afterCategoryId) reason = `Категория изменилась после применения (сейчас: ${labelOf(product.categoryId)})`;
-        else if (line.beforeCategoryId && !categories.some((c) => c.id === line.beforeCategoryId)) reason = "Прежняя категория удалена";
-        if (reason) {
-          conflicts.push({ sku: line.sku, productName: line.productName, reason });
-          continue;
-        }
-        const updated = await tx.product.updateMany({
-          where: { id: line.productId, organizationId, categoryId: line.afterCategoryId },
-          data: { categoryId: line.beforeCategoryId },
-        });
-        if (updated.count !== 1) {
-          conflicts.push({ sku: line.sku, productName: line.productName, reason: "Товар изменился во время отката" });
-          continue;
-        }
-        await recordAudit(tx, {
+        if (!currentOf.has(line.productId)) reason = "Товар удалён";
+        else if (currentOf.get(line.productId) !== line.afterCategoryId) reason = `Категория изменилась после применения (сейчас: ${labelOf(currentOf.get(line.productId) ?? null)})`;
+        else if (line.beforeCategoryId && !categoryIds.has(line.beforeCategoryId)) reason = "Прежняя категория удалена";
+        if (reason) conflicts.push({ sku: line.sku, productName: line.productName, reason });
+        else candidates.push(line);
+      }
+      const done = await this.moveProducts(
+        tx,
+        organizationId,
+        candidates.map((l) => ({ id: l.productId, from: l.afterCategoryId, to: l.beforeCategoryId })),
+      );
+      const restoredLines = candidates.filter((l) => done.has(l.productId));
+      for (const line of candidates) {
+        if (!done.has(line.productId)) conflicts.push({ sku: line.sku, productName: line.productName, reason: "Товар изменился во время отката" });
+      }
+      await recordAuditMany(
+        tx,
+        restoredLines.map((line) => ({
           organizationId,
           actorId: user.id,
           action: "product.update",
@@ -238,21 +275,43 @@ export class ClassificationService {
           before: { categoryId: line.afterCategoryId },
           after: { categoryId: line.beforeCategoryId },
           reason: `Откат классификации, пакет ${batch.id}`,
-        });
-        await tx.classificationBatchLine.update({ where: { id: line.id }, data: { revertedAt: now } });
-        restored += 1;
-      }
+        })),
+      );
+      if (restoredLines.length) await tx.classificationBatchLine.updateMany({ where: { id: { in: restoredLines.map((l) => l.id) } }, data: { revertedAt: now } });
+      restored = restoredLines.length;
 
       // Optionally remove categories this batch created that are still empty:
       // subcategories first, and never one that anything now depends on.
       let categoriesRemoved = 0;
       if (dto.removeEmptyCategories) {
-        const created = await tx.category.findMany({ where: { id: { in: batch.createdCategoryIds }, organizationId }, orderBy: { parentId: { sort: "desc", nulls: "last" } } });
-        for (const c of created) {
-          const used = await tx.category.findUnique({ where: { id: c.id }, include: { _count: { select: { products: true, children: true, promotionRules: true } } } });
-          if (!used || used._count.products > 0 || used._count.children > 0 || used._count.promotionRules > 0) continue;
-          await tx.category.delete({ where: { id: c.id } });
-          await recordAudit(tx, {
+        const created = await tx.category.findMany({ where: { id: { in: batch.createdCategoryIds }, organizationId } });
+        const ids = created.map((c) => c.id);
+        const [byProducts, byChildren, byRules] = await Promise.all([
+          tx.product.groupBy({ by: ["categoryId"], where: { categoryId: { in: ids } }, _count: { _all: true } }),
+          tx.category.groupBy({ by: ["parentId"], where: { parentId: { in: ids } }, _count: { _all: true } }),
+          tx.promotionRule.groupBy({ by: ["categoryId"], where: { categoryId: { in: ids } }, _count: { _all: true } }),
+        ]);
+        const used = new Set([...byProducts.map((r) => r.categoryId), ...byRules.map((r) => r.categoryId)]);
+        const childCount = new Map(byChildren.map((r) => [r.parentId as string, r._count._all]));
+        const removable = new Set<string>();
+        // Two levels only: a sub that is empty goes first, which can empty its parent.
+        for (const c of created.filter((x) => x.parentId)) {
+          if (!used.has(c.id) && !childCount.has(c.id)) {
+            removable.add(c.id);
+            childCount.set(c.parentId as string, (childCount.get(c.parentId as string) ?? 0) - 1);
+          }
+        }
+        for (const c of created.filter((x) => !x.parentId)) {
+          if (!used.has(c.id) && (childCount.get(c.id) ?? 0) <= 0) removable.add(c.id);
+        }
+        const gone = created.filter((c) => removable.has(c.id));
+        const subs = gone.filter((c) => c.parentId).map((c) => c.id);
+        const tops = gone.filter((c) => !c.parentId).map((c) => c.id);
+        if (subs.length) await tx.category.deleteMany({ where: { id: { in: subs } } });
+        if (tops.length) await tx.category.deleteMany({ where: { id: { in: tops } } });
+        await recordAuditMany(
+          tx,
+          gone.map((c) => ({
             organizationId,
             actorId: user.id,
             action: "category.delete",
@@ -260,9 +319,9 @@ export class ClassificationService {
             entityId: c.id,
             before: { name: c.name, type: c.type, parentId: c.parentId },
             reason: `Откат классификации, пакет ${batch.id}`,
-          });
-          categoriesRemoved += 1;
-        }
+          })),
+        );
+        categoriesRemoved = gone.length;
       }
 
       const remaining = await tx.classificationBatchLine.count({ where: { batchId: batch.id, revertedAt: null } });
@@ -281,7 +340,7 @@ export class ClassificationService {
         after: { restored, conflicts: conflicts.length, categoriesRemoved, status },
       });
       return { restored, conflicts, categoriesRemoved };
-    });
+    }, MASS_TRANSACTION);
     const batch = (await this.listBatches(organizationId)).find((b) => b.id === batchId) as ClassificationBatchDto;
     return { batch, ...result };
   }
