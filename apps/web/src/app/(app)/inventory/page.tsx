@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { AlertTriangle, ArrowDownCircle, ArrowLeft, ArrowUpCircle, Ban, Plus, Search, Wrench, X } from "lucide-react";
 import type { CategoryDto, CategoryTypeGroup, LocationDto, ProductDto, StockLevelDto, StockMovementDto } from "@bakery-os/shared";
@@ -68,6 +68,23 @@ export default function InventoryPage() {
   const [newCategoryParentId, setNewCategoryParentId] = useState<string | undefined>(undefined);
   const [newProductCategoryId, setNewProductCategoryId] = useState<string | undefined>(undefined);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  // The category list is replaced by the category's own page and comes back
+  // freshly mounted, i.e. scrolled to the top. Remember where it was.
+  const listScrollTop = useRef<number | null>(null);
+  const openCategory = (id: string) => {
+    listScrollTop.current = document.querySelector("main")?.scrollTop ?? 0;
+    setSelectedCategoryId(id);
+  };
+  useLayoutEffect(() => {
+    const main = document.querySelector("main");
+    if (!main) return;
+    if (selectedCategoryId) {
+      main.scrollTop = 0;
+    } else if (listScrollTop.current !== null) {
+      main.scrollTop = listScrollTop.current;
+      listScrollTop.current = null;
+    }
+  }, [selectedCategoryId]);
   const [productSearch, setProductSearch] = useState("");
   const [stockSearch, setStockSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -118,6 +135,7 @@ export default function InventoryPage() {
 
   function openTab(nextTab: Tab) {
     setTab(nextTab);
+    listScrollTop.current = null;
     setSelectedCategoryId(null);
   }
 
@@ -639,7 +657,7 @@ export default function InventoryPage() {
                   group={group}
                   canManage={canManageProducts}
                   canDelete={canDelete}
-                  onSelect={(c) => setSelectedCategoryId(c.id)}
+                  onSelect={(c) => openCategory(c.id)}
                   onAdd={(type, parentId) => startCategory(type, parentId)}
                   onEdit={(c) => {
                     setEditingCategory(c);
