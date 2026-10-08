@@ -4,9 +4,9 @@ import { PaymentMethod } from "./finance";
 import { FiscalReceiptStatus } from "./fiscal";
 
 // The one markdown this business uses: stale goods, after 18:00 and again
-// the next day, go for half price. A single constant rather than a setting
+// the next day, go for 30% off. A single constant rather than a setting
 // screen — there is exactly one rate, and changing it is a one-line edit.
-export const MARKDOWN_PERCENT = 50;
+export const MARKDOWN_PERCENT = 30;
 
 // Whole tenge: the till's keypad has no decimal key, and asking a cashier
 // for 172.5 ₸ at a bread counter is not a real thing.

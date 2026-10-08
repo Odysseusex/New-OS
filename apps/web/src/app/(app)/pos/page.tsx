@@ -455,7 +455,7 @@ export default function PosPage() {
           ...line,
           markedDown,
           // Recomputed from the product's price at this point rather than
-          // halved and doubled back, so switching the markdown off restores
+          // discounted and scaled back, so switching the markdown off restores
           // the exact original price instead of a rounding artefact.
           unitPrice: markedDown ? markdownPrice(line.product.effectivePrice) : line.product.effectivePrice,
         };
