@@ -160,6 +160,13 @@ export interface SalesSummaryDto {
   todayUnpaid: number;
   last7DaysRevenue: number;
   averageTicket: number;
+  // Goods «под реализацию» sold in the same windows. Never part of the revenue
+  // above; shown beside it on the Sales screen so the whole takings add up.
+  todayConsignment: number;
+  last7DaysConsignment: number;
+  // Оборот: own revenue + goods «под реализацию» (everything the till rang up).
+  todayTurnover: number;
+  last7DaysTurnover: number;
 }
 
 export interface SalesByLocationDto {
@@ -185,6 +192,12 @@ export interface SalesReportDto {
   to: string;
   totalRevenue: number;
   totalCount: number;
+  // Goods «под реализацию» in the period, beside (never inside) totalRevenue.
+  consignmentRevenue: number;
+  // Оборот: totalRevenue + consignmentRevenue, over every sale in the period
+  // (a basket made only of consignment goods counts here, not in totalCount).
+  turnover: number;
+  turnoverCount: number;
   // Money given away on stale goods over the period, and the units it went
   // on. This is really a measure of overproduction: a product that is
   // reliably marked down is a product being baked in the wrong quantity.

@@ -190,6 +190,10 @@ export class SalesService {
     const todayRevenue = todaySales.reduce((sum, s) => sum + ownAmount(s), 0);
     const last7DaysRevenue = last7DaysSales.reduce((sum, s) => sum + ownAmount(s), 0);
     const last7DaysOwnCount = last7DaysSales.filter(isOwnSale).length;
+    const consignmentOf = (sales: { consignmentAmount: { toNumber(): number } }[]) =>
+      round2(sales.reduce((sum, s) => sum + s.consignmentAmount.toNumber(), 0));
+    const todayConsignment = consignmentOf(todaySales);
+    const last7DaysConsignment = consignmentOf(last7DaysSales);
     const averageTicket = last7DaysOwnCount > 0 ? last7DaysRevenue / last7DaysOwnCount : 0;
 
     // Same rule as create(): a split sale is its payment rows, anything else
@@ -227,6 +231,10 @@ export class SalesService {
       todayUnpaid,
       last7DaysRevenue,
       averageTicket,
+      todayConsignment,
+      last7DaysConsignment,
+      todayTurnover: round2(todayRevenue + todayConsignment),
+      last7DaysTurnover: round2(last7DaysRevenue + last7DaysConsignment),
     };
   }
 
@@ -304,6 +312,8 @@ export class SalesService {
       }
     }
 
+    const consignmentRevenue = round2(sales.reduce((sum, s) => sum + s.consignmentAmount.toNumber(), 0));
+
     const byLocation = Array.from(byLocationMap.entries())
       .map(([locationId, v]) => ({ locationId, locationName: v.locationName, revenue: v.revenue, count: v.count }))
       .sort((a, b) => b.revenue - a.revenue);
@@ -325,6 +335,9 @@ export class SalesService {
       to: to.toISOString(),
       totalRevenue,
       totalCount: sales.filter((s) => ownAmount(s) > 0).length,
+      consignmentRevenue,
+      turnover: round2(totalRevenue + consignmentRevenue),
+      turnoverCount: sales.length,
       markdownLoss: Number(markdownLoss.toFixed(2)),
       markdownQuantity,
       byLocation,

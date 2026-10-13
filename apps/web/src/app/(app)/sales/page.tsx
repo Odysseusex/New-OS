@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Receipt, TrendingUp, Wallet, X } from "lucide-react";
+import { Coins, Package, Plus, Receipt, TrendingUp, Wallet, X } from "lucide-react";
 import type { CustomerDto, LocationDto, ProductDto, SaleDto, SalesReportDto, SalesSummaryDto } from "@bakery-os/shared";
 import { ORG_WIDE_ROLES, PAYMENT_RECORD_ROLES, ProductType, SALE_CREATE_ROLES } from "@bakery-os/shared";
 import { api } from "@/lib/api";
@@ -151,10 +151,14 @@ export default function SalesPage() {
         <div className="mb-6 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
 
-      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard icon={Wallet} label="Выручка сегодня" value={formatMoney(summary?.todayRevenue ?? 0)} />
-        <StatCard icon={TrendingUp} label="Выручка за 7 дней" value={formatMoney(summary?.last7DaysRevenue ?? 0)} />
+        <StatCard icon={Package} label="Под реализацию сегодня" value={formatMoney(summary?.todayConsignment ?? 0)} />
+        <StatCard icon={Coins} label="Оборот сегодня" value={formatMoney(summary?.todayTurnover ?? 0)} />
         <StatCard icon={Receipt} label="Средний чек" value={formatMoney(summary?.averageTicket ?? 0)} />
+        <StatCard icon={TrendingUp} label="Выручка за 7 дней" value={formatMoney(summary?.last7DaysRevenue ?? 0)} />
+        <StatCard icon={Package} label="Под реализацию за 7 дней" value={formatMoney(summary?.last7DaysConsignment ?? 0)} />
+        <StatCard icon={Coins} label="Оборот за 7 дней" value={formatMoney(summary?.last7DaysTurnover ?? 0)} />
       </div>
 
       <div className="rounded-2xl border border-border bg-surface shadow-card">
@@ -217,8 +221,17 @@ export default function SalesPage() {
           {periodSummary && (
             <p className="mt-3 text-sm text-foreground">
               {periodSummary.totalCount === 0
-                ? "Продаж за этот период нет"
+                ? periodSummary.turnoverCount > 0
+                  ? "Своих продаж за этот период нет"
+                  : "Продаж за этот период нет"
                 : `${periodSummary.totalCount} продаж(и) на сумму ${formatMoney(periodSummary.totalRevenue)}`}
+              {periodSummary.consignmentRevenue > 0 && (
+                <>
+                  {" "}
+                  · Под реализацию: {formatMoney(periodSummary.consignmentRevenue)} · Оборот: {formatMoney(periodSummary.turnover)} (
+                  {periodSummary.turnoverCount} чеков)
+                </>
+              )}
               {isOrgWide && !locationFilter && periodSummary.byLocation.length > 0 && (
                 <span className="text-muted">
                   {" "}

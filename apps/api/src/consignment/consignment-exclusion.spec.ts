@@ -77,6 +77,14 @@ describe("goods sold «под реализацию» are not our revenue", () =>
     expect(report.byProduct.map((p) => p.productName)).toEqual(["Хлеб"]);
     const summary = await services.sales.summary(org.user);
     expect(summary.todayRevenue).toBe(1000);
+    // The Sales screen shows the village's goods BESIDE our revenue, never inside it.
+    expect(summary.todayConsignment).toBe(2700);
+    expect(summary.todayTurnover).toBe(3700);
+    expect(summary.last7DaysConsignment).toBe(2700);
+    expect(summary.last7DaysTurnover).toBe(3700);
+    expect(report.consignmentRevenue).toBe(2700);
+    expect(report.turnover).toBe(3700);
+    expect(report.turnoverCount).toBe(1);
     expect(summary.todayTakings.find((t) => t.method === PaymentMethod.CASH)?.amount).toBe(3700);
     const dynamics = await services.sales.dynamics(org.user, from, to);
     expect(dynamics.totalRevenue).toBe(1000);
@@ -93,7 +101,13 @@ describe("goods sold «под реализацию» are not our revenue", () =>
     const { from, to } = range();
     const summary = await services.sales.summary(org.user);
     expect(summary.todaySalesCount).toBe(1);
-    expect((await services.sales.report(org.user, from, to)).totalCount).toBe(1);
+    const report = await services.sales.report(org.user, from, to);
+    expect(report.totalCount).toBe(1);
+    // …but it is a till sale: it is in the turnover and the consignment figure.
+    expect(report.turnoverCount).toBe(2);
+    expect(report.consignmentRevenue).toBe(3600);
+    expect(report.turnover).toBe(4600);
+    expect(report.totalRevenue).toBe(1000);
     expect(await owed()).toBe(3600);
     expect((await services.finance.getProfitAndLoss(org.organizationId, from, to)).netRevenue).toBe(1000);
   });
