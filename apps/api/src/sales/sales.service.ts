@@ -1136,6 +1136,10 @@ export class SalesService {
       if (products.length !== new Set(productIds).size) {
         throw new BadRequestException("Один или несколько товаров не найдены");
       }
+      const semiFinished = products.filter((p) => p.type === "SEMI_FINISHED");
+      if (semiFinished.length > 0) {
+        throw new BadRequestException(`Полуфабрикат не продаётся: ${semiFinished.map((p) => p.name).join(", ")}`);
+      }
       const productById = new Map(products.map((p) => [p.id, p]));
 
       const stockLevels = await tx.stockLevel.findMany({

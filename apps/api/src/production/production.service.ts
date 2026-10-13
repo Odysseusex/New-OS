@@ -7,10 +7,12 @@ import {
   ProductionBatchStatus,
   ProductionCancelReason,
   ProductionCostComponent,
+  ProductType,
   CostBasis,
   Unit,
 } from "@bakery-os/shared";
 import { round2, round4 } from "../common/money";
+import { expandRecipe, loadRecipeIndex, TreeRecipe } from "../recipes/recipe-tree";
 import { CostingService } from "../costing/costing.service";
 import { ProductionBatchStatus as PrismaProductionBatchStatus, StockMovementType } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
@@ -151,9 +153,13 @@ export class ProductionService {
 
     const recipe = await this.prisma.recipe.findFirst({
       where: { id: dto.recipeId, organizationId: user.organizationId },
+      include: { product: { select: { type: true } } },
     });
     if (!recipe) {
       throw new NotFoundException("Рецептура не найдена");
+    }
+    if (recipe.product.type === ProductType.SEMI_FINISHED) {
+      throw new BadRequestException("Полуфабрикат отдельным заданием не производится — он входит в техкарту готового изделия");
     }
 
     const batch = await this.prisma.productionBatch.create({
@@ -273,44 +279,64 @@ export class ProductionService {
 
       const scale = dto.actualQuantity / batch.recipe.yieldQuantity.toNumber();
 
+      // The recipe expanded to what is really consumed: a semi-finished
+      // ingredient (cream, crumbs) is replaced by the raw materials of its own
+      // recipe, scaled to the amount this batch needs. For a flat recipe this is
+      // exactly its own lines.
+      const index = await loadRecipeIndex(tx, user.organizationId, [batch.recipe.productId]);
+      // An archived recipe can still finish a batch that was already running.
+      const recipeNode: TreeRecipe = index.get(batch.recipe.productId) ?? {
+        productId: batch.recipe.productId,
+        yieldQuantity: batch.recipe.yieldQuantity.toNumber(),
+        items: batch.recipe.items.map((item) => ({
+          quantity: item.quantity.toNumber(),
+          ingredient: {
+            productId: item.ingredientProductId,
+            name: item.ingredientProduct.name,
+            type: item.ingredientProduct.type as ProductType,
+            price: item.ingredientProduct.price.toNumber(),
+            trackInventory: item.ingredientProduct.trackInventory,
+          },
+        })),
+      };
+      const expanded = expandRecipe(recipeNode, scale, index);
+      if (expanded.missing.length > 0) {
+        throw new BadRequestException(`У полуфабриката нет активной техкарты: ${expanded.missing.join(", ")}`);
+      }
+
       // Ingredients with trackInventory=false (e.g. tap water) aren't
       // received or held as stock, so they're excluded from the
       // insufficient-stock check and don't get a consumption movement —
       // they still priced into the recipe's cost via recipes.service.ts.
-      const trackedItems = batch.recipe.items.filter((item) => item.ingredientProduct.trackInventory);
+      const trackedItems = expanded.lines.filter((line) => line.ingredient.trackInventory);
 
       for (const item of trackedItems) {
-        const requiredQuantity = item.quantity.toNumber() * scale;
         const stockLevel = await tx.stockLevel.findUnique({
-          where: { locationId_productId: { locationId: batch.locationId, productId: item.ingredientProductId } },
+          where: { locationId_productId: { locationId: batch.locationId, productId: item.ingredient.productId } },
         });
-        if (!stockLevel || stockLevel.quantity.toNumber() < requiredQuantity) {
+        if (!stockLevel || stockLevel.quantity.toNumber() < item.quantity) {
           throw new BadRequestException(
-            `Недостаточно ингредиента «${item.ingredientProduct.name}» на точке для этого объёма`,
+            `Недостаточно ингредиента «${item.ingredient.name}» на точке для этого объёма`,
           );
         }
       }
 
       for (const item of trackedItems) {
-        const requiredQuantity = item.quantity.toNumber() * scale;
         await decrementStockOrThrow(
           tx,
-          { locationId: batch.locationId, productId: item.ingredientProductId, quantity: requiredQuantity },
-          `Недостаточно ингредиента «${item.ingredientProduct.name}» на точке для этого объёма`,
+          { locationId: batch.locationId, productId: item.ingredient.productId, quantity: item.quantity },
+          `Недостаточно ингредиента «${item.ingredient.name}» на точке для этого объёма`,
         );
       }
 
-      // Ingredient cost of this batch: every recipe line (water included, as
+      // Ingredient cost of this batch: every consumed line (water included, as
       // in the recipe's own cost) at the ingredient's price today. Frozen onto
       // the consumption rows, the output row and ProductionBatchCost, so the
       // finished goods carry what they cost to make even after prices move.
       // Packaging, labour, utilities, overhead and technological loss are not
       // computed — their policy (D6) is not approved.
       const ingredientTotal = round2(
-        batch.recipe.items.reduce(
-          (sum, item) => sum + round2(item.quantity.toNumber() * scale * item.ingredientProduct.price.toNumber()),
-          0,
-        ),
+        expanded.lines.reduce((sum, line) => sum + round2(line.quantity * line.ingredient.price), 0),
       );
 
       if (trackedItems.length > 0) {
@@ -318,13 +344,13 @@ export class ProductionService {
           data: trackedItems.map((item) => ({
             organizationId: user.organizationId,
             locationId: batch.locationId,
-            productId: item.ingredientProductId,
+            productId: item.ingredient.productId,
             type: StockMovementType.PRODUCTION_CONSUMPTION,
-            quantity: item.quantity.toNumber() * scale,
+            quantity: item.quantity,
             reason: "Расход на производственное задание",
             batchId: batch.id,
             createdById: user.id,
-            unitCost: round4(item.ingredientProduct.price.toNumber()),
+            unitCost: round4(item.ingredient.price),
             costBasis: CostBasis.RAW_MATERIAL_PRICE,
           })),
         });

@@ -72,24 +72,29 @@ export function convertUnitQuantity(value: number, fromUnit: Unit, toUnit: Unit)
 // FINISHED_GOOD: can be the output of a recipe, sold, or invoiced.
 // PACKAGING: a stock item (bought, counted, written off) that is neither a
 //            recipe ingredient nor sold on its own.
+// SEMI_FINISHED: has its own recipe and is an ingredient of other recipes (cream,
+//            crumbs, dough); never sold, never bought, no stock of its own.
 // Purely functional — separate from Category, which is just for browsing. A
 // category belongs to exactly one type (see CategoryDto.type).
 export enum ProductType {
   RAW_MATERIAL = "RAW_MATERIAL",
   PACKAGING = "PACKAGING",
   FINISHED_GOOD = "FINISHED_GOOD",
+  SEMI_FINISHED = "SEMI_FINISHED",
 }
 
 export const PRODUCT_TYPE_LABELS_RU: Record<ProductType, string> = {
   [ProductType.RAW_MATERIAL]: "Сырьё",
   [ProductType.PACKAGING]: "Упаковка",
   [ProductType.FINISHED_GOOD]: "Готовая продукция",
+  [ProductType.SEMI_FINISHED]: "Полуфабрикат",
 };
 
 // The order types are shown in, everywhere a list is grouped by type.
 export const PRODUCT_TYPE_ORDER: ProductType[] = [
   ProductType.RAW_MATERIAL,
   ProductType.PACKAGING,
+  ProductType.SEMI_FINISHED,
   ProductType.FINISHED_GOOD,
 ];
 

@@ -55,6 +55,10 @@ enum ProductType {
   // sold on its own. Cost comes from actual purchases only (CostingService is
   // untouched) — no accounting treatment of its own has been decided.
   PACKAGING
+  // A component with its own recipe (cream, crumbs, dough) that is only ever an
+  // INGREDIENT of another recipe: not sold, not bought. Its cost comes from its
+  // own recipe; producing a parent batch expands it into raw materials.
+  SEMI_FINISHED
 }
 
 enum StockMovementType {

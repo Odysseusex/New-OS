@@ -734,7 +734,7 @@ consignment by `consignmentSupplierId` alone; `consignmentPrice` is retired).
 
 Full write-up: `docs/PRODUCT-CLASSIFICATION.md`. The rules that are easy to break:
 
-- `ProductType` is `RAW_MATERIAL | PACKAGING | FINISHED_GOOD`. Packaging is a
+- `ProductType` is `RAW_MATERIAL | PACKAGING | FINISHED_GOOD | SEMI_FINISHED`. Packaging is a
   stock item only: never a recipe ingredient (recipes accept RAW only), not sold,
   `CostingService` untouched (purchase average else unknown). Don't invent
   packaging accounting or consumption without a fresh request.
@@ -767,6 +767,22 @@ Full write-up: `docs/PRODUCT-CLASSIFICATION.md`. The rules that are easy to brea
   every legacy NULL `SaleItem.categoryIdSnapshot` with the product's then-current
   category; the promotions report reads the snapshot too). POS shows main categories only.
   Details: `docs/PRODUCT-CLASSIFICATION.md`.
+
+## Semi-finished products (полуфабрикаты) — Stage 1 built
+
+Full write-up: `docs/SEMI-FINISHED-DESIGN.md`. A recipe ingredient may now be `RAW_MATERIAL` **or**
+`SEMI_FINISHED` (a component with its own recipe: cream, crumbs, dough). Rules that are easy to break:
+
+- **One place** knows nested cost, expansion to raw materials and loop/depth checks:
+  `apps/api/src/recipes/recipe-tree.ts`. Recipe card, `resolveProductUnitCosts` (hence `CostingService`,
+  untouched) and `ProductionService.complete` all use it. Never add a flat per-item cost sum again.
+- Producing the parent **expands** semi-finished lines into raw materials (stock check, consumption rows,
+  cost) — the semi-finished product has no stock, `trackInventory` is forced false, it is never sold or
+  bought and has no batch of its own. Stage 2 (stocked intermediates) is not built.
+- A recipe's yield is stored to 0.001 of the unit; unknown cost (a part with no active recipe) is `null`,
+  never zero (`costComplete: false` on the card).
+- Packaging is still NOT a recipe ingredient (pending the owner's decision); no «Полуфабрикаты» category
+  was created without his approval.
 
 ## Prisma migration workflow (this sandbox has no direct prod DB access)
 

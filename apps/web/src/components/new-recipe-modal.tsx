@@ -55,6 +55,7 @@ function stagesFromRecipe(recipe: RecipeDto): StageRow[] {
 export function NewRecipeModal({
   products,
   existingRecipeProductIds,
+  allRecipes = [],
   recipe,
   duplicateFrom,
   onClose,
@@ -62,6 +63,8 @@ export function NewRecipeModal({
 }: {
   products: ProductDto[];
   existingRecipeProductIds: string[];
+  // Every recipe: a semi-finished ingredient is priced by its own recipe.
+  allRecipes?: RecipeDto[];
   recipe?: RecipeDto;
   // Pre-fills the form from an existing recipe as a starting point for a
   // new one (a different product) — a plain create under the hood, only
@@ -73,9 +76,23 @@ export function NewRecipeModal({
   const source = recipe ?? duplicateFrom;
   const outputOptions = products.filter(
     // Somebody else's goods «под реализацию» are not produced here, so they get no recipe.
-    (p) => p.type === ProductType.FINISHED_GOOD && !p.consignmentSupplierId && !existingRecipeProductIds.includes(p.id),
+    (p) =>
+      (p.type === ProductType.FINISHED_GOOD || p.type === ProductType.SEMI_FINISHED) &&
+      !p.consignmentSupplierId &&
+      !existingRecipeProductIds.includes(p.id),
   );
-  const ingredientOptions = products.filter((p) => p.type === ProductType.RAW_MATERIAL);
+  // Raw materials and semi-finished products (a component with its own recipe).
+  const ingredientOptions = products.filter((p) => p.type === ProductType.RAW_MATERIAL || p.type === ProductType.SEMI_FINISHED);
+  // The name the picker shows: a semi-finished product says so.
+  const ingredientPickerOptions = ingredientOptions.map((p) =>
+    p.type === ProductType.SEMI_FINISHED ? { ...p, name: `${p.name} (полуфабрикат)` } : p,
+  );
+  // What one unit of an ingredient costs: its price for raw material, the unit
+  // cost of its own active recipe for a semi-finished product (0 when it has none).
+  const unitCostOfIngredient = (p: ProductDto): number =>
+    p.type === ProductType.SEMI_FINISHED
+      ? (allRecipes.find((r) => r.productId === p.id && r.isActive && r.costComplete)?.unitCost ?? 0)
+      : p.price;
 
   const [stageTypes, setStageTypes] = useState<RecipeStageTypeDto[]>([]);
 
@@ -176,7 +193,7 @@ export function NewRecipeModal({
     const product = ingredientOptions.find((p) => p.id === row.ingredientProductId);
     const qty = Number(row.quantity);
     if (!product || Number.isNaN(qty)) return sum;
-    return sum + convertUnitQuantity(qty, row.unit, product.unit) * product.price;
+    return sum + convertUnitQuantity(qty, row.unit, product.unit) * unitCostOfIngredient(product);
   }, 0);
   const liveYieldQuantity = Number(yieldQuantity) || 0;
   // The yield is the normal sellable output, already after normal loss: the
@@ -430,7 +447,7 @@ export function NewRecipeModal({
                     scrolling a hundred names to find «Спред растительно-
                     сливочный» is the slow part of writing one. */}
                 <ProductSelect
-                  products={ingredientOptions}
+                  products={ingredientPickerOptions.filter((p) => p.id !== productId)}
                   value={row.ingredientProductId}
                   onChange={(productId) => updateRowIngredient(index, productId)}
                   placeholder="Выберите ингредиент"

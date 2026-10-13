@@ -33,6 +33,7 @@ const SKU_PREFIX_BY_TYPE: Record<ProductType, string> = {
   [ProductType.RAW_MATERIAL]: "ING",
   [ProductType.PACKAGING]: "PKG",
   [ProductType.FINISHED_GOOD]: "PRD",
+  [ProductType.SEMI_FINISHED]: "SEM",
 };
 
 // A blank code is stored as null, never "" — used for both the barcode and
@@ -253,6 +254,9 @@ export class ProductsService {
       await this.assertCategoryFits(organizationId, dto.categoryId, dto.type, true);
     }
     await this.assertConsignmentValid(organizationId, dto.consignmentSupplierId, dto.consignmentPrice);
+    if (dto.type === ProductType.SEMI_FINISHED && dto.consignmentSupplierId) {
+      throw new BadRequestException("Полуфабрикат не может быть товаром под реализацию");
+    }
 
     const product = await this.prisma.product.create({
       // An empty barcode from the form is stored as null, never "": a blank
@@ -264,6 +268,9 @@ export class ProductsService {
         barcode: normalizeBarcode(dto.barcode),
         ntin: normalizeBarcode(dto.ntin),
         organizationId,
+        // A semi-finished product has no stock of its own: producing its parent
+        // expands it into raw materials.
+        ...(dto.type === ProductType.SEMI_FINISHED ? { trackInventory: false } : {}),
       },
       include: PRODUCT_INCLUDE,
     });
@@ -311,10 +318,34 @@ export class ProductsService {
       dto.consignmentPrice !== undefined ? dto.consignmentPrice : product.consignmentPrice?.toNumber() ?? null,
     );
 
+    const finalType = dto.type ?? (product.type as ProductType);
+    if (dto.type !== undefined && dto.type !== product.type) {
+      if (dto.type === ProductType.SEMI_FINISHED) {
+        const [sold, moved] = await Promise.all([
+          this.prisma.saleItem.count({ where: { productId } }),
+          this.prisma.stockMovement.count({ where: { productId } }),
+        ]);
+        if (sold + moved > 0) {
+          throw new BadRequestException("Товар уже продавался или двигался по складу — сделать его полуфабрикатом нельзя");
+        }
+      }
+      if (product.type === ProductType.SEMI_FINISHED) {
+        const used = await this.prisma.recipeItem.count({ where: { ingredientProductId: productId } });
+        if (used > 0) {
+          throw new BadRequestException("Полуфабрикат используется в техкартах — сначала уберите его оттуда");
+        }
+      }
+    }
+    if (finalType === ProductType.SEMI_FINISHED) {
+      const supplier = dto.consignmentSupplierId !== undefined ? dto.consignmentSupplierId : product.consignmentSupplierId;
+      if (supplier) throw new BadRequestException("Полуфабрикат не может быть товаром под реализацию");
+    }
+
     const updated = await this.prisma.$transaction(async (tx) => {
       const saved = await tx.product.update({
         where: { id: productId },
         data: {
+          ...(finalType === ProductType.SEMI_FINISHED ? { trackInventory: false } : {}),
           ...(dto.name !== undefined ? { name: dto.name } : {}),
           ...(dto.sku !== undefined ? { sku: dto.sku } : {}),
           ...(dto.barcode !== undefined ? { barcode: normalizeBarcode(dto.barcode) } : {}),
@@ -323,7 +354,7 @@ export class ProductsService {
           ...(dto.type !== undefined ? { type: dto.type } : {}),
           ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
           ...(dto.price !== undefined ? { price: dto.price } : {}),
-          ...(dto.trackInventory !== undefined ? { trackInventory: dto.trackInventory } : {}),
+          ...(dto.trackInventory !== undefined && finalType !== ProductType.SEMI_FINISHED ? { trackInventory: dto.trackInventory } : {}),
           ...(dto.isPosQuickItem !== undefined ? { isPosQuickItem: dto.isPosQuickItem } : {}),
           ...(dto.minQuantity !== undefined ? { minQuantity: dto.minQuantity } : {}),
           ...(dto.consignmentSupplierId !== undefined

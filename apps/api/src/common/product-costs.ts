@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { loadRecipeIndex, recipeUnitCost } from "../recipes/recipe-tree";
 
 // Unit cost per product, resolved the one way the whole app agrees on.
 //
@@ -28,11 +29,10 @@ export async function resolveProductUnitCosts(
   // identical to the unfiltered one.
   productIds?: string[],
 ): Promise<Map<string, number>> {
-  const [recipes, purchaseItems, invoiceItems] = await Promise.all([
-    prisma.recipe.findMany({
-      where: { organizationId, isActive: true, ...(productIds ? { productId: { in: productIds } } : {}) },
-      include: { items: { include: { ingredientProduct: true } } },
-    }),
+  const [recipeIndex, purchaseItems, invoiceItems] = await Promise.all([
+    // Active recipes, plus (level by level) those of the semi-finished products
+    // they use, so a nested recipe is costed through its parts.
+    loadRecipeIndex(prisma, organizationId, productIds),
     prisma.purchaseOrderItem.findMany({
       where: { purchaseOrder: { organizationId, status: "RECEIVED" }, ...(productIds ? { productId: { in: productIds } } : {}) },
     }),
@@ -41,16 +41,13 @@ export async function resolveProductUnitCosts(
     }),
   ]);
 
-  // Ingredient-based cost for products that have a техкарта.
+  // Ingredient-based cost for products that have a техкарта. A recipe with a
+  // part that cannot be priced is absent (unknown), never partly counted.
   const recipeCostByProduct = new Map<string, number>();
-  for (const recipe of recipes) {
-    const yieldQuantity = recipe.yieldQuantity.toNumber();
-    if (yieldQuantity <= 0) continue;
-    const totalIngredientCost = recipe.items.reduce(
-      (sum, item) => sum + item.quantity.toNumber() * item.ingredientProduct.price.toNumber(),
-      0,
-    );
-    recipeCostByProduct.set(recipe.productId, totalIngredientCost / yieldQuantity);
+  const memo = new Map<string, number | null>();
+  for (const recipe of recipeIndex.values()) {
+    const cost = recipeUnitCost(recipe, recipeIndex, memo);
+    if (cost !== null) recipeCostByProduct.set(recipe.productId, cost);
   }
 
   // Fallback for products without a recipe: weighted-average purchase cost.

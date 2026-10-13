@@ -53,6 +53,8 @@ const TYPE_BY_LABEL = new Map<string, ProductType | "SERVICE">([
   ["packaging", ProductType.PACKAGING],
   ["готовая продукция", ProductType.FINISHED_GOOD],
   ["finished_good", ProductType.FINISHED_GOOD],
+  ["полуфабрикат", ProductType.SEMI_FINISHED],
+  ["semi_finished", ProductType.SEMI_FINISHED],
   ["сервисная позиция pos", "SERVICE"],
   ["сервисная позиция", "SERVICE"],
 ]);

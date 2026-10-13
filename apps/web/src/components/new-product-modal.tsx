@@ -86,7 +86,7 @@ export function NewProductModal({
         unit,
         type,
         categoryId: subcategoryId || parentCategoryId || undefined,
-        price: Number(price),
+        price: type === ProductType.SEMI_FINISHED ? Number(price) || 0 : Number(price),
         trackInventory,
         isPosQuickItem,
         minQuantity: Number(minQuantity),
@@ -251,13 +251,17 @@ export function NewProductModal({
 
         <div className="mb-5">
           <label className="mb-1.5 block text-sm font-medium text-foreground">
-            {type === ProductType.FINISHED_GOOD ? "Цена продажи, ₸" : "Цена закупки, ₸ за ед."}
+            {type === ProductType.FINISHED_GOOD
+              ? "Цена продажи, ₸"
+              : type === ProductType.SEMI_FINISHED
+                ? "Цена, ₸ (не используется)"
+                : "Цена закупки, ₸ за ед."}
           </label>
           <input
             type="number"
             min="0"
             step="any"
-            required
+            required={type !== ProductType.SEMI_FINISHED}
             value={price}
             onChange={(e) => setPrice(e.target.value)}
             className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
@@ -267,7 +271,9 @@ export function NewProductModal({
               ? "Используется для автоматического расчёта себестоимости в рецептах — держите в актуальном состоянии по факту закупки"
               : type === ProductType.PACKAGING
                 ? "Справочная цена — себестоимость упаковки берётся из фактических закупок"
-                : "Цена, по которой товар продаётся клиенту"}
+                : type === ProductType.SEMI_FINISHED
+                  ? "Себестоимость полуфабриката считается по его техкарте"
+                  : "Цена, по которой товар продаётся клиенту"}
           </p>
         </div>
 

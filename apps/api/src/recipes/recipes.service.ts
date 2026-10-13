@@ -3,6 +3,7 @@ import { audited, recordAudit } from "../audit/audit";
 import { PrismaService } from "../prisma/prisma.service";
 import { ProductType, RecipeDto, RecipeParameterKind, Unit } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
+import { findRecipeProblem, loadRecipeIndex, semiFinishedUnitCosts } from "./recipe-tree";
 import { CreateRecipeDto } from "./dto/create-recipe.dto";
 import { UpdateRecipeDto } from "./dto/update-recipe.dto";
 
@@ -37,7 +38,14 @@ export class RecipesService {
       orderBy: { product: { name: "asc" } },
     });
 
-    return recipes.map(this.toDto);
+    const semiCosts = await this.semiCostsFor(organizationId, recipes);
+    return recipes.map((recipe) => this.toDto(recipe, semiCosts));
+  }
+
+  // Unit cost of every semi-finished ingredient used by these recipes.
+  private semiCostsFor(organizationId: string, recipes: { items: { ingredientProduct: { id?: string; type: string } ; ingredientProductId: string }[] }[]) {
+    const ids = recipes.flatMap((r) => r.items.filter((i) => i.ingredientProduct.type === ProductType.SEMI_FINISHED).map((i) => i.ingredientProductId));
+    return semiFinishedUnitCosts(this.prisma, organizationId, ids);
   }
 
   async archive(organizationId: string, recipeId: string, actorId: string | null = null): Promise<RecipeDto> {
@@ -53,6 +61,7 @@ export class RecipesService {
     if (!recipe) {
       throw new NotFoundException("Рецептура не найдена");
     }
+    await this.assertNotUsedAsIngredient(organizationId, recipe.productId);
     const batchesCount = await this.prisma.productionBatch.count({ where: { recipeId } });
     if (batchesCount > 0) {
       throw new BadRequestException(
@@ -76,6 +85,7 @@ export class RecipesService {
     if (!recipe) {
       throw new NotFoundException("Рецептура не найдена");
     }
+    if (!isActive) await this.assertNotUsedAsIngredient(organizationId, recipe.productId);
     const updated = await audited(
       this.prisma,
       { organizationId, actorId, action: isActive ? "recipe.restore" : "recipe.archive", entityType: "Recipe", entityId: recipeId, before: { isActive: recipe.isActive } },
@@ -84,7 +94,19 @@ export class RecipesService {
         return { result: saved, after: { isActive: saved.isActive } };
       },
     );
-    return this.toDto(updated);
+    return this.toDto(updated, await this.semiCostsFor(organizationId, [updated]));
+  }
+
+  // A semi-finished product that other active recipes use cannot lose its recipe.
+  private async assertNotUsedAsIngredient(organizationId: string, productId: string) {
+    const users = await this.prisma.recipeItem.findMany({
+      where: { ingredientProductId: productId, recipe: { organizationId, isActive: true } },
+      select: { recipe: { select: { product: { select: { name: true } } } } },
+    });
+    if (users.length > 0) {
+      const names = [...new Set(users.map((u) => u.recipe.product.name))].join(", ");
+      throw new BadRequestException(`Техкарта используется как полуфабрикат в: ${names}. Сначала уберите её оттуда.`);
+    }
   }
 
   async create(actor: AuthenticatedUser, dto: CreateRecipeDto): Promise<RecipeDto> {
@@ -95,8 +117,8 @@ export class RecipesService {
     if (!product) {
       throw new NotFoundException("Товар не найден");
     }
-    if (product.type !== ProductType.FINISHED_GOOD) {
-      throw new BadRequestException("Рецептуру можно создать только для готовой продукции");
+    if (product.type !== ProductType.FINISHED_GOOD && product.type !== ProductType.SEMI_FINISHED) {
+      throw new BadRequestException("Рецептуру можно создать только для готовой продукции или полуфабриката");
     }
     if (product.consignmentSupplierId) {
       throw new BadRequestException("Товар под реализацию не производится — рецептура для него не нужна");
@@ -116,6 +138,7 @@ export class RecipesService {
     }
 
     await this.assertValidIngredients(organizationId, dto.items);
+    await this.assertNoRecipeLoop(organizationId, dto.productId, dto.items);
     if (dto.stages) {
       await this.assertValidStages(organizationId, dto.stages);
     }
@@ -154,7 +177,7 @@ export class RecipesService {
       return created;
     });
 
-    return this.toDto(recipe);
+    return this.toDto(recipe, await this.semiCostsFor(organizationId, [recipe]));
   }
 
   async update(actor: AuthenticatedUser, recipeId: string, dto: UpdateRecipeDto): Promise<RecipeDto> {
@@ -175,6 +198,7 @@ export class RecipesService {
         throw new BadRequestException("Товар не может быть ингредиентом самого себя");
       }
       await this.assertValidIngredients(organizationId, dto.items);
+      await this.assertNoRecipeLoop(organizationId, recipe.productId, dto.items);
     }
     if (dto.stages) {
       await this.assertValidStages(organizationId, dto.stages);
@@ -223,7 +247,7 @@ export class RecipesService {
       return result;
     });
 
-    return this.toDto(updated);
+    return this.toDto(updated, await this.semiCostsFor(organizationId, [updated]));
   }
 
   private stageCreateInput(stage: {
@@ -351,8 +375,43 @@ export class RecipesService {
     if (ingredients.length !== new Set(ingredientIds).size) {
       throw new BadRequestException("Один или несколько ингредиентов не найдены");
     }
-    if (ingredients.some((i) => i.type !== ProductType.RAW_MATERIAL)) {
-      throw new BadRequestException("В качестве ингредиентов можно использовать только сырьё");
+    if (ingredients.some((i) => i.type !== ProductType.RAW_MATERIAL && i.type !== ProductType.SEMI_FINISHED)) {
+      throw new BadRequestException("В качестве ингредиентов можно использовать только сырьё и полуфабрикаты");
+    }
+    // A semi-finished product is priced by its own recipe, so it needs one.
+    const semi = ingredients.filter((i) => i.type === ProductType.SEMI_FINISHED);
+    if (semi.length > 0) {
+      const withRecipe = await this.prisma.recipe.findMany({
+        where: { organizationId, isActive: true, productId: { in: semi.map((p) => p.id) } },
+        select: { productId: true },
+      });
+      const have = new Set(withRecipe.map((r) => r.productId));
+      const missing = semi.filter((p) => !have.has(p.id)).map((p) => p.name);
+      if (missing.length > 0) {
+        throw new BadRequestException(`У полуфабриката нет техкарты: ${missing.join(", ")}. Сначала создайте её.`);
+      }
+    }
+  }
+
+  // A recipe may not use itself through its parts (cream → custard → cream) and
+  // may not nest deeper than MAX_RECIPE_DEPTH.
+  private async assertNoRecipeLoop(organizationId: string, productId: string, items: { ingredientProductId: string }[]) {
+    const semiIds = new Set(
+      (
+        await this.prisma.product.findMany({
+          where: { organizationId, type: ProductType.SEMI_FINISHED },
+          select: { id: true },
+        })
+      ).map((p) => p.id),
+    );
+    if (!items.some((i) => semiIds.has(i.ingredientProductId))) return;
+    const index = await loadRecipeIndex(this.prisma, organizationId);
+    const problem = findRecipeProblem(productId, items, index, semiIds);
+    if (problem?.kind === "CYCLE") {
+      throw new BadRequestException("Техкарта ссылается сама на себя через полуфабрикаты");
+    }
+    if (problem?.kind === "TOO_DEEP") {
+      throw new BadRequestException("Слишком глубокая вложенность полуфабрикатов (не более 4 уровней)");
     }
   }
 
@@ -370,7 +429,7 @@ export class RecipesService {
   private toDto = (recipe: {
     id: string;
     productId: string;
-    product: { name: string; unit: string; price: { toNumber: () => number } };
+    product: { name: string; unit: string; type: string; price: { toNumber: () => number } };
     yieldQuantity: { toNumber: () => number };
     isActive: boolean;
     generalNotes: string | null;
@@ -380,7 +439,7 @@ export class RecipesService {
     items: {
       id: string;
       ingredientProductId: string;
-      ingredientProduct: { name: string; unit: string; price: { toNumber: () => number } };
+      ingredientProduct: { name: string; unit: string; type: string; price: { toNumber: () => number } };
       quantity: { toNumber: () => number };
     }[];
     stages: {
@@ -402,10 +461,17 @@ export class RecipesService {
       summary: string;
       changedBy: { fullName: string };
     }[];
-  }): RecipeDto => {
+  }, semiCosts: Map<string, number | null> = new Map()): RecipeDto => {
     const yieldQuantity = recipe.yieldQuantity.toNumber();
+    // Price of one unit of an ingredient: its price for raw material, the unit
+    // cost of its own recipe for a semi-finished product (null = unknown).
+    const unitCostOf = (item: { ingredientProductId: string; ingredientProduct: { type: string; price: { toNumber: () => number } } }): number | null =>
+      item.ingredientProduct.type === ProductType.SEMI_FINISHED
+        ? (semiCosts.get(item.ingredientProductId) ?? null)
+        : item.ingredientProduct.price.toNumber();
+    const costComplete = recipe.items.every((item) => unitCostOf(item) !== null);
     const totalIngredientCost = recipe.items.reduce(
-      (sum, item) => sum + item.quantity.toNumber() * item.ingredientProduct.price.toNumber(),
+      (sum, item) => sum + item.quantity.toNumber() * (unitCostOf(item) ?? 0),
       0,
     );
     const lossPercent = recipe.lossPercent ? recipe.lossPercent.toNumber() : null;
@@ -452,6 +518,7 @@ export class RecipesService {
       id: recipe.id,
       productId: recipe.productId,
       productName: recipe.product.name,
+      productType: recipe.product.type as ProductType,
       productUnit: recipe.product.unit as Unit,
       productPrice,
       yieldQuantity,
@@ -461,6 +528,8 @@ export class RecipesService {
         ingredientProductName: item.ingredientProduct.name,
         unit: item.ingredientProduct.unit as Unit,
         quantity: item.quantity.toNumber(),
+        ingredientType: item.ingredientProduct.type as ProductType,
+        ingredientUnitCost: unitCostOf(item),
         percentOfDoughWeight:
           resolvedDoughWeightKg && itemWeightsKg.has(item.id)
             ? (itemWeightsKg.get(item.id)! / resolvedDoughWeightKg) * 100
@@ -490,6 +559,7 @@ export class RecipesService {
       lossPercent,
       shelfLifeDays: recipe.shelfLifeDays,
       totalIngredientCost,
+      costComplete,
       unitCost,
       marginPercent,
       isActive: recipe.isActive,

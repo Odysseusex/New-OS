@@ -1,4 +1,4 @@
-import { Unit } from "./catalog";
+import { ProductType, Unit } from "./catalog";
 import type { ProductionCostComponentStatusDto } from "./costing";
 
 export enum ProductionBatchStatus {
@@ -38,6 +38,11 @@ export interface RecipeItemDto {
   ingredientProductName: string;
   unit: Unit;
   quantity: number;
+  // RAW_MATERIAL, or SEMI_FINISHED (a component with its own recipe).
+  ingredientType: ProductType;
+  // Cost of ONE unit of this ingredient: its price for raw material, the unit
+  // cost of its own recipe for a semi-finished product. Null = cannot be priced.
+  ingredientUnitCost: number | null;
   // Share of this recipe's total dough weight (see RecipeDto.doughWeightKg),
   // null when the ingredient's unit can't be converted to weight (e.g. PCS)
   // or when the recipe has no computable dough weight at all.
@@ -126,6 +131,7 @@ export interface RecipeDto {
   id: string;
   productId: string;
   productName: string;
+  productType: ProductType;
   productUnit: Unit;
   productPrice: number;
   yieldQuantity: number;
@@ -140,6 +146,8 @@ export interface RecipeDto {
   // before dividing by loss-adjusted yield — i.e. what the batch's
   // ingredients actually cost, regardless of how many good units it yields.
   totalIngredientCost: number;
+  // False when some ingredient cannot be priced; the figures then leave it out.
+  costComplete: boolean;
   // Cost per finished unit: totalIngredientCost / (yieldQuantity adjusted
   // for lossPercent). This is what marginPercent is computed against, not
   // totalIngredientCost.

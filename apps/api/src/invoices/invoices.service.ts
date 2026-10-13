@@ -70,6 +70,10 @@ export class InvoicesService {
     if (products.length !== new Set(productIds).size) {
       throw new BadRequestException("Один или несколько товаров не найдены");
     }
+    const semi = products.filter((p) => p.type === "SEMI_FINISHED");
+    if (semi.length > 0) {
+      throw new BadRequestException(`Полуфабрикат нельзя закупать: ${semi.map((p) => p.name).join(", ")}`);
+    }
 
     const items = dto.items.map((item) => ({
       productId: item.productId,

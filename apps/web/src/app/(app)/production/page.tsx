@@ -11,6 +11,7 @@ import {
   PRODUCTION_CANCEL_REASON_LABELS_RU,
   PRODUCTION_MANAGE_ROLES,
   ProductionBatchStatus,
+  ProductType,
   RECIPE_MANAGE_ROLES,
   UNIT_LABELS_RU,
 } from "@bakery-os/shared";
@@ -410,7 +411,7 @@ export default function ProductionPage() {
                   />
                   <div>
                     <p className="flex items-center gap-2 font-medium text-foreground">
-                      {recipe.productName}
+                      {recipe.productName}{recipe.productType === ProductType.SEMI_FINISHED && " (полуфабрикат)"}
                       {!recipe.isActive && <ArchivedBadge />}
                     </p>
                     <p className="text-xs text-muted">
@@ -472,7 +473,10 @@ export default function ProductionPage() {
               <ul className="mb-4 space-y-1">
                 {recipe.items.map((item) => (
                   <li key={item.id} className="flex items-center justify-between text-sm">
-                    <span className="text-muted">{item.ingredientProductName}</span>
+                    <span className="text-muted">
+                      {item.ingredientProductName}
+                      {item.ingredientType === ProductType.SEMI_FINISHED && " (полуфабрикат)"}
+                    </span>
                     <span className="text-foreground">
                       {formatQuantity(item.quantity)} {UNIT_LABELS_RU[item.unit]}
                     </span>
@@ -506,7 +510,8 @@ export default function ProductionPage() {
       {modal === "batch" && (
         <NewBatchModal
           locations={locations}
-          recipes={recipes.filter((r) => r.isActive)}
+          // A semi-finished product is not produced on its own: it is part of a finished product's recipe.
+          recipes={recipes.filter((r) => r.isActive && r.productType !== ProductType.SEMI_FINISHED)}
           fixedLocationId={fixedLocationId}
           onClose={() => setModal(null)}
           onCreated={() => {
@@ -520,6 +525,7 @@ export default function ProductionPage() {
         <NewRecipeModal
           products={products.filter((p) => p.isActive)}
           existingRecipeProductIds={recipes.map((r) => r.productId)}
+          allRecipes={recipes}
           recipe={editingRecipe}
           duplicateFrom={duplicateFromRecipe}
           onClose={() => {

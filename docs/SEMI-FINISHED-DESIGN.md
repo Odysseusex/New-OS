@@ -1,6 +1,20 @@
 # Semi-finished products (полуфабрикаты) — design
 
-Status: DESIGN ONLY, nothing built. Needs the owner's yes on the decisions at the end.
+Status: **Stage 1 BUILT** (virtual semi-finished products: calculation + automatic raw consumption).
+Stage 2 (stocked intermediates) is NOT built. Packaging as a recipe ingredient is NOT built (the owner
+did not decide it; the workaround is a raw item «Упаковка»). No «Полуфабрикаты» category was created.
+
+Built as designed, with these specifics:
+* Migration `20261013120000_product_type_semi_finished` (one enum value). Nothing existing changes.
+* `apps/api/src/recipes/recipe-tree.ts` is the single place for nested cost / expansion / loop checks;
+  `common/product-costs.ts`, `RecipesService` and `ProductionService.complete` all use it.
+  `CostingService` was NOT edited.
+* A recipe's yield is stored to 0.001 of the unit (850.85 g is entered as 0.851 kg).
+* Max 4 recipe levels in a chain, root included (трайфл → крем → заварной крем = 3).
+* A semi-finished ingredient must have an active recipe; a recipe other recipes use cannot be archived/deleted.
+* A semi-finished product is forced to `trackInventory = false`, cannot be consignment, cannot be sold
+  (till, API) or bought (purchase orders, invoices), and has no production batch of its own.
+* A product that was already sold or moved cannot be turned into one; one used in a recipe cannot stop being one.
 
 ## Why
 
