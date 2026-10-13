@@ -33,6 +33,9 @@ export function NewProductModal({
   const [subcategoryId, setSubcategoryId] = useState(initialCategory?.parentId ? initialCategory.id : "");
   const [price, setPrice] = useState(product ? String(product.price) : "");
   const [trackInventory, setTrackInventory] = useState(product?.trackInventory ?? true);
+  // A semi-finished product has no stock of its own (it is expanded into raw
+  // materials when the finished product is made), so the switch is fixed off.
+  const isSemiFinished = type === ProductType.SEMI_FINISHED;
   const [isPosQuickItem, setIsPosQuickItem] = useState(product?.isPosQuickItem ?? false);
   const [minQuantity, setMinQuantity] = useState(String(product?.minQuantity ?? 0));
   // Goods taken under consignment — somebody else's stock on our shelf that
@@ -56,6 +59,7 @@ export function NewProductModal({
 
   function handleTypeChange(next: ProductType) {
     setType(next);
+    if (next === ProductType.SEMI_FINISHED) setTrackInventory(false);
     const parent = categories.find((c) => c.id === parentCategoryId);
     if (parent && !categoryAcceptsType(parent.type, next)) {
       setParentCategoryId("");
@@ -87,7 +91,7 @@ export function NewProductModal({
         type,
         categoryId: subcategoryId || parentCategoryId || undefined,
         price: type === ProductType.SEMI_FINISHED ? Number(price) || 0 : Number(price),
-        trackInventory,
+        trackInventory: isSemiFinished ? false : trackInventory,
         isPosQuickItem,
         minQuantity: Number(minQuantity),
         // Null, not undefined, so switching a product back to our own goods
@@ -322,16 +326,17 @@ export function NewProductModal({
           <label className="flex items-start gap-2.5 text-sm text-foreground">
             <input
               type="checkbox"
-              checked={trackInventory}
+              checked={isSemiFinished ? false : trackInventory}
+              disabled={isSemiFinished}
               onChange={(e) => setTrackInventory(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-border text-accent focus:ring-accent/20"
+              className="mt-0.5 h-4 w-4 rounded border-border text-accent focus:ring-accent/20 disabled:opacity-50"
             />
             <span>
               <span className="font-medium">Контролировать складской остаток</span>
               <p className="mt-0.5 text-xs text-muted">
-                Выключите для ресурсов без физического прихода (например, вода из водопровода) — товар
-                останется доступен в рецептах и расчёте себестоимости, но исчезнет из остатков склада,
-                приёмки, списания и предупреждений о низком остатке
+                {isSemiFinished
+                  ? "У полуфабриката нет остатка на складе: при производстве изделия он списывается сырьём из своей техкарты"
+                  : "Выключите для ресурсов без физического прихода (например, вода из водопровода) — товар останется доступен в рецептах и расчёте себестоимости, но исчезнет из остатков склада, приёмки, списания и предупреждений о низком остатке"}
               </p>
             </span>
           </label>
@@ -356,7 +361,7 @@ export function NewProductModal({
           </label>
         </div>
 
-        {trackInventory && (
+        {trackInventory && !isSemiFinished && (
           <div className="mb-5">
             <label className="mb-1.5 block text-sm font-medium text-foreground">Минимальный остаток</label>
             <input
