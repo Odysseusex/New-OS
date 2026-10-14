@@ -134,6 +134,9 @@ describe("a filling batch: plan in, weighed yield out", () => {
   it("stock value and cost agree: the costing interface values the filling at its average", async () => {
     const costs = await costing.currentUnitCosts(org.organizationId);
     expect(costs.get(ids.filling)?.unitCost).toBe(await avgOf(ids.filling));
+    expect(costs.get(ids.filling)?.basis).toBe("PRODUCTION_AVERAGE");
+    // A finished product is still «по техкарте», and a virtual semi-finished product too.
+    expect(costs.get(ids.pie)?.basis).toBe("RECIPE_CURRENT");
   });
 });
 
@@ -209,6 +212,8 @@ describe("selling, spoiling and the books agree (one batch, one price)", () => {
     // The write-off is a loss at the average, like any other write-off.
     const loss = await prisma.stockMovement.findFirstOrThrow({ where: { productId: ids.filling, type: "WRITE_OFF" } });
     expect(loss.unitCost?.toNumber()).toBe(await avgOf(ids.filling));
+    // …and the row says WHY that price: the weighted average, not a recipe.
+    expect(loss.costBasis).toBe("PRODUCTION_AVERAGE");
   });
 });
 
@@ -303,5 +308,32 @@ describe("guards and backward compatibility", () => {
     const consumed = (await movesOf(id)).filter((m) => m.type === "PRODUCTION_CONSUMPTION");
     expect(consumed.map((m) => m.productId)).toEqual([ids.oil]);
     expect(await stockOf(ids.oil)).toBeCloseTo(oilBefore - 0.2, 6);
+  });
+});
+
+describe("the revaluation of finished goods is the architecture's existing rule, not something this feature adds", () => {
+  it("an ordinary price change on a raw material produces the same kind of ledger-vs-valuation difference", async () => {
+    // Bread baked from flour at 50, sold none, then the flour price moves to 80:
+    // the bread already on the shelf is valued at TODAY's recipe cost (CostingService),
+    // the books carry it at what it cost when baked.
+    const bread = await prisma.product.create({ data: { organizationId: org.organizationId, name: "Хлеб-переоценка", sku: `ST-${++n}`, unit: Unit.PCS, type: ProductType.FINISHED_GOOD, price: 100 } });
+    const r = await recipes.create(org.user, { productId: bread.id, yieldQuantity: 10, items: [{ ingredientProductId: ids.flour, quantity: 2 }] } as never);
+    await batch(r.id, 10, 10);
+    const reports = new LedgerReportsService(prisma, services.finance);
+    const diagnostics = new LedgerDiagnosticsService(prisma, services.finance, new BalanceService(prisma, services.finance), reports, ledger);
+    const inventoryCheck = async () => (await diagnostics.run(org.organizationId)).checks.find((c) => c.check === "INVENTORY_SUBLEDGER")!;
+    const stockValue = async () => {
+      const costs = await costing.currentUnitCosts(org.organizationId);
+      const levels = await prisma.stockLevel.findMany({ where: { organizationId: org.organizationId, quantity: { gt: 0 } } });
+      return levels.reduce((sum, l) => sum + l.quantity.toNumber() * (costs.get(l.productId)?.unitCost ?? 0), 0);
+    };
+    const [checkBefore, valueBefore] = [await inventoryCheck(), await stockValue()];
+    await prisma.product.update({ where: { id: ids.flour }, data: { price: 80 } });
+    const [checkAfter, valueAfter] = [await inventoryCheck(), await stockValue()];
+    // The books did not move; the valuation did (raw flour AND every product whose recipe uses it),
+    // so the difference moved by exactly that — with no filling involved at all.
+    expect(Math.abs(valueAfter - valueBefore)).toBeGreaterThan(50);
+    expect(Math.abs((checkAfter.difference ?? 0) - (checkBefore.difference ?? 0))).toBeCloseTo(Math.abs(valueAfter - valueBefore), 0);
+    await prisma.product.update({ where: { id: ids.flour }, data: { price: 50 } });
   });
 });

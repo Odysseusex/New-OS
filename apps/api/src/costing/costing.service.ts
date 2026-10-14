@@ -56,7 +56,7 @@ export class CostingService {
   ): Promise<Map<string, UnitCost>> {
     const idFilter = productIds ? { id: { in: productIds } } : {};
     const [products, resolved, recipeProductIds] = await Promise.all([
-      client.product.findMany({ where: { organizationId, ...idFilter }, select: { id: true, type: true, price: true } }),
+      client.product.findMany({ where: { organizationId, ...idFilter }, select: { id: true, type: true, price: true, trackInventory: true, averageUnitCost: true } }),
       resolveProductUnitCosts(client, organizationId, productIds),
       client.recipe.findMany({
         where: { organizationId, isActive: true, ...(productIds ? { productId: { in: productIds } } : {}) },
@@ -72,9 +72,16 @@ export class CostingService {
       }
       const cost = resolved.get(product.id);
       if (cost === undefined) continue;
+      // A semi-finished product held as stock is valued at its moving average (the
+      // resolver already returns that figure); say so instead of «техкарта».
+      const atAverage = product.type === ProductType.SEMI_FINISHED && product.trackInventory && product.averageUnitCost !== null;
       out.set(product.id, {
         unitCost: cost,
-        basis: hasRecipe.has(product.id) ? CostBasis.RECIPE_CURRENT : CostBasis.PURCHASE_AVERAGE_CURRENT,
+        basis: atAverage
+          ? CostBasis.PRODUCTION_AVERAGE
+          : hasRecipe.has(product.id)
+            ? CostBasis.RECIPE_CURRENT
+            : CostBasis.PURCHASE_AVERAGE_CURRENT,
       });
     }
     return out;
