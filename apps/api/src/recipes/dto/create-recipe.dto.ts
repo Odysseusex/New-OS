@@ -41,6 +41,10 @@ export class CreateRecipeDto {
   generalNotes?: string;
 
   @IsOptional()
+  @IsString()
+  uncountedNote?: string;
+
+  @IsOptional()
   @IsNumber()
   @IsPositive()
   pieceWeightG?: number;

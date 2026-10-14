@@ -139,6 +139,10 @@ export class InventoryService {
   async receive(user: AuthenticatedUser, dto: ReceiveStockDto): Promise<StockMovementDto> {
     const locationId = requireLocationScope(user, dto.locationId);
     await this.assertTrackable(user.organizationId, dto.productId);
+    const received = await this.prisma.product.findFirst({ where: { id: dto.productId, organizationId: user.organizationId }, select: { type: true } });
+    if (received?.type === "SEMI_FINISHED") {
+      throw new BadRequestException("Полуфабрикат появляется на складе только из производства — приход вручную невозможен");
+    }
     return this.applyMovement(user, {
       locationId,
       productId: dto.productId,

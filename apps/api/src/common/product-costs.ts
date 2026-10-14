@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { ProductType } from "@bakery-os/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { loadRecipeIndex, recipeUnitCost } from "../recipes/recipe-tree";
 
@@ -70,5 +71,20 @@ export async function resolveProductUnitCosts(
 
   const merged = new Map<string, number>(avgPurchaseCostByProduct);
   for (const [productId, cost] of recipeCostByProduct) merged.set(productId, cost);
+
+  // A semi-finished product held as stock is worth what its batches cost, as a
+  // moving average — not what its recipe would cost today. Only these products:
+  // every other product's cost above is untouched.
+  const stockedSemiFinished = await prisma.product.findMany({
+    where: {
+      organizationId,
+      type: ProductType.SEMI_FINISHED,
+      trackInventory: true,
+      averageUnitCost: { not: null },
+      ...(productIds ? { id: { in: productIds } } : {}),
+    },
+    select: { id: true, averageUnitCost: true },
+  });
+  for (const product of stockedSemiFinished) merged.set(product.id, (product.averageUnitCost as Prisma.Decimal).toNumber());
   return merged;
 }

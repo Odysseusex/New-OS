@@ -153,6 +153,7 @@ export class RecipesService {
         pieceWeightG: dto.pieceWeightG,
         lossPercent: dto.lossPercent,
         shelfLifeDays: dto.shelfLifeDays,
+        uncountedNote: dto.uncountedNote?.trim() || null,
         items: {
           create: dto.items.map((item) => ({
             ingredientProductId: item.ingredientProductId,
@@ -223,6 +224,7 @@ export class RecipesService {
           pieceWeightG: dto.pieceWeightG,
           lossPercent: dto.lossPercent,
           shelfLifeDays: dto.shelfLifeDays,
+          ...(dto.uncountedNote !== undefined ? { uncountedNote: dto.uncountedNote.trim() || null } : {}),
           items: dto.items
             ? { create: dto.items.map((item) => ({ ingredientProductId: item.ingredientProductId, quantity: item.quantity })) }
             : undefined,
@@ -278,6 +280,7 @@ export class RecipesService {
       pieceWeightG: { toNumber: () => number } | null;
       lossPercent: { toNumber: () => number } | null;
       shelfLifeDays: number | null;
+      uncountedNote?: string | null;
       items: { ingredientProductId: string; quantity: { toNumber: () => number } }[];
       stages: {
         stageTypeId: string;
@@ -310,6 +313,9 @@ export class RecipesService {
     }
     if (dto.shelfLifeDays !== undefined && dto.shelfLifeDays !== (current.shelfLifeDays ?? undefined)) {
       parts.push("срок годности");
+    }
+    if (dto.uncountedNote !== undefined && dto.uncountedNote.trim() !== (current.uncountedNote ?? "")) {
+      parts.push("«не учтено»");
     }
 
     if (parts.length === 0) return null;
@@ -429,13 +435,14 @@ export class RecipesService {
   private toDto = (recipe: {
     id: string;
     productId: string;
-    product: { name: string; unit: string; type: string; price: { toNumber: () => number } };
+    product: { name: string; unit: string; type: string; trackInventory: boolean; price: { toNumber: () => number } };
     yieldQuantity: { toNumber: () => number };
     isActive: boolean;
     generalNotes: string | null;
     pieceWeightG: { toNumber: () => number } | null;
     lossPercent: { toNumber: () => number } | null;
     shelfLifeDays: number | null;
+    uncountedNote: string | null;
     items: {
       id: string;
       ingredientProductId: string;
@@ -519,6 +526,7 @@ export class RecipesService {
       productId: recipe.productId,
       productName: recipe.product.name,
       productType: recipe.product.type as ProductType,
+      productStocked: recipe.product.type === ProductType.SEMI_FINISHED && recipe.product.trackInventory,
       productUnit: recipe.product.unit as Unit,
       productPrice,
       yieldQuantity,
@@ -560,6 +568,13 @@ export class RecipesService {
       shelfLifeDays: recipe.shelfLifeDays,
       totalIngredientCost,
       costComplete,
+      uncountedNote: recipe.uncountedNote,
+      // Until a semi-finished ingredient is in the recipe the cost is known to be
+      // short by what the owner named (e.g. the filling); adding one clears it.
+      uncountedWarning:
+        recipe.uncountedNote && !recipe.items.some((i) => i.ingredientProduct.type === ProductType.SEMI_FINISHED)
+          ? `Не учтено: ${recipe.uncountedNote}`
+          : null,
       unitCost,
       marginPercent,
       isActive: recipe.isActive,

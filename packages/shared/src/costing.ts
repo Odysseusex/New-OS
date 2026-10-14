@@ -23,6 +23,8 @@ export enum CostBasis {
   PURCHASE_ACTUAL = "PURCHASE_ACTUAL",
   // Ingredient cost of a completed production batch ÷ output.
   PRODUCTION_INGREDIENTS = "PRODUCTION_INGREDIENTS",
+  // Moving weighted-average cost of a stocked semi-finished product.
+  PRODUCTION_AVERAGE = "PRODUCTION_AVERAGE",
 }
 
 export const COST_BASIS_LABELS_RU: Record<CostBasis, string> = {
@@ -32,6 +34,7 @@ export const COST_BASIS_LABELS_RU: Record<CostBasis, string> = {
   [CostBasis.CONSIGNMENT_TERMS]: "Условия консигнации",
   [CostBasis.PURCHASE_ACTUAL]: "Фактическая закупка",
   [CostBasis.PRODUCTION_INGREDIENTS]: "Ингредиенты партии",
+  [CostBasis.PRODUCTION_AVERAGE]: "Средневзвешенная себестоимость полуфабриката",
 };
 
 // Components a production batch's cost can be made of. Only INGREDIENT is

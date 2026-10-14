@@ -1,3 +1,4 @@
+import { loadRecipeIndex, recipeReaches } from "../recipes/recipe-tree";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { CATEGORY_WITH_PARENT, categoryLabel } from "../common/category-label";
@@ -270,12 +271,30 @@ export class ProductsService {
         organizationId,
         // A semi-finished product has no stock of its own: producing its parent
         // expands it into raw materials.
-        ...(dto.type === ProductType.SEMI_FINISHED ? { trackInventory: false } : {}),
+        ...(dto.type === ProductType.SEMI_FINISHED && dto.trackInventory !== true ? { trackInventory: false } : {}),
       },
       include: PRODUCT_INCLUDE,
     });
 
     return this.toDto(product);
+  }
+
+  private async assertNoSemiStock(productId: string, message: string): Promise<void> {
+    const onHand = await this.prisma.stockLevel.aggregate({ _sum: { quantity: true }, where: { productId } });
+    if ((onHand._sum.quantity?.toNumber() ?? 0) !== 0) throw new BadRequestException(message);
+  }
+
+  // No planned or running batch whose recipe makes or uses this product.
+  private async assertNoOpenBatchesFor(organizationId: string, productId: string): Promise<void> {
+    const open = await this.prisma.productionBatch.findMany({
+      where: { organizationId, status: { in: ["PLANNED", "IN_PROGRESS"] } },
+      select: { recipe: { select: { productId: true } } },
+    });
+    if (open.length === 0) return;
+    const index = await loadRecipeIndex(this.prisma, organizationId);
+    if (open.some((b) => recipeReaches(index, b.recipe.productId, productId))) {
+      throw new BadRequestException("Есть незавершённые производственные задания с этим полуфабрикатом — завершите или отмените их");
+    }
   }
 
   async update(
@@ -334,7 +353,19 @@ export class ProductsService {
         if (used > 0) {
           throw new BadRequestException("Полуфабрикат используется в техкартах — сначала уберите его оттуда");
         }
+        await this.assertNoSemiStock(productId, "Остаток полуфабриката не нулевой — спишите его, затем меняйте тип");
       }
+    }
+    // Stock tracking of a semi-finished product changes how every recipe that uses it
+    // is made (stock vs raw materials), so it moves only when nothing is half done.
+    const switchesStock =
+      finalType === ProductType.SEMI_FINISHED &&
+      product.type === ProductType.SEMI_FINISHED &&
+      dto.trackInventory !== undefined &&
+      dto.trackInventory !== product.trackInventory;
+    if (switchesStock) {
+      await this.assertNoOpenBatchesFor(organizationId, productId);
+      if (!dto.trackInventory) await this.assertNoSemiStock(productId, "Остаток полуфабриката не нулевой — спишите его, затем выключайте учёт склада");
     }
     if (finalType === ProductType.SEMI_FINISHED) {
       const supplier = dto.consignmentSupplierId !== undefined ? dto.consignmentSupplierId : product.consignmentSupplierId;
@@ -345,7 +376,9 @@ export class ProductsService {
       const saved = await tx.product.update({
         where: { id: productId },
         data: {
-          ...(finalType === ProductType.SEMI_FINISHED ? { trackInventory: false } : {}),
+          // Becoming a semi-finished product starts it without stock; switching its own stock on or off is handled above.
+          ...(finalType === ProductType.SEMI_FINISHED && product.type !== ProductType.SEMI_FINISHED ? { trackInventory: false } : {}),
+          ...(switchesStock && !dto.trackInventory ? { averageUnitCost: null } : {}),
           ...(dto.name !== undefined ? { name: dto.name } : {}),
           ...(dto.sku !== undefined ? { sku: dto.sku } : {}),
           ...(dto.barcode !== undefined ? { barcode: normalizeBarcode(dto.barcode) } : {}),
@@ -354,7 +387,7 @@ export class ProductsService {
           ...(dto.type !== undefined ? { type: dto.type } : {}),
           ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
           ...(dto.price !== undefined ? { price: dto.price } : {}),
-          ...(dto.trackInventory !== undefined && finalType !== ProductType.SEMI_FINISHED ? { trackInventory: dto.trackInventory } : {}),
+          ...(dto.trackInventory !== undefined && !(finalType === ProductType.SEMI_FINISHED && product.type !== ProductType.SEMI_FINISHED) ? { trackInventory: dto.trackInventory } : {}),
           ...(dto.isPosQuickItem !== undefined ? { isPosQuickItem: dto.isPosQuickItem } : {}),
           ...(dto.minQuantity !== undefined ? { minQuantity: dto.minQuantity } : {}),
           ...(dto.consignmentSupplierId !== undefined
@@ -568,6 +601,7 @@ export class ProductsService {
     price: { toNumber: () => number };
     isActive: boolean;
     trackInventory: boolean;
+    averageUnitCost?: { toNumber: () => number } | null;
     isOpenPrice: boolean;
     isPosQuickItem: boolean;
     consignmentSupplierId: string | null;
@@ -588,6 +622,7 @@ export class ProductsService {
       price: product.price.toNumber(),
       isActive: product.isActive,
       trackInventory: product.trackInventory,
+      averageUnitCost: product.averageUnitCost?.toNumber() ?? null,
       isOpenPrice: product.isOpenPrice,
       isPosQuickItem: product.isPosQuickItem,
       consignmentSupplierId: product.consignmentSupplierId,

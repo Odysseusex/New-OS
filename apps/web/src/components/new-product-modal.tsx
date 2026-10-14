@@ -33,8 +33,6 @@ export function NewProductModal({
   const [subcategoryId, setSubcategoryId] = useState(initialCategory?.parentId ? initialCategory.id : "");
   const [price, setPrice] = useState(product ? String(product.price) : "");
   const [trackInventory, setTrackInventory] = useState(product?.trackInventory ?? true);
-  // A semi-finished product has no stock of its own (it is expanded into raw
-  // materials when the finished product is made), so the switch is fixed off.
   const isSemiFinished = type === ProductType.SEMI_FINISHED;
   const [isPosQuickItem, setIsPosQuickItem] = useState(product?.isPosQuickItem ?? false);
   const [minQuantity, setMinQuantity] = useState(String(product?.minQuantity ?? 0));
@@ -91,7 +89,7 @@ export function NewProductModal({
         type,
         categoryId: subcategoryId || parentCategoryId || undefined,
         price: type === ProductType.SEMI_FINISHED ? Number(price) || 0 : Number(price),
-        trackInventory: isSemiFinished ? false : trackInventory,
+        trackInventory,
         isPosQuickItem,
         minQuantity: Number(minQuantity),
         // Null, not undefined, so switching a product back to our own goods
@@ -326,16 +324,15 @@ export function NewProductModal({
           <label className="flex items-start gap-2.5 text-sm text-foreground">
             <input
               type="checkbox"
-              checked={isSemiFinished ? false : trackInventory}
-              disabled={isSemiFinished}
+              checked={trackInventory}
               onChange={(e) => setTrackInventory(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-border text-accent focus:ring-accent/20 disabled:opacity-50"
+              className="mt-0.5 h-4 w-4 rounded border-border text-accent focus:ring-accent/20"
             />
             <span>
               <span className="font-medium">Контролировать складской остаток</span>
               <p className="mt-0.5 text-xs text-muted">
                 {isSemiFinished
-                  ? "У полуфабриката нет остатка на складе: при производстве изделия он списывается сырьём из своей техкарты"
+                  ? "Включено: полуфабрикат готовится отдельным заданием, хранится на складе и списывается со склада. Выключено: он раскладывается в сырьё при производстве изделия"
                   : "Выключите для ресурсов без физического прихода (например, вода из водопровода) — товар останется доступен в рецептах и расчёте себестоимости, но исчезнет из остатков склада, приёмки, списания и предупреждений о низком остатке"}
               </p>
             </span>
@@ -361,7 +358,7 @@ export function NewProductModal({
           </label>
         </div>
 
-        {trackInventory && !isSemiFinished && (
+        {trackInventory && (
           <div className="mb-5">
             <label className="mb-1.5 block text-sm font-medium text-foreground">Минимальный остаток</label>
             <input

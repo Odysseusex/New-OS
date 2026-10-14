@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { lockProductRows } from "../common/product-lock";
 import {
   BusinessContextProductionDto,
   BusinessContextProductionRowDto,
@@ -12,7 +13,7 @@ import {
   Unit,
 } from "@bakery-os/shared";
 import { round2, round4 } from "../common/money";
-import { expandRecipe, loadRecipeIndex, TreeRecipe } from "../recipes/recipe-tree";
+import { expandRecipe, isStockedSemiFinished, loadRecipeIndex, recipeUnitCost, TreeRecipe } from "../recipes/recipe-tree";
 import { CostingService } from "../costing/costing.service";
 import { ProductionBatchStatus as PrismaProductionBatchStatus, StockMovementType } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
@@ -153,13 +154,15 @@ export class ProductionService {
 
     const recipe = await this.prisma.recipe.findFirst({
       where: { id: dto.recipeId, organizationId: user.organizationId },
-      include: { product: { select: { type: true } } },
+      include: { product: { select: { type: true, trackInventory: true } } },
     });
     if (!recipe) {
       throw new NotFoundException("Рецептура не найдена");
     }
-    if (recipe.product.type === ProductType.SEMI_FINISHED) {
-      throw new BadRequestException("Полуфабрикат отдельным заданием не производится — он входит в техкарту готового изделия");
+    // A semi-finished product is made on its own only when it is held as stock;
+    // otherwise it is a part of the finished product's recipe.
+    if (recipe.product.type === ProductType.SEMI_FINISHED && !recipe.product.trackInventory) {
+      throw new BadRequestException("Полуфабрикат без учёта склада отдельным заданием не производится — он входит в техкарту готового изделия");
     }
 
     const batch = await this.prisma.productionBatch.create({
@@ -277,7 +280,13 @@ export class ProductionService {
         throw new BadRequestException("Задание уже обработано");
       }
 
-      const scale = dto.actualQuantity / batch.recipe.yieldQuantity.toNumber();
+      // A STOCKED semi-finished product (cream, filling) consumes what the plan
+      // said and outputs what was actually weighed: the raw materials are gone
+      // either way, so a smaller yield makes each kilo dearer. Every other
+      // product consumes in proportion to what it actually produced, as always.
+      const stockedOutput = batch.recipe.product.type === ProductType.SEMI_FINISHED && batch.recipe.product.trackInventory;
+      const consumeQuantity = stockedOutput ? batch.plannedQuantity.toNumber() : dto.actualQuantity;
+      const scale = consumeQuantity / batch.recipe.yieldQuantity.toNumber();
 
       // The recipe expanded to what is really consumed: a semi-finished
       // ingredient (cream, crumbs) is replaced by the raw materials of its own
@@ -296,6 +305,7 @@ export class ProductionService {
             type: item.ingredientProduct.type as ProductType,
             price: item.ingredientProduct.price.toNumber(),
             trackInventory: item.ingredientProduct.trackInventory,
+            averageUnitCost: item.ingredientProduct.averageUnitCost?.toNumber() ?? null,
           },
         })),
       };
@@ -309,6 +319,17 @@ export class ProductionService {
       // insufficient-stock check and don't get a consumption movement —
       // they still priced into the recipe's cost via recipes.service.ts.
       const trackedItems = expanded.lines.filter((line) => line.ingredient.trackInventory);
+      const unpriced = expanded.lines.filter((line) => line.unitCost === null).map((line) => line.ingredient.name);
+      if (unpriced.length > 0) {
+        throw new BadRequestException(`Нет себестоимости у: ${unpriced.join(", ")}`);
+      }
+      // A stocked semi-finished product's average cost moves when a batch of it is
+      // made, so whoever reads or changes it first takes the row lock.
+      const lockIds = [
+        ...trackedItems.filter((l) => isStockedSemiFinished(l.ingredient)).map((l) => l.ingredient.productId),
+        ...(stockedOutput ? [batch.recipe.productId] : []),
+      ];
+      await lockProductRows(tx, lockIds);
 
       for (const item of trackedItems) {
         const stockLevel = await tx.stockLevel.findUnique({
@@ -336,7 +357,7 @@ export class ProductionService {
       // Packaging, labour, utilities, overhead and technological loss are not
       // computed — their policy (D6) is not approved.
       const ingredientTotal = round2(
-        expanded.lines.reduce((sum, line) => sum + round2(line.quantity * line.ingredient.price), 0),
+        expanded.lines.reduce((sum, line) => sum + round2(line.quantity * (line.unitCost as number)), 0),
       );
 
       if (trackedItems.length > 0) {
@@ -350,10 +371,32 @@ export class ProductionService {
             reason: "Расход на производственное задание",
             batchId: batch.id,
             createdById: user.id,
-            unitCost: round4(item.ingredient.price),
-            costBasis: CostBasis.RAW_MATERIAL_PRICE,
+            unitCost: round4(item.unitCost as number),
+            costBasis: isStockedSemiFinished(item.ingredient) ? CostBasis.PRODUCTION_AVERAGE : CostBasis.RAW_MATERIAL_PRICE,
           })),
         });
+      }
+
+      if (stockedOutput && dto.actualQuantity > 0) {
+        // Moving weighted average: what is on the shelf (all locations) at its
+        // average, plus this batch at what it cost, over the new quantity. One
+        // price per product, so a transfer between locations needs no revaluation.
+        const batchUnitCost = round4(ingredientTotal / dto.actualQuantity);
+        const [onHand, current] = await Promise.all([
+          tx.stockLevel.aggregate({ _sum: { quantity: true }, where: { productId: batch.recipe.productId } }),
+          tx.product.findUniqueOrThrow({ where: { id: batch.recipe.productId }, select: { averageUnitCost: true } }),
+        ]);
+        const quantityBefore = Math.max(onHand._sum.quantity?.toNumber() ?? 0, 0);
+        let previousAverage = current.averageUnitCost?.toNumber() ?? null;
+        if (previousAverage === null && quantityBefore > 0) {
+          // Stock that arrived without a batch (a count correction): value it as its recipe does.
+          previousAverage = recipeNode ? recipeUnitCost(recipeNode, index) : null;
+        }
+        const newAverage =
+          quantityBefore > 0 && previousAverage !== null
+            ? round4((quantityBefore * previousAverage + dto.actualQuantity * batchUnitCost) / (quantityBefore + dto.actualQuantity))
+            : batchUnitCost;
+        await tx.product.update({ where: { id: batch.recipe.productId }, data: { averageUnitCost: newAverage } });
       }
 
       await tx.stockLevel.upsert({
@@ -474,7 +517,7 @@ export class ProductionService {
     locationId: string;
     location: { name: string };
     recipeId: string;
-    recipe: { productId: string; product: { name: string; unit: string } };
+    recipe: { productId: string; product: { name: string; unit: string; type?: string; trackInventory?: boolean } };
     status: string;
     plannedQuantity: { toNumber: () => number };
     actualQuantity: { toNumber: () => number } | null;
@@ -493,6 +536,7 @@ export class ProductionService {
     productId: batch.recipe.productId,
     productName: batch.recipe.product.name,
     unit: batch.recipe.product.unit as Unit,
+    consumesByPlan: batch.recipe.product.type === ProductType.SEMI_FINISHED && batch.recipe.product.trackInventory === true,
     status: batch.status as ProductionBatchStatus,
     plannedQuantity: batch.plannedQuantity.toNumber(),
     actualQuantity: batch.actualQuantity ? batch.actualQuantity.toNumber() : null,

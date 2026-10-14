@@ -133,7 +133,7 @@ describe("cost through nested recipes", () => {
 
   it("refuses a batch for a semi-finished product on its own", async () => {
     const recipe = await prisma.recipe.findUniqueOrThrow({ where: { productId: t.diplomat.id } });
-    await expect(production.create(org.user, { recipeId: recipe.id, plannedQuantity: 1, locationId: org.storeId } as never)).rejects.toThrow(/Полуфабрикат отдельным заданием/);
+    await expect(production.create(org.user, { recipeId: recipe.id, plannedQuantity: 1, locationId: org.storeId } as never)).rejects.toThrow(/без учёта склада отдельным заданием/);
   });
 
   it("will not archive or delete a recipe that another recipe uses, and says which", async () => {
@@ -182,7 +182,7 @@ describe("rules on saving", () => {
 
   it("findRecipeProblem reports loops and depth without touching the database", () => {
     const sem = new Set(["a", "b", "c"]);
-    const node = (productId: string, ids: string[]) => ({ productId, yieldQuantity: 1, items: ids.map((id) => ({ quantity: 1, ingredient: { productId: id, name: id, type: sem.has(id) ? ProductType.SEMI_FINISHED : ProductType.RAW_MATERIAL, price: 1, trackInventory: true } })) });
+    const node = (productId: string, ids: string[]) => ({ productId, yieldQuantity: 1, items: ids.map((id) => ({ quantity: 1, ingredient: { productId: id, name: id, type: sem.has(id) ? ProductType.SEMI_FINISHED : ProductType.RAW_MATERIAL, price: 1, trackInventory: true, averageUnitCost: null } })) });
     const index = new Map([["b", node("b", ["c"])], ["c", node("c", ["a"])]]);
     expect(findRecipeProblem("a", [{ ingredientProductId: "b" }], index, sem)).toMatchObject({ kind: "CYCLE" });
     expect(findRecipeProblem("a", [{ ingredientProductId: "x" }], index, sem)).toBeNull();
@@ -206,15 +206,17 @@ describe("rules on saving", () => {
 describe("the semi-finished product itself", () => {
   const products = () => new ProductsService(prisma);
 
-  it("is created without stock tracking, with its own SKU prefix, and cannot be consignment", async () => {
+  it("is created without stock tracking, with its own SKU prefix, cannot be consignment, and its stock can be switched on and off", async () => {
     const created = await products().create(org.organizationId, { name: "Крем-тест", unit: Unit.KG, type: ProductType.SEMI_FINISHED, price: 0 } as never);
     expect(created.sku.startsWith("SEM-")).toBe(true);
     expect(created.trackInventory).toBe(false);
     const supplier = await prisma.supplier.create({ data: { organizationId: org.organizationId, name: "Деревня-sf" } });
     await expect(products().create(org.organizationId, { name: "Крем-реал", unit: Unit.KG, type: ProductType.SEMI_FINISHED, price: 0, consignmentSupplierId: supplier.id } as never)).rejects.toThrow(/под реализацию/);
-    // Cannot be switched back on.
-    const again = await products().update(org.organizationId, created.id, { trackInventory: true } as never, null);
-    expect(again.trackInventory).toBe(false);
+    // Stock can be switched on by the owner (see stocked-semi-finished.spec.ts) — and off again while nothing is on the shelf.
+    const on = await products().update(org.organizationId, created.id, { trackInventory: true } as never, null);
+    expect(on.trackInventory).toBe(true);
+    const off = await products().update(org.organizationId, created.id, { trackInventory: false } as never, null);
+    expect(off.trackInventory).toBe(false);
   });
 
   it("a product that was already sold or moved cannot become one; one used in a recipe cannot stop being one", async () => {

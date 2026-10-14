@@ -592,6 +592,10 @@ model Product {
   // A sale of such a product also skips the stock check and writes no
   // StockMovement: there is no stock to move.
   trackInventory Boolean     @default(true)
+  // Moving weighted-average cost per unit of a STOCKED semi-finished product
+  // (type SEMI_FINISHED with trackInventory = true): one price for all locations,
+  // updated when a batch of it completes. Null for every other product.
+  averageUnitCost Decimal?   @db.Decimal(14, 4)
   // Goods taken «под реализацию»: they belong to someone else (the village
   // shop) until sold. The supplier alone makes a product consignment: every
   // tenge collected for it is owed to them, and none of it is our revenue,
@@ -1144,6 +1148,10 @@ model Recipe {
   pieceWeightG  Decimal? @db.Decimal(8, 2)
   lossPercent   Decimal? @db.Decimal(5, 2)
   shelfLifeDays Int?
+  // What the owner knows is NOT yet in this card's cost (e.g. «начинка» until its
+  // measured consumption is entered). Shown as «Не учтено: …» and ignored
+  // automatically once a semi-finished ingredient is in the recipe.
+  uncountedNote String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

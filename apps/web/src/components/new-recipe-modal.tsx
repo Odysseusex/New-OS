@@ -91,7 +91,9 @@ export function NewRecipeModal({
   // cost of its own active recipe for a semi-finished product (0 when it has none).
   const unitCostOfIngredient = (p: ProductDto): number =>
     p.type === ProductType.SEMI_FINISHED
-      ? (allRecipes.find((r) => r.productId === p.id && r.isActive && r.costComplete)?.unitCost ?? 0)
+      ? p.trackInventory && p.averageUnitCost !== null
+        ? p.averageUnitCost // held as stock: what its batches cost
+        : (allRecipes.find((r) => r.productId === p.id && r.isActive && r.costComplete)?.unitCost ?? 0)
       : p.price;
 
   const [stageTypes, setStageTypes] = useState<RecipeStageTypeDto[]>([]);
@@ -118,6 +120,7 @@ export function NewRecipeModal({
         ],
   );
   const [stages, setStages] = useState<StageRow[]>(source ? stagesFromRecipe(source) : []);
+  const [uncountedNote, setUncountedNote] = useState(source?.uncountedNote ?? "");
   const [lossPercent, setLossPercent] = useState(
     source?.lossPercent !== null && source?.lossPercent !== undefined ? String(source.lossPercent) : "",
   );
@@ -196,6 +199,12 @@ export function NewRecipeModal({
     return sum + convertUnitQuantity(qty, row.unit, product.unit) * unitCostOfIngredient(product);
   }, 0);
   const liveYieldQuantity = Number(yieldQuantity) || 0;
+  // The same rule as the server: the note warns until a semi-finished ingredient is in the recipe.
+  const liveUncountedWarning =
+    uncountedNote.trim() &&
+    !rows.some((row) => ingredientOptions.find((p) => p.id === row.ingredientProductId)?.type === ProductType.SEMI_FINISHED)
+      ? `Не учтено: ${uncountedNote.trim()}`
+      : null;
   // The yield is the normal sellable output, already after normal loss: the
   // loss percentage is not taken off a second time.
   const liveUnitCost = liveYieldQuantity > 0 ? liveTotalIngredientCost / liveYieldQuantity : 0;
@@ -303,6 +312,7 @@ export function NewRecipeModal({
         pieceWeightG: pieceWeightG ? Number(pieceWeightG) : undefined,
         lossPercent: lossPercent ? Number(lossPercent) : undefined,
         shelfLifeDays: shelfLifeDays ? Number(shelfLifeDays) : undefined,
+        uncountedNote: uncountedNote.trim(),
         stages: stagesPayload,
       };
 
@@ -673,10 +683,24 @@ export function NewRecipeModal({
           <NumberField label="Срок годности, дней" value={shelfLifeDays} onChange={setShelfLifeDays} />
         </div>
 
+        <div className="mb-5">
+          <label className="mb-1.5 block text-sm font-medium text-foreground">Не учтено в себестоимости (необязательно)</label>
+          <input
+            type="text"
+            value={uncountedNote}
+            onChange={(e) => setUncountedNote(e.target.value)}
+            placeholder="например: начинка"
+            className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+          />
+        </div>
+
         <SectionTitle>Экономика</SectionTitle>
         <p className="mb-2 text-xs text-muted">
           Пересчитывается сразу при изменении ингредиентов, выхода или потерь — ещё до сохранения.
         </p>
+        {liveUncountedWarning && (
+          <p className="mb-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">{liveUncountedWarning}</p>
+        )}
         <div className="mb-5 grid grid-cols-2 gap-3 rounded-xl bg-surface-muted p-3 text-sm sm:grid-cols-4">
           <div>
             <p className="text-xs text-muted">Себестоимость замеса</p>

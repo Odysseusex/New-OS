@@ -132,6 +132,8 @@ export interface RecipeDto {
   productId: string;
   productName: string;
   productType: ProductType;
+  // Semi-finished product held as stock (batches of its own, average cost).
+  productStocked: boolean;
   productUnit: Unit;
   productPrice: number;
   yieldQuantity: number;
@@ -148,6 +150,10 @@ export interface RecipeDto {
   totalIngredientCost: number;
   // False when some ingredient cannot be priced; the figures then leave it out.
   costComplete: boolean;
+  // What the owner marked as not yet in the cost (stored), and the warning shown:
+  // the stored note while the recipe has no semi-finished ingredient, else null.
+  uncountedNote: string | null;
+  uncountedWarning: string | null;
   // Cost per finished unit: totalIngredientCost / (yieldQuantity adjusted
   // for lossPercent). This is what marginPercent is computed against, not
   // totalIngredientCost.
@@ -180,6 +186,9 @@ export interface CreateRecipeItemRequestDto {
 
 export interface RecipeTechCardFieldsDto {
   generalNotes?: string;
+  // «начинка» — shown as «Не учтено: …» until a semi-finished ingredient is added.
+  // An empty string clears it.
+  uncountedNote?: string;
   pieceWeightG?: number;
   lossPercent?: number;
   shelfLifeDays?: number;
@@ -205,6 +214,9 @@ export interface ProductionBatchDto {
   productId: string;
   productName: string;
   unit: Unit;
+  // A batch of a STOCKED semi-finished product (cream, filling): the raw
+  // materials consumed are what the plan said, the output is what was weighed.
+  consumesByPlan: boolean;
   status: ProductionBatchStatus;
   plannedQuantity: number;
   actualQuantity: number | null;

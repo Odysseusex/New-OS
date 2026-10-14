@@ -781,6 +781,14 @@ Full write-up: `docs/SEMI-FINISHED-DESIGN.md`. A recipe ingredient may now be `R
   bought and has no batch of its own. Stage 2 (stocked intermediates) is not built.
 - A recipe's yield is stored to 0.001 of the unit; unknown cost (a part with no active recipe) is `null`,
   never zero (`costComplete: false` on the card).
+- **Stage 2 is BUILT: a semi-finished product can be held as stock** (`trackInventory = true`, switched by the
+  owner; default off). It gets its own batches (raw consumed by the PLAN, output = weighed ACTUAL), a moving
+  weighted-average cost on `Product.averageUnitCost` (one price, all locations — never FIFO), and a parent
+  recipe takes it from stock at that average instead of re-consuming raw materials
+  (`isStockedSemiFinished` in `recipe-tree.ts`). `common/product-costs.ts` values it at the average, so
+  `CostingService` is unchanged. The books were verified with the ledger on (`stocked-semi-finished.spec.ts`).
+  `Recipe.uncountedNote` shows «Не учтено: …» until a semi-finished ingredient is in the recipe — never
+  invent the amount of filling per pie; it is entered after it is measured.
 - Packaging is still NOT a recipe ingredient (pending the owner's decision); no «Полуфабрикаты» category
   was created without his approval.
 

@@ -22,7 +22,15 @@ export interface TreeIngredient {
   type: ProductType;
   price: number;
   trackInventory: boolean;
+  // Moving average cost of a STOCKED semi-finished product; null otherwise.
+  averageUnitCost: number | null;
 }
+
+// A semi-finished product held as stock is a leaf, not a recipe to expand: it is
+// consumed from stock at its average cost, and its raw materials were already
+// consumed when its own batch was made. Without stock it is virtual, as before.
+export const isStockedSemiFinished = (ingredient: Pick<TreeIngredient, "type" | "trackInventory">): boolean =>
+  ingredient.type === ProductType.SEMI_FINISHED && ingredient.trackInventory;
 
 export interface TreeRecipe {
   productId: string;
@@ -40,7 +48,7 @@ const RECIPE_TREE_SELECT = {
   items: {
     select: {
       quantity: true,
-      ingredientProduct: { select: { id: true, name: true, type: true, price: true, trackInventory: true } },
+      ingredientProduct: { select: { id: true, name: true, type: true, price: true, trackInventory: true, averageUnitCost: true } },
     },
   },
 } as const;
@@ -59,6 +67,7 @@ function toTreeRecipe(recipe: LoadedRecipe): TreeRecipe {
         type: item.ingredientProduct.type as ProductType,
         price: item.ingredientProduct.price.toNumber(),
         trackInventory: item.ingredientProduct.trackInventory,
+        averageUnitCost: item.ingredientProduct.averageUnitCost?.toNumber() ?? null,
       },
     })),
   };
@@ -104,7 +113,10 @@ export function recipeUnitCost(
   let known = true;
   for (const item of recipe.items) {
     let unit: number | null;
-    if (item.ingredient.type === ProductType.SEMI_FINISHED) {
+    if (isStockedSemiFinished(item.ingredient) && item.ingredient.averageUnitCost !== null) {
+      // What is actually on the shelf costs what it was made for.
+      unit = item.ingredient.averageUnitCost;
+    } else if (item.ingredient.type === ProductType.SEMI_FINISHED) {
       const sub = index.get(item.ingredient.productId);
       unit = sub ? recipeUnitCost(sub, index, memo, path) : null;
     } else {
@@ -122,13 +134,23 @@ export function recipeUnitCost(
   return result;
 }
 
-// Unit cost per semi-finished product id (null = unknown), for the recipe screen.
+// Unit cost per semi-finished product id (null = unknown), for the recipe screen:
+// the moving average for a stocked one that has it, else its own recipe's cost.
 export async function semiFinishedUnitCosts(db: Db, organizationId: string, semiIds: string[]): Promise<Map<string, number | null>> {
   const out = new Map<string, number | null>();
   if (semiIds.length === 0) return out;
-  const index = await loadRecipeIndex(db, organizationId, semiIds);
+  const [index, products] = await Promise.all([
+    loadRecipeIndex(db, organizationId, semiIds),
+    db.product.findMany({ where: { organizationId, id: { in: semiIds } }, select: { id: true, trackInventory: true, averageUnitCost: true } }),
+  ]);
+  const productById = new Map(products.map((p) => [p.id, p]));
   const memo = new Map<string, number | null>();
   for (const id of new Set(semiIds)) {
+    const product = productById.get(id);
+    if (product?.trackInventory && product.averageUnitCost) {
+      out.set(id, product.averageUnitCost.toNumber());
+      continue;
+    }
     const recipe = index.get(id);
     out.set(id, recipe ? recipeUnitCost(recipe, index, memo) : null);
   }
@@ -138,12 +160,15 @@ export async function semiFinishedUnitCosts(db: Db, organizationId: string, semi
 export interface ExpandedLine {
   ingredient: TreeIngredient;
   quantity: number;
+  // Cost of ONE unit of this line: the price of a raw material, the moving
+  // average (else the recipe cost) of a stocked semi-finished product.
+  unitCost: number | null;
 }
 
-// The raw materials (and anything else that is not a semi-finished product) a
-// batch consumes: the recipe scaled by `scale`, every semi-finished line replaced
-// by its own recipe's lines. The same raw material reached by two branches is one
-// line. `missing` lists semi-finished products that cannot be expanded.
+// The things a batch consumes: the recipe scaled by `scale`, every VIRTUAL
+// semi-finished line replaced by its own recipe's lines, a STOCKED one kept as a
+// line (it is taken from stock). The same ingredient reached by two branches is
+// one line. `missing` lists semi-finished products that cannot be expanded.
 export function expandRecipe(
   recipe: TreeRecipe,
   scale: number,
@@ -151,21 +176,28 @@ export function expandRecipe(
 ): { lines: ExpandedLine[]; missing: string[] } {
   const byId = new Map<string, ExpandedLine>();
   const missing = new Set<string>();
+  const memo = new Map<string, number | null>();
   const walk = (current: TreeRecipe, factor: number, path: string[]) => {
     for (const item of current.items) {
       const needed = item.quantity * factor;
-      if (item.ingredient.type === ProductType.SEMI_FINISHED) {
-        const sub = index.get(item.ingredient.productId);
+      const ingredient = item.ingredient;
+      if (ingredient.type === ProductType.SEMI_FINISHED && !isStockedSemiFinished(ingredient)) {
+        const sub = index.get(ingredient.productId);
         if (!sub || sub.yieldQuantity <= 0 || path.includes(sub.productId) || path.length >= MAX_RECIPE_DEPTH) {
-          missing.add(item.ingredient.name);
+          missing.add(ingredient.name);
           continue;
         }
         walk(sub, needed / sub.yieldQuantity, [...path, sub.productId]);
         continue;
       }
-      const line = byId.get(item.ingredient.productId);
+      let unitCost: number | null = ingredient.price;
+      if (isStockedSemiFinished(ingredient)) {
+        const sub = index.get(ingredient.productId);
+        unitCost = ingredient.averageUnitCost ?? (sub ? recipeUnitCost(sub, index, memo) : null);
+      }
+      const line = byId.get(ingredient.productId);
       if (line) line.quantity += needed;
-      else byId.set(item.ingredient.productId, { ingredient: item.ingredient, quantity: needed });
+      else byId.set(ingredient.productId, { ingredient, quantity: needed, unitCost });
     }
   };
   walk(recipe, scale, [recipe.productId]);
@@ -199,4 +231,16 @@ export function findRecipeProblem(productId: string, candidateItems: { ingredien
   const found = visit(productId, [productId]);
   if (found) return found;
   return tooDeep ? { kind: "TOO_DEEP" } : null;
+}
+
+// Does the recipe of `rootId` use `targetId` somewhere down its chain (or is it that product)?
+export function recipeReaches(index: RecipeIndex, rootId: string, targetId: string): boolean {
+  const seen = new Set<string>();
+  const visit = (id: string): boolean => {
+    if (id === targetId) return true;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return (index.get(id)?.items ?? []).some((item) => item.ingredient.type === ProductType.SEMI_FINISHED && visit(item.ingredient.productId));
+  };
+  return visit(rootId);
 }

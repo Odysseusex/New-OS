@@ -484,6 +484,9 @@ export default function ProductionPage() {
                 ))}
               </ul>
 
+              {recipe.uncountedWarning && (
+                <p className="mb-2 rounded-lg bg-amber-50 px-3 py-1.5 text-xs text-amber-700">{recipe.uncountedWarning}</p>
+              )}
               <div className="flex items-center justify-between border-t border-border pt-3 text-sm">
                 <span className="text-muted">Себестоимость: {formatMoney(recipe.unitCost)}</span>
                 {recipe.marginPercent !== null && (
@@ -510,8 +513,8 @@ export default function ProductionPage() {
       {modal === "batch" && (
         <NewBatchModal
           locations={locations}
-          // A semi-finished product is not produced on its own: it is part of a finished product's recipe.
-          recipes={recipes.filter((r) => r.isActive && r.productType !== ProductType.SEMI_FINISHED)}
+          // A semi-finished product is made on its own only when it is held as stock; otherwise it is part of a finished product's recipe.
+          recipes={recipes.filter((r) => r.isActive && (r.productType !== ProductType.SEMI_FINISHED || r.productStocked))}
           fixedLocationId={fixedLocationId}
           onClose={() => setModal(null)}
           onCreated={() => {

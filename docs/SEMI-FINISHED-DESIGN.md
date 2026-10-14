@@ -1,7 +1,7 @@
 # Semi-finished products (полуфабрикаты) — design
 
 Status: **Stage 1 BUILT** (virtual semi-finished products: calculation + automatic raw consumption).
-Stage 2 (stocked intermediates) is NOT built. Packaging as a recipe ingredient is NOT built (the owner
+**Stage 2 (stocked intermediates) is BUILT too — see the last section.** Packaging as a recipe ingredient is NOT built (the owner
 did not decide it; the workaround is a raw item «Упаковка»). No «Полуфабрикаты» category was created.
 
 Built as designed, with these specifics:
@@ -95,3 +95,33 @@ category is added without the owner's approval), packaging accounting.
 2. Packaging in the card (both sample cards include it): allow `PACKAGING` as a recipe ingredient,
    consumed from stock? Today it cannot be; the workaround is a raw item «Упаковка».
 3. Category for semi-finished items («Полуфабрикаты»): create it, yes/no.
+
+## Stage 2 — stocked semi-finished products (BUILT)
+
+For a product that is held on the shelf (cabbage filling cooked one day, used the next).
+Migration `20261014120000_stocked_semi_finished` (two nullable columns, additive).
+
+* **On by choice.** `trackInventory = true` on a `SEMI_FINISHED` product (the owner switches it; default
+  stays off, so every existing semi-finished product is still virtual). Switching is refused while a planned
+  or running batch uses it, and switching off while any stock remains. Manual «Приёмка» of it is refused —
+  it appears only from production. Write-off, adjustment, stocktake and transfers work as for any stock.
+* **Its own batches** (`ProductionBatch`): raw materials are consumed by the **plan** (`plannedQuantity ÷
+  recipe yield`), the output is the **weighed actual**. So a smaller yield makes each kilo dearer.
+  Every other product still consumes by what it actually made (unchanged).
+* **Cost = moving weighted average, one price for all locations** (`Product.averageUnitCost`):
+  `(stock × old average + batch × its unit cost) ÷ new quantity`. No FIFO. Row-locked in the same transaction
+  as the stock change (`common/product-lock.ts`).
+* **A parent recipe takes it from stock** at the average (movement basis `PRODUCTION_AVERAGE`) and does NOT
+  consume the raw materials again: `recipe-tree.ts` `isStockedSemiFinished` makes it a leaf of `expandRecipe`
+  and `recipeUnitCost` uses its average. `common/product-costs.ts` values a stocked one at its average, so
+  `CostingService` (untouched) and everything reading it — valuation, P&L, balance, ledger diagnostics — agree.
+* **Accounting.** Production stays a value-neutral transfer inside the single inventory account
+  (`recordProductionEvent`, NO_GL_EFFECT when consumed = output); the filling's value leaves the books only
+  through write-offs (at the average) and through the pies' COGS. Verified by `stocked-semi-finished.spec.ts`
+  with the ledger ON: every diagnostic check passes and stock valuation = ledger inventory.
+* **Known, pre-existing mechanism:** finished goods are valued at TODAY's recipe cost. When the filling's
+  average moves, the pies already on the shelf are revalued, so the ledger-vs-valuation diagnostic shows
+  that difference (same effect a flour price change has on bread). Nothing of the filling is lost.
+* **«Не учтено: …»** (`Recipe.uncountedNote`): a free-text note on the card (e.g. «начинка»), shown as a
+  warning until a semi-finished ingredient is in the recipe. No norm is invented: the pie's filling amount
+  is entered only after it has been measured.

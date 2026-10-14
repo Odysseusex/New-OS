@@ -20,6 +20,10 @@ export class UpdateRecipeDto {
   generalNotes?: string;
 
   @IsOptional()
+  @IsString()
+  uncountedNote?: string;
+
+  @IsOptional()
   @IsNumber()
   @IsPositive()
   pieceWeightG?: number;

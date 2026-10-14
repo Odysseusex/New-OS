@@ -39,10 +39,15 @@ export function CompleteBatchModal({
         <p className="mb-4 text-sm text-muted">
           {batch.productName} · план {batch.plannedQuantity} {UNIT_LABELS_RU[batch.unit]}
         </p>
+        {batch.consumesByPlan && (
+          <p className="mb-4 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            Сырьё спишется по плану ({batch.plannedQuantity} {UNIT_LABELS_RU[batch.unit]}). Введите вес, который вышел на самом деле: от него зависит цена за единицу и остаток на складе.
+          </p>
+        )}
 
         <div className="mb-5">
           <label className="mb-1.5 block text-sm font-medium text-foreground">
-            Фактически произведено
+            {batch.consumesByPlan ? "Фактический выход" : "Фактически произведено"}
           </label>
           <input
             type="number"

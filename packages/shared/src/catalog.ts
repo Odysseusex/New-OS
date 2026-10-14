@@ -182,6 +182,8 @@ export interface ProductDto {
   // see inventory.ts / InventoryService for what this suppresses. Selling
   // such a product also skips the stock check entirely.
   trackInventory: boolean;
+  // Moving average cost of a stocked semi-finished product; null for every other product.
+  averageUnitCost: number | null;
   // The till's «Произвольная сумма» line: the cashier types the amount and
   // it becomes the line's unitPrice, so `price` (always 0) means nothing
   // here. At most one per organization — the POS hides it from the product
