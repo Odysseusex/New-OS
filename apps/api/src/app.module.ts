@@ -24,6 +24,7 @@ import { LogisticsModule } from "./logistics/logistics.module";
 import { FinanceModule } from "./finance/finance.module";
 import { HrModule } from "./hr/hr.module";
 import { CustomersModule } from "./customers/customers.module";
+import { LoyaltyModule } from "./loyalty/loyalty.module";
 import { UsersModule } from "./users/users.module";
 import { InvoicesModule } from "./invoices/invoices.module";
 import { QualityModule } from "./quality/quality.module";
@@ -63,6 +64,7 @@ import { StocktakeModule } from "./stocktake/stocktake.module";
     FinanceModule,
     HrModule,
     CustomersModule,
+    LoyaltyModule,
     UsersModule,
     InvoicesModule,
     QualityModule,

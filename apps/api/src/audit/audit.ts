@@ -55,6 +55,7 @@ export const AUDIT_ACTION_GROUPS = {
   productClassification: ["classification.apply", "classification.revert"],
   stocktake: ["stocktake.create", "stocktake.submit", "stocktake.reopen", "stocktake.approve", "stocktake.cancel"],
   stockVoid: ["stockVoid.create"],
+  loyalty: ["loyaltyMember.create", "loyaltyMember.update", "loyaltyMember.consent", "loyaltyMember.merge", "loyaltyMember.import"],
   // Posting from operations is traced by the journal itself (each entry carries
   // its source, poster and time); these are the deliberate human actions.
   ledger: [

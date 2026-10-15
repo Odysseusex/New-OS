@@ -1,4 +1,4 @@
-import type { ClassificationRowInput } from "@bakery-os/shared";
+import type { ClassificationRowInput, LoyaltyImportRowInput } from "@bakery-os/shared";
 
 // Reads a CSV/TSV file of «артикул; название; тип; категория; подкатегория».
 // The delimiter (;  ,  or tab) is detected, quotes and a leading BOM are handled,
@@ -63,6 +63,53 @@ export function parseClassificationFile(text: string): ClassificationRowInput[] 
     order.forEach((key, i) => {
       if (hasHeader && mapped[i] === undefined) return; // an unknown column is ignored (e.g. «под реализацию»)
       row[key] = cells[i] ?? "";
+    });
+    return row;
+  });
+}
+
+// Retail customers for the loyalty programme: «телефон; имя; согласие; whatsapp;
+// telegram; sms; примечание». Same delimiter/quote handling as above; a header row
+// (if present) decides the column order.
+const LOYALTY_HEADER_KEYS: Record<string, keyof LoyaltyImportRowInput> = {
+  телефон: "phone",
+  номер: "phone",
+  phone: "phone",
+  имя: "name",
+  фио: "name",
+  клиент: "name",
+  name: "name",
+  согласие: "consent",
+  согласие_на_обработку: "consent",
+  consent: "consent",
+  whatsapp: "whatsapp",
+  ватсап: "whatsapp",
+  telegram: "telegram",
+  телеграм: "telegram",
+  sms: "sms",
+  смс: "sms",
+  примечание: "note",
+  комментарий: "note",
+  note: "note",
+};
+
+export function parseLoyaltyImportFile(text: string): LoyaltyImportRowInput[] {
+  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).filter((l) => l.trim() !== "");
+  if (lines.length === 0) return [];
+  const first = lines[0];
+  const delimiter = [";", "\t", ","].map((d) => ({ d, n: first.split(d).length })).sort((a, b) => b.n - a.n)[0].d;
+  const header = splitLine(first, delimiter).map((h) => h.toLowerCase().replace(/\s+/g, "_"));
+  const mapped = header.map((h) => LOYALTY_HEADER_KEYS[h]);
+  const hasHeader = mapped.includes("phone");
+  const order: (keyof LoyaltyImportRowInput | undefined)[] = hasHeader
+    ? mapped
+    : ["phone", "name", "consent", "whatsapp", "telegram", "sms", "note"];
+  const body = hasHeader ? lines.slice(1) : lines;
+  return body.map((line) => {
+    const cells = splitLine(line, delimiter);
+    const row: LoyaltyImportRowInput = { phone: "" };
+    order.forEach((key, i) => {
+      if (key) row[key] = cells[i] ?? "";
     });
     return row;
   });

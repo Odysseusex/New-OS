@@ -15,6 +15,7 @@ import {
   Split,
   Tag,
   Trash2,
+  UserRound,
   X,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
@@ -38,6 +39,7 @@ import {
   categoryIdsWithDescendants,
   resolveCategoryRule,
   SALE_CREATE_ROLES,
+  LOYALTY_TILL_ROLES,
   UNIT_LABELS_RU,
 } from "@bakery-os/shared";
 import { Modal } from "@/components/modal";
@@ -57,6 +59,7 @@ import { TerminalConnectionForm } from "@/components/kaspi-terminal-card";
 import { isConfigured as isTerminalConfigured, type KaspiTransaction } from "@/lib/kaspi-terminal";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { LoyaltyLookupPanel } from "@/components/loyalty-lookup-panel";
 import { formatMoney, formatQuantity } from "@/lib/format";
 
 // A cart line carries its own price rather than reading it off the product,
@@ -148,6 +151,7 @@ export default function PosPage() {
   // Labels are printed at the till because that is where the label printer is
   // plugged in — the monoblock is the only machine it is attached to.
   const [labelsOpen, setLabelsOpen] = useState(false);
+  const [loyaltyOpen, setLoyaltyOpen] = useState(false);
   // Set only when openCustomerDisplay() cannot tell which physical monitor is
   // the customer's — no remembered choice yet, or Windows' own displays
   // changed since. See customer-screen-picker.tsx for why this exists at all.
@@ -244,8 +248,9 @@ export default function PosPage() {
     // History is included for a different reason than the amount dialogs: a
     // scanner firing while the cashier is looking at past receipts would
     // otherwise type into the search box behind the dialog and quietly drop
-    // a product into the cart nobody asked for.
-    if (openPriceOpen || historyOpen || payMode !== null) return;
+    // a product into the cart nobody asked for. The customer-by-phone dialog
+    // is excluded for the same reason.
+    if (openPriceOpen || historyOpen || loyaltyOpen || payMode !== null) return;
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target && ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
@@ -253,7 +258,7 @@ export default function PosPage() {
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [focusScan, openPriceOpen, historyOpen, payMode]);
+  }, [focusScan, openPriceOpen, historyOpen, loyaltyOpen, payMode]);
 
   // Only categories that actually hold something sellable. Without this the
   // till offers chips like «Сырьё», which can only ever show an empty grid,
@@ -628,6 +633,18 @@ export default function PosPage() {
           <History className="h-4 w-4" strokeWidth={1.75} />
           История
         </button>
+        {/* Loyalty stage 1: find or register a retail customer by phone and
+            record their consent. It does not attach the customer to the
+            cart — that comes with the points (stage 3). */}
+        {user && LOYALTY_TILL_ROLES.includes(user.role) && (
+          <button
+            onClick={() => setLoyaltyOpen(true)}
+            className="flex shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+          >
+            <UserRound className="h-4 w-4" strokeWidth={1.75} />
+            Клиент
+          </button>
+        )}
         {/* Same reason as История: the printer hangs off the monoblock, so
             printing a sticker for a cake means standing at this screen. It
             prints — it does not touch stock, money or the cart — so it needs
@@ -1131,6 +1148,18 @@ export default function PosPage() {
           focusScan();
         }}
       />
+    )}
+    {loyaltyOpen && user && (
+      <Modal
+        title="Клиент по номеру телефона"
+        width="max-w-2xl"
+        onClose={() => {
+          setLoyaltyOpen(false);
+          focusScan();
+        }}
+      >
+        <LoyaltyLookupPanel role={user.role} />
+      </Modal>
     )}
     {historyOpen && (
       <SaleHistoryModal

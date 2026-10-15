@@ -1,4 +1,15 @@
 import type {
+  LoyaltyImportPreviewDto,
+  LoyaltyImportResultDto,
+  LoyaltyImportRowInput,
+  LoyaltyLookupDto,
+  LoyaltyMemberDetailDto,
+  LoyaltyMemberDto,
+  LoyaltyMemberListDto,
+  MergeLoyaltyMembersRequestDto,
+  RecordLoyaltyConsentRequestDto,
+  RegisterLoyaltyMemberRequestDto,
+  UpdateLoyaltyMemberRequestDto,
   AddEmployeeCompensationRequestDto,
   CreateStockVoidRequestDto,
   StockVoidCandidateDto,
@@ -457,6 +468,25 @@ export const api = {
     archive: (id: string) => request<CustomerDto>(`/customers/${id}/archive`, { method: "POST" }),
     restore: (id: string) => request<CustomerDto>(`/customers/${id}/restore`, { method: "POST" }),
     remove: (id: string) => request<{ deleted: true }>(`/customers/${id}`, { method: "DELETE" }),
+  },
+
+  loyalty: {
+    lookup: (phone: string) => request<LoyaltyLookupDto>(withQuery("/loyalty/members/lookup", { phone })),
+    list: (q?: string, status?: string) =>
+      request<LoyaltyMemberListDto>(withQuery("/loyalty/members", { q, status })),
+    findOne: (id: string) => request<LoyaltyMemberDetailDto>(`/loyalty/members/${id}`),
+    register: (dto: RegisterLoyaltyMemberRequestDto) =>
+      request<LoyaltyMemberDto>("/loyalty/members", { method: "POST", body: JSON.stringify(dto) }),
+    update: (id: string, dto: UpdateLoyaltyMemberRequestDto) =>
+      request<LoyaltyMemberDto>(`/loyalty/members/${id}`, { method: "PATCH", body: JSON.stringify(dto) }),
+    recordConsent: (id: string, dto: RecordLoyaltyConsentRequestDto) =>
+      request<LoyaltyMemberDto>(`/loyalty/members/${id}/consents`, { method: "POST", body: JSON.stringify(dto) }),
+    merge: (dto: MergeLoyaltyMembersRequestDto) =>
+      request<LoyaltyMemberDetailDto>("/loyalty/members/merge", { method: "POST", body: JSON.stringify(dto) }),
+    previewImport: (rows: LoyaltyImportRowInput[]) =>
+      request<LoyaltyImportPreviewDto>("/loyalty/members/import/preview", { method: "POST", body: JSON.stringify({ rows }) }),
+    applyImport: (rows: LoyaltyImportRowInput[], note: string) =>
+      request<LoyaltyImportResultDto>("/loyalty/members/import/apply", { method: "POST", body: JSON.stringify({ rows, note }) }),
   },
 
   recipes: {

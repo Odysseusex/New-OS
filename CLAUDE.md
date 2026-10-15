@@ -792,6 +792,34 @@ Full write-up: `docs/SEMI-FINISHED-DESIGN.md`. A recipe ingredient may now be `R
 - Packaging is still NOT a recipe ingredient (pending the owner's decision); no «Полуфабрикаты» category
   was created without his approval.
 
+## Loyalty programme — stage 1 built (retail customer by phone + consent record)
+
+Research and owner decisions: `docs/CRM-LOYALTY-RESEARCH.md` §10–11. Code: `apps/api/src/loyalty/`,
+`packages/shared/src/loyalty.ts`, Клиенты → «Розница», and a «Клиент» button on the till (a cashier can
+reach only /pos). Migration `20261015120000_loyalty_members`. Rules that are easy to break:
+
+- **`LoyaltyMember` is NOT `Customer`.** Customer is a wholesale counterparty with credit, receivables and
+  ledger dimensions; merging two of those would re-point sales/cash history. A member carries no money, so
+  it can be merged freely. Stage 1 does NOT attach a member to a sale (that comes with points, stage 3).
+- **Phone is the identity**: stored only as `+77XXXXXXXXX` (`normalizeKzPhone` — national part must start
+  with 7, so Russian +7 9xx is refused), unique per organization, never edited. A new number = a new
+  member merged with the old one.
+- **Consent is append-only** (`LoyaltyConsent`, UPDATE rejected by a DB trigger): who (`recordedByName`
+  snapshot), when, purpose (`PERSONAL_DATA` / `MARKETING` per channel WhatsApp/Telegram/SMS), source.
+  Current state = latest row per purpose/channel. No registration without personal-data consent;
+  withdrawing it sets `WITHDRAWN` and closes every open channel with explicit rows; a new grant reactivates.
+- **Merge is one-way** (OWNER/ADMIN, reason >= 5 chars): the duplicate becomes `MERGED` with `mergedIntoId`,
+  keeps its own consent history, its phone keeps leading to the primary (lookup follows the link). Consents
+  are NOT carried over (agreement for one number is not agreement for another). Stage 2 must move the
+  points balance on merge.
+- **Import only adds**: preview writes nothing; a number already in the base is skipped untouched; a row
+  needs «согласие = да»; consents are stamped source IMPORT with the stated origin (e.g. «анкеты 2025»).
+- Roles: `LOYALTY_TILL_ROLES` (= sale roles: lookup/register/consent), `LOYALTY_MANAGE_ROLES`
+  (OWNER/ADMIN/STORE_MANAGER: browse list, edit name/note), `LOYALTY_ADMIN_ROLES` (merge/import). The list
+  is searched server-side (not the client-side picker pattern): it is people's phone numbers and can be large.
+- Earning rates (5 % first purchase, then 1 %) are for stage 2 and must be settings, not constants. Stage 2
+  (points engine) and WhatsApp are NOT built — they wait for the owner's decisions listed in the research doc.
+
 ## Prisma migration workflow (this sandbox has no direct prod DB access)
 
 Shadow-database diff, not `prisma migrate dev` (which can hang/prompt):

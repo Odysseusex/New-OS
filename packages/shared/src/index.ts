@@ -31,3 +31,4 @@ export * from "./fixed-assets";
 export * from "./balance";
 export * from "./planning";
 export * from "./ledger";
+export * from "./loyalty";

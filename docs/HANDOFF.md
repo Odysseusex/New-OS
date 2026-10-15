@@ -31,7 +31,7 @@ simple Russian (see CLAUDE.md conventions).
 * iiko: no access and no integration (Интеграции stays deferred). Fiscal (re:Kassa) work is in CLAUDE.md.
 
 ## New topic being started: CRM + loyalty program + WhatsApp Business API
-Design phase; owner decisions are in docs/CRM-LOYALTY-RESEARCH.md §10 (5% first purchase, then 1%; points payable at the till). Build not started. The owner wants a CRM and a bonus programme «like Sagi» (will send screenshots) with WhatsApp
+Owner decisions are in docs/CRM-LOYALTY-RESEARCH.md §10 (5% first purchase, then 1%; points payable at the till). Stage 1 (customer by phone + consent record) is BUILT on branch `claude/loyalty-phase1` (§11 there, and CLAUDE.md); it adds a migration, so it waits for the owner's yes before going to `main`. Stage 2 (points) not started. The owner wants a CRM and a bonus programme «like Sagi» (will send screenshots) with WhatsApp
 sending. Questions for the design: one platform vs separate; the existing `Customers` module and promotions/
 coupons are the starting point; WhatsApp needs a provider, verified business, approved templates, opt-in, paid
 per message — verify current prices from the provider's pages before quoting any number.

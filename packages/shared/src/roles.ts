@@ -298,3 +298,16 @@ export const LEDGER_SETUP_ROLES: Role[] = HARD_DELETE_ROLES;
 // Annulling an erroneous receipt/write-off pair takes a loss out of the books.
 // That is a decision about the owner's own numbers, so the narrow tier only.
 export const STOCK_VOID_ROLES: Role[] = HARD_DELETE_ROLES;
+
+// Loyalty programme (retail customers by phone). Whoever stands at the till
+// finds a customer by phone, registers a new one and records what they agreed
+// to — including a withdrawal, which must never be harder to record than the
+// consent was.
+export const LOYALTY_TILL_ROLES: Role[] = SALE_CREATE_ROLES;
+
+// Browsing the whole base is a list of people's phone numbers, so it is kept
+// to management rather than every cashier.
+export const LOYALTY_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.STORE_MANAGER];
+
+// Merging duplicates (one-way) and importing a file of customers.
+export const LOYALTY_ADMIN_ROLES: Role[] = HARD_DELETE_ROLES;

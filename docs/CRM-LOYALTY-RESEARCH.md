@@ -121,3 +121,15 @@ identify themselves today; WhatsApp: which provider/number; who owns consent wor
 * Build order agreed: phase 1 (customer by phone + consent record) → phase 2 (points ledger, append-only) → phase 3
   (till UI). Messaging (WhatsApp) comes after, and needs the owner's own Meta business account.
 * Vendor option (Sagi) stays open in parallel; it is only viable if Sagi gives API access for a custom POS.
+
+## 11. Stage 1 — built (2026-10-15, branch `claude/loyalty-phase1`, not yet on `main`)
+* Retail customer by phone (`LoyaltyMember`, separate from wholesale `Customer`), Kazakhstan numbers normalized
+  to `+77XXXXXXXXX`, duplicates refused, one-way merge of duplicates, CSV import (preview, then add only new).
+* Append-only consent record: personal data + advertising per channel (WhatsApp/Telegram/SMS), who/when/how,
+  withdrawal honoured (withdrawing personal-data consent closes every channel and the membership).
+* Till: «Клиент» button finds/registers a customer and records consent; it does not attach them to the sale yet.
+* Open for a lawyer (not decided in code): whether a verbal consent at the till is enough (source «На кассе» is
+  recorded as such), the consent wording/version, and what «delete my data» must do (today: withdrawal keeps
+  the record and its history as proof; nothing is erased).
+* Still waiting for the owner before stage 2: max share of a check payable with points, expiry, exclusions,
+  accounting treatment. Earning rates 5 % / 1 % will be settings.

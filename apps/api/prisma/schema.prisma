@@ -2604,3 +2604,85 @@ model ClassificationBatchLine {
   @@index([batchId])
   @@map("classification_batch_lines")
 }
+
+// ── Loyalty programme, stage 1: retail customers identified by phone ─────────
+// Deliberately NOT the `Customer` table: a Customer is a counterparty with a
+// credit limit, receivables and ledger dimensions, and merging two of them
+// would re-point sales and cash history. A loyalty member carries no money in
+// stage 1, so duplicates can be merged without touching any document.
+
+enum LoyaltyMemberStatus {
+  ACTIVE
+  // Consent to process personal data was withdrawn: the record stays (the
+  // consent history is the proof), but the person takes no part in the programme.
+  WITHDRAWN
+  // A duplicate folded into `mergedIntoId`; looking up its phone leads there.
+  MERGED
+}
+
+enum LoyaltyConsentPurpose {
+  // Processing of personal data to take part in the programme. Required to exist.
+  PERSONAL_DATA
+  // Advertising messages, per channel.
+  MARKETING
+}
+
+enum LoyaltyConsentChannel {
+  WHATSAPP
+  TELEGRAM
+  SMS
+}
+
+enum LoyaltyConsentSource {
+  AT_TILL
+  PAPER_FORM
+  IMPORT
+  OTHER
+}
+
+model LoyaltyMember {
+  id             String              @id @default(cuid())
+  organizationId String
+  // Normalized Kazakhstan number, "+77XXXXXXXXX" (normalizeKzPhone). Never
+  // changes: a new number is a new member, merged with the old one.
+  phone          String
+  name           String?
+  note           String?
+  status         LoyaltyMemberStatus @default(ACTIVE)
+  mergedIntoId   String?
+  mergedInto     LoyaltyMember?      @relation("LoyaltyMemberMerge", fields: [mergedIntoId], references: [id])
+  mergedFrom     LoyaltyMember[]     @relation("LoyaltyMemberMerge")
+  mergedAt       DateTime?
+  createdById    String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  consents LoyaltyConsent[]
+
+  @@unique([organizationId, phone])
+  @@index([organizationId, status])
+  @@map("loyalty_members")
+}
+
+// Append-only: every grant or withdrawal is a new row (UPDATE is rejected by a
+// trigger). The current state of a purpose/channel is its latest row.
+model LoyaltyConsent {
+  id             String                 @id @default(cuid())
+  organizationId String
+  memberId       String
+  member         LoyaltyMember          @relation(fields: [memberId], references: [id])
+  purpose        LoyaltyConsentPurpose
+  // Set for MARKETING, null for PERSONAL_DATA (CHECK constraint).
+  channel        LoyaltyConsentChannel?
+  granted        Boolean
+  source         LoyaltyConsentSource
+  // Who recorded it; the name is a snapshot so the record survives a rename.
+  recordedById   String?
+  recordedByName String?
+  recordedAt     DateTime               @default(now())
+  note           String?
+
+  @@index([memberId, recordedAt])
+  @@index([organizationId])
+  @@map("loyalty_consents")
+}
