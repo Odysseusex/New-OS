@@ -109,3 +109,15 @@ Sources for the global rows are review sites with affiliate interests; treat as 
 ## 9. Open questions for the owner
 Reward model preference; what Sagi features are actually used/liked (screenshots optional); how many retail customers
 identify themselves today; WhatsApp: which provider/number; who owns consent wording; budget per month for messages.
+
+## 10. Owner decisions so far (2026-10-15)
+* **Reward model: accumulate points and pay part of a check with them** (chosen by the owner).
+* **Earning rate, as the owner stated it:** **5% on a customer's FIRST purchase**, afterwards **1%** ("рассматривают" —
+  the 1% is still being considered, not final). Read as: one-time 5% welcome accrual on the first purchase, then a
+  standing rate of 1% (make the rate a setting, not a constant, so 1% can change without a release).
+* Still NOT decided (never default): max share of a check payable with points (30% was only a proposal), expiry
+  (12 months proposed), whether consignment / marked-down goods / the part paid by points earn points (proposed: no),
+  accounting treatment of issued/redeemed points (owner + accountant), WhatsApp provider and budget.
+* Build order agreed: phase 1 (customer by phone + consent record) → phase 2 (points ledger, append-only) → phase 3
+  (till UI). Messaging (WhatsApp) comes after, and needs the owner's own Meta business account.
+* Vendor option (Sagi) stays open in parallel; it is only viable if Sagi gives API access for a custom POS.
