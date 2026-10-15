@@ -4,7 +4,7 @@ Real, in-production ERP for an actual bakery-network business ("Ar-Amir",
 shown in-app as "ArAmir OS"; demo/seed org name is "Пекарня «Колосок»").
 This file is what a fresh session needs to work on this repo effectively
 without prior conversation history — the "why" behind decisions that isn't
-obvious from the code alone. For setup/run instructions see `README.md`.
+obvious from the code alone. For setup/run instructions see `README.md`. For the current state of work and open decisions see `docs/HANDOFF.md`.
 
 ## Production deployment (current, as of the GitHub account migration)
 
