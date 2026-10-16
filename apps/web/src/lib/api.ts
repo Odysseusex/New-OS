@@ -1,4 +1,6 @@
 import type {
+  LoyaltyAnalyticsDto,
+  LoyaltyChurnSettings,
   AdjustLoyaltyPointsRequestDto,
   LoyaltySettingsDto,
   LoyaltySummaryDto,
@@ -489,6 +491,16 @@ export const api = {
       request<LoyaltyMemberDetailDto>("/loyalty/members/merge", { method: "POST", body: JSON.stringify(dto) }),
     previewImport: (rows: LoyaltyImportRowInput[]) =>
       request<LoyaltyImportPreviewDto>("/loyalty/members/import/preview", { method: "POST", body: JSON.stringify({ rows }) }),
+    analytics: (from: string, to: string, churn: LoyaltyChurnSettings) =>
+      request<LoyaltyAnalyticsDto>(
+        withQuery("/loyalty/analytics", {
+          from,
+          to,
+          minVisits: String(churn.minVisits),
+          windowDays: String(churn.windowDays),
+          inactiveDays: String(churn.inactiveDays),
+        }),
+      ),
     settings: () => request<LoyaltySettingsDto>("/loyalty/settings"),
     updateSettings: (dto: UpdateLoyaltySettingsRequestDto) =>
       request<LoyaltySettingsDto>("/loyalty/settings", { method: "PATCH", body: JSON.stringify(dto) }),

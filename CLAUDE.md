@@ -844,6 +844,15 @@ earning on consignment, markdown/coupon lines or the part paid by points — all
   (till: «Клиент бонусной программы» in the cart). `SalesService`/`SaleReturnsService` take
   `LoyaltyPointsService` as their LAST constructor argument (defaulted) so hand-wired specs keep working.
 
+**Stage 4 — customer analytics — built** (Клиенты → «Аналитика», `LOYALTY_MANAGE_ROLES`; `loyalty/analytics.ts`
+pure maths + `loyalty-analytics.service.ts`; research in `docs/CRM-LOYALTY-RESEARCH.md` §13). No schema change.
+Klaviyo's six RFM groups (R/F/M tertiles over the last 365 days, shown only from 30 scored members — percentiles
+mean nothing on a handful), Square's «lapsed regular» churn radar (≥N visits in M days, not seen K days — the three
+numbers are per-viewer settings in localStorage, never contacts a member who withdrew consent), visit-frequency
+buckets, new vs returning per week (Asia/Almaty), Shopify-style monthly cohorts, top members. Visits = sales with a
+member attached; amounts are OWN money net of returns (consignment-only baskets ignored); a merged duplicate's
+sales count for its primary. No predicted spend, no tags (later, with messaging).
+
 ## Prisma migration workflow (this sandbox has no direct prod DB access)
 
 Shadow-database diff, not `prisma migrate dev` (which can hang/prompt):

@@ -379,3 +379,100 @@ export function distributePointsDiscount(lines: LoyaltyCartLine[], points: numbe
     });
   return { lines: out, total: out.reduce((sum, l) => sum + tiyn(l.discount), 0) / 100 };
 }
+
+// ── Customer analytics (stage 4) ─────────────────────────────────────────────
+// Built from sales with an attached member only. Methods follow what leading
+// platforms use (docs/CRM-LOYALTY-RESEARCH.md §13): Klaviyo's six RFM groups,
+// Square's «lapsed regular» rule for the churn radar, Shopify's monthly cohorts.
+
+export enum LoyaltySegment {
+  CHAMPIONS = "CHAMPIONS",
+  LOYAL = "LOYAL",
+  RECENT = "RECENT",
+  NEEDS_ATTENTION = "NEEDS_ATTENTION",
+  AT_RISK = "AT_RISK",
+  INACTIVE = "INACTIVE",
+}
+
+export const LOYALTY_SEGMENTS: LoyaltySegment[] = [
+  LoyaltySegment.CHAMPIONS,
+  LoyaltySegment.LOYAL,
+  LoyaltySegment.RECENT,
+  LoyaltySegment.NEEDS_ATTENTION,
+  LoyaltySegment.AT_RISK,
+  LoyaltySegment.INACTIVE,
+];
+
+export const LOYALTY_SEGMENT_LABELS_RU: Record<LoyaltySegment, string> = {
+  [LoyaltySegment.CHAMPIONS]: "Чемпионы",
+  [LoyaltySegment.LOYAL]: "Лояльные",
+  [LoyaltySegment.RECENT]: "Новички",
+  [LoyaltySegment.NEEDS_ATTENTION]: "Требуют внимания",
+  [LoyaltySegment.AT_RISK]: "В зоне риска",
+  [LoyaltySegment.INACTIVE]: "Уснувшие",
+};
+
+// RFM codes (recency, frequency, monetary — each 1..3) per group, as Klaviyo defines them.
+export const RFM_SEGMENT_CODES: Record<LoyaltySegment, string[]> = {
+  [LoyaltySegment.CHAMPIONS]: ["333", "332", "323"],
+  [LoyaltySegment.LOYAL]: ["321", "322", "331", "232", "233"],
+  [LoyaltySegment.RECENT]: ["312", "313", "311", "222", "223"],
+  [LoyaltySegment.NEEDS_ATTENTION]: ["213", "221", "123", "132", "133"],
+  [LoyaltySegment.AT_RISK]: ["231", "212", "122", "131", "211"],
+  [LoyaltySegment.INACTIVE]: ["111", "112", "113", "121"],
+};
+
+export interface LoyaltyChurnSettings {
+  // A «regular»: at least `minVisits` purchases in the last `windowDays`…
+  minVisits: number;
+  windowDays: number;
+  // …who has not been back for `inactiveDays`.
+  inactiveDays: number;
+}
+
+export const DEFAULT_LOYALTY_CHURN_SETTINGS: LoyaltyChurnSettings = { minVisits: 3, windowDays: 60, inactiveDays: 14 };
+
+export interface LoyaltyAnalyticsMemberRowDto {
+  memberId: string;
+  phone: string;
+  name: string | null;
+  lastVisitAt: string;
+  daysSinceLastVisit: number;
+  visits: number;
+  spend: number;
+  averageCheck: number;
+  // Average gap between visits, when there are at least two.
+  usualIntervalDays: number | null;
+  segment: LoyaltySegment | null;
+}
+
+export interface LoyaltyAnalyticsDto {
+  from: string;
+  to: string;
+  summary: {
+    activeMembers: number;
+    newMembers: number;
+    // Shares are fractions 0..1; null when there is nothing to divide by.
+    returningShare: number | null;
+    averageCheckMembers: number | null;
+    averageCheckAnonymous: number | null;
+    visitsPerMember: number | null;
+    memberRevenueShare: number | null;
+    memberRevenue: number;
+    memberVisits: number;
+  };
+  segments: {
+    // Groups are percentile-based and mean nothing on a handful of people.
+    minimumMembers: number;
+    membersScored: number;
+    available: boolean;
+    groups: { segment: LoyaltySegment; members: number; revenue: number }[];
+    rows: LoyaltyAnalyticsMemberRowDto[];
+  };
+  churnRadar: LoyaltyChurnSettings & { rows: LoyaltyAnalyticsMemberRowDto[] };
+  frequency: { label: string; members: number }[];
+  weekly: { weekStart: string; newMembers: number; returningMembers: number }[];
+  // retention[k] = share of the cohort that bought again in month +k+1; null for a month not reached yet.
+  cohorts: { month: string; size: number; retention: (number | null)[] }[];
+  topMembers: LoyaltyAnalyticsMemberRowDto[];
+}

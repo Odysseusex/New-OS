@@ -7,6 +7,8 @@ import type { CustomerDto } from "@bakery-os/shared";
 import {
   CUSTOMER_MANAGE_ROLES,
   HARD_DELETE_ROLES,
+  LOYALTY_ADMIN_ROLES,
+  LOYALTY_MANAGE_ROLES,
   LOYALTY_TILL_ROLES,
   PAYMENT_RECORD_ROLES,
 } from "@bakery-os/shared";
@@ -21,6 +23,7 @@ import {
   RowActions,
 } from "@/components/row-actions";
 import { LoyaltyTab } from "@/components/loyalty-tab";
+import { LoyaltyAnalyticsTab } from "@/components/loyalty-analytics-tab";
 
 export default function CustomersPage() {
   const { user } = useAuth();
@@ -30,7 +33,8 @@ export default function CustomersPage() {
     ? PAYMENT_RECORD_ROLES.includes(user.role)
     : false;
   const canSeeRetail = user ? LOYALTY_TILL_ROLES.includes(user.role) : false;
-  const [tab, setTab] = useState<"wholesale" | "retail">("wholesale");
+  const canSeeAnalytics = user ? LOYALTY_MANAGE_ROLES.includes(user.role) : false;
+  const [tab, setTab] = useState<"wholesale" | "retail" | "analytics">("wholesale");
 
   const [customers, setCustomers] = useState<CustomerDto[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -104,7 +108,9 @@ export default function CustomersPage() {
           <p className="mt-1 text-sm text-muted">
             {tab === "wholesale"
               ? "Оптовые клиенты, история заказов и задолженности"
-              : "Розничные клиенты по номеру телефона и их согласия"}
+              : tab === "retail"
+                ? "Розничные клиенты по номеру телефона и их согласия"
+                : "Аналитика участников бонусной программы"}
           </p>
         </div>
         {tab === "wholesale" && canManage && (
@@ -128,6 +134,7 @@ export default function CustomersPage() {
               [
                 ["wholesale", "Оптовые"],
                 ["retail", "Розница"],
+                ...(canSeeAnalytics ? ([["analytics", "Аналитика"]] as const) : []),
               ] as const
             ).map(([key, label]) => (
               <button
@@ -148,6 +155,9 @@ export default function CustomersPage() {
       )}
 
       {tab === "retail" && user && <LoyaltyTab role={user.role} />}
+      {tab === "analytics" && user && canSeeAnalytics && (
+        <LoyaltyAnalyticsTab canAdmin={LOYALTY_ADMIN_ROLES.includes(user.role)} />
+      )}
 
       {tab === "wholesale" && (
         <>

@@ -7,6 +7,7 @@ import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { LoyaltyService } from "./loyalty.service";
 import { LoyaltyPointsService } from "./loyalty-points.service";
+import { LoyaltyAnalyticsService } from "./loyalty-analytics.service";
 import {
   AdjustLoyaltyPointsDto,
   UpdateLoyaltySettingsDto,
@@ -91,7 +92,31 @@ export class LoyaltyController {
 @Roles(...LOYALTY_TILL_ROLES)
 @Controller("loyalty")
 export class LoyaltyProgramController {
-  constructor(private pointsService: LoyaltyPointsService) {}
+  constructor(
+    private pointsService: LoyaltyPointsService,
+    private analyticsService: LoyaltyAnalyticsService,
+  ) {}
+
+  @Get("analytics")
+  @Roles(...LOYALTY_MANAGE_ROLES)
+  analytics(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("minVisits") minVisits?: string,
+    @Query("windowDays") windowDays?: string,
+    @Query("inactiveDays") inactiveDays?: string,
+  ) {
+    const end = to ? new Date(to) : new Date();
+    const start = from ? new Date(from) : new Date(end.getTime() - 30 * 86_400_000);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) throw new BadRequestException("Неверный период");
+    const num = (v?: string) => (v === undefined || v === "" ? undefined : Number(v));
+    return this.analyticsService.analytics(user.organizationId, start, end, {
+      minVisits: num(minVisits),
+      windowDays: num(windowDays),
+      inactiveDays: num(inactiveDays),
+    });
+  }
 
   @Get("settings")
   settings(@CurrentUser() user: AuthenticatedUser) {

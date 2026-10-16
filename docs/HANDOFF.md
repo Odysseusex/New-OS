@@ -42,3 +42,8 @@ per message — verify current prices from the provider's pages before quoting a
   `bakery_os`, copy `.env.example` to `.env`, `pnpm install`, `npx prisma migrate deploy`, `npx ts-node prisma/seed.ts`.
 * Use `PGPASSWORD=postgres` with every `psql` call (a missing password blocks the shell).
 * No access to the production database, Render logs or credentials; never ask the owner to paste secrets in chat.
+
+## Loyalty status (2026-10-16)
+Stages 1, 2 (points, live and switched on by the owner) and 4 (customer analytics, Клиенты → «Аналитика») are on
+`main`. Next candidates: Telegram notifications to members (free, bot exists), then WhatsApp (needs the owner's
+Meta business account + provider). Consent wording still awaits a lawyer. Sales «Сегодня/7 дней» UTC bug still open.
