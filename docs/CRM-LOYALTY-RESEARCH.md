@@ -144,3 +144,27 @@ identify themselves today; WhatsApp: which provider/number; who owns consent wor
   points; the slip shows points spent/earned. Returns give back spent points and take back earned ones.
 * Settings card + figures (points on hand, earned, «Скидки баллами», expired) on Клиенты → Розница.
 * Still not built: WhatsApp/Telegram messaging, birthday/referral bonuses, tiers, wallet card.
+
+## 13. Customer analytics — what leading platforms show (research, 2026-10-16)
+Sources (public help pages / vendor sites, checked 2026-10-16):
+* **Sagi** (sagibonus.com, vendor): «Analytics and RFM — see who's active, at risk, or asleep»; «Churn radar — flags
+  leaving customers»; tags; «RFM, tags, cohorts» in its comparison table. No public detail beyond names.
+* **Klaviyo** (academy.klaviyo.com, RFM lessons): R, F, M each scored 1–3 by percentile; six groups — Champions
+  (333, 332, 323), Loyal (321, 322, 331, 232, 233), Recent (312, 313, 311, 222, 223), Needs attention (213, 221, 123,
+  132, 133), At risk (231, 212, 122, 131, 211), Inactive (111, 112, 113, 121); tracks who moved between groups monthly.
+* **Square** (squareup.com/help 5418, 6467, 5660): Customer insights — total/average visits and spend, new vs returning
+  visits graph, visit-frequency distribution; Loyalty metrics — average spend and sales of loyalty vs non-loyalty
+  customers, visits of loyalty customers, top customers; «lapsed» customer = 3 purchases within 6 months but not back in
+  6 weeks (editable per business type), used for win-back.
+* **Shopify** (help.shopify.com customers reports, changelog): cohort analysis by month of first purchase (retention per
+  cohort), returning customer rate over time, predicted spend tier (prediction — not proposed here).
+* **MAXMA**: «smartRFM» and dashboards per catalogue reviews (toolfox, a2is); no public report documentation.
+* iiko/Poster: no public description of guest-churn reports found.
+
+Common core across them → proposed for ArAmir OS (thresholds are settings, scaled to a bakery where people come
+every few days, not monthly): (1) summary cards — active members, new members, repeat-customer rate, average check
+members vs anonymous, visits per member, share of revenue from members; (2) RFM segments (Klaviyo's six, percentile
+1–3) with counts and the member list; (3) churn radar (Square's «lapsed» rule, e.g. ≥3 visits in 60 days and not seen
+14 days); (4) visit-frequency distribution; (5) new vs returning by week; (6) monthly retention cohorts; (7) top
+members. Not proposed: predicted spend (no basis yet), tags (later, with messaging). Data exists only for sales with
+an attached member, from the day the programme was switched on.
