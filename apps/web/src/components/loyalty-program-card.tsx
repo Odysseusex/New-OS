@@ -132,7 +132,9 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
               </span>
             </>
           ) : (
-            <span className="text-muted">Telegram-бот для клиентов не подключён.</span>
+            <span className={telegram.problem ? "text-red-700" : "text-muted"}>
+              Telegram-бот для клиентов не подключён{telegram.problem ? `: ${telegram.problem}` : "."}
+            </span>
           )}
         </p>
       )}

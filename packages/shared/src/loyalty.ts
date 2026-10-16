@@ -488,6 +488,8 @@ export interface LoyaltyAnalyticsDto {
 export interface LoyaltyTelegramStatusDto {
   enabled: boolean;
   username: string | null;
+  // Set when a token is configured but Telegram refused it — shown to the owner.
+  problem: string | null;
   linkedMembers: number;
   // Linked AND consented to the Telegram channel: who a message actually reaches.
   reachableMembers: number;

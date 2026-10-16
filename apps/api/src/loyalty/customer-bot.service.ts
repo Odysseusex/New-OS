@@ -59,6 +59,9 @@ export class CustomerBotService implements OnModuleInit {
   private bot: Telegraf | null = null;
   private transport: BotTransport | null = null;
   private username: string | null = null;
+  // Why the bot is not connected, in words the owner can act on (never the token).
+  private problem: string | null = null;
+  private lastAttempt = 0;
 
   constructor(
     private prisma: PrismaService,
@@ -77,18 +80,37 @@ export class CustomerBotService implements OnModuleInit {
     this.bot = bot;
     this.transport = { send: async (chatId, text, extra) => void (await bot.telegram.sendMessage(chatId, text, { parse_mode: "HTML", ...(extra ?? {}) })) };
     this.registerHandlers(bot);
+    await this.connect();
+  }
+
+  // Asks Telegram who the bot is and registers the webhook. Retried from status()
+  // (at most every 30 s) so a fixed token works without another deploy.
+  private async connect(): Promise<void> {
+    if (!this.bot) return;
+    this.lastAttempt = Date.now();
     try {
-      bot.botInfo = await bot.telegram.getMe();
-      this.username = bot.botInfo.username;
+      this.bot.botInfo = await this.bot.telegram.getMe();
+      this.username = this.bot.botInfo.username;
       // Render sets RENDER_EXTERNAL_URL itself; the webhook registers on every boot,
       // so the owner only ever sets the token.
       const base = process.env.CUSTOMER_BOT_WEBHOOK_BASE_URL || process.env.RENDER_EXTERNAL_URL;
       if (base) {
-        await bot.telegram.setWebhook(`${base.replace(/\/$/, "")}/api/loyalty/telegram/webhook`, { secret_token: CustomerBotService.webhookSecret() });
+        await this.bot.telegram.setWebhook(`${base.replace(/\/$/, "")}/api/loyalty/telegram/webhook`, { secret_token: CustomerBotService.webhookSecret() });
+        this.problem = null;
+      } else {
+        this.problem = "Не задан адрес сервера для Telegram (RENDER_EXTERNAL_URL)";
       }
       this.logger.log(`Customer bot ready: @${this.username}${base ? " (webhook set)" : " (no public URL — webhook not set)"}`);
     } catch (err) {
-      this.logger.error("Customer bot startup failed — check CUSTOMER_BOT_TOKEN", err instanceof Error ? err.stack : String(err));
+      const code = (err as { response?: { error_code?: number; description?: string } }).response?.error_code;
+      const description = (err as { response?: { description?: string } }).response?.description;
+      this.problem =
+        code === 401
+          ? "Telegram не принял код бота: код неверный или отозван. Вставьте актуальный код от @BotFather"
+          : code === 404
+            ? "Код бота записан с ошибкой: проверьте, что он скопирован целиком"
+            : `Telegram ответил ошибкой${description ? `: ${description}` : ""}`;
+      this.logger.error(`Customer bot startup failed (${code ?? "no code"}: ${description ?? (err instanceof Error ? err.message : String(err))}) — check CUSTOMER_BOT_TOKEN`);
     }
   }
 
@@ -322,9 +344,16 @@ export class CustomerBotService implements OnModuleInit {
   }
 
   async status(organizationId: string): Promise<LoyaltyTelegramStatusDto> {
+    if (this.bot && (!this.username || this.problem) && Date.now() - this.lastAttempt > 30_000) await this.connect();
     const links = await this.prisma.loyaltyTelegramLink.findMany({ where: { organizationId }, select: { memberId: true } });
     const reachable = await this.reachableIds(links.map((l) => l.memberId));
-    return { enabled: this.isEnabled(), username: this.username, linkedMembers: links.length, reachableMembers: reachable.size };
+    return {
+      enabled: this.isEnabled() && this.username !== null,
+      username: this.username,
+      problem: this.bot ? this.problem : null,
+      linkedMembers: links.length,
+      reachableMembers: reachable.size,
+    };
   }
 
   // Who can be messaged right now: linked, ACTIVE, TELEGRAM consent granted.
