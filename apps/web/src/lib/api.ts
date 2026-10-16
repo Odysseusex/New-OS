@@ -1,4 +1,6 @@
 import type {
+  LoyaltyTelegramStatusDto,
+  SendLoyaltyTelegramResultDto,
   LoyaltyAnalyticsDto,
   LoyaltyChurnSettings,
   AdjustLoyaltyPointsRequestDto,
@@ -501,6 +503,9 @@ export const api = {
           inactiveDays: String(churn.inactiveDays),
         }),
       ),
+    telegramStatus: () => request<LoyaltyTelegramStatusDto>("/loyalty/telegram/status"),
+    telegramSend: (memberIds: string[], text: string) =>
+      request<SendLoyaltyTelegramResultDto>("/loyalty/telegram/send", { method: "POST", body: JSON.stringify({ memberIds, text }) }),
     settings: () => request<LoyaltySettingsDto>("/loyalty/settings"),
     updateSettings: (dto: UpdateLoyaltySettingsRequestDto) =>
       request<LoyaltySettingsDto>("/loyalty/settings", { method: "PATCH", body: JSON.stringify(dto) }),

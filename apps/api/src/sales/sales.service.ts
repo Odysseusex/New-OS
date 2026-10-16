@@ -51,6 +51,7 @@ import { CreateSaleDto } from "./dto/create-sale.dto";
 import { RecordPaymentDto } from "./dto/record-payment.dto";
 import { postLedgerSources } from "../ledger/event-posting";
 import { LoyaltyPointsService, PreparedSaleLoyalty } from "../loyalty/loyalty-points.service";
+import { CustomerBotService } from "../loyalty/customer-bot.service";
 import { startOfZonedDay } from "../common/zoned-day";
 
 // Calendar days in reports are the owner's days, not the server's. Render runs
@@ -100,6 +101,7 @@ export class SalesService {
     private promotionsService: PromotionsService,
     private costing: CostingService = new CostingService(prisma),
     private loyaltyPoints: LoyaltyPointsService = new LoyaltyPointsService(prisma),
+    private customerBot?: CustomerBotService,
   ) {}
 
   // CASH sales land in the selling location's own till, auto-created the
@@ -1197,7 +1199,7 @@ export class SalesService {
       ? await this.fiscalizeBeforeSale(user, locationId, items, totalAmount, paymentMethod, soldAt, split)
       : null;
 
-    return this.prisma.$transaction(async (tx) => {
+    const detail = await this.prisma.$transaction(async (tx) => {
       const products = await tx.product.findMany({
         where: { id: { in: productIds }, organizationId: user.organizationId },
       });
@@ -1434,6 +1436,9 @@ export class SalesService {
       // relation on that object is still null.
       return this.toSaleDetailDto({ ...sale, fiscalReceipt: receipt, loyaltyPointsEntries: loyaltyEntries });
     });
+    // After the commit and never awaited: a Telegram hiccup must not slow or fail the till.
+    void this.customerBot?.notifySale(detail);
+    return detail;
   }
 
   // Punches the fiscal receipt for a cart that has not been sold yet, and

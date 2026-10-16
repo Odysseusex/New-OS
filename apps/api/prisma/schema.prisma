@@ -2650,6 +2650,8 @@ enum LoyaltyConsentSource {
   PAPER_FORM
   IMPORT
   OTHER
+  // The customer pressed a button in the customer Telegram bot.
+  TELEGRAM_BOT
 }
 
 model LoyaltyMember {
@@ -2672,6 +2674,8 @@ model LoyaltyMember {
   consents      LoyaltyConsent[]
   sales         Sale[]
   pointsEntries LoyaltyPointsEntry[]
+  telegramLink  LoyaltyTelegramLink?
+  messageLogs   LoyaltyMessageLog[]
 
   @@unique([organizationId, phone])
   @@index([organizationId, status])
@@ -2766,4 +2770,40 @@ model LoyaltyPointsEntry {
   @@index([memberId, createdAt])
   @@index([organizationId, createdAt])
   @@map("loyalty_points_entries")
+}
+
+// ── Loyalty programme: customer Telegram bot ─────────────────────────────────
+// A separate bot from the staff one (CUSTOMER_BOT_TOKEN). A customer links their
+// chat by sharing their own phone number; messages go only to a linked, ACTIVE
+// member whose current consent for the TELEGRAM channel is granted.
+
+model LoyaltyTelegramLink {
+  id             String        @id @default(cuid())
+  organizationId String
+  memberId       String        @unique
+  member         LoyaltyMember @relation(fields: [memberId], references: [id])
+  chatId         String
+  telegramUserId String
+  linkedAt       DateTime      @default(now())
+
+  @@index([chatId])
+  @@index([organizationId])
+  @@map("loyalty_telegram_links")
+}
+
+// What was sent to whom, and the de-duplication key (one points-expiry reminder
+// per expiry date, one message per sale).
+model LoyaltyMessageLog {
+  id             String        @id @default(cuid())
+  organizationId String
+  memberId       String
+  member         LoyaltyMember @relation(fields: [memberId], references: [id])
+  key            String
+  text           String
+  sentById       String?
+  sentAt         DateTime      @default(now())
+
+  @@unique([memberId, key])
+  @@index([organizationId, sentAt])
+  @@map("loyalty_message_logs")
 }

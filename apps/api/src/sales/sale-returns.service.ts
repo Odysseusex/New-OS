@@ -17,6 +17,7 @@ import { CreateSaleReturnDto } from "./dto/create-sale-return.dto";
 import { allocateRefund, validateRefundOverride } from "./refund-allocation";
 import { postLedgerSources } from "../ledger/event-posting";
 import { LoyaltyPointsService } from "../loyalty/loyalty-points.service";
+import { CustomerBotService } from "../loyalty/customer-bot.service";
 
 const RETURN_INCLUDE = {
   location: true,
@@ -33,6 +34,7 @@ export class SaleReturnsService {
     private fiscalService: FiscalService,
     private fiscalSettings: FiscalSettings,
     private loyaltyPoints: LoyaltyPointsService = new LoyaltyPointsService(prisma),
+    private customerBot?: CustomerBotService,
   ) {}
 
   async findBySale(user: AuthenticatedUser, saleId: string): Promise<SaleReturnDto[]> {
@@ -160,6 +162,7 @@ export class SaleReturnsService {
       ? await this.fiscalizeBeforeReturn(user, sale, lines, totalAmount, returnedAt)
       : null;
 
+    let loyaltyMoved: { memberId: string; pointsRefunded: number; pointsReversed: number } | null = null;
     const created = await this.prisma.$transaction(async (tx) => {
       const saleReturn = await tx.saleReturn.create({
         data: {
@@ -272,7 +275,7 @@ export class SaleReturnsService {
           returnedQtyByProduct.set(productId, (returnedQtyByProduct.get(productId) ?? 0) + quantity);
         for (const previous of sale.returns) for (const item of previous.items) add(item.productId, item.quantity.toNumber());
         for (const line of lines) add(line.productId, line.quantity);
-        await this.loyaltyPoints.recordReturn(tx, {
+        const moved = await this.loyaltyPoints.recordReturn(tx, {
           user,
           saleId: sale.id,
           saleReturnId: saleReturn.id,
@@ -288,6 +291,7 @@ export class SaleReturnsService {
           returnedQtyByProduct,
           now: returnedAt,
         });
+        loyaltyMoved = { memberId: moved.memberId, pointsRefunded: moved.pointsRefunded, pointsReversed: moved.pointsReversed };
       }
 
       // Journalise the return (and its cost) with the return itself; the refund
@@ -297,6 +301,8 @@ export class SaleReturnsService {
       return saleReturn;
     });
 
+    const moved = loyaltyMoved as { memberId: string; pointsRefunded: number; pointsReversed: number } | null;
+    if (moved) void this.customerBot?.notifyReturn(moved.memberId, created.id, moved.pointsRefunded, moved.pointsReversed);
     return this.toDto({ ...created, fiscalReceipt: receipt ?? created.fiscalReceipt });
   }
 

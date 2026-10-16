@@ -175,6 +175,9 @@ export function LoyaltyMemberModal({
             <p className="text-lg font-semibold text-foreground">{formatKzPhone(member.phone)}</p>
             <MemberStatusBadge status={member.status} />
             <span className="text-sm text-muted">с {formatDate(member.createdAt)}</span>
+            <span className="basis-full text-sm text-muted">
+              Telegram: {member.telegramLinked ? (member.consents.marketing.TELEGRAM ? "подключён, уведомления включены" : "подключён, уведомления выключены") : "не подключён"}
+            </span>
           </div>
 
           {isMerged && member.mergedIntoId && (

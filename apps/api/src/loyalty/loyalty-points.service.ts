@@ -225,7 +225,7 @@ export class LoyaltyPointsService {
       returnedQtyByProduct: Map<string, number>;
       now: Date;
     },
-  ): Promise<{ pointsRefunded: number; pointsReversed: number }> {
+  ): Promise<{ memberId: string; pointsRefunded: number; pointsReversed: number }> {
     const { user, saleId, saleReturnId, now } = input;
     const memberId = await this.finalMember(tx, input.memberId);
     const entries = await tx.loyaltyPointsEntry.findMany({ where: { saleId } });
@@ -235,7 +235,7 @@ export class LoyaltyPointsService {
     const sum = (rows: { points: Prisma.Decimal }[]) => rows.reduce((s, r) => s + r.points.toNumber(), 0);
     const redeemed = -sum(entries.filter((e) => e.type === T.REDEEM));
     const earned = sum(entries.filter((e) => e.type === T.EARN));
-    if (redeemed <= 0 && earned <= 0) return { pointsRefunded: 0, pointsReversed: 0 };
+    if (redeemed <= 0 && earned <= 0) return { memberId, pointsRefunded: 0, pointsReversed: 0 };
 
     const byProduct = new Map<string, { qty: number; discount: number; earnBase: number }>();
     for (const l of input.saleLines) {
@@ -295,7 +295,7 @@ export class LoyaltyPointsService {
         },
       });
     }
-    return { pointsRefunded: Math.max(0, refund), pointsReversed: reverse };
+    return { memberId, pointsRefunded: Math.max(0, refund), pointsReversed: reverse };
   }
 
   // ── manual correction ─────────────────────────────────────────────────────

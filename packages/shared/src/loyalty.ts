@@ -47,6 +47,7 @@ export enum LoyaltyConsentSource {
   PAPER_FORM = "PAPER_FORM",
   IMPORT = "IMPORT",
   OTHER = "OTHER",
+  TELEGRAM_BOT = "TELEGRAM_BOT",
 }
 
 export const LOYALTY_CONSENT_SOURCE_LABELS_RU: Record<LoyaltyConsentSource, string> = {
@@ -54,6 +55,7 @@ export const LOYALTY_CONSENT_SOURCE_LABELS_RU: Record<LoyaltyConsentSource, stri
   [LoyaltyConsentSource.PAPER_FORM]: "Письменная анкета",
   [LoyaltyConsentSource.IMPORT]: "Импорт",
   [LoyaltyConsentSource.OTHER]: "Другое",
+  [LoyaltyConsentSource.TELEGRAM_BOT]: "Telegram-бот",
 };
 
 // ── Kazakhstan phone numbers ────────────────────────────────────────────────
@@ -96,6 +98,8 @@ export interface LoyaltyMemberDto {
   consents: LoyaltyConsentStateDto;
   // Points held now (expired ones excluded).
   pointsBalance: number;
+  // Linked to the customer Telegram bot (messages also need the TELEGRAM consent).
+  telegramLinked: boolean;
   createdAt: string;
 }
 
@@ -444,6 +448,8 @@ export interface LoyaltyAnalyticsMemberRowDto {
   // Average gap between visits, when there are at least two.
   usualIntervalDays: number | null;
   segment: LoyaltySegment | null;
+  // Linked to the customer bot with the TELEGRAM consent granted: can be messaged.
+  telegramReachable: boolean;
 }
 
 export interface LoyaltyAnalyticsDto {
@@ -475,4 +481,24 @@ export interface LoyaltyAnalyticsDto {
   // retention[k] = share of the cohort that bought again in month +k+1; null for a month not reached yet.
   cohorts: { month: string; size: number; retention: (number | null)[] }[];
   topMembers: LoyaltyAnalyticsMemberRowDto[];
+}
+
+// ── Customer Telegram bot ───────────────────────────────────────────────────
+
+export interface LoyaltyTelegramStatusDto {
+  enabled: boolean;
+  username: string | null;
+  linkedMembers: number;
+  // Linked AND consented to the Telegram channel: who a message actually reaches.
+  reachableMembers: number;
+}
+
+export interface SendLoyaltyTelegramRequestDto {
+  memberIds: string[];
+  text: string;
+}
+
+export interface SendLoyaltyTelegramResultDto {
+  sent: number;
+  skipped: number;
 }

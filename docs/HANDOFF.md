@@ -45,5 +45,5 @@ per message — verify current prices from the provider's pages before quoting a
 
 ## Loyalty status (2026-10-16)
 Stages 1, 2 (points, live and switched on by the owner) and 4 (customer analytics, Клиенты → «Аналитика») are on
-`main`. Next candidates: Telegram notifications to members (free, bot exists), then WhatsApp (needs the owner's
+`main`. Customer Telegram bot BUILT (needs the owner to create it in @BotFather and put CUSTOMER_BOT_TOKEN on Render). Next: WhatsApp (needs the owner's
 Meta business account + provider). Consent wording still awaits a lawyer.

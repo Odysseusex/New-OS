@@ -3,6 +3,7 @@ import { DEFAULT_LOYALTY_CHURN_SETTINGS, LoyaltyAnalyticsDto, LoyaltyChurnSettin
 import { ownAmount } from "../common/own-sales";
 import { PrismaService } from "../prisma/prisma.service";
 import { AnalyticsMember, computeLoyaltyAnalytics, RFM_WINDOW_DAYS } from "./analytics";
+import { CustomerBotService } from "./customer-bot.service";
 
 const REPORTING_TIME_ZONE = "Asia/Almaty";
 const dateKeyFormat = new Intl.DateTimeFormat("en-CA", { timeZone: REPORTING_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" });
@@ -13,7 +14,10 @@ const MAX_MERGE_HOPS = 10;
 // other analytics figure in the app.
 @Injectable()
 export class LoyaltyAnalyticsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private customerBot?: CustomerBotService,
+  ) {}
 
   async analytics(organizationId: string, from: Date, to: Date, churn: Partial<LoyaltyChurnSettings>): Promise<LoyaltyAnalyticsDto> {
     if (!(from < to)) throw new BadRequestException("Неверный период");
@@ -57,10 +61,14 @@ export class LoyaltyAnalyticsService {
       }
       return current;
     };
+    const reachable = this.customerBot ? await this.customerBot.reachableIds(memberRows.map((m) => m.id)) : new Set<string>();
     const members = new Map<string, AnalyticsMember>(
       memberRows
         .filter((m) => m.status !== LoyaltyMemberStatus.MERGED)
-        .map((m) => [m.id, { id: m.id, phone: m.phone, name: m.name, contactable: m.status === LoyaltyMemberStatus.ACTIVE }]),
+        .map((m) => [
+          m.id,
+          { id: m.id, phone: m.phone, name: m.name, contactable: m.status === LoyaltyMemberStatus.ACTIVE, telegramReachable: reachable.has(m.id) },
+        ]),
     );
 
     const net = (sale: { totalAmount: { toNumber(): number }; consignmentAmount: { toNumber(): number }; returns: { totalAmount: { toNumber(): number }; consignmentAmount: { toNumber(): number } }[] }) =>

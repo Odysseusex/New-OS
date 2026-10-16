@@ -853,6 +853,17 @@ buckets, new vs returning per week (Asia/Almaty), Shopify-style monthly cohorts,
 member attached; amounts are OWN money net of returns (consignment-only baskets ignored); a merged duplicate's
 sales count for its primary. No predicted spend, no tags (later, with messaging).
 
+**Customer Telegram bot — built** (`loyalty/customer-bot.service.ts`, migration `20261016150000_loyalty_telegram`).
+A SEPARATE bot from the staff one: env `CUSTOMER_BOT_TOKEN` only (off when unset); on boot it registers its webhook
+at `${RENDER_EXTERNAL_URL}/api/loyalty/telegram/webhook` with a secret derived from the token. A customer links by
+sharing their OWN contact (contact.user_id must equal the sender) → `LoyaltyTelegramLink` per member (merges
+followed). Every outgoing message passes `sendToMember`: ACTIVE member + link + current TELEGRAM marketing consent,
+claimed first in `LoyaltyMessageLog` (unique member+key) so nothing is sent twice. Consent given/withdrawn in the
+bot is a normal `LoyaltyConsent` row (source `TELEGRAM_BOT`, «Клиент (Telegram)»); a 403 (bot blocked) unlinks
+and records the withdrawal. Messages: after a sale/return (fired after commit, never awaited — must not slow the
+till), points expiring within 7 days (daily cron 12:05 Almaty; free Render sleeps, so a missed day is caught up next
+time, the key prevents repeats), and owner-written messages to the churn radar (OWNER/ADMIN). HTML-escaped.
+
 ## Prisma migration workflow (this sandbox has no direct prod DB access)
 
 Shadow-database diff, not `prisma migrate dev` (which can hang/prompt):

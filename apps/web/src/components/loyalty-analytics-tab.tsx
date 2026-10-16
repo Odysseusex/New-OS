@@ -13,6 +13,7 @@ import { api, ApiError } from "@/lib/api";
 import { formatDate, formatDayKey, formatMoney } from "@/lib/format";
 import { inputClass } from "@/components/loyalty-shared";
 import { LoyaltyMemberModal } from "@/components/loyalty-member-modal";
+import { Modal } from "@/components/modal";
 
 const PERIODS = [7, 30, 90] as const;
 const CHURN_STORAGE_KEY = "loyalty-churn-settings";
@@ -94,6 +95,7 @@ export function LoyaltyAnalyticsTab({ canAdmin }: { canAdmin: boolean }) {
   const [loading, setLoading] = useState(true);
   const [segment, setSegment] = useState<LoyaltySegment | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [writeTo, setWriteTo] = useState<LoyaltyAnalyticsMemberRowDto[] | null>(null);
 
   useEffect(() => {
     const stored = readChurn();
@@ -243,6 +245,20 @@ export function LoyaltyAnalyticsTab({ canAdmin }: { canAdmin: boolean }) {
               </button>
             </div>
             <MemberTable rows={data.churnRadar.rows} onOpen={setOpenId} showInterval />
+            {canAdmin && data.churnRadar.rows.length > 0 && (
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                {data.churnRadar.rows.some((r) => r.telegramReachable) ? (
+                  <button
+                    onClick={() => setWriteTo(data.churnRadar.rows.filter((r) => r.telegramReachable))}
+                    className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
+                  >
+                    Написать в Telegram ({data.churnRadar.rows.filter((r) => r.telegramReachable).length})
+                  </button>
+                ) : (
+                  <span className="text-sm text-muted">Никто из них не подписан на уведомления в Telegram.</span>
+                )}
+              </div>
+            )}
           </Card>
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -335,6 +351,60 @@ export function LoyaltyAnalyticsTab({ canAdmin }: { canAdmin: boolean }) {
       {openId && (
         <LoyaltyMemberModal memberId={openId} canManage canAdmin={canAdmin} onClose={() => setOpenId(null)} onChanged={load} />
       )}
+
+      {writeTo && <TelegramWriteModal rows={writeTo} onClose={() => setWriteTo(null)} />}
     </div>
+  );
+}
+
+function TelegramWriteModal({ rows, onClose }: { rows: LoyaltyAnalyticsMemberRowDto[]; onClose: () => void }) {
+  const [text, setText] = useState("Давно вас не видели! Заходите — свежая выпечка уже ждёт.");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function send() {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api.loyalty.telegramSend(
+        rows.map((row) => row.memberId),
+        text,
+      );
+      setResult(`Отправлено: ${r.sent}${r.skipped ? `, не доставлено: ${r.skipped}` : ""}`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось отправить сообщение");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title={`Сообщение в Telegram · ${rows.length} клиентов`} onClose={onClose}>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={5}
+        maxLength={1000}
+        className={`${inputClass} mb-2`}
+      />
+      <p className="mb-4 text-xs text-muted">Уйдёт только тем, кто подписан на уведомления в Telegram.</p>
+      {error && <div className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+      {result && <div className="mb-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{result}</div>}
+      <div className="flex justify-end gap-2">
+        <button onClick={onClose} className="rounded-xl border border-border px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted">
+          {result ? "Закрыть" : "Отмена"}
+        </button>
+        {!result && (
+          <button
+            onClick={send}
+            disabled={busy || text.trim().length < 3}
+            className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-60"
+          >
+            {busy ? "Отправка…" : "Отправить"}
+          </button>
+        )}
+      </div>
+    </Modal>
   );
 }

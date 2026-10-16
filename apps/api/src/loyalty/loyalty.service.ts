@@ -33,9 +33,12 @@ import {
   UpdateLoyaltyMemberDto,
 } from "./dto/loyalty.dto";
 
-type MemberWithConsents = LoyaltyMember & { consents: LoyaltyConsent[] };
+type MemberWithConsents = LoyaltyMember & { consents: LoyaltyConsent[]; telegramLink?: { id: string } | null };
 
-const CONSENTS_IN_ORDER = { consents: { orderBy: [{ recordedAt: "asc" as const }, { id: "asc" as const }] } };
+const CONSENTS_IN_ORDER = {
+  consents: { orderBy: [{ recordedAt: "asc" as const }, { id: "asc" as const }] },
+  telegramLink: { select: { id: true } },
+};
 const MEMBER_FIELDS = ["phone", "name", "note", "status", "mergedIntoId"] as const;
 
 // A merge chain is flattened on every merge, so one hop is the norm; the cap
@@ -506,6 +509,7 @@ export class LoyaltyService {
       mergedIntoId: member.mergedIntoId,
       consents: consentState(member.consents),
       pointsBalance,
+      telegramLinked: !!member.telegramLink,
       createdAt: member.createdAt.toISOString(),
     };
   }

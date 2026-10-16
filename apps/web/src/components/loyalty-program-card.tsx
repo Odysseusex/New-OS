@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { LoyaltySettingsDto, LoyaltySummaryDto } from "@bakery-os/shared";
+import type { LoyaltySettingsDto, LoyaltySummaryDto, LoyaltyTelegramStatusDto } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { formatMoneyPrecise, formatPoints } from "@/lib/format";
 import { inputClass } from "@/components/loyalty-shared";
@@ -15,6 +15,7 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
   const [settings, setSettings] = useState<LoyaltySettingsDto | null>(null);
   const [draft, setDraft] = useState<Record<keyof Omit<LoyaltySettingsDto, "enabled">, string> | null>(null);
   const [summary, setSummary] = useState<LoyaltySummaryDto | null>(null);
+  const [telegram, setTelegram] = useState<LoyaltyTelegramStatusDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -39,6 +40,13 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
       .then(fill)
       .catch((err) => setError(err instanceof ApiError ? err.message : "Не удалось загрузить настройки программы"));
   }, [fill]);
+
+  useEffect(() => {
+    api.loyalty
+      .telegramStatus()
+      .then(setTelegram)
+      .catch(() => setTelegram(null));
+  }, [refreshKey]);
 
   useEffect(() => {
     api.loyalty
@@ -110,6 +118,24 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
         </p>
       )}
       {error && <p className="mb-4 rounded-xl bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
+
+      {telegram && (
+        <p className="mb-4 text-sm text-foreground">
+          {telegram.enabled && telegram.username ? (
+            <>
+              Telegram-бот для клиентов:{" "}
+              <a href={`https://t.me/${telegram.username}`} target="_blank" rel="noreferrer" className="font-medium text-accent hover:underline">
+                @{telegram.username}
+              </a>{" "}
+              <span className="text-muted">
+                · подключено {telegram.linkedMembers}, получают уведомления {telegram.reachableMembers}
+              </span>
+            </>
+          ) : (
+            <span className="text-muted">Telegram-бот для клиентов не подключён.</span>
+          )}
+        </p>
+      )}
 
       {stats.length > 0 && (
         <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-5">

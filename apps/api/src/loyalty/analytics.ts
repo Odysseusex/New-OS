@@ -23,6 +23,8 @@ export interface AnalyticsMember {
   name: string | null;
   // Withdrawn consent: still counted in figures, never offered for contact.
   contactable: boolean;
+  // Linked to the customer bot with the TELEGRAM consent granted.
+  telegramReachable?: boolean;
 }
 
 export interface AnalyticsInput {
@@ -120,6 +122,7 @@ export function computeLoyaltyAnalytics(input: AnalyticsInput): LoyaltyAnalytics
       averageCheck: list.length ? round2(spend / list.length) : 0,
       usualIntervalDays: all.length >= 2 ? round2((last.getTime() - all[0].at.getTime()) / DAY / (all.length - 1)) : null,
       segment,
+      telegramReachable: member.telegramReachable ?? false,
     };
   };
 
