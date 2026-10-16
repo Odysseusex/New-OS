@@ -55,6 +55,7 @@ import { CreateExpenseDto } from "./dto/create-expense.dto";
 import { RecordExpensePaymentDto } from "./dto/record-expense-payment.dto";
 import { recordAudit } from "../audit/audit";
 import { postLedgerSources } from "../ledger/event-posting";
+import { startOfZonedDay } from "../common/zoned-day";
 
 const EXPENSE_INCLUDE = { location: true, categoryRef: true, createdBy: true };
 
@@ -1168,8 +1169,7 @@ export class FinanceService {
     const periodTo = to ?? new Date();
     const periodFrom = from ?? new Date(periodTo.getFullYear(), periodTo.getMonth(), 1);
 
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
+    const startOfToday = startOfZonedDay(new Date());
 
     const [accounts, todayMovements, accountsReceivable, accountsPayable, pnl] = await Promise.all([
       this.prisma.cashAccount.findMany({ where: { organizationId, isActive: true } }),

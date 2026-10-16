@@ -43,6 +43,7 @@ import { TelegramLinkService } from "./telegram-link.service";
 import { TelegramPendingActionService } from "./telegram-pending-action.service";
 import { TelegramChatStateService } from "./telegram-chat-state.service";
 import { escapeHtml, formatDate, formatDateTime, formatMoney, formatQuantity } from "./telegram-format";
+import { startOfZonedDay } from "../common/zoned-day";
 
 const MAX_LIST_ITEMS = 40;
 
@@ -1069,9 +1070,7 @@ export class TelegramBotService implements OnModuleInit {
 
   private async showSalesPeriod(ctx: any, user: AuthenticatedUser, days: number) {
     const to = new Date();
-    const from = new Date();
-    from.setDate(from.getDate() - days);
-    from.setHours(0, 0, 0, 0);
+    const from = startOfZonedDay(new Date(), days);
 
     const report = await this.salesService.report(user, from, to);
     const lines = report.byLocation
@@ -1445,12 +1444,8 @@ export class TelegramBotService implements OnModuleInit {
   private async showPnl(ctx: any, user: AuthenticatedUser) {
     if (!(await this.assertFinanceAccess(ctx, user))) return;
     const now = new Date();
-    const from7 = new Date(now);
-    from7.setDate(from7.getDate() - 7);
-    from7.setHours(0, 0, 0, 0);
-    const from30 = new Date(now);
-    from30.setDate(from30.getDate() - 30);
-    from30.setHours(0, 0, 0, 0);
+    const from7 = startOfZonedDay(now, 7);
+    const from30 = startOfZonedDay(now, 30);
 
     const [pnl7, pnl30] = await Promise.all([
       this.financeService.getProfitAndLoss(user.organizationId, from7, now),
@@ -1482,9 +1477,7 @@ export class TelegramBotService implements OnModuleInit {
   private async showBreakEven(ctx: any, user: AuthenticatedUser) {
     if (!(await this.assertFinanceAccess(ctx, user))) return;
     const now = new Date();
-    const from = new Date(now);
-    from.setDate(from.getDate() - 30);
-    from.setHours(0, 0, 0, 0);
+    const from = startOfZonedDay(now, 30);
 
     const [fact, plan] = await Promise.all([
       this.financeService.getBreakEven(user.organizationId, from, now),
@@ -1577,8 +1570,7 @@ export class TelegramBotService implements OnModuleInit {
 
   private async showTodayProduced(ctx: any, user: AuthenticatedUser) {
     const batches = await this.productionService.findAll(user);
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
+    const startOfToday = startOfZonedDay(new Date());
     const done = batches.filter(
       (b) =>
         b.status === ProductionBatchStatus.COMPLETED &&
@@ -2006,9 +1998,7 @@ export class TelegramBotService implements OnModuleInit {
   // Reports page's "Анализ спроса" block shows, no separate logic here.
   private async showDemandAnalysis(ctx: any, user: AuthenticatedUser, days: number) {
     const to = new Date();
-    const from = new Date();
-    from.setDate(from.getDate() - days);
-    from.setHours(0, 0, 0, 0);
+    const from = startOfZonedDay(new Date(), days);
 
     const analysis = await this.salesService.demandAnalysis(user, from, to, {});
     const { summary } = analysis;

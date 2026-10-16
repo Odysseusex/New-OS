@@ -1,3 +1,5 @@
+import { startOfZonedDay } from "./zoned-day";
+
 // The first genuinely new shared date-range utility in the codebase — every
 // existing module (Finance, Sales, Quality, HR) accepts its own from/to and
 // filters independently; none of them compare one period against the one
@@ -19,15 +21,11 @@ export interface PeriodComparison {
 // would otherwise skew every delta% low. `days` is inclusive of "today".
 export function currentAndPreviousPeriod(days: number, endingAt: Date = new Date()): PeriodComparison {
   const to = endingAt;
-  const from = new Date(to);
-  from.setDate(from.getDate() - (days - 1));
-  from.setHours(0, 0, 0, 0);
+  const from = startOfZonedDay(to, days - 1);
 
   const previousTo = new Date(from);
   previousTo.setMilliseconds(previousTo.getMilliseconds() - 1);
-  const previousFrom = new Date(previousTo);
-  previousFrom.setDate(previousFrom.getDate() - (days - 1));
-  previousFrom.setHours(0, 0, 0, 0);
+  const previousFrom = startOfZonedDay(previousTo, days - 1);
 
   return { current: { from, to }, previous: { from: previousFrom, to: previousTo } };
 }

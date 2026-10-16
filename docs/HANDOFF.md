@@ -15,7 +15,7 @@ simple Russian (see CLAUDE.md conventions).
 * POS markdown −30 %. Category list keeps its scroll position. Cost-basis label for stocked semi-finished.
 
 ## Open items / decisions waiting for the owner
-* «Сегодня» / «7 дней» on the Sales screen are computed in server (UTC) time, not Asia/Almaty — fix proposed, not done.
+* FIXED 2026-10-16: «today»/rolling day boundaries now start at Almaty midnight (`common/zoned-day.ts`) — Sales summary, Network overview, Finance today, period comparisons, Telegram reports. (AI-центр buckets left as they were — module deferred.)
 * Mass flagging of goods «под реализацию» by SKU file (the village's goods): proposed, NOT built. The owner saw a
   P&L warning «259 позиций без себестоимости» and was asked to send a screenshot of which products they are.
   Old sales lines keep the flag they had at sale time; re-stamping history changes historical money (needs a yes).
@@ -46,4 +46,4 @@ per message — verify current prices from the provider's pages before quoting a
 ## Loyalty status (2026-10-16)
 Stages 1, 2 (points, live and switched on by the owner) and 4 (customer analytics, Клиенты → «Аналитика») are on
 `main`. Next candidates: Telegram notifications to members (free, bot exists), then WhatsApp (needs the owner's
-Meta business account + provider). Consent wording still awaits a lawyer. Sales «Сегодня/7 дней» UTC bug still open.
+Meta business account + provider). Consent wording still awaits a lawyer.

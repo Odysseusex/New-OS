@@ -13,6 +13,7 @@ import {
 } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { UpdateLocationDto } from "./dto/update-location.dto";
+import { startOfZonedDay } from "../common/zoned-day";
 
 @Injectable()
 export class LocationsService {
@@ -228,8 +229,7 @@ export class LocationsService {
 
   async findOverview(user: AuthenticatedUser): Promise<LocationOverviewDto[]> {
     const isOrgWide = ORG_WIDE_ROLES.includes(user.role);
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
+    const startOfToday = startOfZonedDay(new Date());
 
     const [locations, todaySales, stockLevels] = await Promise.all([
       this.prisma.location.findMany({

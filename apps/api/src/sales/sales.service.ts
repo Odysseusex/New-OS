@@ -51,6 +51,7 @@ import { CreateSaleDto } from "./dto/create-sale.dto";
 import { RecordPaymentDto } from "./dto/record-payment.dto";
 import { postLedgerSources } from "../ledger/event-posting";
 import { LoyaltyPointsService, PreparedSaleLoyalty } from "../loyalty/loyalty-points.service";
+import { startOfZonedDay } from "../common/zoned-day";
 
 // Calendar days in reports are the owner's days, not the server's. Render runs
 // in UTC, so without this an early-morning delivery in Almaty (UTC+5) would be
@@ -174,11 +175,8 @@ export class SalesService {
       ...(locationId ? { locationId } : {}),
     };
 
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    sevenDaysAgo.setHours(0, 0, 0, 0);
+    const startOfToday = startOfZonedDay(new Date());
+    const sevenDaysAgo = startOfZonedDay(new Date(), 7);
 
     const [todaySales, last7DaysSales, todayReturns] = await Promise.all([
       this.prisma.sale.findMany({
