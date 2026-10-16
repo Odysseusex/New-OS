@@ -24,6 +24,7 @@ import { AuthenticatedUser } from "../auth/auth.types";
 import { auditFields, recordAudit, recordAuditMany } from "../audit/audit";
 import { PrismaService } from "../prisma/prisma.service";
 import { LoyaltyPointsService } from "./loyalty-points.service";
+import { toFamilyDto } from "./birthdays";
 import {
   LoyaltyImportApplyRequestDto,
   LoyaltyImportRowDto,
@@ -236,7 +237,11 @@ export class LoyaltyService {
     await this.points.settleOutside(organizationId, memberId);
     const member = await this.prisma.loyaltyMember.findFirst({
       where: { id: memberId, organizationId },
-      include: { ...CONSENTS_IN_ORDER, mergedFrom: { orderBy: { mergedAt: "asc" } } },
+      include: {
+        ...CONSENTS_IN_ORDER,
+        mergedFrom: { orderBy: { mergedAt: "asc" } },
+        family: { where: { archivedAt: null }, orderBy: { createdAt: "asc" }, include: { grants: { select: { year: true } } } },
+      },
     });
     if (!member) throw new NotFoundException("Клиент не найден");
     const [balances, pointsHistory] = await Promise.all([
@@ -246,6 +251,7 @@ export class LoyaltyService {
     return {
       ...this.toDto(member, balances.get(member.id) ?? 0),
       pointsHistory,
+      family: member.family.map((f) => toFamilyDto(f)),
       history: [...member.consents].reverse().map((c) => ({
         id: c.id,
         purpose: c.purpose as LoyaltyConsentPurpose,
@@ -321,6 +327,8 @@ export class LoyaltyService {
       }
       // Points move with the person, each lot keeping its own expiry.
       const pointsMoved = await this.points.transferOnMerge(tx, user, duplicate.id, primary.id);
+      // So do the birthdays on the card (with the gifts already given for them).
+      await tx.loyaltyFamilyMember.updateMany({ where: { memberId: duplicate.id }, data: { memberId: primary.id } });
       // Earlier duplicates of the duplicate now lead straight to the primary.
       await tx.loyaltyMember.updateMany({
         where: { organizationId: user.organizationId, mergedIntoId: duplicate.id },

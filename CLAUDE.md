@@ -864,6 +864,17 @@ and records the withdrawal. Messages: after a sale/return (fired after commit, n
 till), points expiring within 7 days (daily cron 12:05 Almaty; free Render sleeps, so a missed day is caught up next
 time, the key prevents repeats), and owner-written messages to the churn radar (OWNER/ADMIN). HTML-escaped.
 
+**Birthdays — built** (migration `20261016180000_loyalty_birthdays`, `loyalty/birthdays.ts` pure date maths,
+`loyalty/loyalty-birthday.service.ts`). One phone card holds up to 8 birthdays (`LoyaltyFamilyMember`: the holder
+and family, name + optional relation + day/month/optional year); the cashier adds them (cake icon on the till's
+member block), removal is LOYALTY_MANAGE_ROLES and only archives. Gift = `LoyaltySettings.birthdayBonusPoints`
+(0 = off) as a `BIRTHDAY` points lot expiring after `birthdayBonusDays`; one per row per year
+(`LoyaltyBirthdayGrant` unique), granted by a daily cron 12:15 Almaty and on boot, up to 7 days late (free Render
+sleeps). Anti-abuse: a date added or changed less than 30 days before the birthday earns nothing that year
+(`dateSetAt`). Feb 29 → Feb 28 in common years. Birthdays move to the primary on merge. Keep `birthdays.ts` free
+of service imports — `loyalty.service` → bot → `loyalty.service` was an import cycle that broke DI (app-boot spec).
+A printable QR for the customer bot is on the programme card («QR-код для кассы»).
+
 ## Prisma migration workflow (this sandbox has no direct prod DB access)
 
 Shadow-database diff, not `prisma migrate dev` (which can hang/prompt):

@@ -117,6 +117,7 @@ export interface LoyaltyConsentRecordDto {
 export interface LoyaltyMemberDetailDto extends LoyaltyMemberDto {
   history: LoyaltyConsentRecordDto[];
   pointsHistory: LoyaltyPointsEntryDto[];
+  family: LoyaltyFamilyMemberDto[];
   // Records merged into this one, so their phones are still findable here.
   mergedFrom: { id: string; phone: string; name: string | null; mergedAt: string | null }[];
 }
@@ -224,6 +225,9 @@ export interface LoyaltySettingsDto {
   earnPercent: number;
   maxRedeemPercent: number;
   pointsLifetimeMonths: number;
+  // Gift in points on every birthday on a card; 0 = no gift.
+  birthdayBonusPoints: number;
+  birthdayBonusDays: number;
 }
 
 export type UpdateLoyaltySettingsRequestDto = Partial<LoyaltySettingsDto>;
@@ -234,6 +238,8 @@ export const DEFAULT_LOYALTY_SETTINGS: LoyaltySettingsDto = {
   earnPercent: 1,
   maxRedeemPercent: 30,
   pointsLifetimeMonths: 12,
+  birthdayBonusPoints: 0,
+  birthdayBonusDays: 14,
 };
 
 export enum LoyaltyPointsEntryType {
@@ -245,6 +251,7 @@ export enum LoyaltyPointsEntryType {
   ADJUSTMENT = "ADJUSTMENT",
   MERGE_IN = "MERGE_IN",
   MERGE_OUT = "MERGE_OUT",
+  BIRTHDAY = "BIRTHDAY",
 }
 
 export const LOYALTY_POINTS_ENTRY_TYPE_LABELS_RU: Record<LoyaltyPointsEntryType, string> = {
@@ -256,6 +263,7 @@ export const LOYALTY_POINTS_ENTRY_TYPE_LABELS_RU: Record<LoyaltyPointsEntryType,
   [LoyaltyPointsEntryType.ADJUSTMENT]: "Ручная корректировка",
   [LoyaltyPointsEntryType.MERGE_IN]: "Перенесены при объединении",
   [LoyaltyPointsEntryType.MERGE_OUT]: "Перенесены в основную запись",
+  [LoyaltyPointsEntryType.BIRTHDAY]: "Подарок на день рождения",
 };
 
 export interface LoyaltyPointsEntryDto {
@@ -503,4 +511,52 @@ export interface SendLoyaltyTelegramRequestDto {
 export interface SendLoyaltyTelegramResultDto {
   sent: number;
   skipped: number;
+}
+
+// ── Birthdays (the card holder and family) ──────────────────────────────────
+
+export const LOYALTY_MAX_FAMILY_MEMBERS = 8;
+// A date put on the card later than this before the birthday earns no gift that year.
+export const LOYALTY_BIRTHDAY_NOTICE_DAYS = 30;
+
+export interface LoyaltyFamilyMemberDto {
+  id: string;
+  name: string;
+  relation: string | null;
+  birthDay: number;
+  birthMonth: number;
+  birthYear: number | null;
+  // The next birthday (YYYY-MM-DD) and whether it will bring a gift (30-day rule).
+  nextBirthday: string;
+  giftEligibleNext: boolean;
+  lastGiftYear: number | null;
+}
+
+export interface SaveLoyaltyFamilyMemberRequestDto {
+  name: string;
+  relation?: string;
+  birthDay: number;
+  birthMonth: number;
+  birthYear?: number | null;
+}
+
+export const MONTHS_GENITIVE_RU = [
+  "января", "февраля", "марта", "апреля", "мая", "июня",
+  "июля", "августа", "сентября", "октября", "ноября", "декабря",
+];
+
+// 29 February in a common year is celebrated on the 28th.
+export function birthdayInYear(year: number, month: number, day: number): { month: number; day: number } {
+  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  if (month === 2 && day === 29 && !leap) return { month: 2, day: 28 };
+  return { month, day };
+}
+
+export function isValidBirthDate(month: number, day: number, year?: number | null): boolean {
+  if (!Number.isInteger(month) || month < 1 || month > 12 || !Number.isInteger(day) || day < 1) return false;
+  const max = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  if (day > max) return false;
+  if (year === undefined || year === null) return true;
+  if (!Number.isInteger(year) || year < 1900 || year > 2100) return false;
+  return month !== 2 || day !== 29 || birthdayInYear(year, 2, 29).day === 29;
 }

@@ -170,6 +170,45 @@ export class UpdateLoyaltySettingsDto {
   @Min(1)
   @Max(120)
   pointsLifetimeMonths?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  birthdayBonusPoints?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  birthdayBonusDays?: number;
+}
+
+export class SaveLoyaltyFamilyMemberDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  name!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  relation?: string | null;
+
+  @IsInt()
+  @Min(1)
+  @Max(31)
+  birthDay!: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  birthMonth!: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1900)
+  @Max(2100)
+  birthYear?: number | null;
 }
 
 export class AdjustLoyaltyPointsDto {

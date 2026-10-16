@@ -19,6 +19,7 @@ import {
 import { api, ApiError } from "@/lib/api";
 import { formatDate, formatDateTime, formatPoints } from "@/lib/format";
 import { Modal } from "@/components/modal";
+import { LoyaltyFamilySection } from "@/components/loyalty-family-section";
 import { ConsentSourceSelect, inputClass, MemberStatusBadge } from "@/components/loyalty-shared";
 
 type PendingChange = { purpose: LoyaltyConsentPurpose; channel?: LoyaltyConsentChannel; granted: boolean };
@@ -333,6 +334,17 @@ export function LoyaltyMemberModal({
               </div>
             )}
           </section>
+
+          <LoyaltyFamilySection
+            memberId={member.id}
+            family={member.family}
+            editable={editable}
+            canRemove={canManage}
+            onChanged={() => {
+              load();
+              onChanged();
+            }}
+          />
 
           <section>
             <h3 className="mb-2 text-sm font-semibold text-foreground">История согласий</h3>

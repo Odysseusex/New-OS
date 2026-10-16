@@ -2675,6 +2675,7 @@ model LoyaltyMember {
   sales         Sale[]
   pointsEntries LoyaltyPointsEntry[]
   telegramLink  LoyaltyTelegramLink?
+  family        LoyaltyFamilyMember[]
   messageLogs   LoyaltyMessageLog[]
 
   @@unique([organizationId, phone])
@@ -2721,6 +2722,10 @@ model LoyaltySettings {
   // Max share of a check (its eligible goods) payable with points.
   maxRedeemPercent         Decimal  @default(30) @db.Decimal(5, 2)
   pointsLifetimeMonths     Int      @default(12)
+  // Birthday gift in points for every birthday on a member's card; 0 = off.
+  birthdayBonusPoints      Decimal  @default(0) @db.Decimal(12, 2)
+  // How long the gift can be spent, counted from the birthday.
+  birthdayBonusDays        Int      @default(14)
   updatedAt                DateTime @updatedAt
   updatedById              String?
 
@@ -2738,6 +2743,8 @@ enum LoyaltyPointsEntryType {
   ADJUSTMENT
   MERGE_IN
   MERGE_OUT
+  // Birthday gift (LoyaltyBirthdayGrant names whose birthday it was).
+  BIRTHDAY
 }
 
 // Append-only (UPDATE rejected by a trigger), like every other ledger here. The
@@ -2806,4 +2813,47 @@ model LoyaltyMessageLog {
   @@unique([memberId, key])
   @@index([organizationId, sentAt])
   @@map("loyalty_message_logs")
+}
+
+// ── Loyalty programme: birthdays (the card holder and their family) ──────────
+// One phone, several birthdays: each is a row here. A gift is granted at most once
+// per row per year (LoyaltyBirthdayGrant), and only for a date that was on the card
+// at least 30 days before the birthday — so a date cannot be typed in on the day
+// to collect a gift. Removing a row archives it; past grants keep pointing at it.
+
+model LoyaltyFamilyMember {
+  id             String                 @id @default(cuid())
+  organizationId String
+  memberId       String
+  member         LoyaltyMember          @relation(fields: [memberId], references: [id])
+  name           String
+  // Free text: «сам», «жена», «сын»…
+  relation       String?
+  birthMonth     Int
+  birthDay       Int
+  birthYear      Int?
+  // When the date was last set — the 30-day rule counts from here.
+  dateSetAt      DateTime               @default(now())
+  createdById    String?
+  createdAt      DateTime               @default(now())
+  archivedAt     DateTime?
+  grants         LoyaltyBirthdayGrant[]
+
+  @@index([memberId])
+  @@index([organizationId, birthMonth, birthDay])
+  @@map("loyalty_family_members")
+}
+
+model LoyaltyBirthdayGrant {
+  id             String              @id @default(cuid())
+  organizationId String
+  familyMemberId String
+  familyMember   LoyaltyFamilyMember @relation(fields: [familyMemberId], references: [id])
+  year           Int
+  points         Decimal             @db.Decimal(12, 2)
+  grantedAt      DateTime            @default(now())
+
+  @@unique([familyMemberId, year])
+  @@index([organizationId])
+  @@map("loyalty_birthday_grants")
 }

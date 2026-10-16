@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import type { LoyaltySettingsDto, LoyaltySummaryDto, LoyaltyTelegramStatusDto } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { formatMoneyPrecise, formatPoints } from "@/lib/format";
 import { inputClass } from "@/components/loyalty-shared";
+import { Modal } from "@/components/modal";
 
 const PERIOD_DAYS = 30;
 
@@ -19,6 +21,7 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
   const range = useMemo(() => {
     const to = new Date();
     return { from: new Date(to.getTime() - PERIOD_DAYS * 86_400_000).toISOString(), to: to.toISOString() };
@@ -31,6 +34,8 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
       earnPercent: String(s.earnPercent),
       maxRedeemPercent: String(s.maxRedeemPercent),
       pointsLifetimeMonths: String(s.pointsLifetimeMonths),
+      birthdayBonusPoints: String(s.birthdayBonusPoints),
+      birthdayBonusDays: String(s.birthdayBonusDays),
     });
   }, []);
 
@@ -70,13 +75,6 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
   }
 
   const num = (v: string) => Number(v.replace(",", "."));
-  const changed =
-    settings && draft
-      ? num(draft.firstPurchaseEarnPercent) !== settings.firstPurchaseEarnPercent ||
-        num(draft.earnPercent) !== settings.earnPercent ||
-        num(draft.maxRedeemPercent) !== settings.maxRedeemPercent ||
-        num(draft.pointsLifetimeMonths) !== settings.pointsLifetimeMonths
-      : false;
 
   const stats: [string, string][] = summary
     ? [
@@ -93,7 +91,10 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
     ["earnPercent", "Начисление за покупку, %"],
     ["maxRedeemPercent", "Оплата баллами, не больше % чека"],
     ["pointsLifetimeMonths", "Срок жизни баллов, мес."],
+    ["birthdayBonusPoints", "Подарок на день рождения, баллов"],
+    ["birthdayBonusDays", "Подарок действует, дней"],
   ];
+  const changed = settings && draft ? fields.some(([key]) => num(draft[key]) !== settings[key]) : false;
 
   return (
     <div className="mb-6 rounded-2xl border border-border bg-surface p-5 shadow-card">
@@ -129,7 +130,10 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
               </a>{" "}
               <span className="text-muted">
                 · подключено {telegram.linkedMembers}, получают уведомления {telegram.reachableMembers}
-              </span>
+              </span>{" "}
+              <button type="button" onClick={() => setQrOpen(true)} className="font-medium text-accent hover:underline">
+                QR-код для кассы
+              </button>
             </>
           ) : (
             <span className={telegram.problem ? "text-red-700" : "text-muted"}>
@@ -151,7 +155,7 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
       )}
 
       {draft && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(4,1fr)_auto] sm:items-end">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:items-end lg:grid-cols-[repeat(6,1fr)_auto]">
           {fields.map(([key, label]) => (
             <div key={key}>
               <label className="mb-1.5 block text-xs font-medium text-foreground">{label}</label>
@@ -171,12 +175,7 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
             <button
               disabled={!changed || busy}
               onClick={() =>
-                save({
-                  firstPurchaseEarnPercent: num(draft.firstPurchaseEarnPercent),
-                  earnPercent: num(draft.earnPercent),
-                  maxRedeemPercent: num(draft.maxRedeemPercent),
-                  pointsLifetimeMonths: num(draft.pointsLifetimeMonths),
-                })
+                save(Object.fromEntries(fields.map(([key]) => [key, num(draft[key])])) as Partial<LoyaltySettingsDto>)
               }
               className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-60"
             >
@@ -185,6 +184,46 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
           )}
         </div>
       )}
+      {qrOpen && telegram?.username && <BotQrModal username={telegram.username} onClose={() => setQrOpen(false)} />}
     </div>
+  );
+}
+
+// A sign for the counter: scanning it opens the customer bot. Black on white
+// like the receipt QR — it has to survive a phone camera, so it is not themed.
+function BotQrModal({ username, onClose }: { username: string; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const url = `https://t.me/${username}`;
+
+  function print() {
+    const svg = ref.current?.querySelector("svg")?.outerHTML;
+    const win = window.open("", "_blank", "width=600,height=800");
+    if (!svg || !win) return;
+    win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Бонусы в Telegram</title>
+<style>body{font-family:system-ui,sans-serif;text-align:center;margin:48px;color:#000;background:#fff}
+h1{font-size:30px;margin:0 0 12px}p{font-size:20px;margin:8px 0}svg{width:320px;height:320px;margin:28px 0}</style></head>
+<body><h1>Ваши бонусы — в Telegram</h1><p>Наведите камеру телефона на код</p>${svg}<p><b>@${username}</b></p>
+<p>Баланс баллов, начисления и подарки</p></body></html>`);
+    win.document.close();
+    win.focus();
+    win.print();
+  }
+
+  return (
+    <Modal title="QR-код Telegram-бота" onClose={onClose}>
+      <div className="flex flex-col items-center gap-3">
+        <div ref={ref} className="rounded-xl bg-white p-4">
+          <QRCodeSVG value={url} size={240} bgColor="#ffffff" fgColor="#000000" />
+        </div>
+        <p className="text-sm text-foreground">@{username}</p>
+        <button
+          type="button"
+          onClick={print}
+          className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
+        >
+          Печать
+        </button>
+      </div>
+    </Modal>
   );
 }

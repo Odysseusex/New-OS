@@ -5,6 +5,8 @@ import type {
   LoyaltyChurnSettings,
   AdjustLoyaltyPointsRequestDto,
   LoyaltySettingsDto,
+  LoyaltyFamilyMemberDto,
+  SaveLoyaltyFamilyMemberRequestDto,
   LoyaltySummaryDto,
   UpdateLoyaltySettingsRequestDto,
   LoyaltyImportPreviewDto,
@@ -506,6 +508,9 @@ export const api = {
     telegramStatus: () => request<LoyaltyTelegramStatusDto>("/loyalty/telegram/status"),
     telegramSend: (memberIds: string[], text: string) =>
       request<SendLoyaltyTelegramResultDto>("/loyalty/telegram/send", { method: "POST", body: JSON.stringify({ memberIds, text }) }),
+    addFamily: (memberId: string, dto: SaveLoyaltyFamilyMemberRequestDto) =>
+      request<LoyaltyFamilyMemberDto>(`/loyalty/members/${memberId}/family`, { method: "POST", body: JSON.stringify(dto) }),
+    removeFamily: (familyId: string) => request<{ removed: true }>(`/loyalty/members/family/${familyId}`, { method: "DELETE" }),
     settings: () => request<LoyaltySettingsDto>("/loyalty/settings"),
     updateSettings: (dto: UpdateLoyaltySettingsRequestDto) =>
       request<LoyaltySettingsDto>("/loyalty/settings", { method: "PATCH", body: JSON.stringify(dto) }),

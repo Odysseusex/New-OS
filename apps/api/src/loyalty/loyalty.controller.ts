@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { LOYALTY_ADMIN_ROLES, LOYALTY_MANAGE_ROLES, LOYALTY_TILL_ROLES } from "@bakery-os/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
@@ -8,6 +8,7 @@ import { AuthenticatedUser } from "../auth/auth.types";
 import { LoyaltyService } from "./loyalty.service";
 import { LoyaltyPointsService } from "./loyalty-points.service";
 import { LoyaltyAnalyticsService } from "./loyalty-analytics.service";
+import { LoyaltyBirthdayService } from "./loyalty-birthday.service";
 import {
   AdjustLoyaltyPointsDto,
   UpdateLoyaltySettingsDto,
@@ -16,6 +17,7 @@ import {
   MergeLoyaltyMembersDto,
   RecordLoyaltyConsentDto,
   RegisterLoyaltyMemberDto,
+  SaveLoyaltyFamilyMemberDto,
   UpdateLoyaltyMemberDto,
 } from "./dto/loyalty.dto";
 
@@ -28,6 +30,7 @@ export class LoyaltyController {
   constructor(
     private loyaltyService: LoyaltyService,
     private pointsService: LoyaltyPointsService,
+    private birthdayService: LoyaltyBirthdayService,
   ) {}
 
   @Get("lookup")
@@ -62,6 +65,22 @@ export class LoyaltyController {
   @Roles(...LOYALTY_ADMIN_ROLES)
   applyImport(@CurrentUser() user: AuthenticatedUser, @Body() dto: LoyaltyImportApplyRequestDto) {
     return this.loyaltyService.applyImport(user, dto);
+  }
+
+  @Patch("family/:familyId")
+  updateFamily(@CurrentUser() user: AuthenticatedUser, @Param("familyId") familyId: string, @Body() dto: SaveLoyaltyFamilyMemberDto) {
+    return this.birthdayService.update(user, familyId, dto);
+  }
+
+  @Delete("family/:familyId")
+  @Roles(...LOYALTY_MANAGE_ROLES)
+  removeFamily(@CurrentUser() user: AuthenticatedUser, @Param("familyId") familyId: string) {
+    return this.birthdayService.remove(user, familyId);
+  }
+
+  @Post(":id/family")
+  addFamily(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: SaveLoyaltyFamilyMemberDto) {
+    return this.birthdayService.add(user, id, dto);
   }
 
   @Get(":id")

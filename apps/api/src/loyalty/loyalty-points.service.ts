@@ -55,6 +55,8 @@ export class LoyaltyPointsService {
       earnPercent: row.earnPercent.toNumber(),
       maxRedeemPercent: row.maxRedeemPercent.toNumber(),
       pointsLifetimeMonths: row.pointsLifetimeMonths,
+      birthdayBonusPoints: row.birthdayBonusPoints.toNumber(),
+      birthdayBonusDays: row.birthdayBonusDays,
     };
   }
 
@@ -67,6 +69,13 @@ export class LoyaltyPointsService {
     }
     if (dto.pointsLifetimeMonths !== undefined && (!Number.isInteger(dto.pointsLifetimeMonths) || dto.pointsLifetimeMonths < 1 || dto.pointsLifetimeMonths > 120)) {
       throw new BadRequestException("Срок жизни баллов — целое число месяцев от 1 до 120");
+    }
+    const gift = dto.birthdayBonusPoints;
+    if (gift !== undefined && (gift < 0 || Math.round(gift * 100) !== gift * 100)) {
+      throw new BadRequestException("Подарок на день рождения — неотрицательное число баллов, не больше двух знаков после запятой");
+    }
+    if (dto.birthdayBonusDays !== undefined && (!Number.isInteger(dto.birthdayBonusDays) || dto.birthdayBonusDays < 1 || dto.birthdayBonusDays > 365)) {
+      throw new BadRequestException("Срок подарка — целое число дней от 1 до 365");
     }
     return this.prisma.$transaction(async (tx) => {
       const before = await this.getSettings(user.organizationId, tx);

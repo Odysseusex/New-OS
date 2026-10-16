@@ -57,6 +57,7 @@ export const AUDIT_ACTION_GROUPS = {
   stockVoid: ["stockVoid.create"],
   loyalty: ["loyaltyMember.create", "loyaltyMember.update", "loyaltyMember.consent", "loyaltyMember.merge", "loyaltyMember.import"],
   loyaltyPoints: ["loyaltySettings.update", "loyaltyPoints.adjust"],
+  loyaltyFamily: ["loyaltyFamily.add", "loyaltyFamily.update", "loyaltyFamily.remove"],
   // Posting from operations is traced by the journal itself (each entry carries
   // its source, poster and time); these are the deliberate human actions.
   ledger: [

@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { UserRound, X } from "lucide-react";
-import type { LoyaltyMemberDto } from "@bakery-os/shared";
+import { useCallback, useEffect, useState } from "react";
+import { Cake, UserRound, X } from "lucide-react";
+import type { LoyaltyFamilyMemberDto, LoyaltyMemberDto } from "@bakery-os/shared";
 import { formatKzPhone, KZ_PHONE_INVALID_MESSAGE, LoyaltyMemberStatus, normalizeKzPhone } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { formatMoneyPrecise, formatPoints } from "@/lib/format";
 import { LoyaltyRegisterModal } from "@/components/loyalty-register-modal";
+import { LoyaltyFamilySection } from "@/components/loyalty-family-section";
+import { Modal } from "@/components/modal";
 
 // The loyalty member on the current order: found by phone, then optionally
 // paying part of the check with points. The discount itself is worked out by
@@ -33,6 +35,7 @@ export function PosLoyaltyBlock({
   const [registerPhone, setRegisterPhone] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pointsText, setPointsText] = useState("");
+  const [birthdaysOpen, setBirthdaysOpen] = useState(false);
 
   function attach(found: LoyaltyMemberDto) {
     if (found.status !== LoyaltyMemberStatus.ACTIVE) {
@@ -83,6 +86,14 @@ export function PosLoyaltyBlock({
             <p className="text-xs text-muted">Баллов: {formatPoints(member.pointsBalance)}</p>
           </div>
           <button
+            onClick={() => setBirthdaysOpen(true)}
+            aria-label="Дни рождения"
+            title="Дни рождения"
+            className="ml-auto shrink-0 text-muted transition hover:text-accent"
+          >
+            <Cake className="h-4 w-4" strokeWidth={1.75} />
+          </button>
+          <button
             onClick={() => {
               onMemberChange(null);
               onPointsChange(0);
@@ -120,6 +131,7 @@ export function PosLoyaltyBlock({
           </div>
         )}
         {discount > 0 && <p className="mt-1.5 text-xs font-medium text-accent">Оплата баллами: −{formatMoneyPrecise(discount)}</p>}
+        {birthdaysOpen && <PosBirthdaysModal memberId={member.id} onClose={() => setBirthdaysOpen(false)} />}
       </div>
     );
   }
@@ -182,5 +194,26 @@ export function PosLoyaltyBlock({
         />
       )}
     </div>
+  );
+}
+
+// The cashier can add birthdays (the holder and family) while the customer is at
+// the counter; removing them is done in Клиенты.
+function PosBirthdaysModal({ memberId, onClose }: { memberId: string; onClose: () => void }) {
+  const [family, setFamily] = useState<LoyaltyFamilyMemberDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const load = useCallback(() => {
+    api.loyalty
+      .findOne(memberId)
+      .then((m) => setFamily(m.family))
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Не удалось загрузить клиента"));
+  }, [memberId]);
+  useEffect(load, [load]);
+  return (
+    <Modal title="Дни рождения" onClose={onClose}>
+      {error && <p className="text-sm text-red-700">{error}</p>}
+      {!family && !error && <p className="text-sm text-muted">Загрузка…</p>}
+      {family && <LoyaltyFamilySection memberId={memberId} family={family} editable canRemove={false} onChanged={load} />}
+    </Modal>
   );
 }
