@@ -68,7 +68,7 @@ export class CustomerBotService implements OnModuleInit {
   // ── lifecycle ─────────────────────────────────────────────────────────────
 
   async onModuleInit() {
-    const token = process.env.CUSTOMER_BOT_TOKEN;
+    const token = CustomerBotService.token();
     if (!token) {
       this.logger.warn("CUSTOMER_BOT_TOKEN not set — customer Telegram bot disabled");
       return;
@@ -94,7 +94,13 @@ export class CustomerBotService implements OnModuleInit {
 
   // Derived from the token, so it needs no setting of its own and changes with it.
   static webhookSecret(): string {
-    return createHash("sha256").update(`customer-bot:${process.env.CUSTOMER_BOT_TOKEN ?? ""}`).digest("hex").slice(0, 48);
+    return createHash("sha256").update(`customer-bot:${CustomerBotService.token() ?? ""}`).digest("hex").slice(0, 48);
+  }
+
+  // A token never contains whitespace; a stray space from copy-paste is dropped.
+  static token(): string | null {
+    const raw = (process.env.CUSTOMER_BOT_TOKEN ?? "").replace(/\s+/g, "");
+    return raw || null;
   }
 
   isEnabled(): boolean {
