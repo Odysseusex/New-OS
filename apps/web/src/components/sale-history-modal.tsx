@@ -82,7 +82,7 @@ export function SaleHistoryModal({
                       stale-goods markdown — the same distinction the receipt
                       and markdownLoss reporting already make. */}
                   {item.fullUnitPrice != null && (
-                    <span className="ml-1 text-amber-700">{item.promotionName ?? "уценка"}</span>
+                    <span className="ml-1 text-amber-700">{item.promotionName ?? (item.loyaltyDiscount ? "баллы" : "уценка")}</span>
                   )}
                 </span>
               </span>

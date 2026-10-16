@@ -16,6 +16,7 @@ import { FiscalSettings } from "../fiscal/fiscal.settings";
 import { CreateSaleReturnDto } from "./dto/create-sale-return.dto";
 import { allocateRefund, validateRefundOverride } from "./refund-allocation";
 import { postLedgerSources } from "../ledger/event-posting";
+import { LoyaltyPointsService } from "../loyalty/loyalty-points.service";
 
 const RETURN_INCLUDE = {
   location: true,
@@ -31,6 +32,7 @@ export class SaleReturnsService {
     private cashMovementsService: CashMovementsService,
     private fiscalService: FiscalService,
     private fiscalSettings: FiscalSettings,
+    private loyaltyPoints: LoyaltyPointsService = new LoyaltyPointsService(prisma),
   ) {}
 
   async findBySale(user: AuthenticatedUser, saleId: string): Promise<SaleReturnDto[]> {
@@ -259,6 +261,32 @@ export class SaleReturnsService {
             costBasis: line.costBasis,
             createdById: user.id,
           },
+        });
+      }
+
+      // Points follow the goods: what the sale spent comes back for the returned
+      // part, what it earned on that part is taken back (never below zero).
+      if (sale.loyaltyMemberId) {
+        const returnedQtyByProduct = new Map<string, number>();
+        const add = (productId: string, quantity: number) =>
+          returnedQtyByProduct.set(productId, (returnedQtyByProduct.get(productId) ?? 0) + quantity);
+        for (const previous of sale.returns) for (const item of previous.items) add(item.productId, item.quantity.toNumber());
+        for (const line of lines) add(line.productId, line.quantity);
+        await this.loyaltyPoints.recordReturn(tx, {
+          user,
+          saleId: sale.id,
+          saleReturnId: saleReturn.id,
+          memberId: sale.loyaltyMemberId,
+          saleLines: sale.items.map((i) => ({
+            productId: i.productId,
+            quantity: i.quantity.toNumber(),
+            subtotal: i.subtotal.toNumber(),
+            fullUnitPrice: i.fullUnitPrice?.toNumber() ?? null,
+            loyaltyDiscount: i.loyaltyDiscount?.toNumber() ?? null,
+            consignment: i.consignmentSupplierId !== null,
+          })),
+          returnedQtyByProduct,
+          now: returnedAt,
         });
       }
 

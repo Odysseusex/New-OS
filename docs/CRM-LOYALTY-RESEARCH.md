@@ -133,3 +133,14 @@ identify themselves today; WhatsApp: which provider/number; who owns consent wor
   the record and its history as proof; nothing is erased).
 * Still waiting for the owner before stage 2: max share of a check payable with points, expiry, exclusions,
   accounting treatment. Earning rates 5 % / 1 % will be settings.
+
+## 12. Stage 2 + till — built (2026-10-16)
+* Owner decisions (2026-10-16): max 30 % of a check payable with points; points live 12 months; no points on
+  consignment goods, markdowns (and coupon lines) or the part paid by points; all percentages and the lifetime
+  are settings. Accounting: **«способ Б» — spending points is a discount** (revenue = money actually paid; points
+  appear in the P&L discounts line; issued points are not booked as a liability, the amount on hand is shown on
+  the loyalty screen). The МСФО 15 deferred-revenue method stays possible later; the full points history is kept.
+* Till: the cashier attaches a member to the cart by phone, sees the balance and can pay up to the limit with
+  points; the slip shows points spent/earned. Returns give back spent points and take back earned ones.
+* Settings card + figures (points on hand, earned, «Скидки баллами», expired) on Клиенты → Розница.
+* Still not built: WhatsApp/Telegram messaging, birthday/referral bonuses, tiers, wallet card.

@@ -94,6 +94,8 @@ export interface LoyaltyMemberDto {
   status: LoyaltyMemberStatus;
   mergedIntoId: string | null;
   consents: LoyaltyConsentStateDto;
+  // Points held now (expired ones excluded).
+  pointsBalance: number;
   createdAt: string;
 }
 
@@ -110,6 +112,7 @@ export interface LoyaltyConsentRecordDto {
 
 export interface LoyaltyMemberDetailDto extends LoyaltyMemberDto {
   history: LoyaltyConsentRecordDto[];
+  pointsHistory: LoyaltyPointsEntryDto[];
   // Records merged into this one, so their phones are still findable here.
   mergedFrom: { id: string; phone: string; name: string | null; mergedAt: string | null }[];
 }
@@ -203,3 +206,176 @@ export interface LoyaltyMemberListDto {
 }
 
 export const LOYALTY_LIST_LIMIT = 200;
+
+// ── Points (stage 2) ────────────────────────────────────────────────────────
+// 1 point = 1 ₸. Spending points is a discount on the check («способ Б»): it
+// lowers the price of the lines it pays for, exactly like a coupon, so revenue,
+// the P&L discounts line, returns and fiscal receipts need no special case.
+// These functions are shared so the till shows exactly the total the server
+// will record (the Kaspi terminal is charged that amount).
+
+export interface LoyaltySettingsDto {
+  enabled: boolean;
+  firstPurchaseEarnPercent: number;
+  earnPercent: number;
+  maxRedeemPercent: number;
+  pointsLifetimeMonths: number;
+}
+
+export type UpdateLoyaltySettingsRequestDto = Partial<LoyaltySettingsDto>;
+
+export const DEFAULT_LOYALTY_SETTINGS: LoyaltySettingsDto = {
+  enabled: false,
+  firstPurchaseEarnPercent: 5,
+  earnPercent: 1,
+  maxRedeemPercent: 30,
+  pointsLifetimeMonths: 12,
+};
+
+export enum LoyaltyPointsEntryType {
+  EARN = "EARN",
+  REDEEM = "REDEEM",
+  EARN_REVERSAL = "EARN_REVERSAL",
+  REDEEM_REFUND = "REDEEM_REFUND",
+  EXPIRE = "EXPIRE",
+  ADJUSTMENT = "ADJUSTMENT",
+  MERGE_IN = "MERGE_IN",
+  MERGE_OUT = "MERGE_OUT",
+}
+
+export const LOYALTY_POINTS_ENTRY_TYPE_LABELS_RU: Record<LoyaltyPointsEntryType, string> = {
+  [LoyaltyPointsEntryType.EARN]: "Начислено за покупку",
+  [LoyaltyPointsEntryType.REDEEM]: "Оплата баллами",
+  [LoyaltyPointsEntryType.EARN_REVERSAL]: "Возврат товара: начисление отменено",
+  [LoyaltyPointsEntryType.REDEEM_REFUND]: "Возврат товара: баллы возвращены",
+  [LoyaltyPointsEntryType.EXPIRE]: "Сгорели",
+  [LoyaltyPointsEntryType.ADJUSTMENT]: "Ручная корректировка",
+  [LoyaltyPointsEntryType.MERGE_IN]: "Перенесены при объединении",
+  [LoyaltyPointsEntryType.MERGE_OUT]: "Перенесены в основную запись",
+};
+
+export interface LoyaltyPointsEntryDto {
+  id: string;
+  type: LoyaltyPointsEntryType;
+  points: number;
+  expiresAt: string | null;
+  saleId: string | null;
+  ratePercent: number | null;
+  reason: string | null;
+  createdByName: string | null;
+  createdAt: string;
+}
+
+export interface AdjustLoyaltyPointsRequestDto {
+  points: number;
+  reason: string;
+}
+
+export interface LoyaltySummaryDto {
+  // Points customers hold right now (not expired), in ₸.
+  pointsOutstanding: number;
+  membersWithPoints: number;
+  pointsEarned: number;
+  // Скидки баллами: points spent on purchases in the period, net of refunds.
+  pointsRedeemed: number;
+  pointsExpired: number;
+}
+
+export interface LoyaltyCartLine {
+  quantity: number;
+  unitPrice: number;
+  // Set on a marked-down or coupon line: such a line neither takes points nor earns them.
+  fullUnitPrice?: number | null;
+  // Goods «под реализацию» are the supplier's money: never discounted by points, never earning.
+  consignment: boolean;
+}
+
+export interface PointsDiscountLine {
+  index: number;
+  fullUnitPrice: number;
+  unitPrice: number;
+  subtotal: number;
+  discount: number;
+}
+
+const tiyn = (value: number) => Math.round(value * 100);
+const milli = (quantity: number) => Math.round(quantity * 1000);
+const lineTiyn = (quantity: number, unitPriceTiyn: number) => Math.round((milli(quantity) * unitPriceTiyn) / 1000);
+
+export function isPointsRedeemableLine(line: LoyaltyCartLine): boolean {
+  return !line.consignment && (line.fullUnitPrice === undefined || line.fullUnitPrice === null);
+}
+
+// Lines that earn: our own goods at their normal price, including a line part-paid
+// by points (it earns on the money part only — its subtotal is already net).
+export function isPointsEarningLine(line: LoyaltyCartLine & { loyaltyDiscount?: number | null }): boolean {
+  if (line.consignment) return false;
+  return line.fullUnitPrice === undefined || line.fullUnitPrice === null || (line.loyaltyDiscount ?? 0) > 0;
+}
+
+export function floorToTiyn(value: number): number {
+  return Math.floor(value * 100 + 1e-6) / 100;
+}
+
+// The most points this cart can take: the share limit of its redeemable goods,
+// and never more than the customer holds.
+export function loyaltyRedeemCap(lines: LoyaltyCartLine[], maxRedeemPercent: number, balance: number): number {
+  const base = lines.filter(isPointsRedeemableLine).reduce((sum, l) => sum + lineTiyn(l.quantity, tiyn(l.unitPrice)), 0);
+  const cap = Math.floor((base * maxRedeemPercent) / 100 + 1e-6);
+  return Math.max(0, Math.min(cap, Math.floor(balance * 100 + 1e-6))) / 100;
+}
+
+export function loyaltyEarnPoints(base: number, ratePercent: number): number {
+  return Math.max(0, Math.floor((tiyn(base) * ratePercent) / 100 + 1e-6) / 100);
+}
+
+// Spreads `points` over the redeemable lines in proportion to their value, as a
+// lower unit price on each (whole тиын). Weighed goods cannot always absorb an
+// exact amount, so the result may fall a few тиын short of what was asked —
+// `total` is what is actually discounted and what is charged in points.
+export function distributePointsDiscount(lines: LoyaltyCartLine[], points: number): { lines: PointsDiscountLine[]; total: number } {
+  const eligible = lines
+    .map((line, index) => ({ line, index, unit: tiyn(line.unitPrice), q: milli(line.quantity) }))
+    .filter((e) => isPointsRedeemableLine(e.line) && e.q > 0 && e.unit > 0)
+    .map((e) => ({ ...e, sub: lineTiyn(e.line.quantity, e.unit), delta: 0 }));
+  const base = eligible.reduce((sum, e) => sum + e.sub, 0);
+  const target = Math.min(Math.max(0, tiyn(points)), base);
+  if (target === 0 || eligible.length === 0) return { lines: [], total: 0 };
+
+  // Largest-remainder shares in тиын.
+  const shares = eligible.map((e) => {
+    const exact = (target * e.sub) / base;
+    return { floor: Math.floor(exact), rest: exact - Math.floor(exact) };
+  });
+  let left = target - shares.reduce((sum, s) => sum + s.floor, 0);
+  [...shares.keys()].sort((a, b) => shares[b].rest - shares[a].rest).forEach((k) => {
+    if (left > 0) {
+      shares[k].floor += 1;
+      left -= 1;
+    }
+  });
+
+  const discountOf = (e: (typeof eligible)[number]) => e.sub - lineTiyn(e.line.quantity, e.unit - e.delta);
+  eligible.forEach((e, k) => {
+    e.delta = Math.min(e.unit, Math.floor((shares[k].floor * 1000) / e.q));
+    while (e.delta > 0 && discountOf(e) > shares[k].floor) e.delta -= 1;
+  });
+  // What weighed lines could not absorb goes, if possible, onto the others.
+  let shortfall = target - eligible.reduce((sum, e) => sum + discountOf(e), 0);
+  for (const e of [...eligible].sort((a, b) => a.q - b.q)) {
+    if (shortfall <= 0) break;
+    const before = discountOf(e);
+    e.delta = Math.min(e.unit, e.delta + Math.floor((shortfall * 1000) / e.q));
+    while (e.delta > 0 && discountOf(e) - before > shortfall) e.delta -= 1;
+    shortfall -= discountOf(e) - before;
+  }
+
+  const out = eligible
+    .filter((e) => e.delta > 0)
+    .map((e) => {
+      const unitPrice = e.unit - e.delta;
+      const subtotal = lineTiyn(e.line.quantity, unitPrice);
+      return { index: e.index, fullUnitPrice: e.unit / 100, unitPrice: unitPrice / 100, subtotal: subtotal / 100, discount: (e.sub - subtotal) / 100 };
+    });
+  return { lines: out, total: out.reduce((sum, l) => sum + tiyn(l.discount), 0) / 100 };
+}

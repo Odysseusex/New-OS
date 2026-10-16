@@ -23,6 +23,7 @@ import {
 import { AuthenticatedUser } from "../auth/auth.types";
 import { auditFields, recordAudit, recordAuditMany } from "../audit/audit";
 import { PrismaService } from "../prisma/prisma.service";
+import { LoyaltyPointsService } from "./loyalty-points.service";
 import {
   LoyaltyImportApplyRequestDto,
   LoyaltyImportRowDto,
@@ -63,7 +64,10 @@ const blankToNull = (value: string | null | undefined) => {
 
 @Injectable()
 export class LoyaltyService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private points: LoyaltyPointsService,
+  ) {}
 
   // ── Till: find by phone ───────────────────────────────────────────────────
 
@@ -79,7 +83,7 @@ export class LoyaltyService {
         include: CONSENTS_IN_ORDER,
       });
     }
-    return { phone, member: member ? this.toDto(member) : null };
+    return { phone, member: member ? await this.withBalance(organizationId, member) : null };
   }
 
   async register(user: AuthenticatedUser, dto: RegisterLoyaltyMemberDto): Promise<LoyaltyMemberDto> {
@@ -125,7 +129,7 @@ export class LoyaltyService {
         });
         return saved;
       });
-      return this.toDto(member);
+      return this.toDto(member, 0);
     } catch (err) {
       // Two tills registering the same number at the same moment: the unique index decides.
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
@@ -188,7 +192,7 @@ export class LoyaltyService {
       });
       return after;
     });
-    return this.toDto(saved);
+    return this.withBalance(user.organizationId, saved);
   }
 
   // ── Management ────────────────────────────────────────────────────────────
@@ -218,17 +222,27 @@ export class LoyaltyService {
       this.prisma.loyaltyMember.findMany({ where, include: CONSENTS_IN_ORDER, orderBy: { createdAt: "desc" }, take: LOYALTY_LIST_LIMIT }),
       this.prisma.loyaltyMember.count({ where }),
     ]);
-    return { items: items.map((m) => this.toDto(m)), total };
+    const balances = await this.points.balances(organizationId, items.map((m) => m.id));
+    return { items: items.map((m) => this.toDto(m, balances.get(m.id) ?? 0)), total };
   }
 
   async findOne(organizationId: string, memberId: string): Promise<LoyaltyMemberDetailDto> {
+    const exists = await this.prisma.loyaltyMember.findFirst({ where: { id: memberId, organizationId }, select: { id: true } });
+    if (!exists) throw new NotFoundException("Клиент не найден");
+    // Opening the card writes off expired points, so its history says so.
+    await this.points.settleOutside(organizationId, memberId);
     const member = await this.prisma.loyaltyMember.findFirst({
       where: { id: memberId, organizationId },
       include: { ...CONSENTS_IN_ORDER, mergedFrom: { orderBy: { mergedAt: "asc" } } },
     });
     if (!member) throw new NotFoundException("Клиент не найден");
+    const [balances, pointsHistory] = await Promise.all([
+      this.points.balances(organizationId, [member.id]),
+      this.points.history(organizationId, member.id),
+    ]);
     return {
-      ...this.toDto(member),
+      ...this.toDto(member, balances.get(member.id) ?? 0),
+      pointsHistory,
       history: [...member.consents].reverse().map((c) => ({
         id: c.id,
         purpose: c.purpose as LoyaltyConsentPurpose,
@@ -267,7 +281,7 @@ export class LoyaltyService {
       });
       return updated;
     });
-    return this.toDto(saved);
+    return this.withBalance(user.organizationId, saved);
   }
 
   // One-way, like a stock void: the duplicate stays in the database (its consent
@@ -302,6 +316,8 @@ export class LoyaltyService {
       if (folded.count !== 1 || kept.count !== 1) {
         throw new ConflictException("Одна из записей уже объединена — обновите страницу");
       }
+      // Points move with the person, each lot keeping its own expiry.
+      const pointsMoved = await this.points.transferOnMerge(tx, user, duplicate.id, primary.id);
       // Earlier duplicates of the duplicate now lead straight to the primary.
       await tx.loyaltyMember.updateMany({
         where: { organizationId: user.organizationId, mergedIntoId: duplicate.id },
@@ -317,7 +333,7 @@ export class LoyaltyService {
           duplicate: { ...auditFields(duplicate, MEMBER_FIELDS), consents: consentState(duplicate.consents) },
           primary: { id: primary.id, ...auditFields(primary, MEMBER_FIELDS) },
         },
-        after: { status: LoyaltyMemberStatus.MERGED, mergedIntoId: primary.id },
+        after: { status: LoyaltyMemberStatus.MERGED, mergedIntoId: primary.id, pointsMoved },
         reason,
       });
     });
@@ -475,7 +491,12 @@ export class LoyaltyService {
     };
   }
 
-  private toDto(member: MemberWithConsents): LoyaltyMemberDto {
+  private async withBalance(organizationId: string, member: MemberWithConsents): Promise<LoyaltyMemberDto> {
+    const balances = await this.points.balances(organizationId, [member.id]);
+    return this.toDto(member, balances.get(member.id) ?? 0);
+  }
+
+  private toDto(member: MemberWithConsents, pointsBalance: number): LoyaltyMemberDto {
     return {
       id: member.id,
       phone: member.phone,
@@ -484,6 +505,7 @@ export class LoyaltyService {
       status: member.status as LoyaltyMemberStatus,
       mergedIntoId: member.mergedIntoId,
       consents: consentState(member.consents),
+      pointsBalance,
       createdAt: member.createdAt.toISOString(),
     };
   }

@@ -31,6 +31,8 @@ export interface SaleItemDto {
   // receipt/history say "по акции «Мерей — купон»" instead of the wrong
   // "уценка" label — the two must never be shown as the same thing.
   promotionName: string | null;
+  // Part of the line paid with loyalty points (a discount, not a markdown).
+  loyaltyDiscount: number | null;
 }
 
 export interface SaleDto {
@@ -90,6 +92,17 @@ export interface SaleDetailDto extends SaleDto {
   // Null when the sale was made with fiscalisation switched off — which is
   // every sale so far.
   fiscalReceipt: SaleFiscalReceiptDto | null;
+  // The loyalty member attached at the till, with what this sale earned and
+  // spent. Null for an anonymous sale.
+  loyalty: SaleLoyaltyDto | null;
+}
+
+export interface SaleLoyaltyDto {
+  memberId: string;
+  phone: string;
+  name: string | null;
+  pointsRedeemed: number;
+  pointsEarned: number;
 }
 
 export interface CreateSaleItemRequestDto {
@@ -133,6 +146,10 @@ export interface CreateSaleRequestDto {
   // matching lines itself (see fullUnitPrice on CreateSaleItemRequestDto),
   // and claims the coupon atomically in the same transaction as the sale.
   couponCode?: string;
+  // Loyalty member found by phone at the till, and how many points to pay
+  // with (a discount on the check; the server re-checks balance and limit).
+  loyaltyMemberId?: string;
+  loyaltyPointsToRedeem?: number;
   items: CreateSaleItemRequestDto[];
 }
 

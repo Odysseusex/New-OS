@@ -5,6 +5,10 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsInt,
+  IsNumber,
+  Max,
+  Min,
   IsOptional,
   IsString,
   MaxLength,
@@ -136,4 +140,44 @@ export class LoyaltyImportApplyRequestDto extends LoyaltyImportPreviewRequestDto
   @MinLength(3)
   @MaxLength(300)
   note!: string;
+}
+
+export class UpdateLoyaltySettingsDto {
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  firstPurchaseEarnPercent?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  earnPercent?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  maxRedeemPercent?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(120)
+  pointsLifetimeMonths?: number;
+}
+
+export class AdjustLoyaltyPointsDto {
+  @IsNumber()
+  points!: number;
+
+  @IsString()
+  @MinLength(5)
+  @MaxLength(500)
+  reason!: string;
 }

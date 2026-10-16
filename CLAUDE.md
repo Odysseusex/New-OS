@@ -800,7 +800,7 @@ reach only /pos). Migration `20261015120000_loyalty_members`. Rules that are eas
 
 - **`LoyaltyMember` is NOT `Customer`.** Customer is a wholesale counterparty with credit, receivables and
   ledger dimensions; merging two of those would re-point sales/cash history. A member carries no money, so
-  it can be merged freely. Stage 1 does NOT attach a member to a sale (that comes with points, stage 3).
+  it can be merged freely.
 - **Phone is the identity**: stored only as `+77XXXXXXXXX` (`normalizeKzPhone` — national part must start
   with 7, so Russian +7 9xx is refused), unique per organization, never edited. A new number = a new
   member merged with the old one.
@@ -817,8 +817,32 @@ reach only /pos). Migration `20261015120000_loyalty_members`. Rules that are eas
 - Roles: `LOYALTY_TILL_ROLES` (= sale roles: lookup/register/consent), `LOYALTY_MANAGE_ROLES`
   (OWNER/ADMIN/STORE_MANAGER: browse list, edit name/note), `LOYALTY_ADMIN_ROLES` (merge/import). The list
   is searched server-side (not the client-side picker pattern): it is people's phone numbers and can be large.
-- Earning rates (5 % first purchase, then 1 %) are for stage 2 and must be settings, not constants. Stage 2
-  (points engine) and WhatsApp are NOT built — they wait for the owner's decisions listed in the research doc.
+- WhatsApp is NOT built (needs the owner's Meta business account and a provider).
+
+**Stage 2 — points — built** (migration `20261016120000_loyalty_points`, `loyalty/loyalty-points.service.ts`,
+`loyalty/points-ledger.ts`, shared math in `packages/shared/src/loyalty.ts`). Owner decisions: 1 point = 1 ₸;
+5 % on a member's first purchase then 1 %; points pay at most 30 % of a check; points live 12 months; no
+earning on consignment, markdown/coupon lines or the part paid by points — all rates/limits are
+`LoyaltySettings` (owner/admin, audited `loyaltySettings.update`), programme OFF until switched on.
+- **Accounting = «способ Б» (APPROVED by the owner): spending points is a DISCOUNT.** It lowers the price of
+  the lines it pays for (`fullUnitPrice` = list price, `unitPrice` = net, `SaleItem.loyaltyDiscount` = the points
+  part), exactly like a coupon — so revenue, the P&L/event DISCOUNTS line, returns and fiscal receipts need no
+  special case and the general ledger follows automatically. Issued points are NOT a liability in the books;
+  «Баллов у клиентов» on the loyalty card is information only. Don't add a liability/deferred revenue (МСФО 15)
+  without a fresh decision with the accountant. Markdown figures skip lines with `loyaltyDiscount` set.
+- Points only discount our own goods at their normal price (never a markdown, coupon or consignment line);
+  the till and the server run the SAME shared `distributePointsDiscount`/`loyaltyRedeemCap`, so the total sent
+  to the Kaspi terminal equals what the sale records. Weighed goods may absorb a few тиын less than asked;
+  the realized amount is what is charged in points.
+- `LoyaltyPointsEntry` is an append-only ledger (UPDATE rejected by trigger; unique per sale+type and
+  return+type). Positive entries are lots with their own `expiresAt`; negatives consume the earliest-expiring
+  live lot (`pointsPosition`). Expired points are written off (EXPIRE) under a `FOR UPDATE` lock on the member
+  before any balance change and when the card is opened. Balances never go negative (a return's earn
+  reversal is capped). Returns refund spent points and take back earned ones cumulatively (no тиын drift);
+  merge moves live lots keeping their expiry; manual adjustment is OWNER/ADMIN with a reason (audited).
+- «First purchase» = the first sale the member is attached to. Sales attach a member via `Sale.loyaltyMemberId`
+  (till: «Клиент бонусной программы» in the cart). `SalesService`/`SaleReturnsService` take
+  `LoyaltyPointsService` as their LAST constructor argument (defaulted) so hand-wired specs keep working.
 
 ## Prisma migration workflow (this sandbox has no direct prod DB access)
 

@@ -27,6 +27,8 @@ import {
   SalesSummaryDto,
   Unit,
   FiscalReceiptStatus as FiscalReceiptStatusDto,
+  distributePointsDiscount,
+  loyaltyRedeemCap,
 } from "@bakery-os/shared";
 import {
   FiscalReceipt,
@@ -48,6 +50,7 @@ import { PromotionsService } from "../promotions/promotions.service";
 import { CreateSaleDto } from "./dto/create-sale.dto";
 import { RecordPaymentDto } from "./dto/record-payment.dto";
 import { postLedgerSources } from "../ledger/event-posting";
+import { LoyaltyPointsService, PreparedSaleLoyalty } from "../loyalty/loyalty-points.service";
 
 // Calendar days in reports are the owner's days, not the server's. Render runs
 // in UTC, so without this an early-morning delivery in Almaty (UTC+5) would be
@@ -80,6 +83,8 @@ const SALE_DETAIL_INCLUDE = {
   fiscalReceipt: true,
   // Empty for an ordinary sale; the breakdown of a split one.
   payments: true,
+  loyaltyMember: { select: { id: true, phone: true, name: true } },
+  loyaltyPointsEntries: { select: { type: true, points: true } },
 };
 
 @Injectable()
@@ -93,6 +98,7 @@ export class SalesService {
     private fiscalSettings: FiscalSettings,
     private promotionsService: PromotionsService,
     private costing: CostingService = new CostingService(prisma),
+    private loyaltyPoints: LoyaltyPointsService = new LoyaltyPointsService(prisma),
   ) {}
 
   // CASH sales land in the selling location's own till, auto-created the
@@ -301,7 +307,7 @@ export class SalesService {
         // overproduction signal this figure exists to give. See
         // PromotionsService.report() for where that money IS counted.
         const full = item.fullUnitPrice?.toNumber();
-        if (full !== undefined && item.promotionId === null) {
+        if (full !== undefined && item.promotionId === null && item.loyaltyDiscount === null) {
           const loss = (full - item.unitPrice.toNumber()) * quantity;
           productEntry.markdownQuantity += quantity;
           productEntry.markdownLoss += loss;
@@ -413,7 +419,7 @@ export class SalesService {
       // Same promotionId exclusion as report() above — a coupon discount is
       // not a markdown, and must not be counted as one here either.
       const full = item.fullUnitPrice?.toNumber();
-      if (full !== undefined && item.promotionId === null) {
+      if (full !== undefined && item.promotionId === null && item.loyaltyDiscount === null) {
         entry.markdownQuantity += quantity;
         entry.markdownLoss += (full - item.unitPrice.toNumber()) * quantity;
       }
@@ -1057,7 +1063,15 @@ export class SalesService {
     }
 
     let promotionDiscountTotal = 0;
-    const items = dto.items.map((item) => {
+    const items: {
+      productId: string;
+      quantity: number;
+      unitPrice: number;
+      fullUnitPrice: number | null;
+      subtotal: number;
+      promotionId: string | null;
+      loyaltyDiscount: number | null;
+    }[] = dto.items.map((item) => {
       // A markdown that did not lower the price is not a markdown. Letting
       // one through would put a negative "loss" into the report and quietly
       // inflate the markdown figures the owner is meant to steer by.
@@ -1091,9 +1105,9 @@ export class SalesService {
         fullUnitPrice,
         subtotal: item.quantity * unitPrice,
         promotionId: lineItemPromotionId,
+        loyaltyDiscount: null,
       };
     });
-    const totalAmount = items.reduce((sum, i) => sum + i.subtotal, 0);
 
     // A coupon that matched nothing in the cart is not a used coupon — reject
     // before the coupon is ever claimed or a receipt punched, so nothing is
@@ -1101,6 +1115,49 @@ export class SalesService {
     if (couponCode && promotionDiscountTotal === 0) {
       throw new BadRequestException("В чеке нет товаров, к которым применяется эта акция — купон не использован");
     }
+
+    // --- Loyalty points, when a member was attached at the till -----------
+    //
+    // Paying with points is a DISCOUNT («способ Б»): it lowers the price of the
+    // lines it pays for, like a coupon, so revenue, the P&L discounts line,
+    // returns and the fiscal receipt need no special case. Only our own goods
+    // at their normal price take points (never a markdown, a coupon line or
+    // goods «под реализацию»). The balance is checked again inside the
+    // transaction, under a lock on the member.
+    let loyalty: (PreparedSaleLoyalty & { redeem: number; consignmentById: Map<string, boolean> }) | null = null;
+    if (dto.loyaltyMemberId) {
+      const prepared = await this.loyaltyPoints.prepareSale(user.organizationId, dto.loyaltyMemberId);
+      const flags = await this.prisma.product.findMany({
+        where: { id: { in: productIds }, organizationId: user.organizationId },
+        select: { id: true, consignmentSupplierId: true },
+      });
+      const consignmentById = new Map(flags.map((p) => [p.id, p.consignmentSupplierId !== null]));
+      loyalty = { ...prepared, redeem: 0, consignmentById };
+      const requested = dto.loyaltyPointsToRedeem ?? 0;
+      if (requested > 0) {
+        const cart = items.map((i) => ({ ...i, consignment: consignmentById.get(i.productId) ?? false }));
+        const cap = loyaltyRedeemCap(cart, prepared.settings.maxRedeemPercent, prepared.available);
+        if (requested > cap + 1e-9) {
+          throw new BadRequestException(
+            `Баллами можно оплатить не больше ${cap} ₸: до ${prepared.settings.maxRedeemPercent}% стоимости товаров без скидки и не больше, чем на счёте (${prepared.available})`,
+          );
+        }
+        const discount = distributePointsDiscount(cart, requested);
+        for (const line of discount.lines) {
+          items[line.index] = {
+            ...items[line.index],
+            unitPrice: line.unitPrice,
+            fullUnitPrice: line.fullUnitPrice,
+            subtotal: line.subtotal,
+            loyaltyDiscount: line.discount,
+          };
+        }
+        loyalty.redeem = discount.total;
+      }
+    } else if (dto.loyaltyPointsToRedeem) {
+      throw new BadRequestException("Чтобы оплатить баллами, укажите клиента программы");
+    }
+    const totalAmount = items.reduce((sum, i) => sum + i.subtotal, 0);
 
     // Walk-in retail sales are always settled immediately. Only a sale tied
     // to a customer account can be placed on credit (partially or fully).
@@ -1202,6 +1259,7 @@ export class SalesService {
           organizationId: user.organizationId,
           locationId,
           customerId: dto.customerId,
+          loyaltyMemberId: loyalty?.memberId ?? null,
           totalAmount,
           consignmentAmount,
           amountPaid,
@@ -1257,6 +1315,31 @@ export class SalesService {
 
       if (receipt) {
         await this.fiscalService.linkSale(tx, receipt.id, sale.id);
+      }
+
+      // Spend and earn points with the sale itself: one transaction, so a failed
+      // sale never costs the customer points and a sale never earns twice.
+      let loyaltyEntries: { type: string; points: Prisma.Decimal }[] = [];
+      if (loyalty) {
+        const result = await this.loyaltyPoints.recordSale(tx, {
+          user,
+          prepared: loyalty,
+          saleId: sale.id,
+          soldAt: sale.soldAt,
+          redeem: loyalty.redeem,
+          lines: items.map((i) => ({
+            productId: i.productId,
+            quantity: i.quantity,
+            subtotal: i.subtotal,
+            fullUnitPrice: i.fullUnitPrice,
+            loyaltyDiscount: i.loyaltyDiscount,
+            consignment: !!productById.get(i.productId)?.consignmentSupplierId,
+          })),
+        });
+        loyaltyEntries = [
+          ...(result.pointsRedeemed > 0 ? [{ type: "REDEEM", points: new Prisma.Decimal(-result.pointsRedeemed) }] : []),
+          ...(result.pointsEarned > 0 ? [{ type: "EARN", points: new Prisma.Decimal(result.pointsEarned) }] : []),
+        ];
       }
 
       // Claiming the coupon is the last write before the sale is considered
@@ -1351,7 +1434,7 @@ export class SalesService {
       // The receipt is attached by hand rather than read back: it was linked
       // to this sale a moment ago, after `sale` was loaded, so the included
       // relation on that object is still null.
-      return this.toSaleDetailDto({ ...sale, fiscalReceipt: receipt });
+      return this.toSaleDetailDto({ ...sale, fiscalReceipt: receipt, loyaltyPointsEntries: loyaltyEntries });
     });
   }
 
@@ -1552,6 +1635,7 @@ export class SalesService {
       fullUnitPrice: { toNumber: () => number } | null;
       subtotal: { toNumber: () => number };
       promotion?: { name: string } | null;
+      loyaltyDiscount?: { toNumber: () => number } | null;
     }[];
     fiscalReceipt?: {
       status: string;
@@ -1561,6 +1645,8 @@ export class SalesService {
       isOffline: boolean;
     } | null;
     payments?: { method: string; amount: { toNumber: () => number } }[];
+    loyaltyMember?: { id: string; phone: string; name: string | null } | null;
+    loyaltyPointsEntries?: { type: string; points: { toNumber: () => number } }[];
     terminalMethod?: string | null;
     terminalTransactionId?: string | null;
     terminalCardMask?: string | null;
@@ -1585,11 +1671,21 @@ export class SalesService {
       fullUnitPrice: item.fullUnitPrice?.toNumber() ?? null,
       subtotal: item.subtotal.toNumber(),
       promotionName: item.promotion?.name ?? null,
+      loyaltyDiscount: item.loyaltyDiscount?.toNumber() ?? null,
     })),
     payments: (sale.payments ?? []).map((p) => ({
       method: p.method as PaymentMethod,
       amount: p.amount.toNumber(),
     })),
+    loyalty: sale.loyaltyMember
+      ? {
+          memberId: sale.loyaltyMember.id,
+          phone: sale.loyaltyMember.phone,
+          name: sale.loyaltyMember.name,
+          pointsRedeemed: (sale.loyaltyPointsEntries ?? []).filter((e) => e.type === "REDEEM").reduce((s, e) => s - e.points.toNumber(), 0),
+          pointsEarned: (sale.loyaltyPointsEntries ?? []).filter((e) => e.type === "EARN").reduce((s, e) => s + e.points.toNumber(), 0),
+        }
+      : null,
     fiscalReceipt: sale.fiscalReceipt
       ? {
           status: sale.fiscalReceipt.status as FiscalReceiptStatusDto,

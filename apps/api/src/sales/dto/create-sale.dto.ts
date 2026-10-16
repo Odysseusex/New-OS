@@ -102,6 +102,17 @@ export class CreateSaleDto {
   @MaxLength(PROMOTION_COUPON_CODE_MAX_LENGTH)
   couponCode?: string;
 
+  // Loyalty member attached at the till, and points to pay with (a discount;
+  // the server checks the balance and the share limit itself).
+  @IsOptional()
+  @IsString()
+  loyaltyMemberId?: string;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  loyaltyPointsToRedeem?: number;
+
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })

@@ -9,6 +9,7 @@ import {
   LOYALTY_CONSENT_CHANNELS,
   LOYALTY_CONSENT_PURPOSE_LABELS_RU,
   LOYALTY_CONSENT_SOURCE_LABELS_RU,
+  LOYALTY_POINTS_ENTRY_TYPE_LABELS_RU,
   LoyaltyConsentChannel,
   LoyaltyConsentPurpose,
   LoyaltyConsentSource,
@@ -16,7 +17,7 @@ import {
   normalizeKzPhone,
 } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime, formatPoints } from "@/lib/format";
 import { Modal } from "@/components/modal";
 import { ConsentSourceSelect, inputClass, MemberStatusBadge } from "@/components/loyalty-shared";
 
@@ -51,6 +52,9 @@ export function LoyaltyMemberModal({
   const [mergePhone, setMergePhone] = useState("");
   const [mergeCandidate, setMergeCandidate] = useState<LoyaltyMemberDto | null>(null);
   const [mergeReason, setMergeReason] = useState("");
+
+  const [adjustPoints, setAdjustPoints] = useState("");
+  const [adjustReason, setAdjustReason] = useState("");
 
   const load = useCallback(() => {
     setLoadError(null);
@@ -123,6 +127,15 @@ export function LoyaltyMemberModal({
       setMergeCandidate(null);
       setMergePhone("");
       setMergeReason("");
+    }
+  }
+
+  async function submitAdjust() {
+    const points = Number(adjustPoints.replace(",", "."));
+    const ok = await run(() => api.loyalty.adjustPoints(currentId, { points, reason: adjustReason }), "Не удалось изменить баллы");
+    if (ok) {
+      setAdjustPoints("");
+      setAdjustReason("");
     }
   }
 
@@ -257,6 +270,68 @@ export function LoyaltyMemberModal({
           </section>
 
           <section>
+            <div className="mb-2 flex items-baseline justify-between">
+              <h3 className="text-sm font-semibold text-foreground">Баллы</h3>
+              <p className="text-lg font-semibold text-foreground">{formatPoints(member.pointsBalance)}</p>
+            </div>
+            {member.pointsHistory.length > 0 ? (
+              <div className="max-h-64 overflow-auto rounded-xl border border-border">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+                      <th className="px-3 py-2 font-medium">Дата</th>
+                      <th className="px-3 py-2 font-medium">Операция</th>
+                      <th className="px-3 py-2 text-right font-medium">Баллы</th>
+                      <th className="px-3 py-2 font-medium">Сгорят</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {member.pointsHistory.map((e) => (
+                      <tr key={e.id}>
+                        <td className="whitespace-nowrap px-3 py-2 text-muted">{formatDateTime(e.createdAt)}</td>
+                        <td className="px-3 py-2 text-foreground">
+                          {LOYALTY_POINTS_ENTRY_TYPE_LABELS_RU[e.type]}
+                          {e.ratePercent !== null && <span className="text-muted"> · {formatPoints(e.ratePercent)}%</span>}
+                          {(e.reason || e.createdByName) && (
+                            <span className="block text-xs text-muted">{[e.reason, e.createdByName].filter(Boolean).join(" · ")}</span>
+                          )}
+                        </td>
+                        <td className={`px-3 py-2 text-right font-medium tabular-nums ${e.points > 0 ? "text-emerald-700" : "text-red-700"}`}>
+                          {e.points > 0 ? "+" : "−"}
+                          {formatPoints(Math.abs(e.points))}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-muted">{e.expiresAt ? formatDate(e.expiresAt) : ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-muted">Движений баллов нет</p>
+            )}
+            {canAdmin && editable && (
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[8rem_1fr_auto]">
+                <input
+                  inputMode="decimal"
+                  value={adjustPoints}
+                  onChange={(e) => setAdjustPoints(e.target.value)}
+                  placeholder="+100 или −50"
+                  className={inputClass}
+                />
+                <input value={adjustReason} onChange={(e) => setAdjustReason(e.target.value)} placeholder="Причина корректировки" className={inputClass} />
+                <button
+                  type="button"
+                  disabled={busy || !adjustPoints.trim() || adjustReason.trim().length < 5}
+                  onClick={submitAdjust}
+                  className="rounded-xl border border-border px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted disabled:opacity-50"
+                >
+                  Изменить баллы
+                </button>
+              </div>
+            )}
+          </section>
+
+          <section>
             <h3 className="mb-2 text-sm font-semibold text-foreground">История согласий</h3>
             <div className="overflow-x-auto rounded-xl border border-border">
               <table className="w-full text-sm">
@@ -331,7 +406,7 @@ export function LoyaltyMemberModal({
                     {mergeCandidate.name ? ` · ${mergeCandidate.name}` : ""} <MemberStatusBadge status={mergeCandidate.status} />
                   </p>
                   <p className="mb-3 text-sm text-red-700">
-                    Эта запись станет частью текущей. Отменить нельзя; её согласия на рассылки не переносятся.
+                    Эта запись станет частью текущей. Отменить нельзя; её баллы перейдут сюда, согласия на рассылки не переносятся.
                   </p>
                   <label className="mb-1.5 block text-sm font-medium text-foreground">Причина</label>
                   <input value={mergeReason} onChange={(e) => setMergeReason(e.target.value)} className={`${inputClass} mb-3`} />

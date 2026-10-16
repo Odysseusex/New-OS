@@ -72,3 +72,10 @@ export function toDatetimeLocalValue(date: Date | string): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+
+// Loyalty points: 1 point = 1 ₸, kept to the тиын (1 % of 590 ₸ is 5,90).
+const pointsFormatter = new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
+export function formatPoints(value: number): string {
+  return pointsFormatter.format(value);
+}

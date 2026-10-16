@@ -797,6 +797,11 @@ model Sale {
   cashMovements  CashMovement[]
   fiscalReceipt  FiscalReceipt?
   returns        SaleReturn[]
+  // Loyalty member the cashier attached at the till (null: anonymous retail).
+  // Points earned/spent on this sale live in LoyaltyPointsEntry.
+  loyaltyMemberId      String?
+  loyaltyMember        LoyaltyMember?       @relation(fields: [loyaltyMemberId], references: [id])
+  loyaltyPointsEntries LoyaltyPointsEntry[]
   // Set only when this sale was rung up against a promotion coupon — the
   // redemption fact itself lives on PromotionCoupon, this is just the back
   // pointer so a Sale can be checked for one.
@@ -804,6 +809,7 @@ model Sale {
 
   @@index([organizationId, locationId])
   @@index([soldAt])
+  @@index([loyaltyMemberId])
   @@map("sales")
 }
 
@@ -937,6 +943,8 @@ model SaleReturn {
   cashMovements  CashMovement[]
   fiscalReceipt  FiscalReceipt?
 
+  loyaltyPointsEntries LoyaltyPointsEntry[]
+
   @@index([organizationId, saleId])
   @@index([returnedAt])
   @@map("sale_returns")
@@ -991,6 +999,10 @@ model SaleItem {
   // stored: it is derivable from these two, and a second copy of the same
   // fact is a second thing that can drift.
   fullUnitPrice Decimal? @db.Decimal(12, 2)
+  // Part of (fullUnitPrice − unitPrice) × quantity paid with loyalty points.
+  // Set only on a line discounted by points (never stacked with a markdown or a
+  // coupon); such a line is not a markdown, so markdown figures skip it.
+  loyaltyDiscount Decimal? @db.Decimal(12, 2)
   // The product's category at the moment of sale (the leaf: a subcategory when
   // it had one). A plain id with no foreign key, like the ledger dimensions, so
   // it can never block a category's deletion. Null on every sale made before
@@ -2657,7 +2669,9 @@ model LoyaltyMember {
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 
-  consents LoyaltyConsent[]
+  consents      LoyaltyConsent[]
+  sales         Sale[]
+  pointsEntries LoyaltyPointsEntry[]
 
   @@unique([organizationId, phone])
   @@index([organizationId, status])
@@ -2685,4 +2699,71 @@ model LoyaltyConsent {
   @@index([memberId, recordedAt])
   @@index([organizationId])
   @@map("loyalty_consents")
+}
+
+// ── Loyalty programme, stage 2: points ───────────────────────────────────────
+// 1 point = 1 ₸ off a later purchase. Spending points is a DISCOUNT on the sale
+// (the owner's decision, «способ Б»): revenue is what the buyer paid in money,
+// and the points part shows up in the P&L discounts line like a coupon. Issued
+// points are NOT a liability in the books; the outstanding amount is reported on
+// the loyalty screen only.
+
+model LoyaltySettings {
+  organizationId           String   @id
+  // Off until the owner switches it on: «first purchase» counts from then.
+  enabled                  Boolean  @default(false)
+  firstPurchaseEarnPercent Decimal  @default(5) @db.Decimal(5, 2)
+  earnPercent              Decimal  @default(1) @db.Decimal(5, 2)
+  // Max share of a check (its eligible goods) payable with points.
+  maxRedeemPercent         Decimal  @default(30) @db.Decimal(5, 2)
+  pointsLifetimeMonths     Int      @default(12)
+  updatedAt                DateTime @updatedAt
+  updatedById              String?
+
+  @@map("loyalty_settings")
+}
+
+enum LoyaltyPointsEntryType {
+  EARN
+  REDEEM
+  // A return takes back the points its sale earned…
+  EARN_REVERSAL
+  // …and gives back the points its sale spent.
+  REDEEM_REFUND
+  EXPIRE
+  ADJUSTMENT
+  MERGE_IN
+  MERGE_OUT
+}
+
+// Append-only (UPDATE rejected by a trigger), like every other ledger here. The
+// balance is Σ points of entries that have not expired; positive entries are
+// lots with their own expiry, negative ones consume the earliest-expiring lot.
+model LoyaltyPointsEntry {
+  id             String                 @id @default(cuid())
+  organizationId String
+  memberId       String
+  member         LoyaltyMember          @relation(fields: [memberId], references: [id])
+  type           LoyaltyPointsEntryType
+  // Signed, 2 decimals (1% of 590 ₸ is 5.90 points). Never zero (CHECK).
+  points         Decimal                @db.Decimal(12, 2)
+  // Set on positive entries only.
+  expiresAt      DateTime?
+  saleId         String?
+  sale           Sale?                  @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  saleReturnId   String?
+  saleReturn     SaleReturn?            @relation(fields: [saleReturnId], references: [id], onDelete: Restrict)
+  // The earning rate applied, kept for EARN rows.
+  ratePercent    Decimal?               @db.Decimal(5, 2)
+  reason         String?
+  createdById    String?
+  createdByName  String?
+  createdAt      DateTime               @default(now())
+
+  // A sale earns once and spends once; a return reverses once.
+  @@unique([saleId, type])
+  @@unique([saleReturnId, type])
+  @@index([memberId, createdAt])
+  @@index([organizationId, createdAt])
+  @@map("loyalty_points_entries")
 }

@@ -26,6 +26,8 @@ import type {
   PromotionCouponPreviewDto,
   SaleDetailDto,
   SaleFiscalReceiptDto,
+  LoyaltyMemberDto,
+  LoyaltySettingsDto,
 } from "@bakery-os/shared";
 import {
   FiscalReceiptStatus,
@@ -40,6 +42,8 @@ import {
   resolveCategoryRule,
   SALE_CREATE_ROLES,
   LOYALTY_TILL_ROLES,
+  distributePointsDiscount,
+  loyaltyRedeemCap,
   UNIT_LABELS_RU,
 } from "@bakery-os/shared";
 import { Modal } from "@/components/modal";
@@ -60,7 +64,8 @@ import { isConfigured as isTerminalConfigured, type KaspiTransaction } from "@/l
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { LoyaltyLookupPanel } from "@/components/loyalty-lookup-panel";
-import { formatMoney, formatQuantity } from "@/lib/format";
+import { PosLoyaltyBlock } from "@/components/pos-loyalty";
+import { formatMoney, formatPoints, formatQuantity } from "@/lib/format";
 
 // A cart line carries its own price rather than reading it off the product,
 // because an open-price line's amount is typed by the cashier and two such
@@ -152,6 +157,12 @@ export default function PosPage() {
   // plugged in — the monoblock is the only machine it is attached to.
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [loyaltyOpen, setLoyaltyOpen] = useState(false);
+  // Bonus programme on the current order. Settings say whether it is on and
+  // how much of a check points may pay; null until loaded (or when the role
+  // cannot read them), which simply hides the block.
+  const [loyaltySettings, setLoyaltySettings] = useState<LoyaltySettingsDto | null>(null);
+  const [loyaltyMember, setLoyaltyMember] = useState<LoyaltyMemberDto | null>(null);
+  const [pointsToRedeem, setPointsToRedeem] = useState(0);
   // Set only when openCustomerDisplay() cannot tell which physical monitor is
   // the customer's — no remembered choice yet, or Windows' own displays
   // changed since. See customer-screen-picker.tsx for why this exists at all.
@@ -188,6 +199,7 @@ export default function PosPage() {
 
   useEffect(() => {
     api.categories.list().then(setCategories).catch(() => {});
+    api.loyalty.settings().then(setLoyaltySettings).catch(() => setLoyaltySettings(null));
     api.locations.list().then(setLocations).catch(() => {});
     // Created on the server the first time any till asks; a failure here just
     // means the button is not offered.
@@ -212,6 +224,8 @@ export default function PosPage() {
     // A part-built order belongs to the point it was priced at. Carrying it
     // across would keep the old prices while the grid shows new ones.
     setCart([]);
+    setLoyaltyMember(null);
+    setPointsToRedeem(0);
     // A coupon is validated against one specific location (see
     // Promotion.locationId) — switching points invalidates whatever was
     // typed in, same reasoning as clearing the cart above.
@@ -336,7 +350,32 @@ export default function PosPage() {
     return percent !== null ? applyDiscountPercent(line.unitPrice, percent) : line.unitPrice;
   }
 
-  const total = cart.reduce((sum, line) => sum + displayUnitPrice(line) * line.quantity, 0);
+  // The price before the markdown or coupon on a line, null at full price —
+  // the same marker the server puts on the line.
+  function fullPriceOf(line: CartLine): number | null {
+    return line.markedDown ? line.product.effectivePrice : couponPercentFor(line) !== null ? line.unitPrice : null;
+  }
+
+  const cartTotal = cart.reduce((sum, line) => sum + displayUnitPrice(line) * line.quantity, 0);
+
+  // Points pay part of the check as a discount on the lines at full price.
+  // Same shared functions as the server, so the total charged (and sent to the
+  // Kaspi terminal) is exactly the one the sale records.
+  const loyaltyLines = cart.map((line) => ({
+    quantity: line.quantity,
+    unitPrice: displayUnitPrice(line),
+    fullUnitPrice: fullPriceOf(line),
+    consignment: !!line.product.consignmentSupplierId,
+  }));
+  const loyaltyActive = !!loyaltySettings?.enabled && !!loyaltyMember;
+  const pointsCap =
+    loyaltyActive && loyaltySettings && loyaltyMember
+      ? loyaltyRedeemCap(loyaltyLines, loyaltySettings.maxRedeemPercent, loyaltyMember.pointsBalance)
+      : 0;
+  const pointsRequested = Math.min(pointsToRedeem, pointsCap);
+  const pointsDiscount = loyaltyActive && pointsRequested > 0 ? distributePointsDiscount(loyaltyLines, pointsRequested) : null;
+  const pointsDiscountByIndex = new Map((pointsDiscount?.lines ?? []).map((l) => [l.index, l]));
+  const total = Math.round((cartTotal - (pointsDiscount?.total ?? 0)) * 100) / 100;
   const itemCount = cart.reduce((sum, line) => sum + line.quantity, 0);
 
   async function applyCoupon() {
@@ -386,22 +425,22 @@ export default function PosPage() {
       kind: "cart",
       locationName: activeLocationName,
       total,
-      lines: cart.map((line) => {
-        const couponPercent = couponPercentFor(line);
+      lines: cart.map((line, index) => {
+        const byPoints = pointsDiscountByIndex.get(index);
         return {
           key: line.key,
           name: line.product.name,
           quantity: line.quantity,
           unit: UNIT_LABELS_RU[line.product.unit],
-          unitPrice: displayUnitPrice(line),
-          fullUnitPrice: line.markedDown ? line.product.effectivePrice : couponPercent !== null ? line.unitPrice : null,
+          unitPrice: byPoints ? byPoints.unitPrice : displayUnitPrice(line),
+          fullUnitPrice: byPoints ? byPoints.fullUnitPrice : fullPriceOf(line),
         };
       }),
     };
     // couponPercentFor/displayUnitPrice are plain functions closing over
     // couponRuleByCategory, which IS listed — they need no dep of their own.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cart, total, lastSale, cashDetails, activeLocationName, couponRuleByCategory]);
+  }, [cart, total, lastSale, cashDetails, activeLocationName, couponRuleByCategory, pointsDiscount?.total]);
 
   useCustomerDisplayPublisher(customerState);
 
@@ -535,6 +574,11 @@ export default function PosPage() {
         // the coupon itself — the cart's per-line unitPrice below is sent
         // unchanged even for lines the coupon preview shows discounted.
         ...(appliedCoupon ? { couponCode: couponCode.trim() } : {}),
+        // The same amount the cart discounted by; the server distributes it
+        // with the same function and re-checks the balance and the limit.
+        ...(loyaltyActive && loyaltyMember
+          ? { loyaltyMemberId: loyaltyMember.id, ...(pointsRequested > 0 ? { loyaltyPointsToRedeem: pointsRequested } : {}) }
+          : {}),
         items: cart.map((line) => ({
           productId: line.product.id,
           quantity: line.quantity,
@@ -548,10 +592,13 @@ export default function PosPage() {
         setReceipt({ amount: total, fiscal: sale.fiscalReceipt });
       } else {
         const change = cashGiven !== undefined ? cashGiven - total : 0;
+        const points = sale.loyalty
+          ? `. Баллы: −${formatPoints(sale.loyalty.pointsRedeemed)}, +${formatPoints(sale.loyalty.pointsEarned)}`
+          : "";
         setFlash(
           change > 0
-            ? `Продажа проведена — ${formatMoney(total)}. Сдача ${formatMoney(change)}`
-            : `Продажа проведена — ${formatMoney(total)}`,
+            ? `Продажа проведена — ${formatMoney(total)}. Сдача ${formatMoney(change)}${points}`
+            : `Продажа проведена — ${formatMoney(total)}${points}`,
         );
       }
       setLastSale(sale);
@@ -559,6 +606,8 @@ export default function PosPage() {
       setCart([]);
       setQuery("");
       removeCoupon();
+      setLoyaltyMember(null);
+      setPointsToRedeem(0);
       setChargedButUnrecorded(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось провести продажу");
@@ -885,6 +934,8 @@ export default function PosPage() {
                 onClick={() => {
                   setCart([]);
                   removeCoupon();
+                  setLoyaltyMember(null);
+                  setPointsToRedeem(0);
                   focusScan();
                 }}
                 className="text-xs font-medium text-muted transition hover:text-foreground"
@@ -1033,6 +1084,19 @@ export default function PosPage() {
             )}
             {couponError && <p className="mt-1.5 text-xs text-red-600">{couponError}</p>}
           </div>
+
+          {loyaltySettings?.enabled && (
+            <div className="border-t border-border px-5 py-3">
+              <PosLoyaltyBlock
+                member={loyaltyMember}
+                onMemberChange={setLoyaltyMember}
+                pointsToRedeem={pointsToRedeem}
+                onPointsChange={setPointsToRedeem}
+                cap={pointsCap}
+                discount={pointsDiscount?.total ?? 0}
+              />
+            </div>
+          )}
 
           <div className="border-t border-border px-5 py-4">
             <div className="mb-4 flex items-end justify-between">
@@ -1718,7 +1782,9 @@ function PrintableReceipt({
                   {item.fullUnitPrice !== null &&
                     (item.promotionName
                       ? ` (по акции «${item.promotionName}», было ${formatMoney(item.fullUnitPrice)})`
-                      : ` (уценка, было ${formatMoney(item.fullUnitPrice)})`)}
+                      : item.loyaltyDiscount
+                        ? ` (оплачено баллами ${formatMoney(item.loyaltyDiscount)}, было ${formatMoney(item.fullUnitPrice)})`
+                        : ` (уценка, было ${formatMoney(item.fullUnitPrice)})`)}
                 </td>
                 <td className="pt-0.5 text-right">{formatMoney(item.subtotal)}</td>
               </tr>
@@ -1754,6 +1820,21 @@ function PrintableReceipt({
         </div>
       ) : (
         <p className="mt-1 text-xs">{PAYMENT_METHOD_LABELS_RU[sale.paymentMethod]}</p>
+      )}
+      {/* `sale.loyalty &&` also covers an older API that sends no such field. */}
+      {sale.loyalty && (
+        <div className="mt-1 text-xs">
+          {sale.loyalty.pointsRedeemed > 0 && (
+            <div className="flex justify-between">
+              <span>Оплачено баллами</span>
+              <span>{formatPoints(sale.loyalty.pointsRedeemed)}</span>
+            </div>
+          )}
+          <div className="flex justify-between">
+            <span>Начислено баллов</span>
+            <span>{formatPoints(sale.loyalty.pointsEarned)}</span>
+          </div>
+        </div>
       )}
       {cash && cash.change > 0 && (
         <div className="mt-1 text-xs">

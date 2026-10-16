@@ -15,6 +15,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { createIsolatedOrg, destroyOrg, IsolatedOrg } from "../../test/support/isolated-org";
 import { LoyaltyController } from "./loyalty.controller";
 import { LoyaltyService } from "./loyalty.service";
+import { LoyaltyPointsService } from "./loyalty-points.service";
 
 // Loyalty stage 1: a retail customer found by phone at the till, and an
 // append-only record of what they agreed to. No points, no money.
@@ -71,7 +72,7 @@ describe("who may do what", () => {
 
 describe("LoyaltyService (database)", () => {
   const prisma = new PrismaService();
-  const loyalty = new LoyaltyService(prisma);
+  const loyalty = new LoyaltyService(prisma, new LoyaltyPointsService(prisma));
   let org: IsolatedOrg;
 
   beforeAll(async () => {

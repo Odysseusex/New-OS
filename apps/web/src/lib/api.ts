@@ -1,4 +1,8 @@
 import type {
+  AdjustLoyaltyPointsRequestDto,
+  LoyaltySettingsDto,
+  LoyaltySummaryDto,
+  UpdateLoyaltySettingsRequestDto,
   LoyaltyImportPreviewDto,
   LoyaltyImportResultDto,
   LoyaltyImportRowInput,
@@ -485,6 +489,12 @@ export const api = {
       request<LoyaltyMemberDetailDto>("/loyalty/members/merge", { method: "POST", body: JSON.stringify(dto) }),
     previewImport: (rows: LoyaltyImportRowInput[]) =>
       request<LoyaltyImportPreviewDto>("/loyalty/members/import/preview", { method: "POST", body: JSON.stringify({ rows }) }),
+    settings: () => request<LoyaltySettingsDto>("/loyalty/settings"),
+    updateSettings: (dto: UpdateLoyaltySettingsRequestDto) =>
+      request<LoyaltySettingsDto>("/loyalty/settings", { method: "PATCH", body: JSON.stringify(dto) }),
+    summary: (from: string, to: string) => request<LoyaltySummaryDto>(withQuery("/loyalty/summary", { from, to })),
+    adjustPoints: (id: string, dto: AdjustLoyaltyPointsRequestDto) =>
+      request<{ balance: number }>(`/loyalty/members/${id}/points/adjust`, { method: "POST", body: JSON.stringify(dto) }),
     applyImport: (rows: LoyaltyImportRowInput[], note: string) =>
       request<LoyaltyImportResultDto>("/loyalty/members/import/apply", { method: "POST", body: JSON.stringify({ rows, note }) }),
   },

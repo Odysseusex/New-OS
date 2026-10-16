@@ -13,7 +13,8 @@ import {
   Role,
 } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatPoints } from "@/lib/format";
+import { LoyaltyProgramCard } from "@/components/loyalty-program-card";
 import { inputClass, marketingLabel, MemberStatusBadge } from "@/components/loyalty-shared";
 import { LoyaltyLookupPanel } from "@/components/loyalty-lookup-panel";
 import { LoyaltyMemberModal } from "@/components/loyalty-member-modal";
@@ -30,11 +31,13 @@ export function LoyaltyTab({ role }: { role: Role }) {
 
   const [openId, setOpenId] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const loadList = useCallback(
     (q: string, s: string) => {
       if (!canManage) return;
       setListError(null);
+      setRefreshKey((k) => k + 1);
       api.loyalty
         .list(q || undefined, s || undefined)
         .then(setList)
@@ -60,6 +63,8 @@ export function LoyaltyTab({ role }: { role: Role }) {
           </button>
         </div>
       )}
+
+      {canManage && <LoyaltyProgramCard canEdit={canAdmin} refreshKey={refreshKey} />}
 
       <div className="mb-6 rounded-2xl border border-border bg-surface p-5 shadow-card">
         <LoyaltyLookupPanel role={role} onChanged={() => loadList(query, status)} />
@@ -104,6 +109,7 @@ export function LoyaltyTab({ role }: { role: Role }) {
                   <th className="px-5 py-3 font-medium">Телефон</th>
                   <th className="px-5 py-3 font-medium">Имя</th>
                   <th className="px-5 py-3 font-medium">Статус</th>
+                  <th className="px-5 py-3 text-right font-medium">Баллы</th>
                   <th className="px-5 py-3 font-medium">Рассылки</th>
                   <th className="px-5 py-3 font-medium">Зарегистрирован</th>
                 </tr>
@@ -120,20 +126,21 @@ export function LoyaltyTab({ role }: { role: Role }) {
                     <td className="px-5 py-3">
                       <MemberStatusBadge status={m.status} />
                     </td>
+                    <td className="px-5 py-3 text-right tabular-nums text-foreground">{formatPoints(m.pointsBalance)}</td>
                     <td className="px-5 py-3 text-muted">{marketingLabel(m.consents)}</td>
                     <td className="px-5 py-3 text-muted">{formatDate(m.createdAt)}</td>
                   </tr>
                 ))}
                 {list && list.items.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-5 py-8 text-center text-sm text-muted">
+                    <td colSpan={6} className="px-5 py-8 text-center text-sm text-muted">
                       Клиентов не найдено
                     </td>
                   </tr>
                 )}
                 {!list && !listError && (
                   <tr>
-                    <td colSpan={5} className="px-5 py-8 text-center text-sm text-muted">
+                    <td colSpan={6} className="px-5 py-8 text-center text-sm text-muted">
                       Загрузка…
                     </td>
                   </tr>
