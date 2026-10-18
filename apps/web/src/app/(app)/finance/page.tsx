@@ -1080,6 +1080,13 @@ export default function FinancePage() {
             </div>
           </div>
 
+          {pnl && pnl.consignmentTurnover !== undefined && (
+            <div className="mb-4 flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-2.5 text-sm">
+              <span className="text-muted">Под реализацию (вне выручки)</span>
+              <span className="font-medium text-foreground">{formatMoney(pnl.consignmentTurnover)}</span>
+            </div>
+          )}
+
           {pnl && <PnlLadder pnl={pnl} />}
 
           {pnl && pnl.unknownCostLineItems > 0 && (

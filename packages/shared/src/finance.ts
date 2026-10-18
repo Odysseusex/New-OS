@@ -397,6 +397,9 @@ export interface ProfitAndLossDto {
   netProfitStatus: NetProfitStatus;
   notConfigured: NotConfiguredItem[];
   unknownCostLineItems: number;
+  // Collected for goods «под реализацию» (sales minus returns). Display only: it is in
+  // no total above. Absent on a frozen snapshot made before this field existed.
+  consignmentTurnover?: number;
   costCoverage: CostCoverageDto;
   costingMethod: string;
   byProduct: ProductPnLDto[];

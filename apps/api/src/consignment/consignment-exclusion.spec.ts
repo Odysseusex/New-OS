@@ -68,6 +68,10 @@ describe("goods sold «под реализацию» are not our revenue", () =>
     const pnl = await services.finance.getProfitAndLoss(org.organizationId, from, to);
     expect(pnl.netRevenue).toBe(1000);
     expect(pnl.byProduct.map((p) => p.productName)).toEqual(["Хлеб"]);
+    // The village's money is shown BESIDE the P&L as a display-only figure, in no total.
+    expect(pnl.consignmentTurnover).toBe(2700);
+    expect(pnl.revenue).toBe(1000);
+    expect(pnl.grossRevenue).toBe(1000);
   });
 
   it("sales reports count our revenue only, and the till still counts all the money taken", async () => {
@@ -121,6 +125,7 @@ describe("goods sold «под реализацию» are not our revenue", () =>
     const pnl = await services.finance.getProfitAndLoss(org.organizationId, from, to);
     expect(pnl.returnsTotal).toBe(0);
     expect(pnl.netRevenue).toBe(1000);
+    expect(pnl.consignmentTurnover).toBe(2700); // 3600 collected − 900 handed back
   });
 
   it("the general ledger agrees: revenue is only ours, the owner's money sits in the payable", async () => {

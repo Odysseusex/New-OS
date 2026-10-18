@@ -479,6 +479,10 @@ export class FinanceService {
     // Own sales only: what was collected for consignment goods is not revenue.
     const salesTotal = round2(sales.reduce((sum, s) => sum + s.totalAmount.toNumber() - s.consignmentAmount.toNumber(), 0));
     const returnsTotal = round2(returns.reduce((sum, r) => sum + r.totalAmount.toNumber() - r.consignmentAmount.toNumber(), 0));
+    const consignmentTurnover = round2(
+      sales.reduce((sum, s) => sum + s.consignmentAmount.toNumber(), 0) -
+        returns.reduce((sum, r) => sum + r.consignmentAmount.toNumber(), 0),
+    );
     discountsTotal = round2(discountsTotal);
     const grossRevenue = round2(salesTotal + discountsTotal);
     const netRevenue = round2(grossRevenue - discountsTotal - returnsTotal);
@@ -561,6 +565,7 @@ export class FinanceService {
       netProfitStatus: notConfigured.length === 0 ? NetProfitStatus.COMPLETE : NetProfitStatus.PRELIMINARY,
       notConfigured,
       unknownCostLineItems,
+      consignmentTurnover,
       costCoverage: coverage,
       costingMethod: this.costing.methodLabel,
       byProduct,
