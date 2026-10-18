@@ -7,6 +7,7 @@ export * from "./inventory";
 export * from "./customers";
 export * from "./sales";
 export * from "./production";
+export * from "./recipe-scale";
 export * from "./procurement";
 export * from "./logistics";
 export * from "./finance";

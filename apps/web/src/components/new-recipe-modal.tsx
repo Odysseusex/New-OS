@@ -124,6 +124,9 @@ export function NewRecipeModal({
   const [lossPercent, setLossPercent] = useState(
     source?.lossPercent !== null && source?.lossPercent !== undefined ? String(source.lossPercent) : "",
   );
+  const [mixCapacityKg, setMixCapacityKg] = useState(
+    source?.mixCapacityKg !== null && source?.mixCapacityKg !== undefined ? String(source.mixCapacityKg) : "",
+  );
   const [shelfLifeDays, setShelfLifeDays] = useState(
     source?.shelfLifeDays !== null && source?.shelfLifeDays !== undefined ? String(source.shelfLifeDays) : "",
   );
@@ -312,6 +315,7 @@ export function NewRecipeModal({
         pieceWeightG: pieceWeightG ? Number(pieceWeightG) : undefined,
         lossPercent: lossPercent ? Number(lossPercent) : undefined,
         shelfLifeDays: shelfLifeDays ? Number(shelfLifeDays) : undefined,
+        mixCapacityKg: mixCapacityKg ? Number(mixCapacityKg) : null,
         uncountedNote: uncountedNote.trim(),
         stages: stagesPayload,
       };
@@ -672,8 +676,8 @@ export function NewRecipeModal({
           Добавить стадию
         </button>
 
-        <SectionTitle>Потери и срок годности</SectionTitle>
-        <div className="mb-5 grid grid-cols-2 gap-3">
+        <SectionTitle>Потери, срок годности и замес</SectionTitle>
+        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
           <div>
             <NumberField label="Производственные потери, %" value={lossPercent} onChange={setLossPercent} max="100" />
             <p className="mt-1.5 text-xs text-muted">
@@ -681,6 +685,7 @@ export function NewRecipeModal({
             </p>
           </div>
           <NumberField label="Срок годности, дней" value={shelfLifeDays} onChange={setShelfLifeDays} />
+          <NumberField label="Вместимость замеса, кг" value={mixCapacityKg} onChange={setMixCapacityKg} max="1000" />
         </div>
 
         <div className="mb-5">

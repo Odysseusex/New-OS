@@ -1160,6 +1160,9 @@ model Recipe {
   pieceWeightG  Decimal? @db.Decimal(8, 2)
   lossPercent   Decimal? @db.Decimal(5, 2)
   shelfLifeDays Int?
+  // Largest amount the mixer takes in one go, kg (тестомес 20 кг, миксер 10 кг).
+  // The scaling calculator splits a bigger amount into equal mixes. Null = not split.
+  mixCapacityKg Decimal? @db.Decimal(8, 2)
   // What the owner knows is NOT yet in this card's cost (e.g. «начинка» until its
   // measured consumption is entered). Shown as «Не учтено: …» and ignored
   // automatically once a semi-finished ingredient is in the recipe.

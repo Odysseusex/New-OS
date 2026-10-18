@@ -19,6 +19,12 @@ export class RecipesController {
     return this.recipesService.findAllForOrganization(user.organizationId, includeArchived === "true");
   }
 
+  // Open to every role, like the list: the baker's calculator.
+  @Get(":id/breakdown")
+  breakdown(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
+    return this.recipesService.breakdown(user.organizationId, id);
+  }
+
   @Post()
   @Roles(...RECIPE_MANAGE_ROLES)
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateRecipeDto) {

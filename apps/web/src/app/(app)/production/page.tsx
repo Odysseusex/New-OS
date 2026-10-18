@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
-import { CheckCircle2, Copy, FileDown, Pencil, Play, Plus, Search, Trash2, XCircle } from "lucide-react";
+import { Calculator, CheckCircle2, Copy, FileDown, Pencil, Play, Plus, Search, Trash2, XCircle } from "lucide-react";
 import type { LocationDto, ProductDto, ProductionBatchDto, RecipeDto } from "@bakery-os/shared";
 import {
   HARD_DELETE_ROLES,
@@ -24,6 +24,7 @@ import { AbortBatchModal } from "@/components/abort-batch-modal";
 import { CompleteBatchModal } from "@/components/complete-batch-modal";
 import { NewRecipeModal } from "@/components/new-recipe-modal";
 import { ExportRecipesPdfModal } from "@/components/export-recipes-pdf-modal";
+import { RecipeScaleModal } from "@/components/recipe-scale-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 
 type Tab = "batches" | "recipes";
@@ -61,6 +62,7 @@ export default function ProductionPage() {
   const [abortingBatch, setAbortingBatch] = useState<ProductionBatchDto | null>(null);
   const [selectedRecipeIds, setSelectedRecipeIds] = useState<Set<string>>(new Set());
   const [exportingRecipes, setExportingRecipes] = useState<RecipeDto[] | null>(null);
+  const [scaling, setScaling] = useState<{ recipe: RecipeDto; quantity?: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadBatches = useCallback(() => {
@@ -309,7 +311,23 @@ export default function ProductionPage() {
             <tbody className="divide-y divide-border">
               {visibleBatches.map((batch) => (
                 <tr key={batch.id}>
-                  <td className="px-5 py-3 font-medium text-foreground">{batch.productName}</td>
+                  <td className="px-5 py-3 font-medium text-foreground">
+                    <span className="flex items-center gap-1.5">
+                      {batch.productName}
+                      {recipes.some((r) => r.id === batch.recipeId && r.isActive) && (
+                        <button
+                          onClick={() => {
+                            const recipe = recipes.find((r) => r.id === batch.recipeId);
+                            if (recipe) setScaling({ recipe, quantity: batch.actualQuantity ?? batch.plannedQuantity });
+                          }}
+                          title="Расчёт ингредиентов"
+                          className="flex h-7 w-7 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-foreground"
+                        >
+                          <Calculator className="h-4 w-4" strokeWidth={1.75} />
+                        </button>
+                      )}
+                    </span>
+                  </td>
                   {isOrgWide && <td className="px-5 py-3 text-muted">{batch.locationName}</td>}
                   <td className="px-5 py-3 text-right text-muted">
                     {formatQuantity(batch.plannedQuantity)} {UNIT_LABELS_RU[batch.unit]}
@@ -423,6 +441,15 @@ export default function ProductionPage() {
                   <span className="rounded-full bg-surface-muted px-2.5 py-1 text-xs font-medium text-muted">
                     {formatMoney(recipe.productPrice)}
                   </span>
+                  {recipe.isActive && (
+                    <button
+                      onClick={() => setScaling({ recipe })}
+                      title="Расчёт на количество"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-foreground"
+                    >
+                      <Calculator className="h-4 w-4" strokeWidth={1.75} />
+                    </button>
+                  )}
                   <button
                     onClick={() => setExportingRecipes([recipe])}
                     title="Экспорт PDF"
@@ -574,6 +601,10 @@ export default function ProductionPage() {
             loadBatches();
           }}
         />
+      )}
+
+      {scaling && (
+        <RecipeScaleModal recipe={scaling.recipe} initialQuantity={scaling.quantity} onClose={() => setScaling(null)} />
       )}
 
       {exportingRecipes && (

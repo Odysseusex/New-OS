@@ -134,6 +134,7 @@ import type {
   BusinessContextModule,
   PurchaseOrderDto,
   QualitySummaryDto,
+  RecipeBreakdownDto,
   RecipeDto,
   RecipeStageTypeDto,
   ReconcileInvoicesRequestDto,
@@ -531,6 +532,7 @@ export const api = {
     archive: (id: string) => request<RecipeDto>(`/recipes/${id}/archive`, { method: "POST" }),
     restore: (id: string) => request<RecipeDto>(`/recipes/${id}/restore`, { method: "POST" }),
     remove: (id: string) => request<{ deleted: true }>(`/recipes/${id}`, { method: "DELETE" }),
+    breakdown: (id: string) => request<RecipeBreakdownDto>(`/recipes/${id}/breakdown`),
   },
 
   recipeStageTypes: {

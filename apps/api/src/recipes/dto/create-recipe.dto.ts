@@ -55,6 +55,13 @@ export class CreateRecipeDto {
   @Max(100)
   lossPercent?: number;
 
+  // null clears it.
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  @Max(1000)
+  mixCapacityKg?: number | null;
+
   @IsOptional()
   @IsInt()
   @IsPositive()

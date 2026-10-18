@@ -792,6 +792,19 @@ Full write-up: `docs/SEMI-FINISHED-DESIGN.md`. A recipe ingredient may now be `R
 - Packaging is still NOT a recipe ingredient (pending the owner's decision); no «Полуфабрикаты» category
   was created without his approval.
 
+## Baker's calculator (расчёт техкарты на количество) — built
+
+Производство → a calculator icon on every active recipe card and on every task row (task opens at its
+plan/fact). `GET /recipes/:id/breakdown` (open to every role, like the list) returns the recipe laid out
+for its own yield through `expandRecipe` — virtual fillings become raw materials in ONE list, a STOCKED
+semi-finished stays one line «со склада», exactly what production consumes. All scaling is pure shared
+maths (`packages/shared/src/recipe-scale.ts`): by quantity, or by weight of a base (default «Вся мука» /
+the one flour / the heaviest ingredient), baker's % against that base, split into equal mixes by
+`Recipe.mixCapacityKg` (migration `20261018120000`, «Вместимость замеса, кг» in the recipe form; the owner
+uses 20 kg for bread, 10 kg for cakes/pies; editable per calculation). Pieces and stocked fillings are
+not in the mix mass. Print = a plain HTML window. No money is shown on it. Hiding cost/margin from
+production staff elsewhere was discussed but NOT built (the one laptop user is also the accountant).
+
 ## Loyalty programme — stage 1 built (retail customer by phone + consent record)
 
 Research and owner decisions: `docs/CRM-LOYALTY-RESEARCH.md` §10–11. Code: `apps/api/src/loyalty/`,

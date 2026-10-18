@@ -13,6 +13,12 @@ simple Russian (see CLAUDE.md conventions).
 * Sales screen shows own revenue, goods «под реализацию» and turnover side by side.
 * Finance page loads only the active tab (it used to run the P&L four times on open).
 * POS markdown −30 %. Category list keeps its scroll position. Cost-basis label for stocked semi-finished.
+* 2026-10-18: P&L shows a display-only line «Под реализацию (вне выручки)» (in no total). Baker's calculator on
+  recipes/tasks (quantity or flour weight → grams, % к муке, mixes by «Вместимость замеса»), see CLAUDE.md.
+* Open (asked 2026-10-18, not built): raw materials at «Мерей» were never consumed because finished goods were
+  received by hand instead of produced. Proposed: a read-only «сырьё по продажам за период» report first, then (only
+  with a yes — stock/ledger) a write-down of raw against that unexplained receipt that leaves the P&L unchanged.
+  Do NOT advise a manual write-off: COGS is already in the P&L, it would count twice.
 
 ## Open items / decisions waiting for the owner
 * FIXED 2026-10-16: «today»/rolling day boundaries now start at Almaty midnight (`common/zoned-day.ts`) — Sales summary, Network overview, Finance today, period comparisons, Telegram reports. (AI-центр buckets left as they were — module deferred.)

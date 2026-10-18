@@ -1,9 +1,9 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { audited, recordAudit } from "../audit/audit";
 import { PrismaService } from "../prisma/prisma.service";
-import { ProductType, RecipeDto, RecipeParameterKind, Unit } from "@bakery-os/shared";
+import { ProductType, RecipeBreakdownDto, RecipeDto, RecipeParameterKind, Unit } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
-import { findRecipeProblem, loadRecipeIndex, semiFinishedUnitCosts } from "./recipe-tree";
+import { expandRecipe, findRecipeProblem, isStockedSemiFinished, loadRecipeIndex, semiFinishedUnitCosts } from "./recipe-tree";
 import { CreateRecipeDto } from "./dto/create-recipe.dto";
 import { UpdateRecipeDto } from "./dto/update-recipe.dto";
 
@@ -46,6 +46,48 @@ export class RecipesService {
   private semiCostsFor(organizationId: string, recipes: { items: { ingredientProduct: { id?: string; type: string } ; ingredientProductId: string }[] }[]) {
     const ids = recipes.flatMap((r) => r.items.filter((i) => i.ingredientProduct.type === ProductType.SEMI_FINISHED).map((i) => i.ingredientProductId));
     return semiFinishedUnitCosts(this.prisma, organizationId, ids);
+  }
+
+  // The recipe laid out into what goes on the scales, for its own yield: a
+  // virtual semi-finished part (cream, filling) is replaced by its own raw
+  // materials, a stocked one stays a line taken from stock — exactly what
+  // production consumes. The baker's calculator scales this on the client.
+  async breakdown(organizationId: string, recipeId: string): Promise<RecipeBreakdownDto> {
+    const recipe = await this.prisma.recipe.findFirst({
+      where: { id: recipeId, organizationId },
+      select: { id: true, productId: true, isActive: true, yieldQuantity: true, mixCapacityKg: true, product: { select: { name: true, unit: true } } },
+    });
+    if (!recipe) throw new NotFoundException("Рецептура не найдена");
+    if (!recipe.isActive) throw new BadRequestException("Рецептура в архиве — восстановите её, чтобы сделать расчёт");
+    const index = await loadRecipeIndex(this.prisma, organizationId, [recipe.productId]);
+    const root = index.get(recipe.productId);
+    if (!root) throw new NotFoundException("Рецептура не найдена");
+    const { lines, missing } = expandRecipe(root, 1, index);
+    const units = new Map(
+      (
+        await this.prisma.product.findMany({
+          where: { organizationId, id: { in: lines.map((l) => l.ingredient.productId) } },
+          select: { id: true, unit: true },
+        })
+      ).map((p) => [p.id, p.unit as Unit]),
+    );
+    return {
+      recipeId: recipe.id,
+      productId: recipe.productId,
+      productName: recipe.product.name,
+      productUnit: recipe.product.unit as Unit,
+      yieldQuantity: recipe.yieldQuantity.toNumber(),
+      mixCapacityKg: recipe.mixCapacityKg ? recipe.mixCapacityKg.toNumber() : null,
+      lines: lines.map((line) => ({
+        productId: line.ingredient.productId,
+        name: line.ingredient.name,
+        type: line.ingredient.type,
+        fromStock: isStockedSemiFinished(line.ingredient),
+        unit: units.get(line.ingredient.productId) ?? Unit.KG,
+        quantity: Math.round(line.quantity * 1e6) / 1e6,
+      })),
+      missing,
+    };
   }
 
   async archive(organizationId: string, recipeId: string, actorId: string | null = null): Promise<RecipeDto> {
@@ -153,6 +195,7 @@ export class RecipesService {
         pieceWeightG: dto.pieceWeightG,
         lossPercent: dto.lossPercent,
         shelfLifeDays: dto.shelfLifeDays,
+        mixCapacityKg: dto.mixCapacityKg ?? null,
         uncountedNote: dto.uncountedNote?.trim() || null,
         items: {
           create: dto.items.map((item) => ({
@@ -224,6 +267,7 @@ export class RecipesService {
           pieceWeightG: dto.pieceWeightG,
           lossPercent: dto.lossPercent,
           shelfLifeDays: dto.shelfLifeDays,
+          mixCapacityKg: dto.mixCapacityKg,
           ...(dto.uncountedNote !== undefined ? { uncountedNote: dto.uncountedNote.trim() || null } : {}),
           items: dto.items
             ? { create: dto.items.map((item) => ({ ingredientProductId: item.ingredientProductId, quantity: item.quantity })) }
@@ -280,6 +324,7 @@ export class RecipesService {
       pieceWeightG: { toNumber: () => number } | null;
       lossPercent: { toNumber: () => number } | null;
       shelfLifeDays: number | null;
+      mixCapacityKg?: { toNumber: () => number } | null;
       uncountedNote?: string | null;
       items: { ingredientProductId: string; quantity: { toNumber: () => number } }[];
       stages: {
@@ -313,6 +358,9 @@ export class RecipesService {
     }
     if (dto.shelfLifeDays !== undefined && dto.shelfLifeDays !== (current.shelfLifeDays ?? undefined)) {
       parts.push("срок годности");
+    }
+    if (dto.mixCapacityKg !== undefined && (dto.mixCapacityKg ?? undefined) !== num(current.mixCapacityKg ?? null)) {
+      parts.push("вместимость замеса");
     }
     if (dto.uncountedNote !== undefined && dto.uncountedNote.trim() !== (current.uncountedNote ?? "")) {
       parts.push("«не учтено»");
@@ -442,6 +490,7 @@ export class RecipesService {
     pieceWeightG: { toNumber: () => number } | null;
     lossPercent: { toNumber: () => number } | null;
     shelfLifeDays: number | null;
+    mixCapacityKg: { toNumber: () => number } | null;
     uncountedNote: string | null;
     items: {
       id: string;
@@ -566,6 +615,7 @@ export class RecipesService {
       pieceWeightG,
       lossPercent,
       shelfLifeDays: recipe.shelfLifeDays,
+      mixCapacityKg: recipe.mixCapacityKg ? recipe.mixCapacityKg.toNumber() : null,
       totalIngredientCost,
       costComplete,
       uncountedNote: recipe.uncountedNote,
