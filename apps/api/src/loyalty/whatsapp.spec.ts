@@ -121,7 +121,8 @@ describe("WhatsAppService (database, fake Meta)", () => {
     expect(after.every((t) => t.status === "PENDING")).toBe(true);
     const created = meta.calls.filter((c) => c.method === "POST" && c.path.endsWith("message_templates"));
     expect(created.map((c) => c.body.name).sort()).toEqual(Object.values(WHATSAPP_TEMPLATES).map((t) => t.name).sort());
-    expect(created[0].body.components[1]).toEqual({ type: "FOOTER", text: "Чтобы отписаться, ответьте СТОП" });
+    // No «reply STOP» footer: the owner's decision.
+    expect(created.every((c) => c.body.components.length === 1 && c.body.components[0].type === "BODY")).toBe(true);
 
     // A second press submits nothing new.
     meta.calls.length = 0;
@@ -203,7 +204,7 @@ describe("WhatsAppService (database, fake Meta)", () => {
     expect(sent.body.template.components[0].parameters[0].text).toBe("Скидка 20% на торты только в выходные");
   });
 
-  it("Telegram is used instead when the member can be reached there", async () => {
+  it("WhatsApp comes first even when the member also has the Telegram bot", async () => {
     const telegram: { chatId: string; text: string }[] = [];
     const transport: BotTransport = { send: async (chatId, text) => void telegram.push({ chatId, text }) };
     bot.useTransportForTests(transport);
@@ -212,8 +213,15 @@ describe("WhatsAppService (database, fake Meta)", () => {
       await loyalty.recordConsent(org.user, memberId, { purpose: P.MARKETING, channel: Ch.TELEGRAM, granted: true, source: S.AT_TILL });
       const before = meta.sent().length;
       await bot.notifySale(await sell());
+      expect(meta.sent()).toHaveLength(before + 1);
+      expect(telegram).toHaveLength(0);
+
+      // A notice WhatsApp does not take (its switch is off) goes to Telegram.
+      await points.updateSettings(org.user, { whatsappSaleNotices: false });
+      await bot.notifySale(await sell());
+      expect(meta.sent()).toHaveLength(before + 1);
       expect(telegram).toHaveLength(1);
-      expect(meta.sent()).toHaveLength(before);
+      await points.updateSettings(org.user, { whatsappSaleNotices: true });
     } finally {
       bot.useTransportForTests(null);
       await prisma.loyaltyTelegramLink.deleteMany({ where: { memberId } });
@@ -222,7 +230,8 @@ describe("WhatsAppService (database, fake Meta)", () => {
 
   it("a customer's message gets their balance; СТОП and СТАРТ are their consent", async () => {
     await incoming("in.1", "Сколько у меня баллов?");
-    expect(meta.replies().at(-1)).toMatchObject({ to: WA_ID, text: expect.stringMatching(/На счёте: .+ баллов[\s\S]*ответьте СТОП/) });
+    expect(meta.replies().at(-1)).toMatchObject({ to: WA_ID, text: expect.stringMatching(/^На счёте: .+ баллов/) });
+    expect(meta.replies().at(-1)?.text).not.toMatch(/СТОП|отпис/i);
 
     await incoming("in.2", "Стоп");
     await incoming("in.2", "Стоп"); // Meta may repeat a delivery

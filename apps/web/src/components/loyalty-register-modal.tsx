@@ -74,7 +74,16 @@ export function LoyaltyRegisterModal({
         </div>
 
         <label className="mb-3 flex items-start gap-2 text-sm text-foreground">
-          <input type="checkbox" checked={personalData} onChange={(e) => setPersonalData(e.target.checked)} className="mt-0.5" />
+          <input
+            type="checkbox"
+            checked={personalData}
+            onChange={(e) => {
+              setPersonalData(e.target.checked);
+              // WhatsApp is the programme's main channel: offered by default, the cashier can untick it.
+              if (e.target.checked && channels.length === 0) setChannels([LoyaltyConsentChannel.WHATSAPP]);
+            }}
+            className="mt-0.5"
+          />
           <span>Клиент дал согласие на обработку персональных данных</span>
         </label>
 

@@ -75,21 +75,13 @@ describe("CustomerBotService (database)", () => {
     expect(await prisma.loyaltyTelegramLink.count({ where: { organizationId: org.organizationId } })).toBe(0);
   });
 
-  it("links by the member's own number, then asks for consent; nothing is sent before it", async () => {
+  it("linking by the member's own number is their consent — no extra question, no unsubscribe button", async () => {
     const reply = await bot.onContact(CHAT, TG_USER, { phone_number: "87091000001", user_id: Number(TG_USER) });
-    expect(reply.text).toMatch(/Присылать вам сюда уведомления/);
+    expect(reply.text).toMatch(/вы подключены/);
+    expect(JSON.stringify(reply.extra)).not.toMatch(/Отписаться|Подписаться/);
     expect(await prisma.loyaltyTelegramLink.findUnique({ where: { memberId } })).toMatchObject({ chatId: CHAT });
-
-    outbox.length = 0;
-    const sale = await sell();
-    await bot.notifySale(sale);
-    expect(outbox).toHaveLength(0);
-  });
-
-  it("«Да» records the TELEGRAM consent as the customer's own decision", async () => {
-    expect((await bot.setSubscription(CHAT, true)).text).toMatch(/включены/);
     const row = await prisma.loyaltyConsent.findFirstOrThrow({ where: { memberId, channel: Ch.TELEGRAM }, orderBy: { recordedAt: "desc" } });
-    expect(row).toMatchObject({ purpose: P.MARKETING, granted: true, source: S.TELEGRAM_BOT, recordedByName: "Клиент (Telegram)" });
+    expect(row).toMatchObject({ purpose: P.MARKETING, granted: true, source: S.TELEGRAM_BOT, recordedByName: "Клиент (Telegram)", note: "Клиент сам подключил бота" });
     expect((await loyalty.findOne(org.organizationId, memberId)).telegramLinked).toBe(true);
   });
 
@@ -100,7 +92,7 @@ describe("CustomerBotService (database)", () => {
     await bot.notifySale(sale);
     expect(outbox).toHaveLength(1);
     expect(outbox[0].chatId).toBe(CHAT);
-    expect(outbox[0].text).toMatch(/Начислено: \+10/);
+    expect(outbox[0].text).toMatch(/Начислено: \+50/); // the first purchase: 5 %
     expect(outbox[0].text).toMatch(/На счёте: <b>/);
   });
 

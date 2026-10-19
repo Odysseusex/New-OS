@@ -392,8 +392,7 @@ function WriteModal({ rows, onClose }: { rows: LoyaltyAnalyticsMemberRowDto[]; o
         className={`${inputClass} mb-2`}
       />
       <p className="mb-4 text-xs text-muted">
-        Уйдёт только подписанным на уведомления: в Telegram, остальным — в WhatsApp
-        {rows.some((r) => !r.telegramReachable) ? " (платное сообщение Meta)" : ""}.
+        Уйдёт в WhatsApp (платное сообщение Meta), а кому туда нельзя — в Telegram.
       </p>
       {error && <div className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
       {result && <div className="mb-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{result}</div>}

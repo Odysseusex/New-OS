@@ -894,7 +894,8 @@ A printable QR for the customer bot is on the programme card («QR-код для
 `WHATSAPP_APP_SECRET`. Verified only against a fake Meta in `whatsapp.spec.ts` plus Meta's real error answer to a fake
 key — the first real send happens when the owner's account is approved; check it then.
 - Everything we send first is a TEMPLATE (`WHATSAPP_TEMPLATES`: purchase, return, expiring = UTILITY; birthday, news =
-  MARKETING; language `ru`; footer «Чтобы отписаться, ответьте СТОП»). The owner submits them from the programme card
+  MARKETING; language `ru`; deliberately NO «reply STOP» footer — the owner's decision, a reminder to unsubscribe in
+  every message invites it; «СТОП» is still honoured silently — stopping when asked is the part that must never be dropped). The owner submits them from the programme card
   (`POST /loyalty/whatsapp/templates`); a message goes out only when Meta says APPROVED (statuses cached 10 min), and
   nothing is claimed before that, so it can still go once approved. Changing a template's text = a new name (Meta
   locks approved texts); parameters must have no line breaks (`cleanParam`).
@@ -902,11 +903,16 @@ key — the first real send happens when the owner's account is approved; check 
   send per key), with `providerMessageId`, `status` (SENT→DELIVERED→READ, never backwards; FAILED) from the webhook.
   131050/131026 keep a FAILED row (131050 = the customer stopped marketing → recorded as a withdrawal, source
   WHATSAPP); any other failure deletes the row so it can be retried.
-- **One channel per notice: Telegram if the member is reachable there (free), else WhatsApp** — `CustomerBotService`
-  stays the single entry point (`notifySale/notifyReturn/notifyBirthday/remindExpiringPoints/sendManual`). Each
-  automatic WhatsApp notice has a `LoyaltySettings` switch (`whatsappSaleNotices` default OFF — most frequent, paid;
-  expiry and birthday ON). Decided on `viaTelegram()` reachability, never on a send result (a claimed key would
-  otherwise fall through to a paid duplicate).
+- **One channel per notice: WhatsApp FIRST (the owner's decision — most customers are not on Telegram), Telegram
+  for whoever WhatsApp does not take** — `CustomerBotService` stays the single entry point
+  (`notifySale/notifyReturn/notifyBirthday/remindExpiringPoints/sendManual`). WhatsApp takes a notice when connected
+  + consent + its `LoyaltySettings` switch on (`whatsappSaleNotices` default OFF — most frequent, paid; expiry and
+  birthday ON) + template APPROVED (`useWhatsApp()` → `WhatsAppService.canSend`). Decided BEFORE sending, never on a
+  send result (a claimed key would otherwise fall through to a duplicate on the other channel).
+- No subscribe/unsubscribe prompts anywhere (owner's decision): the Telegram bot menu is «💰 Мои баллы» only;
+  linking the bot with one's own number IS the Telegram consent (note «Клиент сам подключил бота»); typed «стоп» is
+  still honoured. At registration the WhatsApp channel is ticked by default once personal-data consent is ticked
+  (the cashier can untick it).
 - Webhook `GET/POST /api/loyalty/whatsapp/webhook`: verify token derived from the app secret (shown to OWNER/ADMIN
   on the card with the callback URL), POST checked with `X-Hub-Signature-256` over the RAW body (`rawBody: true` in
   `main.ts` — never re-serialise the JSON). A customer's message gets their balance as a free reply (24 h window, no

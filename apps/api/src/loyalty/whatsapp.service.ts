@@ -38,7 +38,6 @@ export interface WhatsAppTransport {
 }
 
 export const WHATSAPP_LANGUAGE = "ru";
-const FOOTER = "Чтобы отписаться, ответьте СТОП";
 
 export const WHATSAPP_TEMPLATES = {
   purchase: {
@@ -192,6 +191,14 @@ export class WhatsAppService {
   }
 
   // ── sending ───────────────────────────────────────────────────────────────
+
+  // Would a template message to this member go out now (connected, consent,
+  // template approved)? Used to pick the channel before anything is sent.
+  async canSend(memberId: string, key: WhatsAppTemplateKey): Promise<boolean> {
+    if (!this.transport) return false;
+    if (!(await this.reachableIds([memberId])).has(memberId)) return false;
+    return (await this.templateStates())?.get(WHATSAPP_TEMPLATES[key].name)?.status === "APPROVED";
+  }
 
   // The single gate for everything we send first. Returns whether it went out.
   async sendTemplate(memberId: string, key: WhatsAppTemplateKey, params: string[], logKey: string, sentById: string | null): Promise<boolean> {
@@ -376,7 +383,7 @@ export class WhatsAppService {
     }
     if (START_WORDS.has(command)) {
       await this.setConsent(active, true, null);
-      await this.reply(waId, "Спасибо! Уведомления о баллах будут приходить сюда. Чтобы отписаться, ответьте СТОП.");
+      await this.reply(waId, "Спасибо! Уведомления о баллах будут приходить сюда.");
       return;
     }
     await this.reply(waId, await this.balanceText(active));
@@ -384,7 +391,6 @@ export class WhatsAppService {
 
   private async balanceText(memberIds: string[]): Promise<string> {
     const lines: string[] = [];
-    const subscribed = await this.reachableIds(memberIds);
     for (const memberId of memberIds) {
       const rows = await this.prisma.loyaltyPointsEntry.findMany({ where: { memberId } });
       const position = pointsPosition(
@@ -395,8 +401,6 @@ export class WhatsAppService {
       const soon = position.liveLots[0];
       if (soon) lines.push(`${pointsFmt.format(soon.remaining)} из них сгорят ${dateFmt.format(soon.expiresAt)}.`);
     }
-    lines.push("");
-    lines.push(subscribed.size > 0 ? "Чтобы отписаться от уведомлений, ответьте СТОП." : "Чтобы получать уведомления о баллах, ответьте СТАРТ.");
     return lines.join("\n");
   }
 
@@ -476,10 +480,9 @@ export class WhatsAppService {
           name: t.name,
           language: WHATSAPP_LANGUAGE,
           category: t.category,
-          components: [
-            { type: "BODY", text: t.text, example: { body_text: [t.example] } },
-            { type: "FOOTER", text: FOOTER },
-          ],
+          // No «reply STOP to unsubscribe» footer: the owner's decision — a reminder
+          // to unsubscribe in every message invites it. «СТОП» is still honoured.
+          components: [{ type: "BODY", text: t.text, example: { body_text: [t.example] } }],
         });
       } catch (err) {
         errors.push(`${t.purpose}: ${err instanceof Error ? err.message : String(err)}`);
@@ -496,7 +499,7 @@ export class WhatsAppService {
         name: t.name,
         purpose: t.purpose,
         category: t.category,
-        text: `${t.text}\n${FOOTER}`,
+        text: t.text,
         status: states === null ? "UNKNOWN" : (state?.status ?? "MISSING"),
         rejectedReason: state?.rejectedReason ?? null,
       };

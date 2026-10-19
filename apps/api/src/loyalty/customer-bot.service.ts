@@ -30,9 +30,9 @@ import { WhatsAppService, WhatsAppTemplateKey } from "./whatsapp.service";
 // the withdrawal.
 //
 // It is also the one entry point for messages to customers on any channel:
-// each notice goes by Telegram when the member can be reached there (free), and
-// otherwise by WhatsApp (paid per message, so each kind of notice has its own
-// switch in the programme settings).
+// WhatsApp is the main one (the owner's choice: most customers are not on
+// Telegram), Telegram covers whoever WhatsApp does not. WhatsApp is paid per
+// message, so each automatic notice has its own switch in the settings.
 
 export interface BotTransport {
   send(chatId: string, text: string, extra?: object): Promise<void>;
@@ -52,11 +52,11 @@ const pointsFmt = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 });
 const moneyFmt = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 });
 const dateFmt = new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Almaty", day: "2-digit", month: "2-digit", year: "numeric" });
 
-const MENU = Markup.keyboard([["💰 Мои баллы"], ["🔔 Подписаться", "🔕 Отписаться"]]).resize();
+// Only the balance: no subscribe/unsubscribe buttons (the owner's decision — a
+// standing «unsubscribe» button invites it). Typing «стоп» is still honoured.
+const MENU = Markup.keyboard([["💰 Мои баллы"]]).resize();
+const STOP_WORDS = new Set(["стоп", "stop", "отписаться", "🔕 отписаться"]);
 const ASK_PHONE = Markup.keyboard([[Markup.button.contactRequest("📱 Отправить мой номер")]]).resize().oneTime();
-const ASK_CONSENT = Markup.inlineKeyboard([
-  [Markup.button.callback("Да, присылать", "lc:yes"), Markup.button.callback("Нет", "lc:no")],
-]);
 
 @Injectable()
 export class CustomerBotService implements OnModuleInit {
@@ -162,6 +162,7 @@ export class CustomerBotService implements OnModuleInit {
         (r) => ctx.reply(r.text, { parse_mode: "HTML", ...(r.extra ?? {}) }),
       ),
     );
+    // The buttons below are no longer offered, but old keyboards stay on customers' phones.
     bot.action(/^lc:(yes|no)$/, (ctx) =>
       safe(
         async () => {
@@ -174,7 +175,15 @@ export class CustomerBotService implements OnModuleInit {
     bot.hears("💰 Мои баллы", (ctx) => safe(async () => this.onBalance(String(ctx.chat.id)), (r) => ctx.reply(r.text, { parse_mode: "HTML", ...(r.extra ?? {}) })));
     bot.hears("🔔 Подписаться", (ctx) => safe(async () => this.setSubscription(String(ctx.chat.id), true), (r) => ctx.reply(r.text, { parse_mode: "HTML", ...(r.extra ?? {}) })));
     bot.hears("🔕 Отписаться", (ctx) => safe(async () => this.setSubscription(String(ctx.chat.id), false), (r) => ctx.reply(r.text, { parse_mode: "HTML", ...(r.extra ?? {}) })));
-    bot.on("message", (ctx) => safe(async () => this.onStart(String(ctx.chat.id)), (r) => ctx.reply(r.text, { parse_mode: "HTML", ...(r.extra ?? {}) })));
+    bot.on("message", (ctx) =>
+      safe(
+        async () => {
+          const text = "text" in ctx.message ? ctx.message.text.trim().toLowerCase() : "";
+          return STOP_WORDS.has(text) ? this.setSubscription(String(ctx.chat.id), false) : this.onStart(String(ctx.chat.id));
+        },
+        (r) => ctx.reply(r.text, { parse_mode: "HTML", ...(r.extra ?? {}) }),
+      ),
+    );
   }
 
   // ── conversation (plain methods, so they are testable without Telegram) ────
@@ -182,7 +191,7 @@ export class CustomerBotService implements OnModuleInit {
   async onStart(chatId: string): Promise<BotReply> {
     const links = await this.linksForChat(chatId);
     if (links.length > 0) {
-      return { text: "Вы уже подключены к бонусной программе. Выберите действие ниже.", extra: MENU };
+      return { text: "Вы подключены к бонусной программе. Нажмите «💰 Мои баллы», чтобы узнать баланс.", extra: MENU };
     }
     return {
       text: "Здравствуйте! Здесь можно смотреть свои бонусные баллы и получать уведомления о них.\n\nНажмите кнопку ниже, чтобы отправить свой номер телефона.",
@@ -218,15 +227,12 @@ export class CustomerBotService implements OnModuleInit {
         update: { chatId, telegramUserId: fromUserId, linkedAt: new Date() },
       });
     }
-    const subscribed = await Promise.all(active.map((m) => this.isSubscribed(m.id)));
-    if (subscribed.every(Boolean)) {
-      return { text: "Готово, вы подключены. Уведомления о баллах будут приходить сюда.", extra: MENU };
+    // Connecting the bot with their own number is the customer asking for these
+    // messages: recorded as their consent, no extra question.
+    for (const m of active) {
+      if (!(await this.isSubscribed(m.id))) await this.recordTelegramConsent(m.organizationId, m.id, true, "Клиент сам подключил бота");
     }
-    await this.transport?.send(chatId, "Готово, номер подтверждён.", MENU).catch(() => undefined);
-    return {
-      text: "Присылать вам сюда уведомления о начисленных баллах, их сгорании и новостях пекарни?",
-      extra: ASK_CONSENT,
-    };
+    return { text: "Готово, вы подключены. Сюда будут приходить ваши баллы и подарки.", extra: MENU };
   }
 
   async setSubscription(chatId: string, granted: boolean): Promise<BotReply> {
@@ -242,7 +248,7 @@ export class CustomerBotService implements OnModuleInit {
       changed = true;
     }
     if (granted) {
-      return { text: changed ? "Спасибо! Уведомления включены. Отписаться можно в любой момент кнопкой «🔕 Отписаться»." : "Уведомления уже включены.", extra: MENU };
+      return { text: changed ? "Спасибо! Уведомления включены." : "Уведомления уже включены.", extra: MENU };
     }
     return { text: changed ? "Уведомления отключены. Свои баллы вы по-прежнему можете смотреть здесь." : "Уведомления уже отключены.", extra: MENU };
   }
@@ -285,19 +291,21 @@ export class CustomerBotService implements OnModuleInit {
   async notifySale(sale: { id: string; totalAmount: number; loyalty: { memberId: string; pointsRedeemed: number; pointsEarned: number } | null }) {
     if (!sale.loyalty) return;
     const { memberId, pointsRedeemed, pointsEarned } = sale.loyalty;
-    if (await this.viaTelegram(memberId)) {
+    if (pointsRedeemed <= 0 && pointsEarned <= 0) return;
+    if (await this.useWhatsApp(memberId, "whatsappSaleNotices", "purchase")) {
+      await this.viaWhatsApp(memberId, "purchase", (balance) => [moneyFmt.format(sale.totalAmount), pointsFmt.format(pointsEarned), pointsFmt.format(pointsRedeemed), pointsFmt.format(balance)], `sale:${sale.id}`, null);
+    } else if (await this.viaTelegram(memberId)) {
       await this.notifyPoints(memberId, `sale:${sale.id}`, `Спасибо за покупку на ${moneyFmt.format(sale.totalAmount)} ₸!`, pointsRedeemed, pointsEarned);
-    } else if (pointsRedeemed > 0 || pointsEarned > 0) {
-      await this.viaWhatsApp(memberId, "whatsappSaleNotices", "purchase", (balance) => [moneyFmt.format(sale.totalAmount), pointsFmt.format(pointsEarned), pointsFmt.format(pointsRedeemed), pointsFmt.format(balance)], `sale:${sale.id}`);
     }
   }
 
   async notifyReturn(memberId: string, saleReturnId: string, refunded: number, reversed: number) {
     if (refunded <= 0 && reversed <= 0) return;
-    if (!(await this.viaTelegram(memberId))) {
-      await this.viaWhatsApp(memberId, "whatsappSaleNotices", "return", (balance) => [pointsFmt.format(refunded), pointsFmt.format(reversed), pointsFmt.format(balance)], `return:${saleReturnId}`);
+    if (await this.useWhatsApp(memberId, "whatsappSaleNotices", "return")) {
+      await this.viaWhatsApp(memberId, "return", (balance) => [pointsFmt.format(refunded), pointsFmt.format(reversed), pointsFmt.format(balance)], `return:${saleReturnId}`, null);
       return;
     }
+    if (!(await this.viaTelegram(memberId))) return;
     try {
       const balance = (await this.points.balances((await this.orgOf(memberId)) ?? "", [memberId])).get(memberId) ?? 0;
       const parts = ["Оформлен возврат товара."];
@@ -319,7 +327,7 @@ export class CustomerBotService implements OnModuleInit {
     const links = this.isEnabled() ? await this.prisma.loyaltyTelegramLink.findMany({ select: { memberId: true } }) : [];
     const now = new Date();
     let sent = 0;
-    for (const memberId of new Set([...links.map((l) => l.memberId), ...whatsapp])) {
+    for (const memberId of new Set([...whatsapp, ...links.map((l) => l.memberId)])) {
       try {
         const rows = await this.prisma.loyaltyPointsEntry.findMany({ where: { memberId } });
         const position = pointsPosition(
@@ -332,11 +340,11 @@ export class CustomerBotService implements OnModuleInit {
         if (amount < 1) continue;
         const first = soon[0].expiresAt;
         const key = `expiry:${first.toISOString().slice(0, 10)}`;
-        if (await this.viaTelegram(memberId)) {
+        if (await this.useWhatsApp(memberId, "whatsappExpiryNotices", "expiring")) {
+          if (await this.viaWhatsApp(memberId, "expiring", () => [pointsFmt.format(amount), dateFmt.format(first)], key, null)) sent += 1;
+        } else if (await this.viaTelegram(memberId)) {
           const text = `${pointsFmt.format(amount)} ваших баллов сгорят ${dateFmt.format(first)}. Приходите — оплатите ими часть покупки!`;
           if (await this.sendToMember(memberId, text, key, null)) sent += 1;
-        } else if (await this.viaWhatsApp(memberId, "whatsappExpiryNotices", "expiring", () => [pointsFmt.format(amount), dateFmt.format(first)], key)) {
-          sent += 1;
         }
       } catch (err) {
         this.logger.error(`Expiry reminder for ${memberId} failed`, err instanceof Error ? err.stack : String(err));
@@ -347,16 +355,15 @@ export class CustomerBotService implements OnModuleInit {
 
   // A message written by the owner (e.g. to the churn radar list).
   async sendManual(user: AuthenticatedUser, memberIds: string[], text: string): Promise<SendLoyaltyTelegramResultDto> {
-    const whatsapp = this.whatsapp?.isEnabled() ? this.whatsapp : null;
-    if (!this.isEnabled() && !whatsapp) throw new BadRequestException("Не подключены ни Telegram-бот, ни WhatsApp");
+    if (!this.isEnabled() && !this.whatsapp?.isEnabled()) throw new BadRequestException("Не подключены ни WhatsApp, ни Telegram-бот");
     const clean = text.trim();
     const members = await this.prisma.loyaltyMember.findMany({ where: { id: { in: [...new Set(memberIds)] }, organizationId: user.organizationId }, select: { id: true } });
     const key = `manual:${Date.now()}`;
     let sent = 0;
     for (const m of members) {
-      const ok = (await this.viaTelegram(m.id))
-        ? await this.sendToMember(m.id, escapeHtml(clean), key, user.id)
-        : ((await whatsapp?.sendTemplate(m.id, "news", [clean], key, user.id)) ?? false);
+      const ok = (await this.useWhatsApp(m.id, null, "news"))
+        ? await this.viaWhatsApp(m.id, "news", () => [clean], key, user.id)
+        : (await this.viaTelegram(m.id)) && (await this.sendToMember(m.id, escapeHtml(clean), key, user.id));
       if (ok) sent += 1;
     }
     return { sent, skipped: memberIds.length - sent };
@@ -365,36 +372,52 @@ export class CustomerBotService implements OnModuleInit {
   // A birthday gift was just granted.
   async notifyBirthday(memberId: string, name: string, points: number, lastDay: Date, key: string): Promise<boolean> {
     try {
-      if (await this.viaTelegram(memberId)) {
-        const text = `С днём рождения, ${escapeHtml(name)}! 🎂\nДарим ${pointsFmt.format(points)} баллов — потратьте их до ${dateFmt.format(lastDay)}.`;
-        return await this.sendToMember(memberId, text, key, null);
+      if (await this.useWhatsApp(memberId, "whatsappBirthdayNotices", "birthday")) {
+        return await this.viaWhatsApp(memberId, "birthday", () => [name, pointsFmt.format(points), dateFmt.format(lastDay)], key, null);
       }
-      return await this.viaWhatsApp(memberId, "whatsappBirthdayNotices", "birthday", () => [name, pointsFmt.format(points), dateFmt.format(lastDay)], key);
+      if (!(await this.viaTelegram(memberId))) return false;
+      const text = `С днём рождения, ${escapeHtml(name)}! 🎂\nДарим ${pointsFmt.format(points)} баллов — потратьте их до ${dateFmt.format(lastDay)}.`;
+      return await this.sendToMember(memberId, text, key, null);
     } catch (err) {
       this.logger.error(`Birthday message for ${memberId} failed`, err instanceof Error ? err.stack : String(err));
       return false;
     }
   }
 
-  // Telegram is used whenever the member can be reached there.
+  // WhatsApp is the main channel: it takes a notice when it is connected, the
+  // member has agreed to it, this kind of notice is switched on and Meta has
+  // approved its template. Decided BEFORE sending and never from a send result,
+  // so a notice already sent (its key claimed) cannot fall through to Telegram.
+  private async useWhatsApp(
+    memberId: string,
+    setting: "whatsappSaleNotices" | "whatsappExpiryNotices" | "whatsappBirthdayNotices" | null,
+    template: WhatsAppTemplateKey,
+  ): Promise<boolean> {
+    try {
+      if (!this.whatsapp?.isEnabled()) return false;
+      if (setting) {
+        const organizationId = await this.orgOf(memberId);
+        if (!organizationId || !(await this.points.getSettings(organizationId))[setting]) return false;
+      }
+      return await this.whatsapp.canSend(memberId, template);
+    } catch (err) {
+      this.logger.error(`WhatsApp check for ${memberId} failed`, err instanceof Error ? err.stack : String(err));
+      return false;
+    }
+  }
+
+  // Telegram, for whoever WhatsApp does not cover and who linked the bot.
   private async viaTelegram(memberId: string): Promise<boolean> {
     return this.isEnabled() && (await this.reachableIds([memberId])).has(memberId);
   }
 
-  // WhatsApp, if connected and this kind of notice is switched on. Never throws.
-  private async viaWhatsApp(
-    memberId: string,
-    setting: "whatsappSaleNotices" | "whatsappExpiryNotices" | "whatsappBirthdayNotices",
-    template: WhatsAppTemplateKey,
-    params: (balance: number) => string[],
-    key: string,
-  ): Promise<boolean> {
+  // Never throws.
+  private async viaWhatsApp(memberId: string, template: WhatsAppTemplateKey, params: (balance: number) => string[], key: string, sentById: string | null): Promise<boolean> {
     try {
-      if (!this.whatsapp?.isEnabled()) return false;
+      if (!this.whatsapp) return false;
       const organizationId = await this.orgOf(memberId);
-      if (!organizationId || !(await this.points.getSettings(organizationId))[setting]) return false;
-      const balance = (await this.points.balances(organizationId, [memberId])).get(memberId) ?? 0;
-      return await this.whatsapp.sendTemplate(memberId, template, params(balance), key, null);
+      const balance = organizationId ? ((await this.points.balances(organizationId, [memberId])).get(memberId) ?? 0) : 0;
+      return await this.whatsapp.sendTemplate(memberId, template, params(balance), key, sentById);
     } catch (err) {
       this.logger.error(`WhatsApp notice for ${memberId} failed`, err instanceof Error ? err.stack : String(err));
       return false;
