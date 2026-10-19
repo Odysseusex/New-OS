@@ -35,8 +35,10 @@ describe("LoyaltyBirthdayService (database)", () => {
   const prisma = new PrismaService();
   const points = new LoyaltyPointsService(prisma);
   const loyalty = new LoyaltyService(prisma, points);
-  const sent: { memberId: string; text: string; key: string }[] = [];
-  const bot = { sendToMember: async (memberId: string, text: string, key: string) => (sent.push({ memberId, text, key }), true) };
+  const sent: { memberId: string; name: string; points: number; lastDay: Date; key: string }[] = [];
+  const bot = {
+    notifyBirthday: async (memberId: string, name: string, points: number, lastDay: Date, key: string) => (sent.push({ memberId, name, points, lastDay, key }), true),
+  };
   const birthdays = new LoyaltyBirthdayService(prisma, points, bot as never);
   let org: IsolatedOrg;
   let memberId: string;
@@ -96,7 +98,8 @@ describe("LoyaltyBirthdayService (database)", () => {
     expect(entry.points.toNumber()).toBe(500);
     expect(entry.expiresAt).toEqual(new Date(localMidnight(2026, 8, 20).getTime() + 14 * DAY));
     expect(entry.reason).toBe("День рождения: Алия");
-    expect(sent).toEqual([{ memberId, key: `birthday:${row.id}:2026`, text: expect.stringMatching(/С днём рождения, Алия!.*\nДарим 500 баллов — потратьте их до 02\.09\.2026/s) }]);
+    // The last day it can be spent is the day before it expires (2 September).
+    expect(sent).toEqual([{ memberId, name: "Алия", points: 500, lastDay: new Date(entry.expiresAt!.getTime() - 1), key: `birthday:${row.id}:2026` }]);
     expect((await loyalty.findOne(org.organizationId, memberId)).family.find((f) => f.id === row.id)?.lastGiftYear).toBe(2026);
     await birthdays.remove(org.user, row.id);
   });

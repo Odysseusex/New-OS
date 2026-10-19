@@ -9,11 +9,13 @@ import {
   LOYALTY_CONSENT_CHANNELS,
   LOYALTY_CONSENT_PURPOSE_LABELS_RU,
   LOYALTY_CONSENT_SOURCE_LABELS_RU,
+  LOYALTY_MESSAGE_STATUS_LABELS_RU,
   LOYALTY_POINTS_ENTRY_TYPE_LABELS_RU,
   LoyaltyConsentChannel,
   LoyaltyConsentPurpose,
   LoyaltyConsentSource,
   LoyaltyMemberStatus,
+  LoyaltyMessageStatus,
   normalizeKzPhone,
 } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
@@ -179,6 +181,12 @@ export function LoyaltyMemberModal({
             <span className="basis-full text-sm text-muted">
               Telegram: {member.telegramLinked ? (member.consents.marketing.TELEGRAM ? "подключён, уведомления включены" : "подключён, уведомления выключены") : "не подключён"}
             </span>
+            {member.whatsappLastMessage && (
+              <span className={`basis-full text-sm ${member.whatsappLastMessage.status === LoyaltyMessageStatus.FAILED ? "text-red-700" : "text-muted"}`}>
+                WhatsApp: последнее сообщение {LOYALTY_MESSAGE_STATUS_LABELS_RU[member.whatsappLastMessage.status]} {formatDateTime(member.whatsappLastMessage.at)}
+                {member.whatsappLastMessage.error && ` — ${member.whatsappLastMessage.error}`}
+              </span>
+            )}
           </div>
 
           {isMerged && member.mergedIntoId && (

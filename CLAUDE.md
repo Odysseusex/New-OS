@@ -830,7 +830,7 @@ reach only /pos). Migration `20261015120000_loyalty_members`. Rules that are eas
 - Roles: `LOYALTY_TILL_ROLES` (= sale roles: lookup/register/consent), `LOYALTY_MANAGE_ROLES`
   (OWNER/ADMIN/STORE_MANAGER: browse list, edit name/note), `LOYALTY_ADMIN_ROLES` (merge/import). The list
   is searched server-side (not the client-side picker pattern): it is people's phone numbers and can be large.
-- WhatsApp is NOT built (needs the owner's Meta business account and a provider).
+- WhatsApp: see «WhatsApp» below (built, waiting for the owner's Meta account).
 
 **Stage 2 — points — built** (migration `20261016120000_loyalty_points`, `loyalty/loyalty-points.service.ts`,
 `loyalty/points-ledger.ts`, shared math in `packages/shared/src/loyalty.ts`). Owner decisions: 1 point = 1 ₸;
@@ -887,6 +887,30 @@ sleeps). Anti-abuse: a date added or changed less than 30 days before the birthd
 (`dateSetAt`). Feb 29 → Feb 28 in common years. Birthdays move to the primary on merge. Keep `birthdays.ts` free
 of service imports — `loyalty.service` → bot → `loyalty.service` was an import cycle that broke DI (app-boot spec).
 A printable QR for the customer bot is on the programme card («QR-код для кассы»).
+
+**WhatsApp — built, NOT yet live** (migration `20261019120000_loyalty_whatsapp`, `loyalty/whatsapp.service.ts`,
+`whatsapp.controller.ts`). Meta Cloud API directly, no intermediary. Off until all four env vars are set on Render:
+`WHATSAPP_TOKEN` (permanent System User token), `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_BUSINESS_ACCOUNT_ID`,
+`WHATSAPP_APP_SECRET`. Verified only against a fake Meta in `whatsapp.spec.ts` plus Meta's real error answer to a fake
+key — the first real send happens when the owner's account is approved; check it then.
+- Everything we send first is a TEMPLATE (`WHATSAPP_TEMPLATES`: purchase, return, expiring = UTILITY; birthday, news =
+  MARKETING; language `ru`; footer «Чтобы отписаться, ответьте СТОП»). The owner submits them from the programme card
+  (`POST /loyalty/whatsapp/templates`); a message goes out only when Meta says APPROVED (statuses cached 10 min), and
+  nothing is claimed before that, so it can still go once approved. Changing a template's text = a new name (Meta
+  locks approved texts); parameters must have no line breaks (`cleanParam`).
+- Same gate as Telegram: ACTIVE member + current MARKETING/WHATSAPP consent; `LoyaltyMessageLog` key `wa:{key}` (one
+  send per key), with `providerMessageId`, `status` (SENT→DELIVERED→READ, never backwards; FAILED) from the webhook.
+  131050/131026 keep a FAILED row (131050 = the customer stopped marketing → recorded as a withdrawal, source
+  WHATSAPP); any other failure deletes the row so it can be retried.
+- **One channel per notice: Telegram if the member is reachable there (free), else WhatsApp** — `CustomerBotService`
+  stays the single entry point (`notifySale/notifyReturn/notifyBirthday/remindExpiringPoints/sendManual`). Each
+  automatic WhatsApp notice has a `LoyaltySettings` switch (`whatsappSaleNotices` default OFF — most frequent, paid;
+  expiry and birthday ON). Decided on `viaTelegram()` reachability, never on a send result (a claimed key would
+  otherwise fall through to a paid duplicate).
+- Webhook `GET/POST /api/loyalty/whatsapp/webhook`: verify token derived from the app secret (shown to OWNER/ADMIN
+  on the card with the callback URL), POST checked with `X-Hub-Signature-256` over the RAW body (`rawBody: true` in
+  `main.ts` — never re-serialise the JSON). A customer's message gets their balance as a free reply (24 h window, no
+  consent needed); «СТОП»/«СТАРТ» record their consent; `user_preferences` stop = withdrawal.
 
 ## Prisma migration workflow (this sandbox has no direct prod DB access)
 

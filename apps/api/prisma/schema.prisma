@@ -2655,6 +2655,8 @@ enum LoyaltyConsentSource {
   OTHER
   // The customer pressed a button in the customer Telegram bot.
   TELEGRAM_BOT
+  // The customer wrote СТОП / СТАРТ to our WhatsApp number, or stopped marketing there.
+  WHATSAPP
 }
 
 model LoyaltyMember {
@@ -2729,6 +2731,11 @@ model LoyaltySettings {
   birthdayBonusPoints      Decimal  @default(0) @db.Decimal(12, 2)
   // How long the gift can be spent, counted from the birthday.
   birthdayBonusDays        Int      @default(14)
+  // Which automatic messages go to WhatsApp — each is paid to Meta, so the
+  // most frequent one (after every purchase) is off until the owner turns it on.
+  whatsappSaleNotices      Boolean  @default(false)
+  whatsappExpiryNotices    Boolean  @default(true)
+  whatsappBirthdayNotices  Boolean  @default(true)
   updatedAt                DateTime @updatedAt
   updatedById              String?
 
@@ -2812,10 +2819,24 @@ model LoyaltyMessageLog {
   text           String
   sentById       String?
   sentAt         DateTime      @default(now())
+  channel        LoyaltyConsentChannel @default(TELEGRAM)
+  // WhatsApp only: Meta's message id, and what its delivery reports said.
+  providerMessageId String?
+  status         LoyaltyMessageStatus?
+  statusAt       DateTime?
+  error          String?
 
   @@unique([memberId, key])
   @@index([organizationId, sentAt])
+  @@index([providerMessageId])
   @@map("loyalty_message_logs")
+}
+
+enum LoyaltyMessageStatus {
+  SENT
+  DELIVERED
+  READ
+  FAILED
 }
 
 // ── Loyalty programme: birthdays (the card holder and their family) ──────────

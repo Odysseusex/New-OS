@@ -247,15 +247,15 @@ export function LoyaltyAnalyticsTab({ canAdmin }: { canAdmin: boolean }) {
             <MemberTable rows={data.churnRadar.rows} onOpen={setOpenId} showInterval />
             {canAdmin && data.churnRadar.rows.length > 0 && (
               <div className="mt-3 flex flex-wrap items-center gap-3">
-                {data.churnRadar.rows.some((r) => r.telegramReachable) ? (
+                {data.churnRadar.rows.some(reachable) ? (
                   <button
-                    onClick={() => setWriteTo(data.churnRadar.rows.filter((r) => r.telegramReachable))}
+                    onClick={() => setWriteTo(data.churnRadar.rows.filter(reachable))}
                     className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
                   >
-                    Написать в Telegram ({data.churnRadar.rows.filter((r) => r.telegramReachable).length})
+                    Написать ({data.churnRadar.rows.filter(reachable).length})
                   </button>
                 ) : (
-                  <span className="text-sm text-muted">Никто из них не подписан на уведомления в Telegram.</span>
+                  <span className="text-sm text-muted">Никто из них не подписан на уведомления в Telegram или WhatsApp.</span>
                 )}
               </div>
             )}
@@ -352,12 +352,15 @@ export function LoyaltyAnalyticsTab({ canAdmin }: { canAdmin: boolean }) {
         <LoyaltyMemberModal memberId={openId} canManage canAdmin={canAdmin} onClose={() => setOpenId(null)} onChanged={load} />
       )}
 
-      {writeTo && <TelegramWriteModal rows={writeTo} onClose={() => setWriteTo(null)} />}
+      {writeTo && <WriteModal rows={writeTo} onClose={() => setWriteTo(null)} />}
     </div>
   );
 }
 
-function TelegramWriteModal({ rows, onClose }: { rows: LoyaltyAnalyticsMemberRowDto[]; onClose: () => void }) {
+// Subscribed in Telegram or WhatsApp: a written message can reach them.
+const reachable = (r: LoyaltyAnalyticsMemberRowDto) => r.telegramReachable || r.whatsappReachable;
+
+function WriteModal({ rows, onClose }: { rows: LoyaltyAnalyticsMemberRowDto[]; onClose: () => void }) {
   const [text, setText] = useState("Давно вас не видели! Заходите — свежая выпечка уже ждёт.");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
@@ -380,7 +383,7 @@ function TelegramWriteModal({ rows, onClose }: { rows: LoyaltyAnalyticsMemberRow
   }
 
   return (
-    <Modal title={`Сообщение в Telegram · ${rows.length} клиентов`} onClose={onClose}>
+    <Modal title={`Сообщение клиентам · ${rows.length}`} onClose={onClose}>
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -388,7 +391,10 @@ function TelegramWriteModal({ rows, onClose }: { rows: LoyaltyAnalyticsMemberRow
         maxLength={1000}
         className={`${inputClass} mb-2`}
       />
-      <p className="mb-4 text-xs text-muted">Уйдёт только тем, кто подписан на уведомления в Telegram.</p>
+      <p className="mb-4 text-xs text-muted">
+        Уйдёт только подписанным на уведомления: в Telegram, остальным — в WhatsApp
+        {rows.some((r) => !r.telegramReachable) ? " (платное сообщение Meta)" : ""}.
+      </p>
       {error && <div className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
       {result && <div className="mb-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{result}</div>}
       <div className="flex justify-end gap-2">

@@ -57,6 +57,9 @@ export class LoyaltyPointsService {
       pointsLifetimeMonths: row.pointsLifetimeMonths,
       birthdayBonusPoints: row.birthdayBonusPoints.toNumber(),
       birthdayBonusDays: row.birthdayBonusDays,
+      whatsappSaleNotices: row.whatsappSaleNotices,
+      whatsappExpiryNotices: row.whatsappExpiryNotices,
+      whatsappBirthdayNotices: row.whatsappBirthdayNotices,
     };
   }
 

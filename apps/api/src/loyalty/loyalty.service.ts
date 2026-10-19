@@ -18,6 +18,7 @@ import {
   LoyaltyMemberDto,
   LoyaltyMemberListDto,
   LoyaltyMemberStatus,
+  LoyaltyMessageStatus,
   normalizeKzPhone,
 } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
@@ -244,14 +245,21 @@ export class LoyaltyService {
       },
     });
     if (!member) throw new NotFoundException("Клиент не найден");
-    const [balances, pointsHistory] = await Promise.all([
+    const [balances, pointsHistory, lastWhatsApp] = await Promise.all([
       this.points.balances(organizationId, [member.id]),
       this.points.history(organizationId, member.id),
+      this.prisma.loyaltyMessageLog.findFirst({
+        where: { memberId: member.id, channel: LoyaltyConsentChannel.WHATSAPP, status: { not: null } },
+        orderBy: { sentAt: "desc" },
+      }),
     ]);
     return {
       ...this.toDto(member, balances.get(member.id) ?? 0),
       pointsHistory,
       family: member.family.map((f) => toFamilyDto(f)),
+      whatsappLastMessage: lastWhatsApp?.status
+        ? { status: lastWhatsApp.status as LoyaltyMessageStatus, at: (lastWhatsApp.statusAt ?? lastWhatsApp.sentAt).toISOString(), error: lastWhatsApp.error }
+        : null,
       history: [...member.consents].reverse().map((c) => ({
         id: c.id,
         purpose: c.purpose as LoyaltyConsentPurpose,

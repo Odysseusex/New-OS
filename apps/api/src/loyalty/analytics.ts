@@ -25,6 +25,8 @@ export interface AnalyticsMember {
   contactable: boolean;
   // Linked to the customer bot with the TELEGRAM consent granted.
   telegramReachable?: boolean;
+  // WHATSAPP consent granted and WhatsApp connected.
+  whatsappReachable?: boolean;
 }
 
 export interface AnalyticsInput {
@@ -123,6 +125,7 @@ export function computeLoyaltyAnalytics(input: AnalyticsInput): LoyaltyAnalytics
       usualIntervalDays: all.length >= 2 ? round2((last.getTime() - all[0].at.getTime()) / DAY / (all.length - 1)) : null,
       segment,
       telegramReachable: member.telegramReachable ?? false,
+      whatsappReachable: member.whatsappReachable ?? false,
     };
   };
 

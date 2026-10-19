@@ -15,9 +15,6 @@ import { currentBirthday, DAY, giftEligible, localMidnight, toFamilyDto } from "
 import { CustomerBotService } from "./customer-bot.service";
 import { LoyaltyPointsService } from "./loyalty-points.service";
 
-const dateFmt = new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Almaty", day: "2-digit", month: "2-digit", year: "numeric" });
-const pointsFmt = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 });
-
 // Birthdays on a member's card (the holder and family) and the birthday gift.
 @Injectable()
 export class LoyaltyBirthdayService implements OnApplicationBootstrap {
@@ -152,8 +149,7 @@ export class LoyaltyBirthdayService implements OnApplicationBootstrap {
           continue; // granted a moment ago by another run
         }
         granted += 1;
-        const text = `С днём рождения, ${row.name}! 🎂\nДарим ${pointsFmt.format(points)} баллов — потратьте их до ${dateFmt.format(new Date(expiresAt.getTime() - 1))}.`;
-        await this.customerBot?.sendToMember(row.memberId, text, `birthday:${row.id}:${due.year}`, null).catch(() => false);
+        await this.customerBot?.notifyBirthday(row.memberId, row.name, points, new Date(expiresAt.getTime() - 1), `birthday:${row.id}:${due.year}`);
       }
     }
     if (granted) this.logger.log(`Birthday gifts granted: ${granted}`);

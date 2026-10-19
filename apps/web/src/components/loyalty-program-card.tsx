@@ -7,15 +7,18 @@ import { api, ApiError } from "@/lib/api";
 import { formatMoneyPrecise, formatPoints } from "@/lib/format";
 import { inputClass } from "@/components/loyalty-shared";
 import { Modal } from "@/components/modal";
+import { LoyaltyWhatsAppBlock } from "@/components/loyalty-whatsapp-block";
 
 const PERIOD_DAYS = 30;
+
+type NumericSetting = "firstPurchaseEarnPercent" | "earnPercent" | "maxRedeemPercent" | "pointsLifetimeMonths" | "birthdayBonusPoints" | "birthdayBonusDays";
 
 // Programme settings (owner/admin edit them) and the points figures. Points
 // are a discount when spent («способ Б»), so «Баллов у клиентов» is shown here
 // for information only — it is not a liability in the books.
 export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; refreshKey: number }) {
   const [settings, setSettings] = useState<LoyaltySettingsDto | null>(null);
-  const [draft, setDraft] = useState<Record<keyof Omit<LoyaltySettingsDto, "enabled">, string> | null>(null);
+  const [draft, setDraft] = useState<Record<NumericSetting, string> | null>(null);
   const [summary, setSummary] = useState<LoyaltySummaryDto | null>(null);
   const [telegram, setTelegram] = useState<LoyaltyTelegramStatusDto | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -142,6 +145,8 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
           )}
         </p>
       )}
+
+      <LoyaltyWhatsAppBlock settings={settings} canEdit={canEdit} busy={busy} onSave={save} refreshKey={refreshKey} />
 
       {stats.length > 0 && (
         <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-5">

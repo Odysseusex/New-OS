@@ -4,6 +4,7 @@ import { ownAmount } from "../common/own-sales";
 import { PrismaService } from "../prisma/prisma.service";
 import { AnalyticsMember, computeLoyaltyAnalytics, RFM_WINDOW_DAYS } from "./analytics";
 import { CustomerBotService } from "./customer-bot.service";
+import { WhatsAppService } from "./whatsapp.service";
 
 const REPORTING_TIME_ZONE = "Asia/Almaty";
 const dateKeyFormat = new Intl.DateTimeFormat("en-CA", { timeZone: REPORTING_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" });
@@ -17,6 +18,7 @@ export class LoyaltyAnalyticsService {
   constructor(
     private prisma: PrismaService,
     private customerBot?: CustomerBotService,
+    private whatsapp?: WhatsAppService,
   ) {}
 
   async analytics(organizationId: string, from: Date, to: Date, churn: Partial<LoyaltyChurnSettings>): Promise<LoyaltyAnalyticsDto> {
@@ -61,13 +63,14 @@ export class LoyaltyAnalyticsService {
       }
       return current;
     };
-    const reachable = this.customerBot ? await this.customerBot.reachableIds(memberRows.map((m) => m.id)) : new Set<string>();
+    const reachable = this.customerBot?.isEnabled() ? await this.customerBot.reachableIds(memberRows.map((m) => m.id)) : new Set<string>();
+    const whatsappReachable = this.whatsapp?.isEnabled() ? await this.whatsapp.reachableIds(memberRows.map((m) => m.id)) : new Set<string>();
     const members = new Map<string, AnalyticsMember>(
       memberRows
         .filter((m) => m.status !== LoyaltyMemberStatus.MERGED)
         .map((m) => [
           m.id,
-          { id: m.id, phone: m.phone, name: m.name, contactable: m.status === LoyaltyMemberStatus.ACTIVE, telegramReachable: reachable.has(m.id) },
+          { id: m.id, phone: m.phone, name: m.name, contactable: m.status === LoyaltyMemberStatus.ACTIVE, telegramReachable: reachable.has(m.id), whatsappReachable: whatsappReachable.has(m.id) },
         ]),
     );
 

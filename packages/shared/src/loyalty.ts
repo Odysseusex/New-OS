@@ -48,6 +48,8 @@ export enum LoyaltyConsentSource {
   IMPORT = "IMPORT",
   OTHER = "OTHER",
   TELEGRAM_BOT = "TELEGRAM_BOT",
+  // The customer wrote СТОП / СТАРТ to our WhatsApp number (or blocked marketing there).
+  WHATSAPP = "WHATSAPP",
 }
 
 export const LOYALTY_CONSENT_SOURCE_LABELS_RU: Record<LoyaltyConsentSource, string> = {
@@ -56,6 +58,7 @@ export const LOYALTY_CONSENT_SOURCE_LABELS_RU: Record<LoyaltyConsentSource, stri
   [LoyaltyConsentSource.IMPORT]: "Импорт",
   [LoyaltyConsentSource.OTHER]: "Другое",
   [LoyaltyConsentSource.TELEGRAM_BOT]: "Telegram-бот",
+  [LoyaltyConsentSource.WHATSAPP]: "WhatsApp",
 };
 
 // ── Kazakhstan phone numbers ────────────────────────────────────────────────
@@ -118,6 +121,8 @@ export interface LoyaltyMemberDetailDto extends LoyaltyMemberDto {
   history: LoyaltyConsentRecordDto[];
   pointsHistory: LoyaltyPointsEntryDto[];
   family: LoyaltyFamilyMemberDto[];
+  // The latest WhatsApp message to this member and what became of it; null if none was sent.
+  whatsappLastMessage: { status: LoyaltyMessageStatus; at: string; error: string | null } | null;
   // Records merged into this one, so their phones are still findable here.
   mergedFrom: { id: string; phone: string; name: string | null; mergedAt: string | null }[];
 }
@@ -228,6 +233,10 @@ export interface LoyaltySettingsDto {
   // Gift in points on every birthday on a card; 0 = no gift.
   birthdayBonusPoints: number;
   birthdayBonusDays: number;
+  // Which automatic messages go to WhatsApp (each one is paid to Meta).
+  whatsappSaleNotices: boolean;
+  whatsappExpiryNotices: boolean;
+  whatsappBirthdayNotices: boolean;
 }
 
 export type UpdateLoyaltySettingsRequestDto = Partial<LoyaltySettingsDto>;
@@ -240,6 +249,9 @@ export const DEFAULT_LOYALTY_SETTINGS: LoyaltySettingsDto = {
   pointsLifetimeMonths: 12,
   birthdayBonusPoints: 0,
   birthdayBonusDays: 14,
+  whatsappSaleNotices: false,
+  whatsappExpiryNotices: true,
+  whatsappBirthdayNotices: true,
 };
 
 export enum LoyaltyPointsEntryType {
@@ -458,6 +470,8 @@ export interface LoyaltyAnalyticsMemberRowDto {
   segment: LoyaltySegment | null;
   // Linked to the customer bot with the TELEGRAM consent granted: can be messaged.
   telegramReachable: boolean;
+  // WHATSAPP consent granted (the phone itself is the address).
+  whatsappReachable: boolean;
 }
 
 export interface LoyaltyAnalyticsDto {
@@ -559,4 +573,58 @@ export function isValidBirthDate(month: number, day: number, year?: number | nul
   if (year === undefined || year === null) return true;
   if (!Number.isInteger(year) || year < 1900 || year > 2100) return false;
   return month !== 2 || day !== 29 || birthdayInYear(year, 2, 29).day === 29;
+}
+
+// ── WhatsApp (Meta Cloud API) ───────────────────────────────────────────────
+
+export enum LoyaltyMessageStatus {
+  SENT = "SENT",
+  DELIVERED = "DELIVERED",
+  READ = "READ",
+  FAILED = "FAILED",
+}
+
+export const LOYALTY_MESSAGE_STATUS_LABELS_RU: Record<LoyaltyMessageStatus, string> = {
+  [LoyaltyMessageStatus.SENT]: "отправлено",
+  [LoyaltyMessageStatus.DELIVERED]: "доставлено",
+  [LoyaltyMessageStatus.READ]: "прочитано",
+  [LoyaltyMessageStatus.FAILED]: "не доставлено",
+};
+
+// APPROVED etc. are Meta's own words; MISSING = not submitted yet; UNKNOWN = could not ask Meta.
+export type LoyaltyWhatsAppTemplateStatus = "APPROVED" | "PENDING" | "REJECTED" | "PAUSED" | "DISABLED" | "MISSING" | "UNKNOWN";
+
+export const LOYALTY_WHATSAPP_TEMPLATE_STATUS_LABELS_RU: Record<LoyaltyWhatsAppTemplateStatus, string> = {
+  APPROVED: "Одобрен",
+  PENDING: "На проверке",
+  REJECTED: "Отклонён",
+  PAUSED: "Приостановлен Meta",
+  DISABLED: "Отключён Meta",
+  MISSING: "Не отправлен",
+  UNKNOWN: "Нет ответа от Meta",
+};
+
+export interface LoyaltyWhatsAppTemplateDto {
+  name: string;
+  purpose: string;
+  category: "UTILITY" | "MARKETING";
+  text: string;
+  status: LoyaltyWhatsAppTemplateStatus;
+  rejectedReason: string | null;
+}
+
+export interface LoyaltyWhatsAppStatusDto {
+  configured: boolean;
+  // Missing settings or Meta's refusal, in words the owner can act on.
+  problem: string | null;
+  missingSettings: string[];
+  phone: string | null;
+  verifiedName: string | null;
+  qualityRating: string | null;
+  // For the webhook form in Meta; only for owner/admin.
+  webhookUrl: string | null;
+  verifyToken: string | null;
+  reachableMembers: number;
+  templates: LoyaltyWhatsAppTemplateDto[];
+  last30Days: Record<LoyaltyMessageStatus, number>;
 }

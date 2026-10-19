@@ -53,3 +53,11 @@ per message — verify current prices from the provider's pages before quoting a
 Stages 1, 2 (points, live and switched on by the owner) and 4 (customer analytics, Клиенты → «Аналитика») are on
 `main`. Customer Telegram bot BUILT (needs the owner to create it in @BotFather and put CUSTOMER_BOT_TOKEN on Render). Next: WhatsApp (needs the owner's
 Meta business account + provider). Consent wording still awaits a lawyer.
+
+## WhatsApp (2026-10-19)
+Built and on `main`, inactive until the owner's Meta account is approved and the four `WHATSAPP_*` env vars are set on
+Render (see CLAUDE.md «WhatsApp»). Owner's steps: Meta Business account on the ИП + verification, a new SIM used only
+for this (not in the WhatsApp app), payment card in Meta, a System User permanent token. Then: put the keys on Render,
+paste Callback URL + Verify token from the programme card into Meta (subscribe `messages` and `user_preferences`),
+press «Отправить шаблоны на проверку в Meta», wait for approval, send one real test. Next after that: automatic
+welcome / win-back messages, a «Мои баллы» page for customers without Telegram.

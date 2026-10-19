@@ -5,7 +5,6 @@ import { Markup, Telegraf } from "telegraf";
 import type { Update } from "telegraf/types";
 import {
   LoyaltyConsentChannel,
-  LoyaltyConsentPurpose,
   LoyaltyConsentSource,
   LoyaltyMemberStatus,
   LoyaltyTelegramStatusDto,
@@ -13,12 +12,13 @@ import {
   SendLoyaltyTelegramResultDto,
 } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
-import { recordAudit } from "../audit/audit";
 import { PrismaService } from "../prisma/prisma.service";
 import { escapeHtml } from "../telegram/telegram-format";
+import { recordChannelConsent } from "./channel-consent";
 import { LoyaltyPointsService } from "./loyalty-points.service";
 import { consentState } from "./loyalty.service";
 import { pointsPosition } from "./points-ledger";
+import { WhatsAppService, WhatsAppTemplateKey } from "./whatsapp.service";
 
 // The CUSTOMER bot — a separate bot from the staff one (its own token,
 // CUSTOMER_BOT_TOKEN), so a buyer never sees a staff menu and the staff bot
@@ -28,6 +28,11 @@ import { pointsPosition } from "./points-ledger";
 // the TELEGRAM channel is granted. Pressing «Да» in the bot records that consent
 // like any other (source TELEGRAM_BOT); «Отписаться» or blocking the bot records
 // the withdrawal.
+//
+// It is also the one entry point for messages to customers on any channel:
+// each notice goes by Telegram when the member can be reached there (free), and
+// otherwise by WhatsApp (paid per message, so each kind of notice has its own
+// switch in the programme settings).
 
 export interface BotTransport {
   send(chatId: string, text: string, extra?: object): Promise<void>;
@@ -66,6 +71,7 @@ export class CustomerBotService implements OnModuleInit {
   constructor(
     private prisma: PrismaService,
     private points: LoyaltyPointsService,
+    private whatsapp?: WhatsAppService,
   ) {}
 
   // ── lifecycle ─────────────────────────────────────────────────────────────
@@ -232,7 +238,7 @@ export class CustomerBotService implements OnModuleInit {
       if (!member || member.status !== LoyaltyMemberStatus.ACTIVE) continue;
       const before = consentState(member.consents);
       if (before.marketing.TELEGRAM === granted) continue;
-      await this.recordTelegramConsent(member.organizationId, member.id, granted, before, null);
+      await this.recordTelegramConsent(member.organizationId, member.id, granted, null);
       changed = true;
     }
     if (granted) {
@@ -277,18 +283,21 @@ export class CustomerBotService implements OnModuleInit {
   }
 
   async notifySale(sale: { id: string; totalAmount: number; loyalty: { memberId: string; pointsRedeemed: number; pointsEarned: number } | null }) {
-    if (!sale.loyalty || !this.isEnabled()) return;
-    await this.notifyPoints(
-      sale.loyalty.memberId,
-      `sale:${sale.id}`,
-      `Спасибо за покупку на ${moneyFmt.format(sale.totalAmount)} ₸!`,
-      sale.loyalty.pointsRedeemed,
-      sale.loyalty.pointsEarned,
-    );
+    if (!sale.loyalty) return;
+    const { memberId, pointsRedeemed, pointsEarned } = sale.loyalty;
+    if (await this.viaTelegram(memberId)) {
+      await this.notifyPoints(memberId, `sale:${sale.id}`, `Спасибо за покупку на ${moneyFmt.format(sale.totalAmount)} ₸!`, pointsRedeemed, pointsEarned);
+    } else if (pointsRedeemed > 0 || pointsEarned > 0) {
+      await this.viaWhatsApp(memberId, "whatsappSaleNotices", "purchase", (balance) => [moneyFmt.format(sale.totalAmount), pointsFmt.format(pointsEarned), pointsFmt.format(pointsRedeemed), pointsFmt.format(balance)], `sale:${sale.id}`);
+    }
   }
 
   async notifyReturn(memberId: string, saleReturnId: string, refunded: number, reversed: number) {
-    if (!this.isEnabled() || (refunded <= 0 && reversed <= 0)) return;
+    if (refunded <= 0 && reversed <= 0) return;
+    if (!(await this.viaTelegram(memberId))) {
+      await this.viaWhatsApp(memberId, "whatsappSaleNotices", "return", (balance) => [pointsFmt.format(refunded), pointsFmt.format(reversed), pointsFmt.format(balance)], `return:${saleReturnId}`);
+      return;
+    }
     try {
       const balance = (await this.points.balances((await this.orgOf(memberId)) ?? "", [memberId])).get(memberId) ?? 0;
       const parts = ["Оформлен возврат товара."];
@@ -305,11 +314,12 @@ export class CustomerBotService implements OnModuleInit {
   // instance a missed day is caught up the next one, the key prevents repeats).
   @Cron("5 7 * * *")
   async remindExpiringPoints(): Promise<number> {
-    if (!this.isEnabled()) return 0;
-    const links = await this.prisma.loyaltyTelegramLink.findMany({ select: { memberId: true } });
+    const whatsapp = this.whatsapp?.isEnabled() ? await this.whatsapp.reachableMemberIds() : [];
+    if (!this.isEnabled() && whatsapp.length === 0) return 0;
+    const links = this.isEnabled() ? await this.prisma.loyaltyTelegramLink.findMany({ select: { memberId: true } }) : [];
     const now = new Date();
     let sent = 0;
-    for (const { memberId } of links) {
+    for (const memberId of new Set([...links.map((l) => l.memberId), ...whatsapp])) {
       try {
         const rows = await this.prisma.loyaltyPointsEntry.findMany({ where: { memberId } });
         const position = pointsPosition(
@@ -321,8 +331,13 @@ export class CustomerBotService implements OnModuleInit {
         const amount = soon.reduce((s, l) => s + l.remaining, 0);
         if (amount < 1) continue;
         const first = soon[0].expiresAt;
-        const text = `${pointsFmt.format(amount)} ваших баллов сгорят ${dateFmt.format(first)}. Приходите — оплатите ими часть покупки!`;
-        if (await this.sendToMember(memberId, text, `expiry:${first.toISOString().slice(0, 10)}`, null)) sent += 1;
+        const key = `expiry:${first.toISOString().slice(0, 10)}`;
+        if (await this.viaTelegram(memberId)) {
+          const text = `${pointsFmt.format(amount)} ваших баллов сгорят ${dateFmt.format(first)}. Приходите — оплатите ими часть покупки!`;
+          if (await this.sendToMember(memberId, text, key, null)) sent += 1;
+        } else if (await this.viaWhatsApp(memberId, "whatsappExpiryNotices", "expiring", () => [pointsFmt.format(amount), dateFmt.format(first)], key)) {
+          sent += 1;
+        }
       } catch (err) {
         this.logger.error(`Expiry reminder for ${memberId} failed`, err instanceof Error ? err.stack : String(err));
       }
@@ -332,15 +347,58 @@ export class CustomerBotService implements OnModuleInit {
 
   // A message written by the owner (e.g. to the churn radar list).
   async sendManual(user: AuthenticatedUser, memberIds: string[], text: string): Promise<SendLoyaltyTelegramResultDto> {
-    if (!this.isEnabled()) throw new BadRequestException("Telegram-бот для клиентов не подключён");
+    const whatsapp = this.whatsapp?.isEnabled() ? this.whatsapp : null;
+    if (!this.isEnabled() && !whatsapp) throw new BadRequestException("Не подключены ни Telegram-бот, ни WhatsApp");
     const clean = text.trim();
     const members = await this.prisma.loyaltyMember.findMany({ where: { id: { in: [...new Set(memberIds)] }, organizationId: user.organizationId }, select: { id: true } });
     const key = `manual:${Date.now()}`;
     let sent = 0;
     for (const m of members) {
-      if (await this.sendToMember(m.id, escapeHtml(clean), key, user.id)) sent += 1;
+      const ok = (await this.viaTelegram(m.id))
+        ? await this.sendToMember(m.id, escapeHtml(clean), key, user.id)
+        : ((await whatsapp?.sendTemplate(m.id, "news", [clean], key, user.id)) ?? false);
+      if (ok) sent += 1;
     }
     return { sent, skipped: memberIds.length - sent };
+  }
+
+  // A birthday gift was just granted.
+  async notifyBirthday(memberId: string, name: string, points: number, lastDay: Date, key: string): Promise<boolean> {
+    try {
+      if (await this.viaTelegram(memberId)) {
+        const text = `С днём рождения, ${escapeHtml(name)}! 🎂\nДарим ${pointsFmt.format(points)} баллов — потратьте их до ${dateFmt.format(lastDay)}.`;
+        return await this.sendToMember(memberId, text, key, null);
+      }
+      return await this.viaWhatsApp(memberId, "whatsappBirthdayNotices", "birthday", () => [name, pointsFmt.format(points), dateFmt.format(lastDay)], key);
+    } catch (err) {
+      this.logger.error(`Birthday message for ${memberId} failed`, err instanceof Error ? err.stack : String(err));
+      return false;
+    }
+  }
+
+  // Telegram is used whenever the member can be reached there.
+  private async viaTelegram(memberId: string): Promise<boolean> {
+    return this.isEnabled() && (await this.reachableIds([memberId])).has(memberId);
+  }
+
+  // WhatsApp, if connected and this kind of notice is switched on. Never throws.
+  private async viaWhatsApp(
+    memberId: string,
+    setting: "whatsappSaleNotices" | "whatsappExpiryNotices" | "whatsappBirthdayNotices",
+    template: WhatsAppTemplateKey,
+    params: (balance: number) => string[],
+    key: string,
+  ): Promise<boolean> {
+    try {
+      if (!this.whatsapp?.isEnabled()) return false;
+      const organizationId = await this.orgOf(memberId);
+      if (!organizationId || !(await this.points.getSettings(organizationId))[setting]) return false;
+      const balance = (await this.points.balances(organizationId, [memberId])).get(memberId) ?? 0;
+      return await this.whatsapp.sendTemplate(memberId, template, params(balance), key, null);
+    } catch (err) {
+      this.logger.error(`WhatsApp notice for ${memberId} failed`, err instanceof Error ? err.stack : String(err));
+      return false;
+    }
   }
 
   async status(organizationId: string): Promise<LoyaltyTelegramStatusDto> {
@@ -388,7 +446,7 @@ export class CustomerBotService implements OnModuleInit {
         // The customer blocked the bot: that is a withdrawal, recorded as one.
         await this.prisma.loyaltyTelegramLink.delete({ where: { memberId } }).catch(() => undefined);
         const member = await this.prisma.loyaltyMember.findUnique({ where: { id: memberId }, include: { consents: { orderBy: [{ recordedAt: "asc" }, { id: "asc" }] } } });
-        if (member) await this.recordTelegramConsent(member.organizationId, memberId, false, consentState(member.consents), "Клиент заблокировал бота");
+        if (member) await this.recordTelegramConsent(member.organizationId, memberId, false, "Клиент заблокировал бота");
       }
       await this.prisma.loyaltyMessageLog.deleteMany({ where: { memberId, key } }).catch(() => undefined);
       this.logger.warn(`Message to member ${memberId} not delivered (${code ?? "error"})`);
@@ -398,36 +456,15 @@ export class CustomerBotService implements OnModuleInit {
 
   // ── helpers ───────────────────────────────────────────────────────────────
 
-  private async recordTelegramConsent(
-    organizationId: string,
-    memberId: string,
-    granted: boolean,
-    before: ReturnType<typeof consentState>,
-    note: string | null,
-  ) {
-    await this.prisma.$transaction(async (tx) => {
-      await tx.loyaltyConsent.create({
-        data: {
-          organizationId,
-          memberId,
-          purpose: LoyaltyConsentPurpose.MARKETING,
-          channel: LoyaltyConsentChannel.TELEGRAM,
-          granted,
-          source: LoyaltyConsentSource.TELEGRAM_BOT,
-          recordedByName: BOT_NAME,
-          note,
-        },
-      });
-      await recordAudit(tx, {
-        organizationId,
-        actorId: null,
-        action: "loyaltyMember.consent",
-        entityType: "LoyaltyMember",
-        entityId: memberId,
-        before: { consents: before },
-        after: { consents: { ...before, marketing: { ...before.marketing, TELEGRAM: granted } }, source: LoyaltyConsentSource.TELEGRAM_BOT },
-        reason: note,
-      });
+  private async recordTelegramConsent(organizationId: string, memberId: string, granted: boolean, note: string | null) {
+    await recordChannelConsent(this.prisma, {
+      organizationId,
+      memberId,
+      channel: LoyaltyConsentChannel.TELEGRAM,
+      granted,
+      source: LoyaltyConsentSource.TELEGRAM_BOT,
+      recordedByName: BOT_NAME,
+      note,
     });
   }
 

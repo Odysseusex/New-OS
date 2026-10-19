@@ -181,6 +181,18 @@ export class UpdateLoyaltySettingsDto {
   @Min(1)
   @Max(365)
   birthdayBonusDays?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  whatsappSaleNotices?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  whatsappExpiryNotices?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  whatsappBirthdayNotices?: boolean;
 }
 
 export class SaveLoyaltyFamilyMemberDto {

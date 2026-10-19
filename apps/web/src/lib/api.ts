@@ -5,6 +5,8 @@ import type {
   LoyaltyChurnSettings,
   AdjustLoyaltyPointsRequestDto,
   LoyaltySettingsDto,
+  LoyaltyWhatsAppStatusDto,
+  LoyaltyWhatsAppTemplateDto,
   LoyaltyFamilyMemberDto,
   SaveLoyaltyFamilyMemberRequestDto,
   LoyaltySummaryDto,
@@ -507,6 +509,8 @@ export const api = {
         }),
       ),
     telegramStatus: () => request<LoyaltyTelegramStatusDto>("/loyalty/telegram/status"),
+    whatsappStatus: () => request<LoyaltyWhatsAppStatusDto>("/loyalty/whatsapp/status"),
+    whatsappSubmitTemplates: () => request<LoyaltyWhatsAppTemplateDto[]>("/loyalty/whatsapp/templates", { method: "POST" }),
     telegramSend: (memberIds: string[], text: string) =>
       request<SendLoyaltyTelegramResultDto>("/loyalty/telegram/send", { method: "POST", body: JSON.stringify({ memberIds, text }) }),
     addFamily: (memberId: string, dto: SaveLoyaltyFamilyMemberRequestDto) =>
