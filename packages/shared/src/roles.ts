@@ -70,11 +70,16 @@ export const PRODUCT_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.PRODUC
 
 export const RECIPE_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.PRODUCTION_MANAGER];
 
+// OPERATOR is here because in a small bakery the one person who does the documents also
+// bakes: she plans and completes production tasks. Production is a documented flow
+// (like purchase orders), so this does NOT give her manual stock corrections, recipe
+// editing (RECIPE_MANAGE_ROLES) or any other inventory right.
 export const PRODUCTION_MANAGE_ROLES: Role[] = [
   Role.OWNER,
   Role.ADMIN,
   Role.PRODUCTION_MANAGER,
   Role.PRODUCTION_STAFF,
+  Role.OPERATOR,
 ];
 
 export const SUPPLIER_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.WAREHOUSE_STAFF];
