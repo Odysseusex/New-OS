@@ -7,15 +7,18 @@ export const SITE_INFO = {
   brand: "Ар Амир",
   tagline: "Дәстүрлі наубайхана",
   // e.g. "ИП Иванов Иван Иванович"
-  legalName: "",
+  legalName: "ИП АМИР",
   // ИИН / БИН
-  taxId: "",
+  taxId: "061107551240",
   legalAddress: "",
-  phone: "",
-  email: "",
+  phone: "+7 778 637 8485",
+  email: "amirmakhmudov8200@gmail.com",
   whatsapp: "",
   instagram: "",
-  locations: [] as { name: string; address: string; hours: string }[],
+  locations: [
+    { name: "Алтын Орда", address: "Микрорайон Алтын Орда, 4д", hours: "" },
+    { name: "Тауелсиздик", address: "Проспект Тауелсиздик, 11", hours: "" },
+  ] as { name: string; address: string; hours: string }[],
 };
 
 // The bonus programme as the owner set it (Клиенты → Розница). Shown on the
