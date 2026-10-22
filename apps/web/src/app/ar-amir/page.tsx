@@ -9,6 +9,7 @@ const MARQUEE = [
   "Хлеб",
   "Багеты",
   "Круассаны",
+  "Торты",
   "Сладкая выпечка",
   "Свежее каждое утро",
 ];
@@ -29,7 +30,7 @@ const GALLERY = [
   {
     src: "/site/croissant-cream.jpg",
     alt: "Круассан с кремом",
-    caption: "С начинкой",
+    caption: "Выпечка с начинкой",
     cls: "s-tile--tall",
   },
   {
@@ -41,7 +42,7 @@ const GALLERY = [
   {
     src: "/site/chocolate.jpg",
     alt: "Тесто, какао и шоколад",
-    caption: "Сладкая выпечка",
+    caption: "Торты и десерты",
     cls: "",
   },
 ];
@@ -57,16 +58,16 @@ export default function SitePage() {
         <section className="s-hero">
           <div className="s-wrap s-hero__grid">
             <div className="s-hero__text">
-              <span className="s-eyebrow">{SITE_INFO.tagline}</span>
+              <span className="s-tagline">{SITE_INFO.tagline}</span>
               <h1 className="s-h1">
-                Хлеб, который
+                Хлеб, в&nbsp;котором
                 <br />
-                пекут <em>с утра</em>
+                живёт <em>традиция</em>
               </h1>
               <p className="s-lead">
-                {SITE_INFO.brand} — традиционная пекарня. Хлеб, багеты,
-                круассаны и сладкая выпечка собственного производства — тёплые,
-                как только что из печи.
+                В «{SITE_INFO.brand}» мы печём хлеб, багеты, круассаны, торты и
+                сладкую выпечку собственного производства — бережно, по
+                проверенным рецептам, каждый день.
               </p>
               <div className="s-hero__actions">
                 <a href="#bakery" className="s-btn">
@@ -152,13 +153,13 @@ export default function SitePage() {
               </h2>
               <div className="s-reveal" style={{ ["--d" as string]: "0.12s" }}>
                 <p className="s-lead">
-                  Мы печём так, как пекли всегда: замешиваем тесто, даём ему
-                  время подойти и отправляем в печь, чтобы утром на полках был
-                  тёплый хлеб.
+                  Хороший хлеб начинается с простых вещей: качественных
+                  ингредиентов, внимания к тесту и терпения.
                 </p>
                 <p className="s-lead">
-                  Всё, что вы видите на витрине, сделано на нашем собственном
-                  производстве.
+                  От замеса до витрины всё делаем сами, на собственном
+                  производстве, — и сохраняем то, за что любят настоящую
+                  пекарню: знакомый вкус и аромат свежего хлеба.
                 </p>
               </div>
               <ul
@@ -168,26 +169,23 @@ export default function SitePage() {
                 <li>
                   <b>01</b>
                   <div>
-                    <strong>Каждый день свежее</strong>
-                    <p>
-                      Выпекаем каждый день, чтобы хлеб попадал к вам тёплым.
-                    </p>
+                    <strong>Свежая выпечка каждый день</strong>
+                    <p>Печём каждый день, чтобы к вам она попадала свежей.</p>
                   </div>
                 </li>
                 <li>
                   <b>02</b>
                   <div>
-                    <strong>Своё производство</strong>
-                    <p>От замеса до витрины — всё делаем сами.</p>
+                    <strong>Собственное производство</strong>
+                    <p>Сами создаём всю нашу выпечку — от теста до тортов.</p>
                   </div>
                 </li>
                 <li>
                   <b>03</b>
                   <div>
-                    <strong>Традиционные рецепты</strong>
+                    <strong>Традиции в каждом рецепте</strong>
                     <p>
-                      Дәстүрлі наубайхана — пекарня, которая бережёт вкус
-                      настоящего хлеба.
+                      Бережём проверенные временем рецепты и настоящий вкус.
                     </p>
                   </div>
                 </li>
@@ -207,8 +205,9 @@ export default function SitePage() {
                 </h2>
               </div>
               <p className="s-lead" style={{ maxWidth: "26em" }}>
-                Хрустящие багеты, слоёные круассаны, хлеб к столу и сладкое к
-                чаю — приходите за любимым.
+                Хрустящие багеты, ароматный хлеб, нежные круассаны, торты и
+                выпечка к чаю — для семейного завтрака, праздника или просто
+                хорошего дня.
               </p>
             </div>
             <div className="s-gallery">
@@ -262,8 +261,8 @@ export default function SitePage() {
                 className="s-bonus__lead s-reveal"
                 style={{ ["--d" as string]: "0.12s" }}
               >
-                Каждая покупка приносит баллы, а баллами можно оплатить часть
-                следующей. 1 балл = 1 ₸.
+                Мы рады каждому вашему возвращению: каждая покупка приносит
+                баллы, а баллами можно оплатить часть следующей. 1 балл = 1 ₸.
               </p>
               <div
                 className="s-stats s-reveal"
@@ -348,7 +347,7 @@ function Contacts() {
             className="s-h2 s-reveal"
             style={{ marginTop: 22, ["--d" as string]: "0.06s" }}
           >
-            Ждём вас <em>в гости</em>
+            Будем рады <em>вас видеть</em>
           </h2>
           {locations.length > 0 || direct.length > 0 ? (
             <div className="s-contacts">
@@ -380,6 +379,20 @@ function Contacts() {
           ) : (
             <p className="s-lead s-reveal" style={{ marginTop: 24 }}>
               Адреса наших пекарен скоро появятся здесь.
+            </p>
+          )}
+          {(whatsapp || phone) && (
+            <p className="s-reveal" style={{ marginTop: 36 }}>
+              <a
+                href={
+                  whatsapp
+                    ? `https://wa.me/${whatsapp.replace(/\D/g, "")}`
+                    : `tel:${phone.replace(/[^\d+]/g, "")}`
+                }
+                className="s-btn"
+              >
+                Связаться с нами
+              </a>
             </p>
           )}
           <p className="s-reveal" style={{ marginTop: 40 }}>

@@ -64,7 +64,7 @@
   color: var(--s-ink);
 }
 .s-h1 {
-  font-size: clamp(46px, 6.3vw, 92px);
+  font-size: clamp(44px, 5.6vw, 82px);
   line-height: 0.98;
 }
 .s-h2 {
@@ -86,6 +86,24 @@
   line-height: 1.7;
   color: var(--s-muted);
   max-width: 34em;
+}
+
+/* The Kazakh tagline from the logo, set like the proverb: serif italic. */
+.s-tagline {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  font-family: var(--s-serif);
+  font-style: italic;
+  font-size: clamp(22px, 2vw, 28px);
+  line-height: 1.2;
+  color: var(--s-brown);
+}
+.s-tagline::before {
+  content: "";
+  width: 32px;
+  height: 1px;
+  background: var(--s-wheat);
 }
 
 /* ── buttons ──────────────────────────────────────────────────────────── */
@@ -330,7 +348,7 @@
     padding-bottom: 110px;
   }
   .s-hero__grid {
-    grid-template-columns: 1.08fr 0.92fr;
+    grid-template-columns: 1.2fr 0.8fr;
     gap: 64px;
   }
   .s-hero__media {
@@ -853,4 +871,14 @@
     opacity: 1;
     transform: none;
   }
+}
+
+/* The tagline reads the same everywhere it appears. */
+.s-menu__foot,
+.s-footer__brand span {
+  font-family: var(--s-serif);
+  font-style: italic;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 20px;
 }
