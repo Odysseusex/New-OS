@@ -29,6 +29,7 @@ const sans = Manrope({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://ar-amir.com"),
   title: `${SITE_INFO.brand} — традиционная пекарня`,
   description:
     "Ар Амир — традиционная пекарня: хлеб, багеты, круассаны, торты и сладкая выпечка собственного производства. Бонусная программа для постоянных гостей.",

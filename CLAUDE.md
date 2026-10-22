@@ -926,8 +926,10 @@ policy at `/ar-amir/privacy` for the WhatsApp app's Live mode). Outside `(app)`,
 Cormorant Garamond (upright) + Noto Serif Display (every italic — Cormorant's italic Cyrillic «т» looks like «m», the owner disliked it) + Manrope via `next/font/google`, loaded only in this layout. Photos (owner-supplied) in
 `public/site/`. Every business FACT (legal name, ИИН/БИН, addresses, phone…) lives in `site-info.ts`; an empty value
 is not rendered — never put a placeholder or an invented fact on the page. Bonus figures there mirror the loyalty
-settings by hand. When the owner buys a domain, serve this route at its root by host (middleware rewrite), leaving
-the ERP on the vercel.app address.
+settings by hand. Domain **ar-amir.com** (bought in Vercel, `.com` on purpose — a `.kz` domain must be hosted on
+servers inside Kazahstan, which Vercel is not): `src/middleware.ts` serves the site at its root for that host
+(`/` → `/ar-amir`, `/privacy` → `/ar-amir/privacy`, `/ar-amir…` 308-redirects to the clean path) and every ERP route
+there is a 404; the ERP stays on the vercel.app address only.
 
 ## Prisma migration workflow (this sandbox has no direct prod DB access)
 
