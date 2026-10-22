@@ -99,7 +99,14 @@ export default function SitePage() {
                     />
                   </defs>
                   <text>
-                    <textPath href="#s-seal-path">
+                    {/* Spread over the whole circumference (2π·46 ≈ 289),
+                        so the join between the end and the start is as wide
+                        as every other gap. */}
+                    <textPath
+                      href="#s-seal-path"
+                      textLength="286"
+                      lengthAdjust="spacing"
+                    >
                       СВЕЖАЯ ВЫПЕЧКА • КАЖДЫЙ ДЕНЬ •
                     </textPath>
                   </text>

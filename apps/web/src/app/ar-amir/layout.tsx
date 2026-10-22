@@ -1,5 +1,9 @@
 import type { Metadata, Viewport } from "next";
-import { Cormorant_Garamond, Manrope } from "next/font/google";
+import {
+  Cormorant_Garamond,
+  Manrope,
+  Noto_Serif_Display,
+} from "next/font/google";
 import { SITE_INFO } from "./site-info";
 import "./site.css";
 
@@ -8,6 +12,13 @@ const serif = Cormorant_Garamond({
   weight: ["400", "500", "600"],
   style: ["normal", "italic"],
   variable: "--font-s-serif",
+  display: "swap",
+});
+const italic = Noto_Serif_Display({
+  subsets: ["latin", "cyrillic", "cyrillic-ext"],
+  weight: ["400"],
+  style: ["italic"],
+  variable: "--font-s-italic",
   display: "swap",
 });
 const sans = Manrope({
@@ -19,11 +30,13 @@ const sans = Manrope({
 
 export const metadata: Metadata = {
   title: `${SITE_INFO.brand} — традиционная пекарня`,
-  description: "Ар Амир — традиционная пекарня: хлеб, багеты, круассаны, торты и сладкая выпечка собственного производства. Бонусная программа для постоянных гостей.",
+  description:
+    "Ар Амир — традиционная пекарня: хлеб, багеты, круассаны, торты и сладкая выпечка собственного производства. Бонусная программа для постоянных гостей.",
   icons: { icon: "/site/logo-256.png", apple: "/site/logo-256.png" },
   openGraph: {
     title: `${SITE_INFO.brand} — традиционная пекарня`,
-    description: "Хлеб, багеты, круассаны, торты и сладкая выпечка собственного производства.",
+    description:
+      "Хлеб, багеты, круассаны, торты и сладкая выпечка собственного производства.",
     images: ["/site/hero-loaves.jpg"],
     locale: "ru_KZ",
     type: "website",
@@ -34,12 +47,22 @@ export const viewport: Viewport = {
   themeColor: "#fbf7f0",
 };
 
-export default function SiteLayout({ children }: { children: React.ReactNode }) {
+export default function SiteLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <div className={`s-site ${serif.variable} ${sans.variable}`}>
+    <div
+      className={`s-site ${serif.variable} ${italic.variable} ${sans.variable}`}
+    >
       {/* Flags the page before it paints so reveal-on-scroll starts hidden only
           when JS will be there to reveal it. */}
-      <script dangerouslySetInnerHTML={{ __html: "document.documentElement.classList.add('s-js')" }} />
+      <script
+        dangerouslySetInnerHTML={{
+          __html: "document.documentElement.classList.add('s-js')",
+        }}
+      />
       {children}
     </div>
   );
