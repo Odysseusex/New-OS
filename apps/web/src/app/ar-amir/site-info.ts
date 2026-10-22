@@ -11,13 +11,13 @@ export const SITE_INFO = {
   // ИИН / БИН
   taxId: "061107551240",
   legalAddress: "",
-  phone: "+7 778 637 8485",
+  phone: "",
   email: "amirmakhmudov8200@gmail.com",
   whatsapp: "",
   instagram: "",
   locations: [
-    { name: "Алтын Орда", address: "Микрорайон Алтын Орда, 4д", hours: "" },
-    { name: "Тауелсиздик", address: "Проспект Тауелсиздик, 11", hours: "" },
+    // One building with two street addresses — both lead to the same shop.
+    { name: "Пекарня и магазин", address: "г. Актобе, мкр. Алтын Орда, 4д\nпр. Тәуелсіздік, 11", hours: "" },
   ] as { name: string; address: string; hours: string }[],
 };
 

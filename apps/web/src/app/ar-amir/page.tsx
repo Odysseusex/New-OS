@@ -361,7 +361,7 @@ function Contacts() {
               {locations.map((l) => (
                 <div key={l.address} className="s-contact s-reveal">
                   <h3>{l.name}</h3>
-                  <p>{l.address}</p>
+                  <p style={{ whiteSpace: "pre-line" }}>{l.address}</p>
                   {l.hours && <p>{l.hours}</p>}
                 </div>
               ))}
