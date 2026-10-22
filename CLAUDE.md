@@ -918,6 +918,17 @@ key — the first real send happens when the owner's account is approved; check 
   `main.ts` — never re-serialise the JSON). A customer's message gets their balance as a free reply (24 h window, no
   consent needed); «СТОП»/«СТАРТ» record their consent; `user_preferences` stop = withdrawal.
 
+## Public bakery website — `/ar-amir` (built)
+
+`apps/web/src/app/ar-amir/` — the business's public site (Meta business verification needs one, plus a privacy
+policy at `/ar-amir/privacy` for the WhatsApp app's Live mode). Outside `(app)`, no login. Styles are scoped under
+`.s-site` in `site.css` with their own palette taken from the logo (the ERP's `--accent` is untouched); fonts
+Cormorant Garamond + Manrope via `next/font/google`, loaded only in this layout. Photos (owner-supplied) in
+`public/site/`. Every business FACT (legal name, ИИН/БИН, addresses, phone…) lives in `site-info.ts`; an empty value
+is not rendered — never put a placeholder or an invented fact on the page. Bonus figures there mirror the loyalty
+settings by hand. When the owner buys a domain, serve this route at its root by host (middleware rewrite), leaving
+the ERP on the vercel.app address.
+
 ## Prisma migration workflow (this sandbox has no direct prod DB access)
 
 Shadow-database diff, not `prisma migrate dev` (which can hang/prompt):
