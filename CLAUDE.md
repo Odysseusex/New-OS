@@ -560,8 +560,8 @@ re:Kassa's own ("TOO COMRUN"), not the user's ИП. Production needs its own
 
 ## Accounting architecture (Phases 0–10) — what a fresh session must know
 
-Phases 2–9 are merged and live on `main`. Phase 10 (general ledger) is on the
-feature branch, NOT merged or deployed. What changed and how to roll it out:
+Phases 2–10 are merged and live on `main` (the general ledger code is deployed; it stays OFF per
+organization until the owner/admin switches it on — see below). What changed and how to roll it out:
 `docs/ACCOUNTING-PHASES-2-9.md`, `docs/PHASE-10-GENERAL-LEDGER.md`. The rules below are the ones that are easy to
 break by accident:
 
