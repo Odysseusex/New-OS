@@ -1,4 +1,6 @@
 import type {
+  StockBatchRequestDto,
+  StockBatchResultDto,
   ProductDayTrailDto,
   DailyReconciliationDto,
   ReconciliationHistoryItemDto,
@@ -347,6 +349,9 @@ export const api = {
         method: "POST",
         body: JSON.stringify(dto),
       }),
+    // Several products in one document, all-or-nothing.
+    batch: (kind: "receipts" | "write-offs" | "adjustments", dto: StockBatchRequestDto) =>
+      request<StockBatchResultDto>(`/inventory/${kind}/batch`, { method: "POST", body: JSON.stringify(dto) }),
     adjust: (dto: AdjustStockRequestDto) =>
       request<StockMovementDto>("/inventory/adjustments", {
         method: "POST",

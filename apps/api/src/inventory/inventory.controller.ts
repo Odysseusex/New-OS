@@ -9,6 +9,7 @@ import { InventoryService } from "./inventory.service";
 import { ReceiveStockDto } from "./dto/receive-stock.dto";
 import { WriteOffStockDto } from "./dto/write-off-stock.dto";
 import { AdjustStockDto } from "./dto/adjust-stock.dto";
+import { AdjustStockBatchDto, ReceiveStockBatchDto, WriteOffStockBatchDto } from "./dto/stock-batch.dto";
 import { StockVoidService } from "./stock-void.service";
 import { CreateStockVoidDto, PreviewStockVoidDto } from "./dto/stock-void.dto";
 
@@ -52,6 +53,25 @@ export class InventoryController {
   @Roles(...INVENTORY_MANAGE_ROLES)
   adjust(@CurrentUser() user: AuthenticatedUser, @Body() dto: AdjustStockDto) {
     return this.inventoryService.adjust(user, dto);
+  }
+
+  // Several products in one document, all-or-nothing.
+  @Post("receipts/batch")
+  @Roles(...INVENTORY_MANAGE_ROLES)
+  receiveBatch(@CurrentUser() user: AuthenticatedUser, @Body() dto: ReceiveStockBatchDto) {
+    return this.inventoryService.applyBatch(user, "receive", dto);
+  }
+
+  @Post("write-offs/batch")
+  @Roles(...INVENTORY_MANAGE_ROLES)
+  writeOffBatch(@CurrentUser() user: AuthenticatedUser, @Body() dto: WriteOffStockBatchDto) {
+    return this.inventoryService.applyBatch(user, "write-off", dto);
+  }
+
+  @Post("adjustments/batch")
+  @Roles(...INVENTORY_MANAGE_ROLES)
+  adjustBatch(@CurrentUser() user: AuthenticatedUser, @Body() dto: AdjustStockBatchDto) {
+    return this.inventoryService.applyBatch(user, "adjustment", dto);
   }
 
   // ── Аннулирование ошибочного прихода и списания ──

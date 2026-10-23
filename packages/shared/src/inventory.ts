@@ -111,6 +111,27 @@ export interface AdjustStockRequestDto {
   reason: string;
 }
 
+// Several products in ONE document (Склад → Приёмка / Списание / Корректировка):
+// all lines are written in one transaction or none is. A product may appear once.
+export const STOCK_BATCH_MAX_LINES = 100;
+
+export interface StockBatchRequestDto {
+  locationId?: string;
+  // Shared by every line: the comment (receipt/write-off) or the reason (adjustment).
+  reason?: string;
+  // Write-offs only.
+  writeOffReason?: WriteOffReason;
+  // `quantity` is the amount received/written off, or — for an adjustment — the
+  // quantity actually on the shelf.
+  lines: { productId: string; quantity: number }[];
+}
+
+export interface StockBatchResultDto {
+  created: number;
+  // Adjustment lines whose count already matched the system: nothing written.
+  unchanged: string[];
+}
+
 export interface WriteOffReasonBreakdownDto {
   reason: WriteOffReason;
   quantity: number;

@@ -5,6 +5,7 @@ import { CATEGORY_WITH_PARENT, categoryLabel } from "../common/category-label";
 import {
   BusinessContextMovementRowDto,
   isStockLow,
+  StockBatchResultDto,
   StockLevelDto,
   StockMovementDto,
   StockMovementType,
@@ -17,8 +18,14 @@ import { requireLocationScope, resolveLocationScope } from "../common/location-s
 import { ReceiveStockDto } from "./dto/receive-stock.dto";
 import { WriteOffStockDto } from "./dto/write-off-stock.dto";
 import { AdjustStockDto } from "./dto/adjust-stock.dto";
+import { StockBatchLineDto } from "./dto/stock-batch.dto";
 import { StockMovementType as PrismaStockMovementType } from "@prisma/client";
 import { postLedgerSources } from "../ledger/event-posting";
+
+// A batch of up to 100 lines is a few hundred round trips against a remote database.
+const BATCH_TRANSACTION = { maxWait: 15_000, timeout: 120_000 };
+
+const round3 = (n: number) => Math.round((n + Number.EPSILON) * 1000) / 1000;
 
 @Injectable()
 export class InventoryService {
@@ -205,6 +212,113 @@ export class InventoryService {
       // the correction: the computed difference is stale, so recount.
       insufficientMessage: "Остаток изменился во время корректировки — обновите данные и повторите",
     });
+  }
+
+  // Several products in ONE document (Склад → Приёмка / Списание / Корректировка),
+  // written all-or-nothing: one line that cannot go through (not enough stock, a
+  // product that is not stocked) stops the whole document, naming the product.
+  // The single-product paths above stay as they were (the Telegram bot uses them).
+  async applyBatch(
+    user: AuthenticatedUser,
+    kind: "receive" | "write-off" | "adjustment",
+    dto: { locationId?: string; reason?: string; writeOffReason?: WriteOffReason; lines: StockBatchLineDto[] },
+  ): Promise<StockBatchResultDto> {
+    const organizationId = user.organizationId;
+    const locationId = requireLocationScope(user, dto.locationId);
+    const ids = dto.lines.map((l) => l.productId);
+    if (new Set(ids).size !== ids.length) {
+      throw new BadRequestException("Один и тот же товар указан дважды — объедините строки");
+    }
+    if (kind !== "adjustment" && dto.lines.some((l) => !(l.quantity > 0))) {
+      throw new BadRequestException("Количество должно быть больше нуля");
+    }
+    const location = await this.prisma.location.findFirst({ where: { id: locationId, organizationId }, select: { id: true } });
+    if (!location) throw new NotFoundException("Точка не найдена");
+
+    const products = await this.prisma.product.findMany({
+      where: { organizationId, id: { in: ids } },
+      select: { id: true, name: true, trackInventory: true, type: true, minQuantity: true },
+    });
+    if (products.length !== ids.length) throw new NotFoundException("Товар не найден");
+    const untracked = products.filter((p) => !p.trackInventory).map((p) => p.name);
+    if (untracked.length > 0) {
+      throw new BadRequestException(`Эти товары не учитываются на складе: ${untracked.join(", ")}`);
+    }
+    if (kind === "receive") {
+      const semi = products.filter((p) => p.type === "SEMI_FINISHED").map((p) => p.name);
+      if (semi.length > 0) {
+        throw new BadRequestException(`Полуфабрикат появляется на складе только из производства — приход вручную невозможен: ${semi.join(", ")}`);
+      }
+    }
+    const byId = new Map(products.map((p) => [p.id, p]));
+    const type =
+      kind === "receive"
+        ? PrismaStockMovementType.RECEIPT
+        : kind === "write-off"
+          ? PrismaStockMovementType.WRITE_OFF
+          : PrismaStockMovementType.ADJUSTMENT;
+
+    return this.prisma.$transaction(async (tx) => {
+      const unchanged: string[] = [];
+      let lines: { productId: string; quantity: number; delta: number }[];
+      if (kind === "adjustment") {
+        // The count is the truth; the difference is computed against stock as it is
+        // inside this transaction, and the decrement below re-checks it at the write.
+        const levels = await tx.stockLevel.findMany({ where: { locationId, productId: { in: ids } }, select: { productId: true, quantity: true } });
+        const current = new Map(levels.map((l) => [l.productId, l.quantity.toNumber()]));
+        lines = [];
+        for (const line of dto.lines) {
+          const delta = round3(line.quantity - (current.get(line.productId) ?? 0));
+          if (delta === 0) unchanged.push(byId.get(line.productId)!.name);
+          else lines.push({ productId: line.productId, quantity: delta, delta });
+        }
+        if (lines.length === 0) {
+          throw new BadRequestException("Фактические остатки совпадают с системными — корректировка не требуется");
+        }
+      } else {
+        lines = dto.lines.map((l) => ({ productId: l.productId, quantity: l.quantity, delta: kind === "receive" ? l.quantity : -l.quantity }));
+      }
+
+      // Valued when it happens (see CostingService), one read for the whole document.
+      const costs = await this.costing.snapshotCosts(organizationId, lines.map((l) => l.productId), tx);
+      const movementIds: string[] = [];
+      for (const line of lines) {
+        const product = byId.get(line.productId)!;
+        const created = await tx.stockMovement.create({
+          data: {
+            organizationId,
+            locationId,
+            productId: line.productId,
+            type,
+            quantity: line.quantity,
+            reason: dto.reason?.trim() || (kind === "receive" ? "Поступление" : undefined),
+            writeOffReason: kind === "write-off" ? dto.writeOffReason : undefined,
+            createdById: user.id,
+            ...this.costing.fields(costs.get(line.productId)),
+          },
+          select: { id: true },
+        });
+        movementIds.push(created.id);
+        if (line.delta < 0) {
+          await decrementStockOrThrow(
+            tx,
+            { locationId, productId: line.productId, quantity: -line.delta },
+            kind === "adjustment"
+              ? `Остаток изменился во время корректировки — обновите данные и повторите (${product.name})`
+              : `Недостаточно товара на складе для списания: ${product.name}`,
+          );
+        } else {
+          await tx.stockLevel.upsert({
+            where: { locationId_productId: { locationId, productId: line.productId } },
+            update: { quantity: { increment: line.delta } },
+            create: { organizationId, locationId, productId: line.productId, quantity: line.delta, minQuantity: product.minQuantity },
+          });
+        }
+      }
+      // Write-offs and corrections change inventory value: journalised with the movements.
+      await postLedgerSources(tx, { organizationId, actorId: user.id, scope: { stockMovementIds: movementIds } });
+      return { created: movementIds.length, unchanged };
+    }, BATCH_TRANSACTION);
   }
 
   private async assertTrackable(organizationId: string, productId: string): Promise<void> {

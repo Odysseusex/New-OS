@@ -820,6 +820,13 @@ screen recalculates as typed. `apps/api/src/reconciliation/`, migration `2026102
 always recomputed. One worksheet per location+day, saving again replaces it (audited `dailyReconciliation.save`).
 The till and the shelf are one unit (3 cashiers share one till at Мерей), so there is no per-cashier split.
 
+**Several products in one stock document** — Склад → Приёмка / Списание / Корректировка take many lines
+(`InventoryService.applyBatch`, `POST /inventory/{receipts|write-offs|adjustments}/batch`, max 100 lines,
+`STOCK_BATCH_MAX_LINES`). One transaction: one line short of stock stops the whole document and names the product;
+a product twice is refused; an adjustment line that already matches is skipped and reported. An empty quantity is
+never read as 0 (that would empty the shelf on a correction). The single-product endpoints are unchanged — the
+Telegram bot still uses them.
+
 ## Loyalty programme — stage 1 built (retail customer by phone + consent record)
 
 Research and owner decisions: `docs/CRM-LOYALTY-RESEARCH.md` §10–11. Code: `apps/api/src/loyalty/`,
