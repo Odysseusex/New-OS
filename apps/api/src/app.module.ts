@@ -38,6 +38,7 @@ import { AuditModule } from "./audit/audit.module";
 import { CostingModule } from "./costing/costing.service";
 import { StocktakeModule } from "./stocktake/stocktake.module";
 import { ReconciliationModule } from "./reconciliation/reconciliation.module";
+import { BackupModule } from "./backup/backup.module";
 
 @Module({
   imports: [
@@ -79,6 +80,7 @@ import { ReconciliationModule } from "./reconciliation/reconciliation.module";
     CostingModule,
     StocktakeModule,
     ReconciliationModule,
+    BackupModule,
   ],
   controllers: [AppController],
 })

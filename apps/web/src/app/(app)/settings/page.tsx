@@ -17,6 +17,7 @@ import {
   HARD_DELETE_ROLES,
   PROMOTION_MANAGE_ROLES,
   ROLE_LABELS_RU,
+  Role,
   USER_MANAGE_ROLES,
 } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
@@ -25,6 +26,7 @@ import { useAuth } from "@/lib/auth-context";
 import { KaspiTerminalCard } from "@/components/kaspi-terminal-card";
 import { AccountingPolicyCard } from "@/components/accounting-policy-card";
 import { AuditLogCard } from "@/components/audit-log-card";
+import { BackupCard } from "@/components/backup-card";
 import { UserAccountModal } from "@/components/user-account-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 import { PromotionModal } from "@/components/promotion-modal";
@@ -34,6 +36,7 @@ export default function SettingsPage() {
   const { user } = useAuth();
   const canManage = user ? USER_MANAGE_ROLES.includes(user.role) : false;
   const canSeeFiscal = user ? HARD_DELETE_ROLES.includes(user.role) : false;
+  const isOwner = user?.role === Role.OWNER;
   const canManagePromotions = user ? PROMOTION_MANAGE_ROLES.includes(user.role) : false;
 
   const [accounts, setAccounts] = useState<UserAccountDto[]>([]);
@@ -96,6 +99,7 @@ export default function SettingsPage() {
         {canManagePromotions && <PromotionsCard />}
         {canSeeFiscal && <AccountingPolicyCard />}
         {canSeeFiscal && <AuditLogCard />}
+        {isOwner && <BackupCard />}
       </div>
 
       {!canManage && (

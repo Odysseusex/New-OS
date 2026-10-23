@@ -23,6 +23,10 @@ simple Russian (see CLAUDE.md conventions).
 * 2026-10-23: «Сверка дня» (Продажи → «Сверка дня»): the day's expected cash/card and closing stock per product
   vs what was counted; see CLAUDE.md. The operator role can now plan/complete production tasks.
 
+* 2026-10-23: «Скачать все данные» + restore script + `docs/RESTORE.md`. Owner advised (not yet confirmed done): Neon
+  paid plan (free keeps only 6 h of history), Render Starter ($7, free sleeps after 15 min), a password manager,
+  2FA recovery codes, a weekly data download and a monthly ZIP of the code.
+
 ## Open items / decisions waiting for the owner
 * FIXED 2026-10-16: «today»/rolling day boundaries now start at Almaty midnight (`common/zoned-day.ts`) — Sales summary, Network overview, Finance today, period comparisons, Telegram reports. (AI-центр buckets left as they were — module deferred.)
 * Mass flagging of goods «под реализацию» by SKU file (the village's goods): proposed, NOT built. The owner saw a

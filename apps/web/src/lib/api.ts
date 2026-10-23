@@ -259,6 +259,33 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   me: () => request<LoginResponseDto["user"]>("/auth/me"),
+  backup: {
+    status: () => request<{ lastExportAt: string | null; lastExportBy: string | null }>("/backup/status"),
+    // The file is built by the server while it streams; the browser keeps it as a download.
+    download: async (): Promise<{ filename: string; size: number }> => {
+      const token = typeof window !== "undefined" ? localStorage.getItem("bakery_token") : null;
+      const res = await fetch(`${API_URL}/backup/export`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new ApiError(body.message ?? `Ошибка запроса: ${res.status}`);
+      }
+      const blob = await res.blob();
+      // A file cut off on the way is detectable: it has no closing marker.
+      const tail = await blob.slice(Math.max(0, blob.size - 40)).text();
+      if (!tail.includes('"complete":true')) throw new ApiError("Файл скачался не полностью — повторите");
+      // Named here: the browser may not read the server's Content-Disposition across origins.
+      const filename = `aramir-data-${new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Almaty" }).format(new Date())}.json`;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      return { filename, size: blob.size };
+    },
+  },
   dashboardSummary: () => request<DashboardSummaryDto>("/dashboard/summary"),
   locations: {
     list: (includeArchived?: boolean) =>

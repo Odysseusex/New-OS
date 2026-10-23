@@ -827,6 +827,19 @@ a product twice is refused; an adjustment line that already matches is skipped a
 never read as 0 (that would empty the shelf on a correction). The single-product endpoints are unchanged — the
 Telegram bot still uses them.
 
+## «Скачать все данные» (backup / disaster recovery) — built
+
+Настройки → «Резервная копия данных» (OWNER only): `GET /api/backup/export` streams the WHOLE database as one JSON
+file (`apps/api/src/backup/`, format in `backup-format.ts`), read inside ONE repeatable-read snapshot, 1000-row pages,
+audited (`dataExport.download`), ends with `"complete":true` so a cut-off download is detectable. NO `users.passwordHash`,
+no `telegram_link_tokens`/`_prisma_migrations`; a spec fails if a secret-looking column is added without a decision.
+Restore: `apps/api/scripts/restore-export.ts <file> --yes` into an EMPTY database after `prisma migrate deploy` —
+refuses a non-empty target, all-or-nothing, per-table row counts checked, one temporary password for every user.
+FK loops (organizations ↔ users) are loaded with the nullable side empty then filled (`deferred`); a column under a CHECK
+is never deferred. Verified round trip: every table identical (md5) and same P&L/stock via the API, with the ledger on.
+Not built: an in-app restore button (a wrong click would overwrite live data) and scheduled automatic exports (needs
+storage credentials). Full procedure and what to keep where: `docs/RESTORE.md`.
+
 ## Loyalty programme — stage 1 built (retail customer by phone + consent record)
 
 Research and owner decisions: `docs/CRM-LOYALTY-RESEARCH.md` §10–11. Code: `apps/api/src/loyalty/`,

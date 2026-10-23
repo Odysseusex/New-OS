@@ -21,7 +21,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "ts-node prisma/seed.ts",
-    "finance:diagnostics": "ts-node scripts/finance-diagnostics.ts"
+    "finance:diagnostics": "ts-node scripts/finance-diagnostics.ts",
+    "restore:export": "ts-node scripts/restore-export.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
