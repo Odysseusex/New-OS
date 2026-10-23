@@ -3,17 +3,32 @@
 import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import type { LocationDto, ProductDto, StockLevelDto } from "@bakery-os/shared";
-import { STOCK_BATCH_MAX_LINES, UNIT_LABELS_RU, WRITE_OFF_REASON_LABELS_RU, WriteOffReason } from "@bakery-os/shared";
+import { ProductType, STOCK_BATCH_MAX_LINES, UNIT_LABELS_RU, WRITE_OFF_REASON_LABELS_RU, WriteOffReason } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
 import { ProductSelect } from "@/components/product-select";
-import { formatQuantity } from "@/lib/format";
+import { formatMoney, formatQuantity } from "@/lib/format";
 
 interface Row {
   key: number;
   productId: string;
   quantity: string;
 }
+
+// What the product card's price means depends on the type: a finished good's is
+// what it sells for, raw material's and packaging's is what it is bought for. The
+// two are never added together. Shown for checking only — nothing here is saved.
+type PriceKind = "SALE" | "PURCHASE";
+const priceKindOf = (product: ProductDto): PriceKind | null =>
+  product.type === ProductType.FINISHED_GOOD
+    ? "SALE"
+    : product.type === ProductType.RAW_MATERIAL || product.type === ProductType.PACKAGING
+      ? "PURCHASE"
+      : null;
+const PRICE_LABEL: Record<PriceKind, string> = { SALE: "Цена продажи", PURCHASE: "Закупочная цена" };
+const TOTAL_LABEL: Record<PriceKind, string> = { SALE: "по цене продажи", PURCHASE: "по закупочной цене" };
+const signedMoney = (v: number) => (v > 0 ? `+${formatMoney(v)}` : formatMoney(v || 0));
+const signedQuantity = (v: number) => (v > 0 ? `+${formatQuantity(v)}` : formatQuantity(v));
 
 let nextKey = 1;
 const newRow = (productId = ""): Row => ({ key: nextKey++, productId, quantity: "" });
@@ -118,6 +133,22 @@ export function StockMovementModal({
 
   const title = isReceive ? "Приёмка товара" : isAdjustment ? "Корректировка остатка" : "Списание товара";
   const count = chosen.length;
+
+  // Per line: the quantity this document moves (for a correction, the difference
+  // from what the system holds), and its value at the card's price.
+  const lineFigures = (row: Row) => {
+    const product = products.find((p) => p.id === row.productId);
+    const typed = Number(row.quantity.replace(",", "."));
+    if (!product || row.quantity.trim() === "" || !Number.isFinite(typed)) return null;
+    const moved = isAdjustment ? Math.round((typed - (levelOf(product.id)?.quantity ?? 0)) * 1000) / 1000 : typed;
+    const kind = priceKindOf(product);
+    return { moved, kind, value: kind ? Math.round(moved * product.price * 100) / 100 : null };
+  };
+  const totals = new Map<PriceKind, number>();
+  for (const row of rows) {
+    const f = lineFigures(row);
+    if (f?.kind && f.value !== null) totals.set(f.kind, (totals.get(f.kind) ?? 0) + f.value);
+  }
   const action = isReceive ? "Оприходовать" : isAdjustment ? "Сохранить корректировку" : "Списать";
 
   return (
@@ -149,6 +180,7 @@ export function StockMovementModal({
           {rows.map((row) => {
             const product = products.find((p) => p.id === row.productId);
             const level = row.productId ? levelOf(row.productId) : undefined;
+            const figures = lineFigures(row);
             return (
               <div key={row.key}>
                 <div className="flex items-center gap-2">
@@ -176,9 +208,18 @@ export function StockMovementModal({
                     <Trash2 className="h-4 w-4" strokeWidth={1.75} />
                   </button>
                 </div>
-                {product && (isAdjustment || !isReceive) && (
+                {product && (
                   <p className="mt-1 text-xs text-muted">
-                    По системе сейчас: {level ? formatQuantity(level.quantity) : "0"} {UNIT_LABELS_RU[product.unit]}
+                    {[
+                      !isReceive ? `По системе сейчас: ${level ? formatQuantity(level.quantity) : "0"} ${UNIT_LABELS_RU[product.unit]}` : null,
+                      isAdjustment && figures ? `Разница: ${signedQuantity(figures.moved)} ${UNIT_LABELS_RU[product.unit]}` : null,
+                      priceKindOf(product) ? `${PRICE_LABEL[priceKindOf(product)!]}: ${formatMoney(product.price)}` : null,
+                      figures?.value !== null && figures?.value !== undefined
+                        ? `${isAdjustment ? "" : "Сумма: "}${isAdjustment ? signedMoney(figures.value) : formatMoney(figures.value)}`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </p>
                 )}
                 {row.productId && duplicateIds.has(row.productId) && <p className="mt-1 text-xs text-red-600">Этот товар уже есть в списке</p>}
@@ -231,6 +272,23 @@ export function StockMovementModal({
             className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
           />
         </div>
+
+        {totals.size > 0 && (
+          <div className="mb-4 rounded-xl bg-surface-muted px-4 py-3 text-sm">
+            {(["SALE", "PURCHASE"] as PriceKind[])
+              .filter((kind) => totals.has(kind))
+              .map((kind) => (
+                <div key={kind} className="flex items-center justify-between py-0.5">
+                  <span className="text-muted">
+                    {isAdjustment ? "Разница" : "Итого"} {TOTAL_LABEL[kind]}
+                  </span>
+                  <span className="font-semibold text-foreground">
+                    {isAdjustment ? signedMoney(totals.get(kind)!) : formatMoney(totals.get(kind)!)}
+                  </span>
+                </div>
+              ))}
+          </div>
+        )}
 
         {error && <div className="mb-4 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
         {notice && <div className="mb-4 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-700">{notice}</div>}
