@@ -20,6 +20,16 @@ export class ReconciliationController {
     return this.service.history(user, locationId);
   }
 
+  @Get("product-trail")
+  productTrail(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("locationId") locationId: string | undefined,
+    @Query("date") date: string,
+    @Query("productId") productId: string,
+  ) {
+    return this.service.productTrail(user, locationId, date, productId);
+  }
+
   @Get()
   get(@CurrentUser() user: AuthenticatedUser, @Query("locationId") locationId: string | undefined, @Query("date") date: string) {
     return this.service.get(user, locationId, date);

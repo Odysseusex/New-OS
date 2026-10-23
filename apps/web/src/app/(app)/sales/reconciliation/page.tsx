@@ -18,6 +18,7 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
 import { zonedDateKey } from "@/lib/reporting-period";
+import { ProductTrailModal } from "@/components/product-trail-modal";
 
 const inputClass =
   "w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
@@ -69,6 +70,7 @@ function ReconciliationScreen() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [onlyDifferences, setOnlyDifferences] = useState(false);
+  const [trailFor, setTrailFor] = useState<{ productId: string; productName: string } | null>(null);
 
   // A user tied to one location reconciles that location; the server enforces it too.
   const effectiveLocationId = isOrgWide ? locationId : (user?.locationId ?? "");
@@ -343,7 +345,14 @@ function ReconciliationScreen() {
                     return (
                       <tr key={line.productId}>
                         <td className="px-4 py-2 text-foreground">
-                          {line.productName}
+                          <button
+                            type="button"
+                            onClick={() => setTrailFor({ productId: line.productId, productName: line.productName })}
+                            title="Движение за день"
+                            className="text-left underline decoration-dotted underline-offset-4 hover:text-accent"
+                          >
+                            {line.productName}
+                          </button>
                           {line.consignment && <span className="ml-1.5 rounded-full bg-surface-muted px-2 py-0.5 text-xs text-muted">под реализацию</span>}
                         </td>
                         <td className="px-3 py-2 text-right text-muted">{formatQuantity(line.opening)}</td>
@@ -395,6 +404,16 @@ function ReconciliationScreen() {
             <textarea value={note} onChange={(e) => edit(setNote)(e.target.value)} rows={2} className={inputClass} />
           </div>
         </>
+      )}
+
+      {trailFor && day && (
+        <ProductTrailModal
+          locationId={day.locationId}
+          date={day.date}
+          productId={trailFor.productId}
+          productName={trailFor.productName}
+          onClose={() => setTrailFor(null)}
+        />
       )}
 
       <div className="rounded-2xl border border-border bg-surface shadow-card">

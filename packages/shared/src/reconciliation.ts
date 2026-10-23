@@ -1,5 +1,6 @@
 import { Unit } from "./catalog";
 import { CashMovementType, PaymentMethod } from "./finance";
+import { StockMovementType } from "./inventory";
 
 // «Сверка дня» — one location, one business day (Asia/Almaty): what the shelf and
 // the till should hold according to the ledgers, against what was counted.
@@ -95,6 +96,31 @@ export interface ReconciliationHistoryItemDto {
   result: number | null;
   savedAt: string;
   savedByName: string;
+}
+
+// Everything that happened to one product at one location in one day, in order,
+// with the balance after each step — to check a cashier's «система не даёт
+// пробить» against what was actually received and rung up.
+export interface ProductTrailRowDto {
+  at: string;
+  type: StockMovementType;
+  // Signed effect on the shelf.
+  change: number;
+  balance: number;
+  byName: string;
+  reason: string | null;
+  // For a sale: the whole check it was part of.
+  sale: { total: number; paymentMethod: PaymentMethod; itemsCount: number } | null;
+}
+
+export interface ProductDayTrailDto {
+  productId: string;
+  productName: string;
+  unit: Unit;
+  date: string;
+  opening: number;
+  closing: number;
+  rows: ProductTrailRowDto[];
 }
 
 export interface ReconciliationSummary {

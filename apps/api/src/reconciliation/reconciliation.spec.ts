@@ -126,6 +126,21 @@ describe("a day at the till", () => {
     expect(s.expectedCard).toBe(600);
   });
 
+  it("tells one product's day step by step, with the balance after each", async () => {
+    const trail = await service.productTrail(org.user, org.storeId, today, breadId);
+    expect(trail.opening).toBe(10);
+    expect(trail.rows.map((r) => [r.type, r.change, r.balance])).toEqual([
+      ["RECEIPT", 20, 30],
+      ["SALE", -3, 27],
+      ["SALE", -2, 25],
+      ["SALE_RETURN", 1, 26],
+    ]);
+    expect(trail.rows[1].sale).toEqual({ total: 1900, paymentMethod: PaymentMethod.CASH, itemsCount: 2 });
+    expect(trail.rows[2].sale?.paymentMethod).toBe(PaymentMethod.CARD);
+    expect(trail.closing).toBe(26);
+    expect(trail.rows[0].byName).toBe(org.user.fullName);
+  });
+
   it("saves the counts, shows the loss, and keeps it in the history", async () => {
     const day = await service.save(org.user, {
       locationId: org.storeId,

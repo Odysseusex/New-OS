@@ -1,4 +1,5 @@
 import type {
+  ProductDayTrailDto,
   DailyReconciliationDto,
   ReconciliationHistoryItemDto,
   SaveDailyReconciliationRequestDto,
@@ -370,6 +371,8 @@ export const api = {
       request<DailyReconciliationDto>("/reconciliation", { method: "PUT", body: JSON.stringify(dto) }),
     history: (locationId?: string) =>
       request<ReconciliationHistoryItemDto[]>(withQuery("/reconciliation/history", { locationId })),
+    productTrail: (locationId: string, date: string, productId: string) =>
+      request<ProductDayTrailDto>(withQuery("/reconciliation/product-trail", { locationId, date, productId })),
   },
 
   stocktakes: {

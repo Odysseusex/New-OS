@@ -4,7 +4,9 @@ import {
   CashMovementType,
   DailyReconciliationDto,
   PaymentMethod,
+  ProductDayTrailDto,
   ReconciliationHistoryItemDto,
+  StockMovementType,
   ReconciliationMoneyDto,
   ReconciliationStockLineDto,
   ReconciliationTillMovementDto,
@@ -172,6 +174,48 @@ export class ReconciliationService {
       savedAt: r.updatedAt.toISOString(),
       savedByName: r.savedBy.fullName,
     }));
+  }
+
+  async productTrail(user: AuthenticatedUser, requestedLocationId: string | undefined, date: string, productId: string): Promise<ProductDayTrailDto> {
+    const locationId = requireLocationScope(user, requestedLocationId);
+    const { start, end } = businessDayRange(date);
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, organizationId: user.organizationId },
+      select: { id: true, name: true, unit: true },
+    });
+    if (!product) throw new NotFoundException("Товар не найден");
+    const where = { organizationId: user.organizationId, locationId, productId, NOT: { type: "WRITE_OFF" as const, saleReturnId: { not: null } } };
+    const [before, movements] = await Promise.all([
+      this.prisma.stockMovement.groupBy({ by: ["type"], where: { ...where, createdAt: { lt: start } }, _sum: { quantity: true } }),
+      this.prisma.stockMovement.findMany({
+        where: { ...where, createdAt: { gte: start, lt: end } },
+        orderBy: { createdAt: "asc" },
+        select: {
+          type: true,
+          quantity: true,
+          reason: true,
+          createdAt: true,
+          createdBy: { select: { fullName: true } },
+          sale: { select: { totalAmount: true, paymentMethod: true, _count: { select: { items: true } } } },
+        },
+      }),
+    ]);
+    const opening = round3(before.reduce((sum, g) => sum + stockEffectOf({ type: g.type, quantity: g._sum.quantity?.toNumber() ?? 0 }), 0));
+    let balance = opening;
+    const rows = movements.map((m) => {
+      const change = round3(stockEffectOf({ type: m.type, quantity: m.quantity.toNumber() }));
+      balance = round3(balance + change);
+      return {
+        at: m.createdAt.toISOString(),
+        type: m.type as StockMovementType,
+        change,
+        balance,
+        byName: m.createdBy.fullName,
+        reason: m.reason,
+        sale: m.sale ? { total: m.sale.totalAmount.toNumber(), paymentMethod: m.sale.paymentMethod as PaymentMethod, itemsCount: m.sale._count.items } : null,
+      };
+    });
+    return { productId: product.id, productName: product.name, unit: product.unit as Unit, date, opening, closing: balance, rows };
   }
 
   // Opening = every movement before the day; the day's own movements split by kind.
