@@ -52,6 +52,18 @@ export const SALE_CREATE_ROLES: Role[] = [
   Role.OPERATOR,
 ];
 
+// «Сверка дня» (till + shelf against the ledgers). Cashiers are deliberately left
+// out: the people being checked must count blind, without seeing what the system
+// expects. The operator is in because in a small bakery she keeps the documents.
+export const RECONCILIATION_ROLES: Role[] = [
+  Role.OWNER,
+  Role.ADMIN,
+  Role.REGIONAL_MANAGER,
+  Role.STORE_MANAGER,
+  Role.ACCOUNTANT,
+  Role.OPERATOR,
+];
+
 // Refunds are money leaving the till against goods coming back, which is the
 // classic till-fraud shape — so this is deliberately NARROWER than
 // SALE_CREATE_ROLES: a cashier can sell but not refund. Widen it only if the

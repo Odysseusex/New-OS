@@ -339,6 +339,7 @@ model Organization {
   accountingPolicy AccountingPolicy?
   auditLogs        AuditLog[]
   stocktakes       Stocktake[]
+  dailyReconciliations DailyReconciliation[]
   financialPeriods FinancialPeriod[]
 
   // General ledger (Phase 10). Null = the ledger is OFF: nothing is posted and
@@ -413,6 +414,7 @@ model Location {
   promotions            Promotion[]
   promotionRedemptions  PromotionCoupon[]
   stocktakes            Stocktake[]
+  dailyReconciliations  DailyReconciliation[]
   fixedAssets           FixedAsset[]
 
   @@index([organizationId])
@@ -489,6 +491,7 @@ model User {
   accountingPolicyUpdates   AccountingPolicy[] @relation("AccountingPolicyUpdatedBy")
   stocktakesCreated         Stocktake[]        @relation("StocktakeCreatedBy")
   stocktakesApproved        Stocktake[]        @relation("StocktakeApprovedBy")
+  dailyReconciliationsSaved DailyReconciliation[] @relation("DailyReconciliationSavedBy")
   periodsClosed             FinancialPeriod[]  @relation("PeriodClosedBy")
   periodsReopened           FinancialPeriod[]  @relation("PeriodReopenedBy")
   periodSnapshotsCreated    PeriodSnapshot[]   @relation("PeriodSnapshotCreatedBy")
@@ -2880,4 +2883,52 @@ model LoyaltyBirthdayGrant {
   @@unique([familyMemberId, year])
   @@index([organizationId])
   @@map("loyalty_birthday_grants")
+}
+
+// «Сверка дня»: what the till and the shelf of one location should hold at the end
+// of one business day (Asia/Almaty) against what was counted. A control worksheet,
+// not an accounting document: saving it moves no stock and no money — the expected
+// side is always recomputed from the ledgers, only the counts and the summary as it
+// stood when saved are kept. One per location and day; saving again replaces it.
+model DailyReconciliation {
+  id              String       @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  locationId      String
+  location        Location     @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  // "YYYY-MM-DD" on the Almaty wall clock.
+  businessDate    String
+  // Change left in the drawer at the start of the day (размен).
+  openingCash     Decimal?     @db.Decimal(14, 2)
+  countedCash     Decimal?     @db.Decimal(14, 2)
+  countedCard     Decimal?     @db.Decimal(14, 2)
+  countedTransfer Decimal?     @db.Decimal(14, 2)
+  note            String?
+  // The summary as it stood when saved (for the history list).
+  moneyDifference Decimal?     @db.Decimal(14, 2)
+  goodsDifference Decimal?     @db.Decimal(14, 2)
+  result          Decimal?     @db.Decimal(14, 2)
+  savedById       String
+  savedBy         User         @relation("DailyReconciliationSavedBy", fields: [savedById], references: [id])
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  lines DailyReconciliationLine[]
+
+  @@unique([organizationId, locationId, businessDate])
+  @@index([organizationId, businessDate])
+  @@map("daily_reconciliations")
+}
+
+// One counted product. A plain productId (no FK), like the ledger's dimensions, so a
+// guarded hard delete of a product is never blocked by an old worksheet.
+model DailyReconciliationLine {
+  id               String              @id @default(cuid())
+  reconciliationId String
+  reconciliation   DailyReconciliation @relation(fields: [reconciliationId], references: [id], onDelete: Cascade)
+  productId        String
+  countedQuantity  Decimal             @db.Decimal(12, 3)
+
+  @@unique([reconciliationId, productId])
+  @@map("daily_reconciliation_lines")
 }
