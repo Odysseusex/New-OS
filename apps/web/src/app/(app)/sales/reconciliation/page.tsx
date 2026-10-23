@@ -262,23 +262,23 @@ function ReconciliationScreen() {
           <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div className="rounded-2xl border border-border bg-surface p-5 shadow-card">
               <h2 className="mb-3 text-sm font-semibold text-foreground">Наличные</h2>
-              <MoneyInputRow label="Размен на начало дня" value={openingCash} onChange={edit(setOpeningCash)} />
+              <MoneyInputRow label="Наличные в кассе утром" value={openingCash} onChange={edit(setOpeningCash)} />
               <MoneyRow label="Продажи" value={money.cashSales} />
               <MoneyRow label="Возвраты" value={-money.cashRefunds} />
               {money.tillMovements.map((m) => (
                 <MoneyRow key={m.type} label={CASH_MOVEMENT_TYPE_LABELS_RU[m.type]} value={m.amount} />
               ))}
-              <MoneyRow label="Ожидается в кассе" value={summary.expectedCash} strong />
-              <MoneyInputRow label="Фактически в кассе" value={countedCash} onChange={edit(setCountedCash)} />
+              <MoneyRow label="Должно быть в кассе" value={summary.expectedCash} strong />
+              <MoneyInputRow label="Пересчитали вечером" value={countedCash} onChange={edit(setCountedCash)} />
               <DifferenceRow value={summary.cashDifference} />
             </div>
 
             <div className="rounded-2xl border border-border bg-surface p-5 shadow-card">
-              <h2 className="mb-3 text-sm font-semibold text-foreground">Карта</h2>
+              <h2 className="mb-3 text-sm font-semibold text-foreground">Карта / Kaspi</h2>
               <MoneyRow label="Продажи" value={money.cardSales} />
               <MoneyRow label="Возвраты" value={-money.cardRefunds} />
-              <MoneyRow label="Ожидается" value={summary.expectedCard} strong />
-              <MoneyInputRow label="По терминалу" value={countedCard} onChange={edit(setCountedCard)} />
+              <MoneyRow label="Должно прийти" value={summary.expectedCard} strong />
+              <MoneyInputRow label="Пришло по Kaspi / терминалу" value={countedCard} onChange={edit(setCountedCard)} />
               <DifferenceRow value={summary.cardDifference} />
 
               {showTransfer && (
@@ -286,8 +286,8 @@ function ReconciliationScreen() {
                   <h2 className="mb-3 mt-5 text-sm font-semibold text-foreground">Перевод</h2>
                   <MoneyRow label="Продажи" value={money.transferSales} />
                   <MoneyRow label="Возвраты" value={-money.transferRefunds} />
-                  <MoneyRow label="Ожидается" value={summary.expectedTransfer} strong />
-                  <MoneyInputRow label="Фактически поступило" value={countedTransfer} onChange={edit(setCountedTransfer)} />
+                  <MoneyRow label="Должно прийти" value={summary.expectedTransfer} strong />
+                  <MoneyInputRow label="Пришло переводами" value={countedTransfer} onChange={edit(setCountedTransfer)} />
                   <DifferenceRow value={summary.transferDifference} />
                 </>
               )}
@@ -331,8 +331,8 @@ function ReconciliationScreen() {
                     <th className="px-3 py-3 text-right font-medium">Продано</th>
                     <th className="px-3 py-3 text-right font-medium">Возврат</th>
                     <th className="px-3 py-3 text-right font-medium">Списано / прочее</th>
-                    <th className="px-3 py-3 text-right font-medium">По системе</th>
-                    <th className="px-3 py-3 text-right font-medium">Факт</th>
+                    <th className="px-3 py-3 text-right font-medium">Должно быть</th>
+                    <th className="px-3 py-3 text-right font-medium">Посчитали</th>
                     <th className="px-3 py-3 text-right font-medium">Разница</th>
                     <th className="px-4 py-3 text-right font-medium">Сумма</th>
                   </tr>

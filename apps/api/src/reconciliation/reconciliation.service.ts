@@ -205,7 +205,9 @@ export class ReconciliationService {
     const ids = [...acc.entries()].filter(([, a]) => a.moved || Math.abs(a.opening) > 1e-9).map(([id]) => id);
     if (ids.length === 0) return [];
     const products = await this.prisma.product.findMany({
-      where: { organizationId, id: { in: ids }, trackInventory: true },
+      // Only what the shop sells (own goods and goods «под реализацию»): raw materials,
+      // packaging and semi-finished stock are not part of the till's day.
+      where: { organizationId, id: { in: ids }, trackInventory: true, type: "FINISHED_GOOD" },
       select: { id: true, name: true, sku: true, unit: true, price: true, consignmentSupplierId: true },
     });
     return products

@@ -107,6 +107,12 @@ describe("a day at the till", () => {
     const cheese = day.lines.find((l) => l.productId === cheeseId)!;
     expect(cheese.consignment).toBe(true);
     expect(cheese.closing).toBe(4);
+    // Raw materials kept at the shop are not part of the till's day.
+    const spread = await prisma.product.create({
+      data: { organizationId: org.organizationId, name: "Спред", sku: "R-3", type: ProductType.RAW_MATERIAL, price: 2000, unit: Unit.KG },
+    });
+    await services.inventory.receive(org.user, { locationId: org.storeId, productId: spread.id, quantity: 10 });
+    expect((await service.get(org.user, org.storeId, today)).lines.some((l) => l.productId === spread.id)).toBe(false);
   });
 
   it("knows what the drawer and the terminal should hold", async () => {
