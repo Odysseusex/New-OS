@@ -31,7 +31,7 @@ const sans = Manrope({
 export const metadata: Metadata = {
   metadataBase: new URL("https://ar-amir.com"),
   // Meta Business Manager → Domains: proves ar-amir.com belongs to the business.
-  verification: { other: { "facebook-domain-verification": "qgyk30adfwn5gqwscd6tpkx90ndz0q" } },
+  verification: { other: { "facebook-domain-verification": "sda2alo4t9o0tujhj4lkzyyyps3lt8c" } },
   title: `${SITE_INFO.brand} — традиционная пекарня`,
   description:
     "Ар Амир — традиционная пекарня: хлеб, багеты, круассаны, торты и сладкая выпечка собственного производства. Бонусная программа для постоянных гостей.",
