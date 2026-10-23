@@ -55,6 +55,7 @@ export const AUDIT_ACTION_GROUPS = {
   productClassification: ["classification.apply", "classification.revert"],
   stocktake: ["stocktake.create", "stocktake.submit", "stocktake.reopen", "stocktake.approve", "stocktake.cancel"],
   stockVoid: ["stockVoid.create"],
+  dailyReconciliation: ["dailyReconciliation.save"],
   loyalty: ["loyaltyMember.create", "loyaltyMember.update", "loyaltyMember.consent", "loyaltyMember.merge", "loyaltyMember.import"],
   loyaltyPoints: ["loyaltySettings.update", "loyaltyPoints.adjust"],
   loyaltyFamily: ["loyaltyFamily.add", "loyaltyFamily.update", "loyaltyFamily.remove"],

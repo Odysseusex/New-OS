@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Coins, Package, Plus, Receipt, TrendingUp, Wallet, X } from "lucide-react";
+import Link from "next/link";
+import { ClipboardCheck, Coins, Package, Plus, Receipt, TrendingUp, Wallet, X } from "lucide-react";
 import type { CustomerDto, LocationDto, ProductDto, SaleDto, SalesReportDto, SalesSummaryDto } from "@bakery-os/shared";
-import { ORG_WIDE_ROLES, PAYMENT_RECORD_ROLES, ProductType, SALE_CREATE_ROLES } from "@bakery-os/shared";
+import { ORG_WIDE_ROLES, PAYMENT_RECORD_ROLES, ProductType, RECONCILIATION_ROLES, SALE_CREATE_ROLES } from "@bakery-os/shared";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney } from "@/lib/format";
@@ -20,6 +21,7 @@ export default function SalesPage() {
   const isOrgWide = user ? ORG_WIDE_ROLES.includes(user.role) : false;
   const canCreateSale = user ? SALE_CREATE_ROLES.includes(user.role) : false;
   const canRecordPayment = user ? PAYMENT_RECORD_ROLES.includes(user.role) : false;
+  const canReconcile = user ? RECONCILIATION_ROLES.includes(user.role) : false;
 
   const [locations, setLocations] = useState<LocationDto[]>([]);
   const [products, setProducts] = useState<ProductDto[]>([]);
@@ -134,6 +136,15 @@ export default function SalesPage() {
                 </option>
               ))}
             </select>
+          )}
+          {canReconcile && (
+            <Link
+              href={`/sales/reconciliation${locationFilter ? `?locationId=${locationFilter}` : ""}`}
+              className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3.5 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+            >
+              <ClipboardCheck className="h-4 w-4" strokeWidth={1.75} />
+              Сверка дня
+            </Link>
           )}
           {canCreateSale && (
             <button

@@ -1,4 +1,7 @@
 import type {
+  DailyReconciliationDto,
+  ReconciliationHistoryItemDto,
+  SaveDailyReconciliationRequestDto,
   LoyaltyTelegramStatusDto,
   SendLoyaltyTelegramResultDto,
   LoyaltyAnalyticsDto,
@@ -358,6 +361,15 @@ export const api = {
     createVoid: (dto: CreateStockVoidRequestDto) =>
       request<StockVoidDto>("/inventory/voids", { method: "POST", body: JSON.stringify(dto) }),
     voids: (productId?: string) => request<StockVoidDto[]>(withQuery("/inventory/voids", { productId })),
+  },
+
+  reconciliation: {
+    get: (locationId: string | undefined, date: string) =>
+      request<DailyReconciliationDto>(withQuery("/reconciliation", { locationId, date })),
+    save: (dto: SaveDailyReconciliationRequestDto) =>
+      request<DailyReconciliationDto>("/reconciliation", { method: "PUT", body: JSON.stringify(dto) }),
+    history: (locationId?: string) =>
+      request<ReconciliationHistoryItemDto[]>(withQuery("/reconciliation/history", { locationId })),
   },
 
   stocktakes: {

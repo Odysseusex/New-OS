@@ -20,6 +20,9 @@ simple Russian (see CLAUDE.md conventions).
   with a yes — stock/ledger) a write-down of raw against that unexplained receipt that leaves the P&L unchanged.
   Do NOT advise a manual write-off: COGS is already in the P&L, it would count twice.
 
+* 2026-10-23: «Сверка дня» (Продажи → «Сверка дня»): the day's expected cash/card and closing stock per product
+  vs what was counted; see CLAUDE.md. The operator role can now plan/complete production tasks.
+
 ## Open items / decisions waiting for the owner
 * FIXED 2026-10-16: «today»/rolling day boundaries now start at Almaty midnight (`common/zoned-day.ts`) — Sales summary, Network overview, Finance today, period comparisons, Telegram reports. (AI-центр buckets left as they were — module deferred.)
 * Mass flagging of goods «под реализацию» by SKU file (the village's goods): proposed, NOT built. The owner saw a

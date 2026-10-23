@@ -24,6 +24,7 @@ export * from "./dto";
 export * from "./accounting-policy";
 export * from "./audit";
 export * from "./stocktake";
+export * from "./reconciliation";
 export * from "./costing";
 export * from "./financial-classification";
 export * from "./financial-events";

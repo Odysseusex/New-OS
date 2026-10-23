@@ -805,6 +805,21 @@ uses 20 kg for bread, 10 kg for cakes/pies; editable per calculation). Pieces an
 not in the mix mass. Print = a plain HTML window. No money is shown on it. Hiding cost/margin from
 production staff elsewhere was discussed but NOT built (the one laptop user is also the accountant).
 
+## «Сверка дня» (till + shelf against the ledgers) — built
+
+Продажи → «Сверка дня» (`/sales/reconciliation`, `RECONCILIATION_ROLES`: OWNER/ADMIN/REGIONAL_MANAGER/
+STORE_MANAGER/ACCOUNTANT/OPERATOR — cashiers deliberately excluded, they count blind). One location, one Almaty
+business day: per product opening (all movements before the day) + received − sold + returned + other = closing
+by the system, vs the count typed in; money per tender: cash expected = размен + cash sales − cash refunds + the
+till's other movements that day (paid-out expenses, withdrawals… — SALE_RECEIPT/SALE_REFUND/OPENING_BALANCE
+skipped, taken from sales/returns), card/transfer = sales − refunds. Result = money difference + goods
+difference at the product's price: goods missing with the same money extra nets to 0 (sold without ringing up),
+missing goods with no extra money is a loss. Pure maths shared (`packages/shared/src/reconciliation.ts`), so the
+screen recalculates as typed. `apps/api/src/reconciliation/`, migration `20261023120000` (two additive tables).
+**It moves nothing** — saving stores only the counts and the summary as it stood (history); the expected side is
+always recomputed. One worksheet per location+day, saving again replaces it (audited `dailyReconciliation.save`).
+The till and the shelf are one unit (3 cashiers share one till at Мерей), so there is no per-cashier split.
+
 ## Loyalty programme — stage 1 built (retail customer by phone + consent record)
 
 Research and owner decisions: `docs/CRM-LOYALTY-RESEARCH.md` §10–11. Code: `apps/api/src/loyalty/`,
