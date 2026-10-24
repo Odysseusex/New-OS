@@ -820,6 +820,12 @@ screen recalculates as typed. `apps/api/src/reconciliation/`, migration `2026102
 always recomputed. One worksheet per location+day, saving again replaces it (audited `dailyReconciliation.save`).
 The till and the shelf are one unit (3 cashiers share one till at Мерей), so there is no per-cashier split.
 
+**A cashier's price is the server's** (`SalesService.assertTillPrices`): a CASHIER line must be the point's price, its
+fixed markdown (`markdownPrice`, with `fullUnitPrice` = point price) or any amount on the `isOpenPrice` product — the
+only things the till sends; anything else is refused (a 0 ₸ check with the cash pocketed balances perfectly in «Сверка
+дня»). Coupons/points are applied by the server after this. Other roles keep a free price (wholesale on «Продажи»).
+The till's «История» loads the whole Almaty day (not the latest 50) and filters by product (`GET /sales?productId=`).
+
 **Several products in one stock document** — Склад → Приёмка / Списание / Корректировка take many lines
 (`InventoryService.applyBatch`, `POST /inventory/{receipts|write-offs|adjustments}/batch`, max 100 lines,
 `STOCK_BATCH_MAX_LINES`). One transaction: one line short of stock stops the whole document and names the product;
