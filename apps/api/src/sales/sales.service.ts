@@ -74,6 +74,10 @@ function isoWeekday(dateKey: string): number {
   return day === 0 ? 7 : day;
 }
 
+// A whole busy day at one point is a few hundred checks; this only stops a
+// runaway request, it is not a page size.
+const SALES_LIST_MAX = 2000;
+
 const SALE_INCLUDE = { location: true, customer: true, createdBy: true, items: true };
 const SALE_DETAIL_INCLUDE = {
   location: true,
@@ -152,6 +156,9 @@ export class SalesService {
     offset = 0,
     from?: Date,
     to?: Date,
+    // Only checks containing this product, each with how much of it was in
+    // the check — so a cashier can show «вот, я пробивала Медовик в 14:20».
+    productId?: string,
   ): Promise<SaleDto[]> {
     const locationId = resolveLocationScope(user, requestedLocationId);
 
@@ -160,14 +167,22 @@ export class SalesService {
         organizationId: user.organizationId,
         ...(locationId ? { locationId } : {}),
         ...(from || to ? { soldAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
+        ...(productId ? { items: { some: { productId } } } : {}),
       },
       include: SALE_INCLUDE,
       orderBy: { soldAt: "desc" },
       skip: offset,
-      take: limit,
+      take: Math.min(Math.max(limit, 1), SALES_LIST_MAX),
     });
 
-    return sales.map(this.toSaleDto);
+    return sales.map((sale) => {
+      const dto = this.toSaleDto(sale);
+      if (!productId) return dto;
+      const productQuantity = sale.items
+        .filter((item) => item.productId === productId)
+        .reduce((sum, item) => sum + item.quantity.toNumber(), 0);
+      return { ...dto, productQuantity: Math.round(productQuantity * 1000) / 1000 };
+    });
   }
 
   async summary(user: AuthenticatedUser, requestedLocationId?: string): Promise<SalesSummaryDto> {

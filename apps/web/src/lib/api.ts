@@ -442,7 +442,7 @@ export const api = {
       create: (saleId: string, dto: CreateSaleReturnRequestDto) =>
         request<SaleReturnDto>(`/sales/${saleId}/returns`, { method: "POST", body: JSON.stringify(dto) }),
     },
-    list: (locationId?: string, limit?: number, offset?: number, from?: string, to?: string) =>
+    list: (locationId?: string, limit?: number, offset?: number, from?: string, to?: string, productId?: string) =>
       request<SaleDto[]>(
         withQuery("/sales", {
           locationId,
@@ -450,6 +450,7 @@ export const api = {
           offset: offset ? String(offset) : undefined,
           from,
           to,
+          productId,
         }),
       ),
     summary: (locationId?: string) =>

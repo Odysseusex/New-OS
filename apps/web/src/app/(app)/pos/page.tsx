@@ -1232,6 +1232,7 @@ export default function PosPage() {
         // figures match the point they picked in the header rather than
         // silently totalling the whole network.
         locationId={locationId || undefined}
+        products={products}
         onClose={() => {
           setHistoryOpen(false);
           focusScan();

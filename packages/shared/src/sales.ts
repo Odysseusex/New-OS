@@ -49,6 +49,8 @@ export interface SaleDto {
   paymentMethod: PaymentMethod;
   itemsCount: number;
   createdByName: string;
+  // Only when the list was asked for one product: how much of it the check held.
+  productQuantity?: number;
 }
 
 // What the cashier needs to see about the fiscal side of a sale: the number

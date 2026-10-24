@@ -52,6 +52,7 @@ export class SalesController {
     @Query("offset") offset?: string,
     @Query("from") from?: string,
     @Query("to") to?: string,
+    @Query("productId") productId?: string,
   ) {
     return this.salesService.findAll(
       user,
@@ -60,6 +61,7 @@ export class SalesController {
       offset ? Number(offset) : undefined,
       from ? new Date(from) : undefined,
       to ? new Date(to) : undefined,
+      productId || undefined,
     );
   }
 

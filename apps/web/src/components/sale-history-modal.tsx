@@ -1,33 +1,42 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Printer } from "lucide-react";
-import type { SaleDetailDto, SaleDto, SalesSummaryDto } from "@bakery-os/shared";
-import { PAYMENT_METHOD_LABELS_RU } from "@bakery-os/shared";
+import { useEffect, useMemo, useState } from "react";
+import { Printer, Search, X } from "lucide-react";
+import type { ProductDto, SaleDetailDto, SaleDto, SalesSummaryDto } from "@bakery-os/shared";
+import { PAYMENT_METHOD_LABELS_RU, UNIT_LABELS_RU } from "@bakery-os/shared";
 import { api } from "@/lib/api";
 import { Modal } from "@/components/modal";
 import { formatMoney, formatQuantity } from "@/lib/format";
+import { startOfZonedDay, zonedDateKey } from "@/lib/reporting-period";
 
-const PAGE_SIZE = 50;
+// The whole business day, not a page: a busy point rings up well over a
+// hundred checks, and a list cut at the latest 50 silently hid the morning.
+// The server caps a request at 2000 anyway.
+const DAY_LIMIT = 2000;
+const PRODUCT_MATCHES_SHOWN = 8;
 
-// Recent sales, for a cashier standing at the till: "did that one go
-// through", "what was in it", "print me another copy".
+// Today's sales, for a cashier standing at the till: "did that one go
+// through", "what was in it", "print me another copy" — and, with a product
+// picked, every check today that had it, so a cashier can show which loaves
+// they actually rang up.
 //
 // The point passed in only narrows what is asked for — it is not what keeps
 // a cashier honest. The server pins a location-scoped role to its own point
 // for the list, the totals and each individual sale, so a cashier physically
 // cannot pull up another shop's takings by asking for
 // them. The «Итого за сегодня» figure comes from the summary endpoint rather
-// than by adding up the loaded page, which would quietly understate a busy
-// day once it ran past PAGE_SIZE.
+// than by adding up the loaded list.
 export function SaleHistoryModal({
   locationId,
+  products,
   onClose,
   onReprint,
 }: {
   // The till's current point of sale, so the list and the day's totals are
   // about the shop the cashier is standing in.
   locationId?: string;
+  // The till's own product list, already loaded — searched client-side.
+  products: ProductDto[];
   onClose: () => void;
   // Handed back to the till, which owns the printable slip and has to close
   // this dialog before printing — otherwise the print would capture the
@@ -40,16 +49,35 @@ export function SaleHistoryModal({
   const [openSale, setOpenSale] = useState<SaleDetailDto | null>(null);
   const [loadingSaleId, setLoadingSaleId] = useState<string | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [product, setProduct] = useState<ProductDto | null>(null);
 
   useEffect(() => {
-    Promise.all([api.sales.list(locationId, PAGE_SIZE), api.sales.summary(locationId)])
-      .then(([list, s]) => {
+    api.sales
+      .summary(locationId)
+      .then(setSummary)
+      .catch(() => setSummary(null));
+  }, [locationId]);
+
+  useEffect(() => {
+    setState("loading");
+    const from = startOfZonedDay(zonedDateKey()).toISOString();
+    api.sales
+      .list(locationId, DAY_LIMIT, undefined, from, undefined, product?.id)
+      .then((list) => {
         setSales(list);
-        setSummary(s);
         setState("ready");
       })
       .catch(() => setState("error"));
-  }, [locationId]);
+  }, [locationId, product]);
+
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q || product) return [];
+    return products.filter((p) => p.name.toLowerCase().includes(q)).slice(0, PRODUCT_MATCHES_SHOWN);
+  }, [products, query, product]);
+
+  const productTotal = product ? sales.reduce((sum, sale) => sum + (sale.productQuantity ?? 0), 0) : 0;
 
   async function open(saleId: string) {
     setLoadingSaleId(saleId);
@@ -128,35 +156,100 @@ export function SaleHistoryModal({
 
   return (
     <Modal title="История продаж" onClose={onClose} width="max-w-lg">
+      {!product && summary && <TodayTotals summary={summary} />}
+
+      <div className="mb-3">
+        {product ? (
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-accent/40 bg-accent/5 px-3 py-2">
+            <span className="text-sm text-foreground">
+              <span className="font-medium">{product.name}</span>
+              {state === "ready" && (
+                <span className="ml-1 text-muted">
+                  · сегодня {formatQuantity(productTotal)} {UNIT_LABELS_RU[product.unit]} в {sales.length}{" "}
+                  {checksPlural(sales.length)}
+                </span>
+              )}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setProduct(null);
+                setQuery("");
+              }}
+              aria-label="Сбросить товар"
+              className="rounded-lg p-1 text-muted transition hover:bg-surface-muted hover:text-foreground"
+            >
+              <X className="h-4 w-4" strokeWidth={1.75} />
+            </button>
+          </div>
+        ) : (
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" strokeWidth={1.75} />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Найти чеки с товаром"
+              className="w-full rounded-xl border border-border bg-surface py-2 pl-9 pr-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+          </div>
+        )}
+        {/* Inline, not a floating dropdown: nothing here needs to intercept
+            Escape before the Modal does. */}
+        {matches.length > 0 && (
+          <ul className="mt-1 space-y-0.5 rounded-xl border border-border p-1">
+            {matches.map((p) => (
+              <li key={p.id}>
+                <button
+                  type="button"
+                  onClick={() => setProduct(p)}
+                  className="w-full rounded-lg px-3 py-2 text-left text-sm text-foreground transition hover:bg-surface-muted"
+                >
+                  {p.name}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {query.trim() && !product && matches.length === 0 && (
+          <p className="mt-1 px-1 text-sm text-muted">Товар не найден</p>
+        )}
+      </div>
+
       {state === "loading" && <p className="text-sm text-muted">Загрузка…</p>}
       {state === "error" && <p className="text-sm text-red-700">Не удалось загрузить историю</p>}
 
       {state === "ready" && (
         <>
-          {summary && <TodayTotals summary={summary} />}
-
           {openError && (
             <p className="mb-3 rounded-xl bg-red-50 px-4 py-2.5 text-sm text-red-700">{openError}</p>
           )}
 
           {sales.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted">Продаж пока не было</p>
+            <p className="py-8 text-center text-sm text-muted">
+              {product ? "Сегодня этот товар не пробивали" : "Продаж пока не было"}
+            </p>
           ) : (
-            <ul className="max-h-[55vh] space-y-1 overflow-y-auto">
+            <ul className="max-h-[50vh] space-y-1 overflow-y-auto">
               {sales.map((sale) => (
                 <li key={sale.id}>
                   <button
                     onClick={() => open(sale.id)}
                     disabled={loadingSaleId === sale.id}
-                    className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left transition hover:bg-surface-muted disabled:opacity-50"
+                    className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-surface-muted disabled:opacity-50"
                   >
-                    <span>
+                    <span className="min-w-0">
                       <span className="text-sm font-medium text-foreground">{formatTime(sale.soldAt)}</span>
                       <span className="ml-2 text-xs text-muted">
-                        {sale.itemsCount} поз. · {PAYMENT_METHOD_LABELS_RU[sale.paymentMethod]}
+                        {product && sale.productQuantity != null && (
+                          <span className="font-medium text-foreground">
+                            {formatQuantity(sale.productQuantity)} {UNIT_LABELS_RU[product.unit]} ·{" "}
+                          </span>
+                        )}
+                        {sale.itemsCount} поз. · {PAYMENT_METHOD_LABELS_RU[sale.paymentMethod]} · {sale.createdByName}
                       </span>
                     </span>
-                    <span className="text-sm font-semibold text-foreground">
+                    <span className="shrink-0 text-sm font-semibold text-foreground">
                       {formatMoney(sale.totalAmount)}
                     </span>
                   </button>
@@ -239,4 +332,11 @@ function plural(count: number): string {
   if (mod10 === 1 && mod100 !== 11) return "продажа";
   if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "продажи";
   return "продаж";
+}
+
+function checksPlural(count: number): string {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 === 1 && mod100 !== 11) return "чеке";
+  return "чеках";
 }
