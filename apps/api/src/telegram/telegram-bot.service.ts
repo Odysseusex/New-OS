@@ -1848,7 +1848,9 @@ export class TelegramBotService implements OnModuleInit {
       await this.ackCallback(ctx);
       return;
     }
-    const products = await this.productsService.findAllForOrganization(user.organizationId);
+    // With the point, so a product with its own price there is sold at it —
+    // the same price the till uses (and the only one a cashier may sell at).
+    const products = await this.productsService.findAllForOrganization(user.organizationId, false, data.locationId as string);
     const product = products.find((p) => p.id === productId);
     if (!product) {
       await this.reply(ctx, "Товар не найден.");
@@ -1856,20 +1858,20 @@ export class TelegramBotService implements OnModuleInit {
       return;
     }
     // CreateSaleDto requires an explicit unitPrice per item (the backend
-    // never falls back to Product.price), so the current catalog price is
-    // captured here and shown in the confirmation before anything is written.
+    // never falls back to Product.price), so the current price at this point
+    // is captured here and shown in the confirmation before anything is written.
     await this.chatState.set(chatId, user.id, "sale_item_qty", {
       ...data,
       pendingItem: {
         productId: product.id,
         productName: product.name,
         quantity: 0,
-        unitPrice: product.price,
+        unitPrice: product.effectivePrice,
       } as unknown as Record<string, unknown>,
     });
     await this.reply(
       ctx,
-      `«${escapeHtml(product.name)}» — ${formatMoney(product.price)} за ${escapeHtml(product.unit)}.\nСколько продаём?`,
+      `«${escapeHtml(product.name)}» — ${formatMoney(product.effectivePrice)} за ${escapeHtml(product.unit)}.\nСколько продаём?`,
       this.cancelKeyboard(),
     );
     await this.ackCallback(ctx);

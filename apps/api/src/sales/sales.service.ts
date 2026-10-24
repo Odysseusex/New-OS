@@ -29,6 +29,8 @@ import {
   FiscalReceiptStatus as FiscalReceiptStatusDto,
   distributePointsDiscount,
   loyaltyRedeemCap,
+  markdownPrice,
+  Role,
 } from "@bakery-os/shared";
 import {
   FiscalReceipt,
@@ -1029,6 +1031,10 @@ export class SalesService {
 
     const productIds = dto.items.map((i) => i.productId);
 
+    if (user.role === Role.CASHIER) {
+      await this.assertTillPrices(user.organizationId, locationId, dto.items);
+    }
+
     // --- Promotion coupon, when one was applied at the till --------------
     //
     // Resolved and validated BEFORE `items` is built, because the coupon's
@@ -1459,6 +1465,49 @@ export class SalesService {
   // Punches the fiscal receipt for a cart that has not been sold yet, and
   // returns it only if the operator registered it. Every other outcome throws
   // in Russian, before a single row of the sale is written.
+  // A cashier's price is never their own to choose: the till only ever sends
+  // this point's price, the fixed markdown of it, or a typed amount on the
+  // «Произвольная сумма» product — so anything else did not come from the till
+  // screen, and the server must not take the client's word for it (a check
+  // rung up at 0 ₸ with the cash pocketed balances perfectly in «Сверка дня»).
+  // Coupons and points are applied by the server afterwards, from these prices.
+  // Other roles keep a free price: a wholesale sale on «Продажи» is negotiated.
+  private async assertTillPrices(
+    organizationId: string,
+    locationId: string,
+    items: { productId: string; unitPrice: number; fullUnitPrice?: number }[],
+  ): Promise<void> {
+    const productIds = [...new Set(items.map((i) => i.productId))];
+    const [products, overrides] = await Promise.all([
+      this.prisma.product.findMany({
+        where: { id: { in: productIds }, organizationId },
+        select: { id: true, name: true, price: true, isOpenPrice: true },
+      }),
+      this.prisma.productLocationPrice.findMany({
+        where: { organizationId, locationId, productId: { in: productIds } },
+        select: { productId: true, price: true },
+      }),
+    ]);
+    const byId = new Map(products.map((p) => [p.id, p]));
+    const pointPrice = new Map(overrides.map((o) => [o.productId, o.price.toNumber()]));
+    const tiyn = (n: number) => Math.round(n * 100);
+    for (const item of items) {
+      const product = byId.get(item.productId);
+      // An unknown product is refused further on with its own message.
+      if (!product || product.isOpenPrice) continue;
+      const price = pointPrice.get(product.id) ?? product.price.toNumber();
+      const ok =
+        item.fullUnitPrice === undefined
+          ? tiyn(item.unitPrice) === tiyn(price)
+          : tiyn(item.fullUnitPrice) === tiyn(price) && tiyn(item.unitPrice) === tiyn(markdownPrice(price));
+      if (!ok) {
+        throw new BadRequestException(
+          `Цена «${product.name}» не совпадает с ценой на этой точке (${price} ₸). Обновите страницу кассы и пробейте заново.`,
+        );
+      }
+    }
+  }
+
   private async fiscalizeBeforeSale(
     user: AuthenticatedUser,
     locationId: string,
