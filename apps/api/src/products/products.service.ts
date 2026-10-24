@@ -40,6 +40,12 @@ const SKU_PREFIX_BY_TYPE: Record<ProductType, string> = {
 // A blank code is stored as null, never "" — used for both the barcode and
 // the NTIN. Scanners tend to append stray whitespace, and a value differing
 // only by a trailing space would silently never match a scan.
+// Stray spaces from typing or pasting («Творожно  малиновый »): collapse and trim
+// so the same name is always stored the same way.
+function tidyName(name: string): string {
+  return name.replace(/\s+/g, " ").trim();
+}
+
 function normalizeBarcode(code?: string | null): string | null {
   const trimmed = code?.trim();
   return trimmed ? trimmed : null;
@@ -265,6 +271,7 @@ export class ProductsService {
       // till looks one up by scan.
       data: {
         ...dto,
+        name: tidyName(dto.name),
         sku,
         barcode: normalizeBarcode(dto.barcode),
         ntin: normalizeBarcode(dto.ntin),
@@ -379,7 +386,7 @@ export class ProductsService {
           // Becoming a semi-finished product starts it without stock; switching its own stock on or off is handled above.
           ...(finalType === ProductType.SEMI_FINISHED && product.type !== ProductType.SEMI_FINISHED ? { trackInventory: false } : {}),
           ...(switchesStock && !dto.trackInventory ? { averageUnitCost: null } : {}),
-          ...(dto.name !== undefined ? { name: dto.name } : {}),
+          ...(dto.name !== undefined ? { name: tidyName(dto.name) } : {}),
           ...(dto.sku !== undefined ? { sku: dto.sku } : {}),
           ...(dto.barcode !== undefined ? { barcode: normalizeBarcode(dto.barcode) } : {}),
           ...(dto.ntin !== undefined ? { ntin: normalizeBarcode(dto.ntin) } : {}),

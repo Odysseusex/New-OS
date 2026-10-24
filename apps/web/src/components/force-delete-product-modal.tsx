@@ -18,7 +18,10 @@ export function ForceDeleteProductModal({
   const [confirmText, setConfirmText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const canConfirm = confirmText.trim() === product.name;
+  // Stray spaces in a stored name («Творожно  малиновый ») must not make the
+  // confirmation impossible to type: compare with whitespace collapsed.
+  const squash = (text: string) => text.replace(/\s+/g, " ").trim();
+  const canConfirm = squash(confirmText) === squash(product.name);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
