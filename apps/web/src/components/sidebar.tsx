@@ -4,13 +4,15 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
-import { primaryNav, secondaryNav } from "@/lib/nav";
+import { canOpen, primaryNav, secondaryNav } from "@/lib/nav";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 
 const NOTIFICATIONS_POLL_MS = 60_000;
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { user } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
@@ -50,7 +52,7 @@ export function Sidebar() {
 
       <nav className="flex-1 overflow-y-auto px-3 py-2">
         <ul className="space-y-0.5">
-          {primaryNav.map((item) => (
+          {primaryNav.filter((item) => !user || canOpen(item, user.role)).map((item) => (
             <NavRow key={item.href} item={item} active={pathname === item.href} />
           ))}
         </ul>
@@ -58,7 +60,7 @@ export function Sidebar() {
         <div className="my-3 border-t border-border" />
 
         <ul className="space-y-0.5">
-          {secondaryNav.map((item) => (
+          {secondaryNav.filter((item) => !user || canOpen(item, user.role)).map((item) => (
             <NavRow
               key={item.href}
               item={item}

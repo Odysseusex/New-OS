@@ -15,6 +15,7 @@ import {
   FINANCE_VIEW_ROLES,
   INVENTORY_MANAGE_ROLES,
   ORG_WIDE_ROLES,
+  REVENUE_VIEW_ROLES,
   PAYMENT_METHOD_LABELS_RU,
   PAYMENT_RECORD_ROLES,
   PaymentMethod,
@@ -519,10 +520,13 @@ export class TelegramBotService implements OnModuleInit {
 
   private async showSalesMenu(ctx: any, user: AuthenticatedUser) {
     await this.chatState.clear(String(ctx.chat?.id ?? ctx.from?.id));
-    const rows = [
-      [Markup.button.callback("📅 Сегодня", "l:t")],
-      [Markup.button.callback("🗓 7 дней", "l:p:7"), Markup.button.callback("🗓 30 дней", "l:p:30")],
-    ];
+    // The takings are not every role's to read (REVENUE_VIEW_ROLES) — same gate as the web.
+    const rows = REVENUE_VIEW_ROLES.includes(user.role)
+      ? [
+          [Markup.button.callback("📅 Сегодня", "l:t")],
+          [Markup.button.callback("🗓 7 дней", "l:p:7"), Markup.button.callback("🗓 30 дней", "l:p:30")],
+        ]
+      : [];
     if (ORG_WIDE_ROLES.includes(user.role)) {
       rows.push([Markup.button.callback("🏬 По точке", "l:lm")]);
     }
@@ -1057,6 +1061,7 @@ export class TelegramBotService implements OnModuleInit {
   // ---- sales: read ------------------------------------------------------------
 
   private async showSalesToday(ctx: any, user: AuthenticatedUser, locationId?: string) {
+    if (!(await this.assertRevenueAccess(ctx, user))) return;
     const summary = await this.salesService.summary(user, locationId);
     const text =
       `📅 <b>Продажи сегодня</b>\n\n` +
@@ -1069,6 +1074,7 @@ export class TelegramBotService implements OnModuleInit {
   }
 
   private async showSalesPeriod(ctx: any, user: AuthenticatedUser, days: number) {
+    if (!(await this.assertRevenueAccess(ctx, user))) return;
     const to = new Date();
     const from = startOfZonedDay(new Date(), days);
 
@@ -1210,6 +1216,14 @@ export class TelegramBotService implements OnModuleInit {
   }
 
   // ---- finance ------------------------------------------------------------------
+
+  // A stale button (or a typed callback) must not show what the menu hides.
+  private async assertRevenueAccess(ctx: any, user: AuthenticatedUser): Promise<boolean> {
+    if (REVENUE_VIEW_ROLES.includes(user.role)) return true;
+    await this.reply(ctx, "У вас нет доступа к этому разделу.");
+    await this.ackCallback(ctx);
+    return false;
+  }
 
   private async assertFinanceAccess(ctx: any, user: AuthenticatedUser): Promise<boolean> {
     if (FINANCE_VIEW_ROLES.includes(user.role)) return true;
@@ -1987,8 +2001,12 @@ export class TelegramBotService implements OnModuleInit {
       ctx,
       "📊 <b>Аналитика</b>",
       Markup.inlineKeyboard([
-        [Markup.button.callback("📦 Средние продажи (7 дн.)", "an:d:7")],
-        [Markup.button.callback("📦 Средние продажи (30 дн.)", "an:d:30")],
+        ...(REVENUE_VIEW_ROLES.includes(user.role)
+          ? [
+              [Markup.button.callback("📦 Средние продажи (7 дн.)", "an:d:7")],
+              [Markup.button.callback("📦 Средние продажи (30 дн.)", "an:d:30")],
+            ]
+          : []),
         [Markup.button.callback("⚠️ Низкие остатки", "an:lw")],
         [Markup.button.callback("⬅️ Назад", "m")],
       ]),
@@ -1999,6 +2017,7 @@ export class TelegramBotService implements OnModuleInit {
   // Reuses SalesService.demandAnalysis — the exact same calculation the web
   // Reports page's "Анализ спроса" block shows, no separate logic here.
   private async showDemandAnalysis(ctx: any, user: AuthenticatedUser, days: number) {
+    if (!(await this.assertRevenueAccess(ctx, user))) return;
     const to = new Date();
     const from = startOfZonedDay(new Date(), days);
 

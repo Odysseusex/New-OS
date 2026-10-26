@@ -44,6 +44,13 @@ export const ORG_WIDE_ROLES: Role[] = [
   Role.HR_MANAGER,
 ];
 
+// Who sees the business's takings as figures: today's/weekly revenue, average
+// ticket, sales reports and dynamics, revenue per point. Everyone but OPERATOR —
+// the owner's decision: the operator rings up sales and works with documents and
+// with the list of individual checks, but not with the totals. The till's
+// cashier keeps the day's takings, which they count against the drawer.
+export const REVENUE_VIEW_ROLES: Role[] = Object.values(Role).filter((role) => role !== Role.OPERATOR);
+
 export const SALE_CREATE_ROLES: Role[] = [
   Role.OWNER,
   Role.ADMIN,

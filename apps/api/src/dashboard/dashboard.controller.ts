@@ -6,9 +6,11 @@ import { OrganizationsService } from "../organizations/organizations.service";
 import { LocationsService } from "../locations/locations.service";
 import { SalesService } from "../sales/sales.service";
 import { InventoryService } from "../inventory/inventory.service";
-import { DashboardSummaryDto } from "@bakery-os/shared";
+import { DashboardSummaryDto, REVENUE_VIEW_ROLES } from "@bakery-os/shared";
+import { RolesGuard } from "../common/guards/roles.guard";
+import { Roles } from "../common/decorators/roles.decorator";
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("dashboard")
 export class DashboardController {
   constructor(
@@ -18,7 +20,9 @@ export class DashboardController {
     private inventoryService: InventoryService,
   ) {}
 
+  // The whole page is the takings, so it is closed as a whole.
   @Get("summary")
+  @Roles(...REVENUE_VIEW_ROLES)
   async summary(@CurrentUser() user: AuthenticatedUser): Promise<DashboardSummaryDto> {
     const [summary, locations, salesSummary, stockLevels] = await Promise.all([
       this.organizationsService.getSummary(user.organizationId),

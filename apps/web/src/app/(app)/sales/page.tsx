@@ -4,7 +4,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ClipboardCheck, Coins, Package, Plus, Receipt, TrendingUp, Wallet, X } from "lucide-react";
 import type { CustomerDto, LocationDto, ProductDto, SaleDto, SalesReportDto, SalesSummaryDto } from "@bakery-os/shared";
-import { ORG_WIDE_ROLES, PAYMENT_RECORD_ROLES, ProductType, RECONCILIATION_ROLES, SALE_CREATE_ROLES } from "@bakery-os/shared";
+import {
+  ORG_WIDE_ROLES,
+  PAYMENT_RECORD_ROLES,
+  ProductType,
+  RECONCILIATION_ROLES,
+  REVENUE_VIEW_ROLES,
+  SALE_CREATE_ROLES,
+} from "@bakery-os/shared";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney } from "@/lib/format";
@@ -22,6 +29,8 @@ export default function SalesPage() {
   const canCreateSale = user ? SALE_CREATE_ROLES.includes(user.role) : false;
   const canRecordPayment = user ? PAYMENT_RECORD_ROLES.includes(user.role) : false;
   const canReconcile = user ? RECONCILIATION_ROLES.includes(user.role) : false;
+  // The operator works with the checks, not with the totals (REVENUE_VIEW_ROLES).
+  const canSeeTotals = user ? REVENUE_VIEW_ROLES.includes(user.role) : false;
 
   const [locations, setLocations] = useState<LocationDto[]>([]);
   const [products, setProducts] = useState<ProductDto[]>([]);
@@ -61,9 +70,9 @@ export default function SalesPage() {
     const fromIso = filterRange?.from.toISOString();
     const toIso = filterRange?.to.toISOString();
     Promise.all([
-      api.sales.summary(locationFilter || undefined),
+      canSeeTotals ? api.sales.summary(locationFilter || undefined) : Promise.resolve(null),
       api.sales.list(locationFilter || undefined, PAGE_SIZE, undefined, fromIso, toIso),
-      filterRange
+      filterRange && canSeeTotals
         ? api.sales.report(fromIso!, toIso!, locationFilter || undefined)
         : Promise.resolve(null),
     ])
@@ -77,7 +86,7 @@ export default function SalesPage() {
         setHasMore(list.length === PAGE_SIZE);
       })
       .catch(() => setError("Не удалось загрузить продажи"));
-  }, [locationFilter, filterRange]);
+  }, [locationFilter, filterRange, canSeeTotals]);
 
   function loadMore() {
     setIsLoadingMore(true);
@@ -162,6 +171,7 @@ export default function SalesPage() {
         <div className="mb-6 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
 
+      {canSeeTotals && (
       <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard icon={Wallet} label="Выручка сегодня" value={formatMoney(summary?.todayRevenue ?? 0)} />
         <StatCard icon={Package} label="Под реализацию сегодня" value={formatMoney(summary?.todayConsignment ?? 0)} />
@@ -171,6 +181,7 @@ export default function SalesPage() {
         <StatCard icon={Package} label="Под реализацию за 7 дней" value={formatMoney(summary?.last7DaysConsignment ?? 0)} />
         <StatCard icon={Coins} label="Оборот за 7 дней" value={formatMoney(summary?.last7DaysTurnover ?? 0)} />
       </div>
+      )}
 
       <div className="rounded-2xl border border-border bg-surface shadow-card">
         <div className="border-b border-border px-5 py-4">

@@ -826,6 +826,11 @@ only things the till sends; anything else is refused (a 0 ₸ check with the cas
 дня»). Coupons/points are applied by the server after this. Other roles keep a free price (wholesale on «Продажи»).
 The till's «История» loads the whole Almaty day (not the latest 50) and filters by product (`GET /sales?productId=`).
 
+**The operator does not see the takings as totals** (owner's decision): `REVENUE_VIEW_ROLES` = every role but OPERATOR
+gates `/sales/summary|report|profitability|dynamics|demand`, `/dashboard/summary`, the map's revenue and the staff bot's
+sales figures/«Средние продажи». The web hides Дашборд/Отчёты (`NavItem.roles`, `isBlockedRoute`/`homeFor` in `lib/nav.ts`
+— an operator lands on /sales) and the cards on Продажи. The list of checks, «Новая продажа», the till and its history stay.
+
 **Several products in one stock document** — Склад → Приёмка / Списание / Корректировка take many lines
 (`InventoryService.applyBatch`, `POST /inventory/{receipts|write-offs|adjustments}/batch`, max 100 lines,
 `STOCK_BATCH_MAX_LINES`). One transaction: one line short of stock stops the whole document and names the product;

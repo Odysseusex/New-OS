@@ -6,6 +6,7 @@ import { Role } from "@bakery-os/shared";
 import { useAuth } from "@/lib/auth-context";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
+import { homeFor, isBlockedRoute } from "@/lib/nav";
 
 // CASHIER is locked to the till screen only — no sidebar, no other route.
 // This is a device-lockdown concern (a shop-floor till shouldn't browse
@@ -18,6 +19,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const isCashier = user?.role === Role.CASHIER;
+  // A page hidden from this role's menu (e.g. «Отчёты» for an operator) is not
+  // reachable by typing its address either.
+  const isBlocked = !!user && !isCashier && isBlockedRoute(pathname, user.role);
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -31,7 +35,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     }
   }, [isCashier, pathname, router]);
 
-  if (isLoading || !user || (isCashier && pathname !== CASHIER_ONLY_ROUTE)) {
+  useEffect(() => {
+    if (isBlocked && user) router.replace(homeFor(user.role));
+  }, [isBlocked, user, router]);
+
+  if (isLoading || !user || (isCashier && pathname !== CASHIER_ONLY_ROUTE) || isBlocked) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <p className="text-sm text-muted">Загрузка…</p>

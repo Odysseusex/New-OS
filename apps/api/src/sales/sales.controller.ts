@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/co
 import {
   CUSTOMER_VIEW_ROLES,
   PAYMENT_RECORD_ROLES,
+  REVENUE_VIEW_ROLES,
   SALE_CREATE_ROLES,
   SALE_RETURN_ROLES,
 } from "@bakery-os/shared";
@@ -66,11 +67,13 @@ export class SalesController {
   }
 
   @Get("summary")
+  @Roles(...REVENUE_VIEW_ROLES)
   summary(@CurrentUser() user: AuthenticatedUser, @Query("locationId") locationId?: string) {
     return this.salesService.summary(user, locationId);
   }
 
   @Get("report")
+  @Roles(...REVENUE_VIEW_ROLES)
   report(
     @CurrentUser() user: AuthenticatedUser,
     @Query("from") from: string,
@@ -83,6 +86,7 @@ export class SalesController {
   // Which products earn, not just which turn over. Declared before
   // @Get(":id") like every other named route on this controller.
   @Get("profitability")
+  @Roles(...REVENUE_VIEW_ROLES)
   profitability(
     @CurrentUser() user: AuthenticatedUser,
     @Query("from") from: string,
@@ -94,6 +98,7 @@ export class SalesController {
 
   // Revenue day by day, by hour and by weekday.
   @Get("dynamics")
+  @Roles(...REVENUE_VIEW_ROLES)
   dynamics(
     @CurrentUser() user: AuthenticatedUser,
     @Query("from") from: string,
@@ -104,6 +109,7 @@ export class SalesController {
   }
 
   @Get("demand")
+  @Roles(...REVENUE_VIEW_ROLES)
   demandAnalysis(@CurrentUser() user: AuthenticatedUser, @Query() query: GetDemandQueryDto) {
     return this.salesService.demandAnalysis(user, new Date(query.from), new Date(query.to), {
       locationId: query.locationId,

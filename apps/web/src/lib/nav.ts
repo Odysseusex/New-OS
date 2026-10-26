@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import { REVENUE_VIEW_ROLES, Role } from "@bakery-os/shared";
 import {
   LayoutDashboard,
   Sparkles,
@@ -27,6 +28,9 @@ export interface NavItem {
   icon: LucideIcon;
   status: "live" | "soon";
   description: string;
+  // Only these roles see the item and may open the page; absent = everyone.
+  // The API gates the same data with the same array.
+  roles?: Role[];
 }
 
 export const primaryNav: NavItem[] = [
@@ -35,6 +39,7 @@ export const primaryNav: NavItem[] = [
     label: "Дашборд",
     icon: LayoutDashboard,
     status: "live",
+    roles: REVENUE_VIEW_ROLES,
     description: "Общий пульс сети: выручка, прибыль, точки, алерты",
   },
   {
@@ -140,6 +145,7 @@ export const primaryNav: NavItem[] = [
     label: "Отчёты",
     icon: BarChart3,
     status: "live",
+    roles: REVENUE_VIEW_ROLES,
     description: "Библиотека готовых отчётов: финансы, продажи, качество, персонал, склад",
   },
 ];
@@ -169,3 +175,18 @@ export const secondaryNav: NavItem[] = [
 ];
 
 export const allNavItems = [...primaryNav, ...secondaryNav];
+
+export function canOpen(item: NavItem, role: Role): boolean {
+  return !item.roles || item.roles.includes(role);
+}
+
+// The page a role lands on after login, or when it opens one it may not see.
+export function homeFor(role: Role): string {
+  if (role === Role.CASHIER) return "/pos";
+  return REVENUE_VIEW_ROLES.includes(role) ? "/dashboard" : "/sales";
+}
+
+// A route under a nav item the role may not open (e.g. /reports for OPERATOR).
+export function isBlockedRoute(pathname: string, role: Role): boolean {
+  return allNavItems.some((item) => !canOpen(item, role) && (pathname === item.href || pathname.startsWith(`${item.href}/`)));
+}

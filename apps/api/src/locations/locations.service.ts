@@ -10,6 +10,7 @@ import {
   LocationOverviewDto,
   ORG_WIDE_ROLES,
   RegionDto,
+  REVENUE_VIEW_ROLES,
 } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { UpdateLocationDto } from "./dto/update-location.dto";
@@ -259,9 +260,10 @@ export class LocationsService {
 
     return locations.map((loc) => {
       const canSeeMetrics = isOrgWide || loc.id === user.locationId;
+      const canSeeRevenue = canSeeMetrics && REVENUE_VIEW_ROLES.includes(user.role);
       return {
         ...this.toDto(loc),
-        todayRevenue: canSeeMetrics ? (revenueByLocation.get(loc.id) ?? 0) : null,
+        todayRevenue: canSeeRevenue ? (revenueByLocation.get(loc.id) ?? 0) : null,
         lowStockCount: canSeeMetrics ? (lowStockByLocation.get(loc.id) ?? 0) : null,
       };
     });
