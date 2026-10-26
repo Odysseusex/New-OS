@@ -286,6 +286,26 @@ export class SalesService {
     let totalRevenue = 0;
     let markdownLoss = 0;
     let markdownQuantity = 0;
+    let markdownRevenue = 0;
+    const markdownMap = new Map<string, { productName: string; quantity: number; revenue: number; markdownLoss: number }>();
+    const consignmentMap = new Map<string, { productName: string; supplierId: string; quantity: number; revenue: number }>();
+
+    // Goods «под реализацию», from every sale — a basket made only of them is
+    // skipped below as not ours, but it still sold the supplier's goods.
+    for (const sale of sales) {
+      for (const item of sale.items) {
+        if (!item.consignmentSupplierId) continue;
+        const entry = consignmentMap.get(item.productId) ?? {
+          productName: item.product.name,
+          supplierId: item.consignmentSupplierId,
+          quantity: 0,
+          revenue: 0,
+        };
+        entry.quantity += item.quantity.toNumber();
+        entry.revenue += item.subtotal.toNumber();
+        consignmentMap.set(item.productId, entry);
+      }
+    }
 
     for (const sale of sales) {
       // Consignment goods are the owner's money, not our revenue.
@@ -330,6 +350,17 @@ export class SalesService {
           productEntry.markdownLoss += loss;
           markdownQuantity += quantity;
           markdownLoss += loss;
+          markdownRevenue += item.subtotal.toNumber();
+          const markdownEntry = markdownMap.get(item.productId) ?? {
+            productName: item.product.name,
+            quantity: 0,
+            revenue: 0,
+            markdownLoss: 0,
+          };
+          markdownEntry.quantity += quantity;
+          markdownEntry.revenue += item.subtotal.toNumber();
+          markdownEntry.markdownLoss += loss;
+          markdownMap.set(item.productId, markdownEntry);
         }
         byProductMap.set(item.productId, productEntry);
       }
@@ -353,6 +384,37 @@ export class SalesService {
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 20);
 
+    const markdownByProduct = Array.from(markdownMap.entries())
+      .map(([productId, v]) => ({
+        productId,
+        productName: v.productName,
+        quantity: Math.round(v.quantity * 1000) / 1000,
+        revenue: round2(v.revenue),
+        markdownLoss: round2(v.markdownLoss),
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
+
+    const supplierIds = [...new Set([...consignmentMap.values()].map((v) => v.supplierId))];
+    const supplierName = new Map(
+      supplierIds.length > 0
+        ? (
+            await this.prisma.supplier.findMany({
+              where: { organizationId: user.organizationId, id: { in: supplierIds } },
+              select: { id: true, name: true },
+            })
+          ).map((s) => [s.id, s.name])
+        : [],
+    );
+    const consignmentByProduct = Array.from(consignmentMap.entries())
+      .map(([productId, v]) => ({
+        productId,
+        productName: v.productName,
+        supplierName: supplierName.get(v.supplierId) ?? null,
+        quantity: Math.round(v.quantity * 1000) / 1000,
+        revenue: round2(v.revenue),
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
+
     return {
       from: from.toISOString(),
       to: to.toISOString(),
@@ -363,8 +425,11 @@ export class SalesService {
       turnoverCount: sales.length,
       markdownLoss: Number(markdownLoss.toFixed(2)),
       markdownQuantity,
+      markdownRevenue: round2(markdownRevenue),
       byLocation,
       byProduct,
+      markdownByProduct,
+      consignmentByProduct,
     };
   }
 

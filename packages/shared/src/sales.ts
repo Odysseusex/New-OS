@@ -222,8 +222,32 @@ export interface SalesReportDto {
   // reliably marked down is a product being baked in the wrong quantity.
   markdownLoss: number;
   markdownQuantity: number;
+  // What the marked-down units actually brought in (Σ their subtotals) —
+  // part of totalRevenue, shown on its own.
+  markdownRevenue: number;
   byLocation: SalesByLocationDto[];
+  // Top 20 by revenue.
   byProduct: SalesByProductDto[];
+  // Every product sold at a markdown in the period, by revenue.
+  markdownByProduct: SalesMarkdownByProductDto[];
+  // Every consignment product sold in the period (outside totalRevenue).
+  consignmentByProduct: SalesConsignmentByProductDto[];
+}
+
+export interface SalesMarkdownByProductDto {
+  productId: string;
+  productName: string;
+  quantity: number;
+  revenue: number;
+  markdownLoss: number;
+}
+
+export interface SalesConsignmentByProductDto {
+  productId: string;
+  productName: string;
+  supplierName: string | null;
+  quantity: number;
+  revenue: number;
 }
 
 // ── Demand analysis — average sales volume by product/customer ─────────

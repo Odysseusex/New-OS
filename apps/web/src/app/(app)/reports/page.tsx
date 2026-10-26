@@ -383,6 +383,9 @@ function SalesReport({
               label: "Продано по уценке",
               value: report.markdownQuantity > 0 ? formatQuantity(report.markdownQuantity) : "—",
             },
+            // `?? 0` / `?? []` below: an API one deploy behind sends none of these.
+            { label: "Выручка по уценке", value: formatMoney(report.markdownRevenue ?? 0) },
+            { label: "Под реализацию", value: formatMoney(report.consignmentRevenue) },
           ]}
         />
       </ReportCard>
@@ -446,6 +449,62 @@ function SalesReport({
           ])}
         />
       </ReportCard>
+
+      {(report.markdownByProduct ?? []).length > 0 && (
+        <ReportCard
+          title="Уценка по товарам"
+          onExport={() =>
+            downloadCsv(
+              `sales-markdown-${period}.csv`,
+              ["Товар", "Продано по уценке", "Выручка по уценке", "Потери на уценке"],
+              report.markdownByProduct.map((p) => [
+                p.productName,
+                formatQuantity(p.quantity),
+                p.revenue.toFixed(2),
+                p.markdownLoss.toFixed(2),
+              ]),
+            )
+          }
+        >
+          <ReportTable
+            columns={["Товар", "Продано по уценке", "Выручка по уценке", "Потери на уценке"]}
+            rows={report.markdownByProduct.map((p) => [
+              p.productName,
+              formatQuantity(p.quantity),
+              formatMoney(p.revenue),
+              formatMoney(p.markdownLoss),
+            ])}
+          />
+        </ReportCard>
+      )}
+
+      {(report.consignmentByProduct ?? []).length > 0 && (
+        <ReportCard
+          title="Под реализацию по товарам"
+          onExport={() =>
+            downloadCsv(
+              `sales-consignment-${period}.csv`,
+              ["Товар", "Поставщик", "Продано", "Сумма"],
+              report.consignmentByProduct.map((p) => [
+                p.productName,
+                p.supplierName ?? "",
+                formatQuantity(p.quantity),
+                p.revenue.toFixed(2),
+              ]),
+            )
+          }
+        >
+          <ReportTable
+            columns={["Товар", "Поставщик", "Продано", "Сумма"]}
+            rows={report.consignmentByProduct.map((p) => [
+              p.productName,
+              p.supplierName ?? "—",
+              formatQuantity(p.quantity),
+              formatMoney(p.revenue),
+            ])}
+          />
+        </ReportCard>
+      )}
 
       <SalesDemandCard period={period} locationId={locationId} />
     </div>
