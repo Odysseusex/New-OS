@@ -1,0 +1,31 @@
+# Render's GitHub link still points at the old account, so it never hears about
+# pushes to main. This calls the service's Deploy Hook instead (a secret URL from
+# Render → bakery-os-api → Settings → Deploy Hook, stored as the repository
+# secret RENDER_DEPLOY_HOOK_URL). The hook deploys the latest commit of main.
+name: Deploy API to Render
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/api/**"
+      - "packages/shared/**"
+      - "render.yaml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::error::RENDER_DEPLOY_HOOK_URL is not set (GitHub → Settings → Secrets and variables → Actions)"
+            exit 1
+          fi
+          curl -fsS -X POST "$HOOK" > /dev/null
+          echo "Render deploy requested"

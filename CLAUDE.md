@@ -45,6 +45,12 @@ originally connected to the old account. Current state:
   try anyway" in build logs is expected, not an error). Don't spend time
   re-litigating this unless the user asks to revisit it — they explicitly
   decided to leave it as-is.
+- **Because of that link, Render's auto-deploy never fires** (every deploy in its
+  Events was «Manually triggered»). Fix in place: `.github/workflows/render-deploy.yml`
+  calls Render's Deploy Hook on every push to `main` that touches the API/shared
+  code (or by hand: Actions → «Deploy API to Render» → Run workflow). It needs the
+  repository secret `RENDER_DEPLOY_HOOK_URL` (Render → Settings → Deploy Hook) —
+  the owner adds it; never ask for the URL in chat, it is a deploy credential.
 
 ## Non-negotiable conventions
 
