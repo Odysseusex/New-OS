@@ -1,4 +1,11 @@
 import type {
+  CreateCrmContactRequestDto,
+  CrmContactDto,
+  CrmMemberListDto,
+  CrmMemberProfileDto,
+  CrmOrderDto,
+  CrmTodayDto,
+  SaveCrmOrderRequestDto,
   DemoCompanyCredentialsDto,
   DemoCompanyStatusDto,
   StockBatchRequestDto,
@@ -261,6 +268,15 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   me: () => request<LoginResponseDto["user"]>("/auth/me"),
+  crm: {
+    today: () => request<CrmTodayDto>("/crm/today"),
+    recordContact: (dto: CreateCrmContactRequestDto) => request<CrmContactDto>("/crm/contacts", { method: "POST", body: JSON.stringify(dto) }),
+    members: (params: { q?: string; segment?: string; sort?: string }) => request<CrmMemberListDto>(withQuery("/crm/members", params)),
+    profile: (id: string) => request<CrmMemberProfileDto>(`/crm/members/${id}`),
+    orders: () => request<CrmOrderDto[]>("/crm/orders"),
+    createOrder: (dto: SaveCrmOrderRequestDto) => request<CrmOrderDto>("/crm/orders", { method: "POST", body: JSON.stringify(dto) }),
+    updateOrder: (id: string, dto: SaveCrmOrderRequestDto) => request<CrmOrderDto>(`/crm/orders/${id}`, { method: "PATCH", body: JSON.stringify(dto) }),
+  },
   demoCompany: {
     status: () => request<DemoCompanyStatusDto>("/demo-company"),
     create: () => request<DemoCompanyCredentialsDto>("/demo-company", { method: "POST" }),

@@ -26,6 +26,7 @@ enum Role {
   HR_MANAGER
   ADMIN
   OPERATOR
+  CLIENT_MANAGER
 }
 
 enum LocationType {
@@ -2696,6 +2697,8 @@ model LoyaltyMember {
   telegramLink  LoyaltyTelegramLink?
   family        LoyaltyFamilyMember[]
   messageLogs   LoyaltyMessageLog[]
+  crmContacts   CrmContact[]
+  crmOrders     CrmOrder[]
 
   @@unique([organizationId, phone])
   @@index([organizationId, status])
@@ -2942,4 +2945,113 @@ model DailyReconciliationLine {
 
   @@unique([reconciliationId, productId])
   @@map("daily_reconciliation_lines")
+}
+
+// ── CRM (/crm) ───────────────────────────────────────────────────────────────
+// The CRM writes only these tables; everything else (members, sales, points,
+// consents) it reads. No money is recorded here: an order's price is what was
+// agreed, payment goes through the till like any sale.
+
+enum CrmContactChannel {
+  WHATSAPP
+  TELEGRAM
+  CALL
+  SMS
+  IN_PERSON
+}
+
+enum CrmContactOutcome {
+  SENT
+  TALKED
+  NO_ANSWER
+  DECLINED
+  ORDERED
+}
+
+enum CrmContactReason {
+  DUE
+  LAPSED
+  BIRTHDAY
+  WHOLESALE
+  ORDER
+  OTHER
+}
+
+// One reaching-out to a customer, append-only: what the board and «вернулись
+// после сообщения» are computed from.
+model CrmContact {
+  id             String            @id @default(cuid())
+  organizationId String
+  memberId       String?
+  member         LoyaltyMember?    @relation(fields: [memberId], references: [id])
+  // A wholesale customer; a plain column (no FK) so it never blocks the
+  // customer's guarded hard delete.
+  customerId     String?
+  orderId        String?
+  channel        CrmContactChannel
+  outcome        CrmContactOutcome
+  reason         CrmContactReason
+  note           String?
+  byId           String?
+  byName         String?
+  at             DateTime          @default(now())
+
+  @@index([organizationId, at])
+  @@index([memberId, at])
+  @@index([customerId, at])
+  @@map("crm_contacts")
+}
+
+enum CrmOrderStage {
+  NEW
+  AGREED
+  PREPAID
+  IN_PRODUCTION
+  READY
+  DONE
+  CANCELLED
+}
+
+// A custom order (a cake for a date): a board card, not a sale.
+model CrmOrder {
+  id             String         @id @default(cuid())
+  organizationId String
+  number         Int
+  memberId       String?
+  member         LoyaltyMember? @relation(fields: [memberId], references: [id])
+  customerName   String
+  phone          String?
+  title          String
+  details        String?
+  weightKg       Decimal?       @db.Decimal(8, 3)
+  price          Decimal?       @db.Decimal(12, 2)
+  prepaid        Boolean        @default(false)
+  dueAt          DateTime
+  stage          CrmOrderStage  @default(NEW)
+  stageChangedAt DateTime       @default(now())
+  cancelReason   String?
+  createdById    String?
+  createdByName  String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  events CrmOrderEvent[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, stage, dueAt])
+  @@index([memberId])
+  @@map("crm_orders")
+}
+
+model CrmOrderEvent {
+  id        String         @id @default(cuid())
+  orderId   String
+  order     CrmOrder       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fromStage CrmOrderStage?
+  toStage   CrmOrderStage
+  byName    String?
+  at        DateTime       @default(now())
+
+  @@index([orderId, at])
+  @@map("crm_order_events")
 }

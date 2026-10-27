@@ -12,6 +12,6 @@ import { LoyaltyService } from "./loyalty.service";
 @Module({
   providers: [LoyaltyService, LoyaltyPointsService, LoyaltyAnalyticsService, LoyaltyBirthdayService, WhatsAppService, CustomerBotService],
   controllers: [LoyaltyController, LoyaltyProgramController, CustomerBotController, WhatsAppController],
-  exports: [LoyaltyService, LoyaltyPointsService, CustomerBotService],
+  exports: [LoyaltyService, LoyaltyPointsService, LoyaltyAnalyticsService, CustomerBotService, WhatsAppService],
 })
 export class LoyaltyModule {}

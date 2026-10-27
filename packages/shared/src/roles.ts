@@ -15,6 +15,10 @@ export enum Role {
   // for small operations where one person covers several duties that don't
   // otherwise map to one existing role. Location-scoped, like WAREHOUSE_STAFF.
   OPERATOR = "OPERATOR",
+  // The person who works with retail customers in the CRM (/crm): messages,
+  // follow-ups, cake orders. Sees the customer base, not the books; the web app
+  // keeps them on /crm the way a cashier is kept on /pos.
+  CLIENT_MANAGER = "CLIENT_MANAGER",
 }
 
 export const ROLE_LABELS_RU: Record<Role, string> = {
@@ -30,6 +34,7 @@ export const ROLE_LABELS_RU: Record<Role, string> = {
   [Role.HR_MANAGER]: "HR-менеджер",
   [Role.ADMIN]: "Администратор",
   [Role.OPERATOR]: "Оператор",
+  [Role.CLIENT_MANAGER]: "Менеджер по клиентам",
 };
 
 // Roles that see data across the whole organization instead of being pinned
@@ -42,6 +47,7 @@ export const ORG_WIDE_ROLES: Role[] = [
   Role.REGIONAL_MANAGER,
   Role.ACCOUNTANT,
   Role.HR_MANAGER,
+  Role.CLIENT_MANAGER,
 ];
 
 // Who sees the business's takings as figures: today's/weekly revenue, average
@@ -327,11 +333,14 @@ export const STOCK_VOID_ROLES: Role[] = HARD_DELETE_ROLES;
 // finds a customer by phone, registers a new one and records what they agreed
 // to — including a withdrawal, which must never be harder to record than the
 // consent was.
-export const LOYALTY_TILL_ROLES: Role[] = SALE_CREATE_ROLES;
+export const LOYALTY_TILL_ROLES: Role[] = [...SALE_CREATE_ROLES, Role.CLIENT_MANAGER];
 
 // Browsing the whole base is a list of people's phone numbers, so it is kept
 // to management rather than every cashier.
-export const LOYALTY_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.STORE_MANAGER];
+export const LOYALTY_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.STORE_MANAGER, Role.CLIENT_MANAGER];
+
+// The CRM (/crm): today's follow-ups, the customer cards, groups, cake orders.
+export const CRM_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.REGIONAL_MANAGER, Role.STORE_MANAGER, Role.CLIENT_MANAGER];
 
 // Merging duplicates (one-way) and importing a file of customers.
 export const LOYALTY_ADMIN_ROLES: Role[] = HARD_DELETE_ROLES;

@@ -19,6 +19,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const isCashier = user?.role === Role.CASHIER;
+  // The client manager works only in the CRM, which lives outside this layout.
+  const isClientManager = user?.role === Role.CLIENT_MANAGER;
   // A page hidden from this role's menu (e.g. «Отчёты» for an operator) is not
   // reachable by typing its address either.
   const isBlocked = !!user && !isCashier && isBlockedRoute(pathname, user.role);
@@ -28,6 +30,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       router.replace("/login");
     }
   }, [isLoading, user, router]);
+
+  useEffect(() => {
+    if (isClientManager) router.replace("/crm");
+  }, [isClientManager, router]);
 
   useEffect(() => {
     if (isCashier && pathname !== CASHIER_ONLY_ROUTE) {

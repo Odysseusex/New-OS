@@ -25,6 +25,7 @@ import { FinanceModule } from "./finance/finance.module";
 import { HrModule } from "./hr/hr.module";
 import { CustomersModule } from "./customers/customers.module";
 import { LoyaltyModule } from "./loyalty/loyalty.module";
+import { CrmModule } from "./crm/crm.module";
 import { UsersModule } from "./users/users.module";
 import { InvoicesModule } from "./invoices/invoices.module";
 import { QualityModule } from "./quality/quality.module";
@@ -68,6 +69,7 @@ import { DemoCompanyModule } from "./demo/demo-company.module";
     HrModule,
     CustomersModule,
     LoyaltyModule,
+    CrmModule,
     UsersModule,
     InvoicesModule,
     QualityModule,

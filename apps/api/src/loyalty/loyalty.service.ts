@@ -60,6 +60,27 @@ export function consentState(consents: Pick<LoyaltyConsent, "purpose" | "channel
   return state;
 }
 
+// Name or phone (as people type it), merged duplicates hidden unless asked for.
+export function memberSearchWhere(organizationId: string, query: { q?: string; status?: string }): Prisma.LoyaltyMemberWhereInput {
+  const status = Object.values(LoyaltyMemberStatus).includes(query.status as LoyaltyMemberStatus)
+    ? (query.status as LoyaltyMemberStatus)
+    : undefined;
+  const q = query.q?.trim() ?? "";
+  const digits = q.replace(/\D/g, "");
+  const search: Prisma.LoyaltyMemberWhereInput[] = [];
+  if (q) search.push({ name: { contains: q, mode: "insensitive" } });
+  if (digits.length >= 3) {
+    // «8701…» is how people type a number; stored numbers start «+7701…».
+    const national = digits.length === 11 && /^[78]/.test(digits) ? digits.slice(1) : digits;
+    search.push({ phone: { contains: national } });
+  }
+  return {
+    organizationId,
+    ...(status ? { status } : { status: { not: LoyaltyMemberStatus.MERGED } }),
+    ...(search.length ? { OR: search } : {}),
+  };
+}
+
 const YES = new Set(["да", "д", "yes", "y", "1", "+", "true", "согласен", "согласна", "есть", "x", "х", "✓", "v"]);
 const isYes = (value: string | undefined) => YES.has((value ?? "").trim().toLowerCase());
 const blankToNull = (value: string | null | undefined) => {
@@ -206,23 +227,7 @@ export class LoyaltyService {
   // retail base can grow to tens of thousands of people's phone numbers, which
   // should not all be shipped to a browser to filter one name.
   async list(organizationId: string, query: { q?: string; status?: string }): Promise<LoyaltyMemberListDto> {
-    const status = Object.values(LoyaltyMemberStatus).includes(query.status as LoyaltyMemberStatus)
-      ? (query.status as LoyaltyMemberStatus)
-      : undefined;
-    const q = query.q?.trim() ?? "";
-    const digits = q.replace(/\D/g, "");
-    const search: Prisma.LoyaltyMemberWhereInput[] = [];
-    if (q) search.push({ name: { contains: q, mode: "insensitive" } });
-    if (digits.length >= 3) {
-      // «8701…» is how people type a number; stored numbers start «+7701…».
-      const national = digits.length === 11 && /^[78]/.test(digits) ? digits.slice(1) : digits;
-      search.push({ phone: { contains: national } });
-    }
-    const where: Prisma.LoyaltyMemberWhereInput = {
-      organizationId,
-      ...(status ? { status } : { status: { not: LoyaltyMemberStatus.MERGED } }),
-      ...(search.length ? { OR: search } : {}),
-    };
+    const where = memberSearchWhere(organizationId, query);
     const [items, total] = await Promise.all([
       this.prisma.loyaltyMember.findMany({ where, include: CONSENTS_IN_ORDER, orderBy: { createdAt: "desc" }, take: LOYALTY_LIST_LIMIT }),
       this.prisma.loyaltyMember.count({ where }),

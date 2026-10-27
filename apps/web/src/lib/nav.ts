@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { REVENUE_VIEW_ROLES, Role } from "@bakery-os/shared";
+import { CRM_ROLES, REVENUE_VIEW_ROLES, Role } from "@bakery-os/shared";
 import {
   LayoutDashboard,
   Sparkles,
@@ -20,6 +20,7 @@ import {
   Plug,
   Bell,
   Settings,
+  HeartHandshake,
 } from "lucide-react";
 
 export interface NavItem {
@@ -134,6 +135,14 @@ export const primaryNav: NavItem[] = [
     description: "Оптовые клиенты, лояльность, задолженности",
   },
   {
+    href: "/crm",
+    label: "CRM",
+    icon: HeartHandshake,
+    status: "live",
+    roles: CRM_ROLES,
+    description: "Кому написать сегодня, карточки клиентов, группы, торты на заказ",
+  },
+  {
     href: "/network",
     label: "Сеть точек",
     icon: Store,
@@ -183,6 +192,7 @@ export function canOpen(item: NavItem, role: Role): boolean {
 // The page a role lands on after login, or when it opens one it may not see.
 export function homeFor(role: Role): string {
   if (role === Role.CASHIER) return "/pos";
+  if (role === Role.CLIENT_MANAGER) return "/crm";
   return REVENUE_VIEW_ROLES.includes(role) ? "/dashboard" : "/sales";
 }
 

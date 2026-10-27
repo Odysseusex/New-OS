@@ -68,3 +68,10 @@ for this (not in the WhatsApp app), payment card in Meta, a System User permanen
 paste Callback URL + Verify token from the programme card into Meta (subscribe `messages` and `user_preferences`),
 press «Отправить шаблоны на проверку в Meta», wait for approval, send one real test. Next after that: automatic
 welcome / win-back messages, a «Мои баллы» page for customers without Telegram.
+
+## CRM stage 1 (2026-10-27)
+
+Built and shipped: `/crm` (Сегодня board «Кому написать» with wa.me links and contact log, Клиенты list + card with
+timeline/rhythm, Группы (RFM + churn radar), Торты на заказ board). New role «Менеджер по клиентам». See CLAUDE.md
+«CRM». Meta number verification is still pending on the owner's side (Facebook asked for ~2 days of account trust).
+Next candidates: «Чаты» inbox when WhatsApp is connected, automatic welcome/win-back chains.

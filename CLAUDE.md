@@ -990,6 +990,29 @@ key — the first real send happens when the owner's account is approved; check 
   `main.ts` — never re-serialise the JSON). A customer's message gets their balance as a free reply (24 h window, no
   consent needed); «СТОП»/«СТАРТ» record their consent; `user_preferences` stop = withdrawal.
 
+## CRM — `/crm` (built, stage 1)
+
+A separate-looking app inside the same Next.js project and the same API/database: `apps/web/src/app/crm/`
+(own layout, Inter, scoped `crm.css` under `.crm` with light «Notion» / dark «Linear» tokens — the ERP's look and
+`--accent` are untouched; the owner chose NOT to restyle the ERP), components in `apps/web/src/components/crm/`,
+backend `apps/api/src/crm/`, shared `packages/shared/src/crm.ts`, migration `20261029120000_crm` (additive).
+- **Everything is computed, nothing is typed in to make a figure appear** (the owner's explicit wish): the board
+  «Кому написать» comes from sales + members + birthdays; RFM groups reuse `LoyaltyAnalyticsService`. Don't add
+  manual segments/tags/condition builders without a fresh request — they were proposed and rejected.
+- Personal rhythm = median gap between purchase DAYS (≥3 days, `medianInterval`); DUE = ≥1 day late and within
+  `max(3×rhythm, rhythm+7)`; LAPSED = later but ≤120 days; rhythms >30 days are not reminded. Wholesale customers
+  (`Customer`) the same over 180 days. Pure maths in `crm/rhythm.ts` (tested). Only members with a current
+  MARKETING consent on some channel appear; a sandbox org gets no WhatsApp/call links (invented numbers).
+- «Написать» = a `wa.me` link with a suggested text (works today, no Meta account) + a recorded `CrmContact`
+  (append-only, UPDATE rejected by trigger). Contacted today → «Написали сегодня»; then hidden for one rhythm
+  (≥3 days). «Вернулись после сообщения» = contacts in 30 days followed by a purchase within 7 days.
+- Cake orders (`CrmOrder` + `CrmOrderEvent`): a board with drag-and-drop, numbered per organization. **No money is
+  recorded**: price is what was agreed, a prepayment is rung up at the till as an ordinary sale.
+- Role `CLIENT_MANAGER` («Менеджер по клиентам»): `CRM_ROLES`, also added to `LOYALTY_TILL_ROLES`/`LOYALTY_MANAGE_ROLES`
+  and `ORG_WIDE_ROLES`; the `(app)` layout sends them to `/crm` the way a cashier is kept on `/pos`.
+- Not built yet (next): a WhatsApp inbox («Чаты») once Meta approves the number (or via Wazzup's API), automatic
+  welcome/win-back chains, campaign results. The ERP's Клиенты → «Розница» still exists alongside.
+
 ## Public bakery website — `/ar-amir` (built)
 
 `apps/web/src/app/ar-amir/` — the business's public site (Meta business verification needs one, plus a privacy
