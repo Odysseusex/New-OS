@@ -12,7 +12,7 @@ import {
   CostBasis,
   Unit,
 } from "@bakery-os/shared";
-import { round2, round4 } from "../common/money";
+import { round2, round3, round4 } from "../common/money";
 import { expandRecipe, isStockedSemiFinished, loadRecipeIndex, recipeUnitCost, TreeRecipe } from "../recipes/recipe-tree";
 import { CostingService } from "../costing/costing.service";
 import { ProductionBatchStatus as PrismaProductionBatchStatus, StockMovementType } from "@prisma/client";
@@ -313,12 +313,19 @@ export class ProductionService {
       if (expanded.missing.length > 0) {
         throw new BadRequestException(`У полуфабриката нет активной техкарты: ${expanded.missing.join(", ")}`);
       }
+      // Stock is held to 0.001 of a unit. The amount taken off the shelf is
+      // rounded ONCE here and the same number goes on the consumption row: a
+      // raw 0.1815 kg used to take 0.181 off the shelf (the database rounds the
+      // difference) while the row said 0.182 — grams of drift between stock and
+      // its history over a month of baking. The batch's COST stays computed from
+      // the exact recipe amounts below, so it keeps matching the recipe card.
+      const consumed = expanded.lines.map((line) => ({ ...line, quantity: round3(line.quantity) }));
 
       // Ingredients with trackInventory=false (e.g. tap water) aren't
       // received or held as stock, so they're excluded from the
       // insufficient-stock check and don't get a consumption movement —
       // they still priced into the recipe's cost via recipes.service.ts.
-      const trackedItems = expanded.lines.filter((line) => line.ingredient.trackInventory);
+      const trackedItems = consumed.filter((line) => line.ingredient.trackInventory && line.quantity > 0);
       const unpriced = expanded.lines.filter((line) => line.unitCost === null).map((line) => line.ingredient.name);
       if (unpriced.length > 0) {
         throw new BadRequestException(`Нет себестоимости у: ${unpriced.join(", ")}`);

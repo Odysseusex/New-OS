@@ -335,3 +335,8 @@ export const LOYALTY_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.STORE_
 
 // Merging duplicates (one-way) and importing a file of customers.
 export const LOYALTY_ADMIN_ROLES: Role[] = HARD_DELETE_ROLES;
+
+// «Песочница»: creating, viewing and deleting the sandbox company. Owner only —
+// it puts a whole organization into the database, and the same role is the one
+// that can download all data.
+export const DEMO_COMPANY_ROLES: Role[] = [Role.OWNER];

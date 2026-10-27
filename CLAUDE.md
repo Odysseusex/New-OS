@@ -851,6 +851,27 @@ is never deferred. Verified round trip: every table identical (md5) and same P&L
 Not built: an in-app restore button (a wrong click would overwrite live data) and scheduled automatic exports (needs
 storage credentials). Full procedure and what to keep where: `docs/RESTORE.md`.
 
+## «Песочница» (sandbox demo company) — built
+
+Настройки → «Песочница» (OWNER only, `DEMO_COMPANY_ROLES`): a SEPARATE organization «Пекарня «Демо»» with ~two months of
+invented history (first day of last month → yesterday), for a financier to explore without seeing the real books.
+`apps/api/src/demo/` (`demo-catalog.ts` = the invented bakery, `demo-company.service.ts` = generator), migration
+`20261027120000_demo_company` (`Organization.demoParentId` unique + `demoReadyAt`, and the SQL function `demo_shift_since`).
+- **Generated through the ordinary services** (purchase orders, production, sales by inactive cashier users, returns,
+  expenses, supplier/customer/consignment payments, cash transfers, fixed assets) so every report agrees; after each
+  simulated day `demo_shift_since(org, since, delta)` moves the org's rows created since `since` back to that day (it
+  refuses any org without `demoParentId`, skips trigger-guarded tables), then sales are spread over 08:00–20:00.
+- Login = one `ACCOUNTANT` of the demo org (never OWNER: OWNER can download the WHOLE database), inactive until the
+  history is complete; password shown once (`POST /demo-company/password` makes a new one). Fiscalisation is forced off
+  for the generator. One generation at a time (in-memory); a server restart mid-way = state INTERRUPTED → delete and redo.
+- Delete = `destroyOrganization` (`common/destroy-organization.ts`, shared with the specs' `destroyOrg`), only for the
+  org whose `demoParentId` is the caller's. Balance sheet of a fresh sandbox is BALANCED: purchases at the catalogue
+  price, batches exactly as planned, recipe amounts in multiples of yield/1000 — keep those if the catalogue changes.
+- Found while building it and FIXED for everyone: production consumption used unrounded amounts (0.18125 kg) — the shelf
+  lost the DB-rounded difference while the movement row stored a differently rounded number, so stock drifted from its
+  history by grams. `ProductionService.complete` now rounds the consumed quantity once (`round3`) for both; the batch's
+  cost still comes from the exact recipe amounts (`production-rounding.spec.ts`).
+
 ## Loyalty programme — stage 1 built (retail customer by phone + consent record)
 
 Research and owner decisions: `docs/CRM-LOYALTY-RESEARCH.md` §10–11. Code: `apps/api/src/loyalty/`,

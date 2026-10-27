@@ -1,4 +1,6 @@
 import type {
+  DemoCompanyCredentialsDto,
+  DemoCompanyStatusDto,
   StockBatchRequestDto,
   StockBatchResultDto,
   ProductDayTrailDto,
@@ -259,6 +261,13 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   me: () => request<LoginResponseDto["user"]>("/auth/me"),
+  demoCompany: {
+    status: () => request<DemoCompanyStatusDto>("/demo-company"),
+    create: () => request<DemoCompanyCredentialsDto>("/demo-company", { method: "POST" }),
+    resetPassword: () => request<DemoCompanyCredentialsDto>("/demo-company/password", { method: "POST" }),
+    remove: () => request<{ deleted: true }>("/demo-company", { method: "DELETE" }),
+  },
+
   backup: {
     status: () => request<{ lastExportAt: string | null; lastExportBy: string | null }>("/backup/status"),
     // The file is built by the server while it streams; the browser keeps it as a download.

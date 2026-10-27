@@ -290,6 +290,17 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // A sandbox company («Песочница») with invented data, made by the owner of
+  // the organization it points to for someone to explore the platform without
+  // seeing that organization's books. Null for every real organization. One per
+  // owner organization; only that organization's owner can see or delete it.
+  // demoReadyAt is set when its history has been generated in full — a demo
+  // with demoParentId set and demoReadyAt null was interrupted.
+  demoParentId String?       @unique
+  demoParent   Organization? @relation("DemoOrganization", fields: [demoParentId], references: [id], onDelete: SetNull)
+  demoChild    Organization? @relation("DemoOrganization")
+  demoReadyAt  DateTime?
+
   // Atomically incremented to hand out unique auto-generated product SKUs
   // (see ProductsService.generateSku) without a retry loop under concurrent
   // creates — Prisma's `increment` compiles to a single atomic UPDATE.
