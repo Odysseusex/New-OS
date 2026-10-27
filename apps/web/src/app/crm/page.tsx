@@ -7,10 +7,11 @@ import { CRM_CONTACT_OUTCOME_LABELS_RU, CRM_ORDER_STAGE_LABELS_RU, CrmTodayCardD
 import { api, ApiError } from "@/lib/api";
 import { useCrm } from "@/components/crm/shell";
 import { ContactDialog } from "@/components/crm/contact-dialog";
-import { Avatar, daysWord, ErrorBox, everyDays, fmtDayKey, fmtMoney, fmtToday, fmtWhen, PageHeader, Skeleton, Tag, Tone } from "@/components/crm/ui";
+import { agoDays, Avatar, daysWord, ErrorBox, everyDays, fmtDayKey, fmtMoney, fmtToday, fmtWhen, PageHeader, Skeleton, Tag, Tone } from "@/components/crm/ui";
 
-const COLUMNS: { key: keyof Pick<CrmTodayDto, "due" | "lapsed" | "wholesale" | "birthdays">; name: string; tone: Tone; empty: string }[] = [
+const COLUMNS: { key: keyof Pick<CrmTodayDto, "due" | "newcomers" | "lapsed" | "wholesale" | "birthdays">; name: string; tone: Tone; empty: string }[] = [
   { key: "due", name: "Пора за покупкой", tone: "green", empty: "Все пришли вовремя" },
+  { key: "newcomers", name: "Новички", tone: "yellow", empty: "Новых покупателей нет" },
   { key: "lapsed", name: "Давно не были", tone: "orange", empty: "Никто не пропал" },
   { key: "wholesale", name: "Опт · дозаказ", tone: "blue", empty: "Дозаказы по графику" },
   { key: "birthdays", name: "Дни рождения", tone: "purple", empty: "На этой неделе нет" },
@@ -167,6 +168,11 @@ function TodayCard({ card, onOpen }: { card: CrmTodayCardDto; onOpen: () => void
               {card.birthday.inDays === 0 ? "сегодня" : `через ${card.birthday.inDays} ${daysWord(card.birthday.inDays)}`}
             </span>
           </>
+        )}
+        {card.reason === "NEW" && card.daysSinceLastVisit !== null && (
+          <span className="crm-mini" style={{ background: "var(--yellow-bg)", color: "var(--yellow)" }}>
+            первая покупка {agoDays(card.daysSinceLastVisit)}
+          </span>
         )}
         {!card.birthday && card.rhythmDays !== null && <span className="crm-mini">{everyDays(card.rhythmDays)}</span>}
         {!card.birthday && late && card.daysSinceLastVisit !== null && (

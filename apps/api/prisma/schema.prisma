@@ -2973,6 +2973,7 @@ enum CrmContactReason {
   LAPSED
   BIRTHDAY
   WHOLESALE
+  NEW
   ORDER
   OTHER
 }

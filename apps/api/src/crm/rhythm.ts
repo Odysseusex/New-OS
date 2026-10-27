@@ -21,6 +21,12 @@ export const MAX_REMINDABLE_RHYTHM_DAYS = 30;
 // Past this many days a regular counts as gone and is no longer chased.
 export const LAPSED_GIVE_UP_DAYS = 120;
 export const WHOLESALE_GIVE_UP_DAYS = 60;
+// A first-time buyer is welcomed from the day after their purchase until this
+// many days later; past it, the moment for «спасибо, что зашли» has gone.
+export const NEWCOMER_WINDOW_DAYS = 10;
+
+export const isNewcomer = (p: RhythmPosition) =>
+  p.visitDays === 1 && p.daysSince !== null && p.daysSince >= 1 && p.daysSince <= NEWCOMER_WINDOW_DAYS;
 
 // `dayStarts`: the local midnight (ms) of every purchase day; `today` likewise.
 export function rhythmPosition(dayStarts: number[], today: number): RhythmPosition {
@@ -82,7 +88,7 @@ const greeting = (name: string | null) => (firstName(name) ? `${firstName(name)}
 const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 
 export function suggestedText(
-  reason: "DUE" | "LAPSED" | "BIRTHDAY" | "WHOLESALE",
+  reason: "DUE" | "LAPSED" | "BIRTHDAY" | "WHOLESALE" | "NEW",
   ctx: { brand: string; name: string | null; usual: string[]; points: number; birthdayOf?: { name: string; relation: string | null; isHolder: boolean } },
 ): string {
   // A name that already carries its quotes («Пекарня «Колосок»») is used as is.
@@ -100,6 +106,8 @@ export function suggestedText(
       const whose = !b || b.isHolder ? "ваш день рождения" : `день рождения — ${b.name}${b.relation ? ` (${lower(b.relation)})` : ""}`;
       return `${greeting(ctx.name)} Это ${brand}. Скоро ${whose}. Испечём торт к празднику? Подскажем с выбором.`;
     }
+    case "NEW":
+      return `${greeting(ctx.name)} Это ${brand}, спасибо, что заглянули к нам!${ctx.usual.length ? ` Как вам ${lower(ctx.usual[0])}?` : ""}${ctx.points > 0 ? ` У вас уже ${Math.floor(ctx.points)} бонусных баллов — ими можно оплатить часть следующей покупки.` : ""} Будем рады видеть снова.`;
     case "WHOLESALE":
       return `Добрый день! Это ${brand}. Обычно в это время вы дозаказываете${ctx.usual.length ? `: ${ctx.usual.join(", ")}` : ""}. Оформить заказ?`;
   }

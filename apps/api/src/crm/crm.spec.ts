@@ -142,6 +142,32 @@ describe("CrmService (database)", () => {
     expect(card.timeline.map((t) => t.kind)).toEqual(expect.arrayContaining(["SALE", "CONTACT", "CONSENT", "REGISTERED"]));
   });
 
+  it("newcomers: a first purchase a few days ago is welcomed once; a year-old buyer is not new", async () => {
+    const now = new Date();
+    const product = await prisma.product.create({
+      data: { organizationId: org.organizationId, name: "Круассан", sku: "CRM-N1", unit: Unit.PCS, type: ProductType.FINISHED_GOOD, trackInventory: false, price: 500 } as never,
+    });
+    const reg = async (phone: string, name: string) =>
+      (await loyalty.register(org.user, { phone, name, personalDataConsent: true, marketingChannels: [LoyaltyConsentChannel.WHATSAPP], source: S.AT_TILL })).id;
+    const fresh = await reg("+77083000001", "Алия Новикова");
+    const returning = await reg("+77083000002", "Старый Знакомый");
+    const sellAgo = async (memberId: string, ago: number) => {
+      const sale = await services.sales.create(org.user, { locationId: org.storeId, paymentMethod: PaymentMethod.CASH, items: [{ productId: product.id, quantity: 1, unitPrice: 500 }], loyaltyMemberId: memberId } as never);
+      await prisma.sale.update({ where: { id: sale.id }, data: { soldAt: new Date(now.getTime() - ago * DAY) } });
+    };
+    await sellAgo(fresh, 3);
+    await sellAgo(returning, 400); // bought long ago, once again now: not a newcomer
+    await sellAgo(returning, 3);
+
+    const board = await crm.today(org.organizationId, now);
+    expect(board.newcomers.map((c) => c.memberId)).toEqual([fresh]);
+    expect(board.newcomers[0].suggestedText).toMatch(/^Алия, добрый день! .*спасибо, что заглянули к нам! Как вам круассан\?/);
+
+    await crm.recordContact(org.user, { memberId: fresh, channel: CrmContactChannel.WHATSAPP, outcome: CrmContactOutcome.SENT, reason: CrmContactReason.NEW });
+    expect((await crm.today(org.organizationId, now)).newcomers).toEqual([]);
+    expect((await crm.today(org.organizationId, new Date(now.getTime() + 2 * DAY))).newcomers).toEqual([]); // welcomed once
+  });
+
   it("orders: numbered per organization, stage changes are recorded", async () => {
     const due = new Date(Date.now() + 5 * DAY).toISOString();
     const a = await orders.create(org.user, { customerName: "Гульнара", title: "Торт «Медовик», 2 кг", dueAt: due, price: 17400 });

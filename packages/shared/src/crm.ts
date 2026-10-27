@@ -42,6 +42,7 @@ export enum CrmContactReason {
   LAPSED = "LAPSED",
   BIRTHDAY = "BIRTHDAY",
   WHOLESALE = "WHOLESALE",
+  NEW = "NEW",
   ORDER = "ORDER",
   OTHER = "OTHER",
 }
@@ -51,6 +52,7 @@ export const CRM_CONTACT_REASON_LABELS_RU: Record<CrmContactReason, string> = {
   [CrmContactReason.LAPSED]: "Давно не были",
   [CrmContactReason.BIRTHDAY]: "День рождения",
   [CrmContactReason.WHOLESALE]: "Опт · дозаказ",
+  [CrmContactReason.NEW]: "Новички",
   [CrmContactReason.ORDER]: "Заказ",
   [CrmContactReason.OTHER]: "Другое",
 };
@@ -116,6 +118,8 @@ export interface CrmAgendaItemDto {
 export interface CrmTodayDto {
   date: string;
   due: CrmTodayCardDto[];
+  // First purchase a few days ago and no second one yet: one welcome each.
+  newcomers: CrmTodayCardDto[];
   lapsed: CrmTodayCardDto[];
   wholesale: CrmTodayCardDto[];
   birthdays: CrmTodayCardDto[];

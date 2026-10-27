@@ -32,7 +32,7 @@ import { LoyaltyAnalyticsService } from "../loyalty/loyalty-analytics.service";
 import { LoyaltyPointsService } from "../loyalty/loyalty-points.service";
 import { consentState, LoyaltyService, memberSearchWhere } from "../loyalty/loyalty.service";
 import { toOrderDto, ORDER_INCLUDE } from "./crm-orders.service";
-import { contactCooldownDays, DAY, dueLimit, retailVerdict, rhythmPosition, suggestedText, usualProducts, wholesaleVerdict } from "./rhythm";
+import { contactCooldownDays, DAY, dueLimit, isNewcomer, retailVerdict, rhythmPosition, suggestedText, usualProducts, wholesaleVerdict } from "./rhythm";
 
 const dayKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Almaty", year: "numeric", month: "2-digit", day: "2-digit" });
 const MAX_MERGE_HOPS = 10;
@@ -42,6 +42,9 @@ const RETURN_WINDOW_DAYS = 7;
 const COLUMN_LIMIT = 60;
 const BIRTHDAY_AHEAD_DAYS = 7;
 const LIST_LIMIT = 300;
+// A welcome is sent once: any quiet spell longer than the newcomer window
+// keeps the card from coming back (contacts are read 60 days back).
+const NEWCOMER_COOLDOWN_DAYS = 30;
 
 type Money = { toNumber(): number };
 interface SaleLite {
@@ -58,6 +61,7 @@ const SAME_FAMILY: Record<CrmContactReason, CrmContactReason[]> = {
   [CrmContactReason.LAPSED]: [CrmContactReason.DUE, CrmContactReason.LAPSED, CrmContactReason.OTHER, CrmContactReason.ORDER],
   [CrmContactReason.BIRTHDAY]: [CrmContactReason.BIRTHDAY, CrmContactReason.ORDER],
   [CrmContactReason.WHOLESALE]: [CrmContactReason.WHOLESALE, CrmContactReason.OTHER, CrmContactReason.ORDER],
+  [CrmContactReason.NEW]: [CrmContactReason.NEW, CrmContactReason.DUE, CrmContactReason.OTHER, CrmContactReason.ORDER],
   [CrmContactReason.ORDER]: [CrmContactReason.ORDER],
   [CrmContactReason.OTHER]: [CrmContactReason.OTHER],
 };
@@ -219,11 +223,16 @@ export class CrmService {
 
     type Draft = Omit<CrmTodayCardDto, "usual" | "pointsBalance" | "suggestedText" | "channels"> & { saleIds: string[]; consentsOf?: string };
     const drafts: Draft[] = [];
+    const newcomerCandidates: { memberId: string; list: SaleLite[]; p: ReturnType<typeof rhythmPosition> }[] = [];
     const doneContact = new Map<string, (typeof contacts)[number]>();
 
     for (const [memberId, list] of sales) {
       if (!contactable(memberId)) continue;
       const p = rhythmPosition(list.map((s) => startOfZonedDay(s.soldAt).getTime()), today);
+      if (isNewcomer(p)) {
+        newcomerCandidates.push({ memberId, list, p });
+        continue;
+      }
       const verdict = retailVerdict(p);
       if (!verdict) continue;
       const reason = verdict === "DUE" ? CrmContactReason.DUE : CrmContactReason.LAPSED;
@@ -251,6 +260,51 @@ export class CrmService {
         contactOutcome: null,
         contactedByName: null,
         saleIds: list.slice(-40).map((s) => s.id),
+        consentsOf: memberId,
+      });
+    }
+
+    // One purchase in the year may still not be the first ever: a year-old buyer is not new.
+    const candidateIds = new Set(newcomerCandidates.map((c) => c.memberId));
+    const olderBuyers = candidateIds.size
+      ? await this.prisma.sale.findMany({
+          where: {
+            organizationId,
+            soldAt: { lt: new Date(today - RETAIL_HISTORY_DAYS * DAY) },
+            loyaltyMemberId: { in: universe.rows.filter((m) => candidateIds.has(finalId(m.id))).map((m) => m.id) },
+          },
+          select: { loyaltyMemberId: true },
+          distinct: ["loyaltyMemberId"],
+        })
+      : [];
+    const notNew = new Set(olderBuyers.map((s) => finalId(s.loyaltyMemberId as string)));
+    for (const { memberId, list, p } of newcomerCandidates) {
+      if (notNew.has(memberId)) continue;
+      // Welcomed once: after the message the card does not come back.
+      const status = contactStatus(`m:${memberId}`, CrmContactReason.NEW, NEWCOMER_COOLDOWN_DAYS);
+      if (status.state === "hidden") continue;
+      const m = byId.get(memberId)!;
+      const key = `member:${memberId}`;
+      if (status.state === "done") doneContact.set(key, status.contact);
+      drafts.push({
+        key,
+        reason: CrmContactReason.NEW,
+        memberId,
+        customerId: null,
+        name: m.name,
+        phone: m.phone,
+        rhythmDays: null,
+        daysSinceLastVisit: p.daysSince,
+        overdueDays: null,
+        stopped: false,
+        lastVisitAt: list[list.length - 1].soldAt.toISOString(),
+        visits: 1,
+        segment: segments.of.get(memberId) ?? null,
+        birthday: null,
+        contactedAt: null,
+        contactOutcome: null,
+        contactedByName: null,
+        saleIds: list.map((s) => s.id),
         consentsOf: memberId,
       });
     }
@@ -359,7 +413,7 @@ export class CrmService {
         contactedAt: contact?.at.toISOString() ?? null,
         contactOutcome: (contact?.outcome as CrmContactOutcome) ?? null,
         contactedByName: contact?.byName ?? null,
-        suggestedText: suggestedText(d.reason as "DUE" | "LAPSED" | "BIRTHDAY" | "WHOLESALE", {
+        suggestedText: suggestedText(d.reason as "DUE" | "LAPSED" | "BIRTHDAY" | "WHOLESALE" | "NEW", {
           brand: org.brand,
           name: d.customerId ? null : d.name,
           usual,
@@ -393,6 +447,7 @@ export class CrmService {
       }
     }
 
+    const newcomers = pick(CrmContactReason.NEW, (a, b) => (a.daysSinceLastVisit ?? 0) - (b.daysSinceLastVisit ?? 0));
     const due = pick(CrmContactReason.DUE, (a, b) => (b.overdueDays ?? 0) - (a.overdueDays ?? 0) || b.visits - a.visits);
     const lapsed = pick(CrmContactReason.LAPSED, (a, b) => b.visits - a.visits);
     // A reorder that is merely late comes before a customer who stopped ordering.
@@ -403,13 +458,14 @@ export class CrmService {
     return {
       date: dayKey.format(now),
       due,
+      newcomers,
       lapsed,
       wholesale,
       birthdays,
       done,
       agenda: orders.map((o) => ({ orderId: o.id, number: o.number, title: o.title, customerName: o.customerName, dueAt: o.dueAt.toISOString(), stage: o.stage as CrmOrderStage })),
       stats: {
-        toContact: due.length + lapsed.length + wholesale.length + birthdays.length,
+        toContact: due.length + newcomers.length + lapsed.length + wholesale.length + birthdays.length,
         contactedToday: done.length,
         contacts30: recent.length,
         returned30: returned,
