@@ -171,7 +171,9 @@ function TodayCard({ card, onOpen }: { card: CrmTodayCardDto; onOpen: () => void
         {!card.birthday && card.rhythmDays !== null && <span className="crm-mini">{everyDays(card.rhythmDays)}</span>}
         {!card.birthday && late && card.daysSinceLastVisit !== null && (
           <span className="crm-mini num" style={{ background: "var(--red-bg)", color: "var(--red)" }}>
-            {card.reason === "LAPSED" ? `не был ${card.daysSinceLastVisit} ${daysWord(card.daysSinceLastVisit)}` : `+${card.overdueDays} ${daysWord(card.overdueDays!)}`}
+            {card.stopped
+              ? `${card.customerId ? "не заказывал" : "не был"} ${card.daysSinceLastVisit} ${daysWord(card.daysSinceLastVisit)}`
+              : `+${card.overdueDays} ${daysWord(card.overdueDays!)}`}
           </span>
         )}
         {card.pointsBalance > 0 && <span className="crm-mini num">{Math.floor(card.pointsBalance)} б.</span>}

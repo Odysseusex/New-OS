@@ -88,6 +88,8 @@ export interface CrmTodayCardDto {
   daysSinceLastVisit: number | null;
   // Days past the expected next purchase (negative = not yet due).
   overdueDays: number | null;
+  // Far past the habit (lapsed; for wholesale — stopped ordering), not just a little late.
+  stopped: boolean;
   lastVisitAt: string | null;
   visits: number;
   segment: LoyaltySegment | null;

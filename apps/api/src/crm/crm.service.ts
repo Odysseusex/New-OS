@@ -32,7 +32,7 @@ import { LoyaltyAnalyticsService } from "../loyalty/loyalty-analytics.service";
 import { LoyaltyPointsService } from "../loyalty/loyalty-points.service";
 import { consentState, LoyaltyService, memberSearchWhere } from "../loyalty/loyalty.service";
 import { toOrderDto, ORDER_INCLUDE } from "./crm-orders.service";
-import { contactCooldownDays, DAY, retailVerdict, rhythmPosition, suggestedText, usualProducts, wholesaleVerdict } from "./rhythm";
+import { contactCooldownDays, DAY, dueLimit, retailVerdict, rhythmPosition, suggestedText, usualProducts, wholesaleVerdict } from "./rhythm";
 
 const dayKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Almaty", year: "numeric", month: "2-digit", day: "2-digit" });
 const MAX_MERGE_HOPS = 10;
@@ -242,6 +242,7 @@ export class CrmService {
         rhythmDays: p.rhythmDays,
         daysSinceLastVisit: p.daysSince,
         overdueDays: p.overdueDays,
+        stopped: verdict === "LAPSED",
         lastVisitAt: list[list.length - 1].soldAt.toISOString(),
         visits: p.visitDays,
         segment: segments.of.get(memberId) ?? null,
@@ -274,6 +275,7 @@ export class CrmService {
         name: m.name,
         phone: m.phone,
         rhythmDays: null,
+        stopped: false,
         daysSinceLastVisit: list.length ? Math.round((today - startOfZonedDay(list[list.length - 1].soldAt).getTime()) / DAY) : null,
         overdueDays: null,
         lastVisitAt: list.length ? list[list.length - 1].soldAt.toISOString() : null,
@@ -321,6 +323,7 @@ export class CrmService {
         rhythmDays: p.rhythmDays,
         daysSinceLastVisit: p.daysSince,
         overdueDays: p.overdueDays,
+        stopped: p.daysSince! > dueLimit(p.rhythmDays!),
         lastVisitAt: list[list.length - 1].soldAt.toISOString(),
         visits: p.visitDays,
         segment: null,
@@ -392,7 +395,8 @@ export class CrmService {
 
     const due = pick(CrmContactReason.DUE, (a, b) => (b.overdueDays ?? 0) - (a.overdueDays ?? 0) || b.visits - a.visits);
     const lapsed = pick(CrmContactReason.LAPSED, (a, b) => b.visits - a.visits);
-    const wholesale = pick(CrmContactReason.WHOLESALE, (a, b) => (b.overdueDays ?? 0) - (a.overdueDays ?? 0));
+    // A reorder that is merely late comes before a customer who stopped ordering.
+    const wholesale = pick(CrmContactReason.WHOLESALE, (a, b) => Number(a.stopped) - Number(b.stopped) || (b.overdueDays ?? 0) - (a.overdueDays ?? 0));
     const birthdays = pick(CrmContactReason.BIRTHDAY, (a, b) => (a.birthday?.inDays ?? 0) - (b.birthday?.inDays ?? 0));
     const done = cards.filter((c) => c.contactedAt).sort((a, b) => (b.contactedAt ?? "").localeCompare(a.contactedAt ?? ""));
 
