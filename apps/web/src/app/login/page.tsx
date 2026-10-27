@@ -15,7 +15,9 @@ export default function LoginPage() {
     setError(null);
     setIsSubmitting(true);
     try {
-      await login(email, password);
+      // Coming from a page that needed a login (e.g. /crm) goes back there.
+      const next = new URLSearchParams(window.location.search).get("next");
+      await login(email, password, next);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось войти. Попробуйте ещё раз.");
     } finally {

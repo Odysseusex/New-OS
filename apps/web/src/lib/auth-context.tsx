@@ -9,7 +9,7 @@ import { homeFor } from "./nav";
 interface AuthContextValue {
   user: CurrentUserDto | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, next?: string | null) => Promise<void>;
   logout: () => void;
 }
 
@@ -36,13 +36,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback(
-    async (email: string, password: string) => {
+    async (email: string, password: string, next?: string | null) => {
       const response = await api.login(email, password);
       localStorage.setItem("bakery_token", response.accessToken);
       setUser(response.user);
       // Cashier logins land straight on the till, an operator on «Продажи» —
       // see (app)/layout.tsx, which also enforces this on every later navigation.
-      router.push(homeFor(response.user.role));
+      // Only a path inside this app (never «//host» or a full URL) is followed.
+      const safeNext = next && next.startsWith("/") && !next.startsWith("//") && next !== "/login" ? next : null;
+      router.push(safeNext ?? homeFor(response.user.role));
     },
     [router],
   );

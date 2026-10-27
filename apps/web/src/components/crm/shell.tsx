@@ -46,8 +46,8 @@ export function CrmShell({ children }: { children: React.ReactNode }) {
   useEffect(() => setTheme(readTheme()), []);
   useEffect(() => setMenuOpen(false), [pathname]);
   useEffect(() => {
-    if (!isLoading && !user) router.replace("/login");
-  }, [isLoading, user, router]);
+    if (!isLoading && !user) router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+  }, [isLoading, user, router, pathname]);
 
   const allowed = !!user && CRM_ROLES.includes(user.role);
 
