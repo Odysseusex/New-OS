@@ -58,6 +58,9 @@ export interface RegionDto {
 export interface OrganizationDto {
   id: string;
   name: string;
+  // The sandbox («Песочница»): a demo company with invented data. Optional so a
+  // client one build ahead of the API reads a missing flag as "not a sandbox".
+  isDemo?: boolean;
 }
 
 export interface CurrentUserDto {

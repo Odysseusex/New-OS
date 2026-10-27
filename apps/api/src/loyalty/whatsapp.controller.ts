@@ -3,6 +3,7 @@ import type { Request } from "express";
 import { LOYALTY_ADMIN_ROLES, LOYALTY_MANAGE_ROLES, Role } from "@bakery-os/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
+import { NotDemoGuard } from "../common/guards/not-demo.guard";
 import { Roles } from "../common/decorators/roles.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { AuthenticatedUser } from "../auth/auth.types";
@@ -30,15 +31,16 @@ export class WhatsAppController {
     return { ok: true };
   }
 
+  // The WhatsApp account is the real business's: never from inside the sandbox.
   @Get("status")
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, NotDemoGuard)
   @Roles(...LOYALTY_MANAGE_ROLES)
   status(@CurrentUser() user: AuthenticatedUser) {
     return this.whatsapp.status(user.organizationId, (LOYALTY_ADMIN_ROLES as readonly Role[]).includes(user.role as Role));
   }
 
   @Post("templates")
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, NotDemoGuard)
   @Roles(...LOYALTY_ADMIN_ROLES)
   submitTemplates() {
     return this.whatsapp.submitTemplates();

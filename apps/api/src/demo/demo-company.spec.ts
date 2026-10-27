@@ -4,6 +4,8 @@ import { PrismaService } from "../prisma/prisma.service";
 import { createIsolatedOrg, destroyOrg, IsolatedOrg } from "../../test/support/isolated-org";
 import { FinanceService } from "../finance/finance.service";
 import { CashMovementsService } from "../finance/cash-movements.service";
+import { UsersService } from "../users/users.service";
+import { assertNotDemo, isDemoOrganization } from "../common/demo-guard";
 import { DemoCompanyService } from "./demo-company.service";
 
 // «Песочница»: a separate demo company filled through the ordinary services,
@@ -51,10 +53,11 @@ describe("sandbox company", () => {
     await prisma.$disconnect();
   });
 
-  it("is generated day by day, dated where it belongs, with a working «Бухгалтер» login", async () => {
+  it("is generated day by day, dated where it belongs, with a working full-access login", async () => {
     const credentials = await service.start(parent.user, lastOfPrevious, secondOfThis);
     const login = await prisma.user.findFirstOrThrow({ where: { email: credentials.email } });
-    expect(login.role).toBe(Role.ACCOUNTANT);
+    expect(login.role).toBe(Role.OWNER);
+    expect(login.title).toBe("Песочница");
     expect(login.isActive).toBe(false);
     expect(await bcrypt.compare(credentials.password, login.passwordHash)).toBe(true);
 
@@ -93,6 +96,19 @@ describe("sandbox company", () => {
 
   it("never touches a real organization", async () => {
     expect(await countReal()).toEqual(realCounts);
+
+    // Full rights inside, but what reaches the real business refuses a sandbox.
+    const demo = await prisma.organization.findUniqueOrThrow({ where: { demoParentId: parent.organizationId } });
+    expect(await isDemoOrganization(prisma, demo.id)).toBe(true);
+    await expect(assertNotDemo(prisma, demo.id)).rejects.toThrow("В песочнице недоступно");
+    await expect(assertNotDemo(prisma, parent.organizationId)).resolves.toBeUndefined();
+
+    // Login is by email across every organization: a sandbox cannot take a real person's.
+    const demoOwner = await prisma.user.findFirstOrThrow({ where: { organizationId: demo.id, email: { startsWith: "finance-demo-" } } });
+    const actor = { ...parent.user, id: demoOwner.id, organizationId: demo.id };
+    await expect(
+      new UsersService(prisma).create(actor, { fullName: "Двойник", email: parent.user.email, password: "secret123", role: Role.OWNER }),
+    ).rejects.toThrow("Этот email уже используется для входа");
     await expect(
       prisma.$executeRaw`SELECT demo_shift_since(${parent.organizationId}, now()::timestamp(3), interval '1 day')`,
     ).rejects.toThrow(/not a demo organization/);

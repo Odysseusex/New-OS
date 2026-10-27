@@ -11,6 +11,7 @@ import {
   normalizeKzPhone,
 } from "@bakery-os/shared";
 import { PrismaService } from "../prisma/prisma.service";
+import { demoOrganizationIds } from "../common/demo-guard";
 import { recordChannelConsent } from "./channel-consent";
 import { consentState } from "./loyalty.service";
 import { pointsPosition } from "./points-ledger";
@@ -271,8 +272,9 @@ export class WhatsAppService {
   // ACTIVE and the current WHATSAPP consent granted — the phone is the address.
   async reachableIds(memberIds: string[]): Promise<Set<string>> {
     if (memberIds.length === 0) return new Set();
+    // A sandbox («Песочница») customer is invented: never messaged from the real account.
     const members = await this.prisma.loyaltyMember.findMany({
-      where: { id: { in: memberIds }, status: LoyaltyMemberStatus.ACTIVE },
+      where: { id: { in: memberIds }, status: LoyaltyMemberStatus.ACTIVE, organizationId: { notIn: await demoOrganizationIds(this.prisma) } },
       include: { consents: { orderBy: [{ recordedAt: "asc" }, { id: "asc" }] } },
     });
     return new Set(members.filter((m) => consentState(m.consents).marketing.WHATSAPP).map((m) => m.id));
@@ -408,7 +410,7 @@ export class WhatsAppService {
   private async membersByWaId(waId: string): Promise<string[]> {
     const phone = normalizeKzPhone(`+${waId.replace(/\D/g, "")}`);
     if (!phone) return [];
-    const found = await this.prisma.loyaltyMember.findMany({ where: { phone }, select: { id: true } });
+    const found = await this.prisma.loyaltyMember.findMany({ where: { phone, organizationId: { notIn: await demoOrganizationIds(this.prisma) } }, select: { id: true } });
     const ids = new Set<string>();
     for (const { id } of found) {
       let current = await this.prisma.loyaltyMember.findUnique({ where: { id }, select: { id: true, mergedIntoId: true } });

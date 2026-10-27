@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { isDemoOrganization } from "../common/demo-guard";
 import {
   CashAccountType,
   CashMovementDto,
@@ -1281,7 +1282,8 @@ export class SalesService {
     // then fails to record. That leaves a registered receipt with no saleId,
     // which needsAttention() surfaces on purpose rather than hiding.
     const soldAt = new Date();
-    const receipt = this.fiscalSettings.isEnabled()
+    // The sandbox («Песочница») never reaches the real cash register.
+    const receipt = this.fiscalSettings.isEnabled() && !(await isDemoOrganization(this.prisma, user.organizationId))
       ? await this.fiscalizeBeforeSale(user, locationId, items, totalAmount, paymentMethod, soldAt, split)
       : null;
 

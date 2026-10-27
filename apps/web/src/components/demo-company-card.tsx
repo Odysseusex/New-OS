@@ -65,7 +65,7 @@ export function DemoCompanyCard() {
           </h2>
           {loadError && <p className="mt-2 text-sm text-red-600">{loadError}</p>}
           {state === "NONE" && (
-            <p className="mt-2 text-sm text-muted">Отдельная демо-компания с выдуманными данными за два месяца, вход с ролью «Бухгалтер». Ваших данных в ней нет.</p>
+            <p className="mt-2 text-sm text-muted">Отдельная демо-компания с выдуманными данными за два месяца, вход с полным доступом. Ваших данных в ней нет.</p>
           )}
           {state === "GENERATING" && status?.progress && (
             <div className="mt-2 w-72 max-w-full">

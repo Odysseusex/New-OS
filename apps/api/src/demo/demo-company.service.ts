@@ -72,9 +72,11 @@ import {
 // opening hours.
 //
 // Safety: the sandbox is its own organization (demoParentId = the owner's), so
-// nothing in it can read or touch the real one. Its login is a «Бухгалтер»
-// (never OWNER — the owner can download the WHOLE database). Fiscalisation is
-// switched off for it regardless of the environment. Deleting only ever
+// nothing in it can read or touch the real one. Its login has full rights in it
+// (OWNER); the few things that reach beyond one organization — the WHOLE-database
+// download, the fiscal cash register, WhatsApp and the customer bot — refuse a
+// sandbox themselves (common/demo-guard.ts). Fiscalisation is off for it
+// regardless of the environment. Deleting only ever
 // touches an organization whose demoParentId is the caller's own organization.
 
 const DEMO_NAME = "Пекарня «Демо»";
@@ -130,6 +132,9 @@ const round3 = (n: number) => Math.round(n * 1000) / 1000;
 const MONTHS_RU = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
 
 const PASSWORD_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
+// The sandbox login is told apart from the generator's own (inactive) users by
+// its email: every one of them starts with this.
+const LOGIN_PREFIX = "finance-demo-";
 const newPassword = () => Array.from({ length: 10 }, () => PASSWORD_ALPHABET[randomInt(PASSWORD_ALPHABET.length)]).join("");
 
 @Injectable()
@@ -160,7 +165,7 @@ export class DemoCompanyService {
     if (!demo) {
       return { state: "NONE", name: null, email: null, progress: null, periodFrom: null, periodTo: null, error: failed?.error ?? null };
     }
-    const login = await this.prisma.user.findFirst({ where: { organizationId: demo.id, role: Role.ACCOUNTANT }, orderBy: { createdAt: "asc" } });
+    const login = await this.prisma.user.findFirst({ where: { organizationId: demo.id, email: { startsWith: LOGIN_PREFIX } }, orderBy: { createdAt: "asc" } });
     const progress = running ?? failed;
     // Once ready, the period is read from the sales themselves (the progress
     // is gone after a restart).
@@ -207,7 +212,7 @@ export class DemoCompanyService {
     const since = await this.since();
     const password = newPassword();
     const suffix = Array.from({ length: 5 }, () => PASSWORD_ALPHABET[randomInt(PASSWORD_ALPHABET.length)]).join("");
-    const email = `finance-demo-${suffix}@aramir.demo`;
+    const email = `${LOGIN_PREFIX}${suffix}@aramir.demo`;
     let organizationId: string;
     try {
       const org = await this.prisma.organization.create({ data: { name: DEMO_NAME, demoParentId: user.organizationId } });
@@ -215,10 +220,14 @@ export class DemoCompanyService {
       await this.prisma.user.create({
         data: {
           organizationId,
-          fullName: "Финансист (демо)",
+          fullName: "Демо-доступ",
           email,
           passwordHash: await bcrypt.hash(password, 10),
-          role: Role.ACCOUNTANT,
+          // Everything in its own company is open to it; what reaches the real
+          // business (the whole-database download, the cash register, WhatsApp)
+          // refuses a sandbox by itself (common/demo-guard.ts).
+          role: Role.OWNER,
+          title: "Песочница",
           isActive: false,
         },
       });
@@ -241,7 +250,7 @@ export class DemoCompanyService {
   async resetPassword(user: AuthenticatedUser): Promise<DemoCompanyCredentialsDto> {
     const demo = await this.demoOf(user.organizationId);
     if (!demo) throw new NotFoundException("Песочницы нет");
-    const login = await this.prisma.user.findFirst({ where: { organizationId: demo.id, role: Role.ACCOUNTANT }, orderBy: { createdAt: "asc" } });
+    const login = await this.prisma.user.findFirst({ where: { organizationId: demo.id, email: { startsWith: LOGIN_PREFIX } }, orderBy: { createdAt: "asc" } });
     if (!login) throw new NotFoundException("Вход в песочницу не найден");
     const password = newPassword();
     await this.prisma.user.update({ where: { id: login.id }, data: { passwordHash: await bcrypt.hash(password, 10) } });
@@ -736,7 +745,7 @@ export class DemoCompanyService {
       }
     }
 
-    await prisma.user.updateMany({ where: { organizationId, role: Role.ACCOUNTANT }, data: { isActive: true } });
+    await prisma.user.updateMany({ where: { organizationId, email: { startsWith: LOGIN_PREFIX } }, data: { isActive: true } });
     await prisma.organization.update({ where: { id: organizationId }, data: { demoReadyAt: new Date() } });
     DemoCompanyService.running = null;
     this.logger.log(`Sandbox ${organizationId} for ${parentId} ready in ${Math.round((Date.now() - started) / 1000)} s`);

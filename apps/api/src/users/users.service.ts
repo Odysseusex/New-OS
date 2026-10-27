@@ -33,11 +33,13 @@ export class UsersService {
       throw new BadRequestException("Для этой роли нужно выбрать точку");
     }
 
-    const existing = await this.prisma.user.findFirst({
-      where: { organizationId: actor.organizationId, email: dto.email },
-    });
+    // Login finds a user by email across every organization (the sandbox is one),
+    // so an email may belong to one account only — in this organization or any other.
+    const existing = await this.prisma.user.findFirst({ where: { email: dto.email } });
     if (existing) {
-      throw new ConflictException("Сотрудник с таким email уже есть в организации");
+      throw new ConflictException(
+        existing.organizationId === actor.organizationId ? "Сотрудник с таким email уже есть в организации" : "Этот email уже используется для входа",
+      );
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
@@ -92,11 +94,11 @@ export class UsersService {
     }
 
     if (dto.email && dto.email !== target.email) {
-      const existing = await this.prisma.user.findFirst({
-        where: { organizationId: actor.organizationId, email: dto.email, id: { not: userId } },
-      });
+      const existing = await this.prisma.user.findFirst({ where: { email: dto.email, id: { not: userId } } });
       if (existing) {
-        throw new ConflictException("Сотрудник с таким email уже есть в организации");
+        throw new ConflictException(
+          existing.organizationId === actor.organizationId ? "Сотрудник с таким email уже есть в организации" : "Этот email уже используется для входа",
+        );
       }
     }
 

@@ -9,6 +9,7 @@ import {
 } from "@bakery-os/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
+import { NotDemoGuard } from "../common/guards/not-demo.guard";
 import { Roles } from "../common/decorators/roles.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { AuthenticatedUser } from "../auth/auth.types";
@@ -16,8 +17,9 @@ import { FiscalService } from "./fiscal.service";
 
 // Fiscal receipts are a legal/financial document, not an operational list —
 // same sensitivity as FINANCE_SETUP_ROLES, so gated the same way rather than
-// opened to every authenticated role by default.
-@UseGuards(JwtAuthGuard, RolesGuard)
+// opened to every authenticated role by default. The cash register is the real
+// business's, so the sandbox never reaches it.
+@UseGuards(JwtAuthGuard, RolesGuard, NotDemoGuard)
 @Roles(...HARD_DELETE_ROLES)
 @Controller("fiscal")
 export class FiscalController {

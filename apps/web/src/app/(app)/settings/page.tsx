@@ -36,6 +36,9 @@ import { PromotionCouponsModal } from "@/components/promotion-coupons-modal";
 export default function SettingsPage() {
   const { user } = useAuth();
   const canManage = user ? USER_MANAGE_ROLES.includes(user.role) : false;
+  // Inside the sandbox («Песочница») the cards that reach the real business are
+  // left out — their endpoints refuse a sandbox anyway.
+  const isDemo = !!user?.organization?.isDemo;
   const canSeeFiscal = user ? HARD_DELETE_ROLES.includes(user.role) : false;
   const isOwner = user?.role === Role.OWNER;
   const canManagePromotions = user ? PROMOTION_MANAGE_ROLES.includes(user.role) : false;
@@ -92,7 +95,7 @@ export default function SettingsPage() {
       <div className="mb-8 space-y-5">
         <TelegramCard />
         {/* Same gate as the endpoints behind it — OWNER/ADMIN only. */}
-        {canSeeFiscal && <FiscalCard />}
+        {canSeeFiscal && !isDemo && <FiscalCard />}
         {/* Setting up the payment terminal is an owner's job, and the check
             below has to run in the browser standing on the shop's network —
             which is exactly the machine this page is open on. */}
@@ -100,8 +103,8 @@ export default function SettingsPage() {
         {canManagePromotions && <PromotionsCard />}
         {canSeeFiscal && <AccountingPolicyCard />}
         {canSeeFiscal && <AuditLogCard />}
-        {isOwner && <BackupCard />}
-        {isOwner && <DemoCompanyCard />}
+        {isOwner && !isDemo && <BackupCard />}
+        {isOwner && !isDemo && <DemoCompanyCard />}
       </div>
 
       {!canManage && (

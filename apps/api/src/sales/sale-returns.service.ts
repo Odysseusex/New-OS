@@ -8,6 +8,7 @@ import {
   WriteOffReason,
 } from "@bakery-os/shared";
 import { PrismaService } from "../prisma/prisma.service";
+import { isDemoOrganization } from "../common/demo-guard";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { resolveLocationScope } from "../common/location-scope";
 import { CashMovementsService } from "../finance/cash-movements.service";
@@ -158,7 +159,8 @@ export class SaleReturnsService {
     const restocked = dto.restocked ?? true;
     const returnedAt = new Date();
 
-    const receipt = this.fiscalSettings.isEnabled()
+    // The sandbox («Песочница») never reaches the real cash register.
+    const receipt = this.fiscalSettings.isEnabled() && !(await isDemoOrganization(this.prisma, user.organizationId))
       ? await this.fiscalizeBeforeReturn(user, sale, lines, totalAmount, returnedAt)
       : null;
 

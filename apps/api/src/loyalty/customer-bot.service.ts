@@ -13,6 +13,7 @@ import {
 } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
+import { demoOrganizationIds } from "../common/demo-guard";
 import { escapeHtml } from "../telegram/telegram-format";
 import { recordChannelConsent } from "./channel-consent";
 import { LoyaltyPointsService } from "./loyalty-points.service";
@@ -208,7 +209,7 @@ export class CustomerBotService implements OnModuleInit {
     if (!phone) {
       return { text: "Бонусная программа работает с казахстанскими номерами. Этот номер не подходит." };
     }
-    const found = await this.prisma.loyaltyMember.findMany({ where: { phone } });
+    const found = await this.prisma.loyaltyMember.findMany({ where: { phone, organizationId: { notIn: await demoOrganizationIds(this.prisma) } } });
     const members = (await Promise.all(found.map((m) => this.finalMember(m.id)))).filter(
       (m): m is NonNullable<typeof m> => m !== null,
     );
@@ -441,7 +442,8 @@ export class CustomerBotService implements OnModuleInit {
   async reachableIds(memberIds: string[]): Promise<Set<string>> {
     if (memberIds.length === 0) return new Set();
     const members = await this.prisma.loyaltyMember.findMany({
-      where: { id: { in: memberIds }, status: LoyaltyMemberStatus.ACTIVE, telegramLink: { isNot: null } },
+      // A sandbox («Песочница») customer is invented: never messaged from the real bot.
+      where: { id: { in: memberIds }, status: LoyaltyMemberStatus.ACTIVE, telegramLink: { isNot: null }, organizationId: { notIn: await demoOrganizationIds(this.prisma) } },
       include: { consents: { orderBy: [{ recordedAt: "asc" }, { id: "asc" }] } },
     });
     return new Set(members.filter((m) => consentState(m.consents).marketing.TELEGRAM).map((m) => m.id));

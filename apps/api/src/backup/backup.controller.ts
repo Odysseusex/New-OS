@@ -3,13 +3,15 @@ import type { Request, Response } from "express";
 import { Role } from "@bakery-os/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
+import { NotDemoGuard } from "../common/guards/not-demo.guard";
 import { Roles } from "../common/decorators/roles.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { BackupService } from "./backup.service";
 
-// The whole business in one file: the owner only (it holds every customer, every sale).
-@UseGuards(JwtAuthGuard, RolesGuard)
+// The whole business in one file: the owner only (it holds every customer, every sale),
+// and never from inside the sandbox — the file is the WHOLE database, not one company.
+@UseGuards(JwtAuthGuard, RolesGuard, NotDemoGuard)
 @Roles(Role.OWNER)
 @Controller("backup")
 export class BackupController {

@@ -861,9 +861,14 @@ invented history (first day of last month → yesterday), for a financier to exp
   expenses, supplier/customer/consignment payments, cash transfers, fixed assets) so every report agrees; after each
   simulated day `demo_shift_since(org, since, delta)` moves the org's rows created since `since` back to that day (it
   refuses any org without `demoParentId`, skips trigger-guarded tables), then sales are spread over 08:00–20:00.
-- Login = one `ACCOUNTANT` of the demo org (never OWNER: OWNER can download the WHOLE database), inactive until the
-  history is complete; password shown once (`POST /demo-company/password` makes a new one). Fiscalisation is forced off
-  for the generator. One generation at a time (in-memory); a server restart mid-way = state INTERRUPTED → delete and redo.
+- Login = an `OWNER` of the demo org (email `finance-demo-…`, title «Песочница») — FULL rights there, the owner's explicit
+  wish («пусть все кликает»; it was an ACCOUNTANT first, migration `20261028120000` upgraded existing ones). What reaches
+  beyond one organization refuses a sandbox (`common/demo-guard.ts`: `NotDemoGuard` on backup, fiscal and WhatsApp
+  status/templates; no fiscal receipt for a demo sale/return; customer bot/WhatsApp never message or match a demo
+  customer). Login looks users up by email across ALL organizations, so `UsersService` now refuses an email used in
+  any organization. `OrganizationDto.isDemo` hides those cards on Настройки. Inactive until the history is complete;
+  password shown once (`POST /demo-company/password` makes a new one). On Render+Neon a generation took ~2 h
+  (≈100× slower than locally) — warn before suggesting a re-creation. One generation at a time (in-memory); a server restart mid-way = state INTERRUPTED → delete and redo.
 - Delete = `destroyOrganization` (`common/destroy-organization.ts`, shared with the specs' `destroyOrg`), only for the
   org whose `demoParentId` is the caller's. Balance sheet of a fresh sandbox is BALANCED: purchases at the catalogue
   price, batches exactly as planned, recipe amounts in multiples of yield/1000 — keep those if the catalogue changes.

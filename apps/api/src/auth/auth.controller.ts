@@ -33,7 +33,7 @@ export class AuthController {
       role: user.role,
       title: user.title,
       organizationId: user.organizationId,
-      organization: { id: organization.id, name: organization.name },
+      organization: { id: organization.id, name: organization.name, isDemo: !!organization.demoParentId },
       locationId: user.locationId,
     };
   }

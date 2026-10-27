@@ -59,7 +59,7 @@ export class AuthService {
     role: string;
     title: string | null;
     organizationId: string;
-    organization: { id: string; name: string };
+    organization: { id: string; name: string; demoParentId: string | null };
     locationId: string | null;
   }): CurrentUserDto {
     return {
@@ -69,7 +69,7 @@ export class AuthService {
       role: user.role as CurrentUserDto["role"],
       title: user.title,
       organizationId: user.organizationId,
-      organization: { id: user.organization.id, name: user.organization.name },
+      organization: { id: user.organization.id, name: user.organization.name, isDemo: !!user.organization.demoParentId },
       locationId: user.locationId,
     };
   }
