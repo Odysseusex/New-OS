@@ -430,6 +430,8 @@ export const api = {
       request<ReconciliationHistoryItemDto[]>(withQuery("/reconciliation/history", { locationId })),
     productTrail: (locationId: string, date: string, productId: string) =>
       request<ProductDayTrailDto>(withQuery("/reconciliation/product-trail", { locationId, date, productId })),
+    apply: (locationId: string, date: string) =>
+      request<DailyReconciliationDto>("/reconciliation/apply", { method: "POST", body: JSON.stringify({ locationId, date }) }),
   },
 
   stocktakes: {

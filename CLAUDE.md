@@ -826,6 +826,15 @@ screen recalculates as typed. `apps/api/src/reconciliation/`, migration `2026102
 always recomputed. One worksheet per location+day, saving again replaces it (audited `dailyReconciliation.save`).
 The till and the shelf are one unit (3 cashiers share one till at Мерей), so there is no per-cashier split.
 
+**«Применить к остаткам» + «Печать бланка»** (migration `20261028150000`): applying a SAVED worksheet writes, once, each
+counted line's DIFFERENCE (counted − the day's closing) as an ADJUSTMENT with `StockMovement.dailyReconciliationId`
+(reason «Сверка дня ДД.ММ.ГГГГ») — a difference, never "set to the count", so sales after the evening count are not
+undone; uncounted lines untouched; `appliedAt` flipped conditionally (no double apply); the counts are locked after it
+(money stays editable); `INVENTORY_MANAGE_ROLES` (same as «Корректировка»). The worksheet's own adjustments are left out
+of its own day, so it keeps showing the shortage it found. Lines are in shelf order (category «Родитель › Под», then
+name, consignment last) — the printed count sheet (no expected column: blind count) and the screen read the same way,
+and Enter in a count jumps to the next one.
+
 **A cashier's price is the server's** (`SalesService.assertTillPrices`): a CASHIER line must be the point's price, its
 fixed markdown (`markdownPrice`, with `fullUnitPrice` = point price) or any amount on the `isOpenPrice` product — the
 only things the till sends; anything else is refused (a 0 ₸ check with the cash pocketed balances perfectly in «Сверка

@@ -1,5 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma, StockMovementType as PrismaStockMovementType } from "@prisma/client";
 import {
   CashMovementType,
   DailyReconciliationDto,
@@ -20,11 +20,21 @@ import { requireLocationScope, resolveLocationScope } from "../common/location-s
 import { BUSINESS_TIME_ZONE, startOfZonedDay } from "../common/zoned-day";
 import { cashEffectOf, stockEffectOf } from "../common/ledger-effects";
 import { allocateRefund } from "../sales/refund-allocation";
+import { CATEGORY_WITH_PARENT, categoryLabel } from "../common/category-label";
+import { decrementStockOrThrow } from "../common/stock-guard";
+import { CostingService } from "../costing/costing.service";
+import { postLedgerSources } from "../ledger/event-posting";
 import { SaveDailyReconciliationDto } from "./dto/reconciliation.dto";
 
 // «Сверка дня»: the expected side is ALWAYS recomputed from the ledgers
 // (StockMovement for the shelf, sales/returns/till movements for the money); only
 // what was counted is stored. Saving moves no stock and no money.
+//
+// «Применить к остаткам» (apply) is the one step that does: once, it writes the
+// counted DIFFERENCE of each line (counted − the day's closing) as an ADJUSTMENT
+// linked to the worksheet. A difference, not "set to the count" — sales made
+// after the evening count must not be undone. Those rows are left out of their
+// own day's figures, so the worksheet keeps showing the shortage it found.
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const round3 = (n: number) => Math.round((n + Number.EPSILON) * 1000) / 1000;
@@ -44,13 +54,24 @@ export function businessDayRange(date: string): { start: Date; end: Date } {
 }
 
 const RECEIVED = new Set(["RECEIPT", "TRANSFER_IN", "PRODUCTION_OUTPUT"]);
+
+// The order of the screen and of the printed count sheet: our goods by category,
+// then by name; goods «под реализацию» last; no category at the end of each.
+const byShelfOrder = (x: ReconciliationStockLineDto, y: ReconciliationStockLineDto) =>
+  Number(x.consignment) - Number(y.consignment) ||
+  Number(x.categoryName === null) - Number(y.categoryName === null) ||
+  (x.categoryName ?? "").localeCompare(y.categoryName ?? "", "ru") ||
+  x.productName.localeCompare(y.productName, "ru");
 // Money the worksheet takes from the sales and returns themselves, so the till's
 // own rows for them are not counted twice; an opening balance is set-up, not trade.
 const TILL_SKIPPED = new Set<string>([CashMovementType.SALE_RECEIPT, CashMovementType.SALE_REFUND, CashMovementType.OPENING_BALANCE]);
 
 @Injectable()
 export class ReconciliationService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private costing: CostingService,
+  ) {}
 
   async get(user: AuthenticatedUser, requestedLocationId: string | undefined, date: string): Promise<DailyReconciliationDto> {
     const locationId = requireLocationScope(user, requestedLocationId);
@@ -58,19 +79,22 @@ export class ReconciliationService {
     const location = await this.prisma.location.findFirst({ where: { id: locationId, organizationId: user.organizationId }, select: { name: true } });
     if (!location) throw new NotFoundException("Точка не найдена");
 
-    const [saved, lines, money] = await Promise.all([
-      this.prisma.dailyReconciliation.findUnique({
-        where: { organizationId_locationId_businessDate: { organizationId: user.organizationId, locationId, businessDate: date } },
-        include: { lines: true, savedBy: { select: { fullName: true } } },
-      }),
-      this.stockLines(user.organizationId, locationId, start, end),
+    const saved = await this.prisma.dailyReconciliation.findUnique({
+      where: { organizationId_locationId_businessDate: { organizationId: user.organizationId, locationId, businessDate: date } },
+      include: { lines: true, savedBy: { select: { fullName: true } }, appliedBy: { select: { fullName: true } } },
+    });
+    const [lines, money] = await Promise.all([
+      this.stockLines(user.organizationId, locationId, start, end, saved?.id ?? null),
       this.money(user.organizationId, locationId, start, end),
     ]);
 
     const counted = new Map((saved?.lines ?? []).map((l) => [l.productId, l.countedQuantity.toNumber()]));
     // A product counted earlier but with no stock or movement now still shows, with its count.
     const missing = [...counted.keys()].filter((id) => !lines.some((l) => l.productId === id));
-    if (missing.length > 0) lines.push(...(await this.emptyLines(user.organizationId, missing)));
+    if (missing.length > 0) {
+      lines.push(...(await this.emptyLines(user.organizationId, missing)));
+      lines.sort(byShelfOrder);
+    }
     for (const line of lines) line.countedQuantity = counted.get(line.productId) ?? null;
 
     const num = (d: Prisma.Decimal | null | undefined) => (d === null || d === undefined ? null : d.toNumber());
@@ -87,6 +111,8 @@ export class ReconciliationService {
       countedCard: num(saved?.countedCard),
       countedTransfer: num(saved?.countedTransfer),
       note: saved?.note ?? null,
+      appliedAt: saved?.appliedAt ? saved.appliedAt.toISOString() : null,
+      appliedByName: saved?.appliedBy?.fullName ?? null,
       money,
       lines,
     };
@@ -105,6 +131,13 @@ export class ReconciliationService {
 
     // The summary as it stands now, from the same figures the screen shows.
     const current = await this.get(user, locationId, dto.date);
+    if (current.appliedAt) {
+      // Stock was already corrected from these counts: changing them now would
+      // leave stock and the worksheet telling different stories.
+      const before = new Map(current.lines.filter((l) => l.countedQuantity !== null).map((l) => [l.productId, l.countedQuantity]));
+      const same = before.size === dto.lines.length && dto.lines.every((l) => before.get(l.productId) === l.countedQuantity);
+      if (!same) throw new BadRequestException("Остатки по этой сверке уже проведены — пересчёт товаров изменить нельзя");
+    }
     const countedById = new Map(dto.lines.map((l) => [l.productId, l.countedQuantity]));
     const summary = summarizeReconciliation({
       money: current.money,
@@ -153,6 +186,86 @@ export class ReconciliationService {
       });
     });
     return this.get(user, locationId, dto.date);
+  }
+
+  // Once: the counted differences go into stock as ADJUSTMENT rows linked to the
+  // worksheet, then its counts are locked. Uncounted lines are left alone.
+  async apply(user: AuthenticatedUser, requestedLocationId: string | undefined, date: string): Promise<DailyReconciliationDto> {
+    const locationId = requireLocationScope(user, requestedLocationId);
+    const current = await this.get(user, locationId, date);
+    if (!current.savedAt) throw new BadRequestException("Сначала сохраните сверку");
+    if (current.appliedAt) throw new ConflictException("Остатки по этой сверке уже проведены");
+    const differences = current.lines
+      .filter((l) => l.countedQuantity !== null)
+      .map((l) => ({ line: l, difference: round3((l.countedQuantity as number) - l.closing) }))
+      .filter((d) => d.difference !== 0);
+
+    const reason = `Сверка дня ${date.split("-").reverse().join(".")}`;
+    await this.prisma.$transaction(
+      async (tx) => {
+        const saved = await tx.dailyReconciliation.findUniqueOrThrow({
+          where: { organizationId_locationId_businessDate: { organizationId: user.organizationId, locationId, businessDate: date } },
+          select: { id: true },
+        });
+        // Only one apply can win: a double click cannot correct stock twice.
+        const flipped = await tx.dailyReconciliation.updateMany({
+          where: { id: saved.id, appliedAt: null },
+          data: { appliedAt: new Date(), appliedById: user.id },
+        });
+        if (flipped.count !== 1) throw new ConflictException("Остатки по этой сверке уже проведены");
+
+        const products = await tx.product.findMany({
+          where: { organizationId: user.organizationId, id: { in: differences.map((d) => d.line.productId) } },
+          select: { id: true, minQuantity: true, trackInventory: true },
+        });
+        const byId = new Map(products.map((p) => [p.id, p]));
+        const costs = await this.costing.snapshotCosts(user.organizationId, differences.map((d) => d.line.productId), tx);
+        const movementIds: string[] = [];
+        for (const { line, difference } of differences) {
+          const product = byId.get(line.productId);
+          if (!product?.trackInventory) continue;
+          const movement = await tx.stockMovement.create({
+            data: {
+              organizationId: user.organizationId,
+              locationId,
+              productId: line.productId,
+              type: PrismaStockMovementType.ADJUSTMENT,
+              quantity: difference,
+              reason,
+              dailyReconciliationId: saved.id,
+              createdById: user.id,
+              ...this.costing.fields(costs.get(line.productId)),
+            },
+            select: { id: true },
+          });
+          movementIds.push(movement.id);
+          if (difference < 0) {
+            await decrementStockOrThrow(
+              tx,
+              { locationId, productId: line.productId, quantity: -difference },
+              `Сейчас «${line.productName}» на остатке меньше, чем недостача по сверке — проверьте товар и поправьте его вручную`,
+            );
+          } else {
+            await tx.stockLevel.upsert({
+              where: { locationId_productId: { locationId, productId: line.productId } },
+              update: { quantity: { increment: difference } },
+              create: { organizationId: user.organizationId, locationId, productId: line.productId, quantity: difference, minQuantity: product.minQuantity },
+            });
+          }
+        }
+        await postLedgerSources(tx, { organizationId: user.organizationId, actorId: user.id, scope: { stockMovementIds: movementIds } });
+        await recordAudit(tx, {
+          organizationId: user.organizationId,
+          actorId: user.id,
+          action: "dailyReconciliation.apply",
+          entityType: "DailyReconciliation",
+          entityId: saved.id,
+          after: { date, locationId, adjustedLines: movementIds.length },
+        });
+      },
+      { maxWait: 10_000, timeout: 60_000 },
+    );
+    return this.get(user, locationId, date);
   }
 
   async history(user: AuthenticatedUser, requestedLocationId?: string): Promise<ReconciliationHistoryItemDto[]> {
@@ -219,9 +332,21 @@ export class ReconciliationService {
   }
 
   // Opening = every movement before the day; the day's own movements split by kind.
-  private async stockLines(organizationId: string, locationId: string, start: Date, end: Date): Promise<ReconciliationStockLineDto[]> {
+  private async stockLines(
+    organizationId: string,
+    locationId: string,
+    start: Date,
+    end: Date,
+    ownReconciliationId: string | null,
+  ): Promise<ReconciliationStockLineDto[]> {
     // A scrapped return's WRITE_OFF marker has no stock effect (see ledger-effects).
-    const where = { organizationId, locationId, NOT: { type: "WRITE_OFF" as const, saleReturnId: { not: null } } };
+    // The worksheet's own corrections are not part of the day it checks.
+    const where = {
+      organizationId,
+      locationId,
+      NOT: { type: "WRITE_OFF" as const, saleReturnId: { not: null } },
+      ...(ownReconciliationId ? { OR: [{ dailyReconciliationId: null }, { dailyReconciliationId: { not: ownReconciliationId } }] } : {}),
+    };
     const [before, during] = await Promise.all([
       this.prisma.stockMovement.groupBy({ by: ["productId", "type"], where: { ...where, createdAt: { lt: start } }, _sum: { quantity: true } }),
       this.prisma.stockMovement.groupBy({ by: ["productId", "type"], where: { ...where, createdAt: { gte: start, lt: end } }, _sum: { quantity: true } }),
@@ -252,7 +377,7 @@ export class ReconciliationService {
       // Only what the shop sells (own goods and goods «под реализацию»): raw materials,
       // packaging and semi-finished stock are not part of the till's day.
       where: { organizationId, id: { in: ids }, trackInventory: true, type: "FINISHED_GOOD" },
-      select: { id: true, name: true, sku: true, unit: true, price: true, consignmentSupplierId: true },
+      select: { id: true, name: true, sku: true, unit: true, price: true, consignmentSupplierId: true, categoryRef: CATEGORY_WITH_PARENT },
     });
     return products
       .map((p) => {
@@ -263,6 +388,7 @@ export class ReconciliationService {
           productName: p.name,
           sku: p.sku,
           unit: p.unit as Unit,
+          categoryName: categoryLabel(p.categoryRef),
           consignment: !!p.consignmentSupplierId,
           price: p.price.toNumber(),
           opening,
@@ -275,19 +401,20 @@ export class ReconciliationService {
         };
         return line;
       })
-      .sort((x, y) => Number(x.consignment) - Number(y.consignment) || x.productName.localeCompare(y.productName, "ru"));
+      .sort(byShelfOrder);
   }
 
   private async emptyLines(organizationId: string, ids: string[]): Promise<ReconciliationStockLineDto[]> {
     const products = await this.prisma.product.findMany({
       where: { organizationId, id: { in: ids } },
-      select: { id: true, name: true, sku: true, unit: true, price: true, consignmentSupplierId: true },
+      select: { id: true, name: true, sku: true, unit: true, price: true, consignmentSupplierId: true, categoryRef: CATEGORY_WITH_PARENT },
     });
     return products.map((p) => ({
       productId: p.id,
       productName: p.name,
       sku: p.sku,
       unit: p.unit as Unit,
+      categoryName: categoryLabel(p.categoryRef),
       consignment: !!p.consignmentSupplierId,
       price: p.price.toNumber(),
       opening: 0,

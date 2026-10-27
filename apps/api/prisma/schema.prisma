@@ -504,6 +504,7 @@ model User {
   stocktakesCreated         Stocktake[]        @relation("StocktakeCreatedBy")
   stocktakesApproved        Stocktake[]        @relation("StocktakeApprovedBy")
   dailyReconciliationsSaved DailyReconciliation[] @relation("DailyReconciliationSavedBy")
+  dailyReconciliationsApplied DailyReconciliation[] @relation("DailyReconciliationAppliedBy")
   periodsClosed             FinancialPeriod[]  @relation("PeriodClosedBy")
   periodsReopened           FinancialPeriod[]  @relation("PeriodReopenedBy")
   periodSnapshotsCreated    PeriodSnapshot[]   @relation("PeriodSnapshotCreatedBy")
@@ -746,6 +747,9 @@ model StockMovement {
   // Set on the ADJUSTMENT rows an approved stocktake wrote (see Stocktake).
   stocktakeId     String?
   stocktake       Stocktake?        @relation(fields: [stocktakeId], references: [id])
+  // Set on the ADJUSTMENT rows «Сверка дня» wrote when applied to stock.
+  dailyReconciliationId String?
+  dailyReconciliation   DailyReconciliation? @relation(fields: [dailyReconciliationId], references: [id])
   // Unit cost the movement was valued at WHEN IT HAPPENED (see CostingService).
   // Null = no cost was known then (never zero) or the row predates snapshots.
   // Historical valuation reads this, so a later ingredient price change can
@@ -2926,8 +2930,15 @@ model DailyReconciliation {
   savedBy         User         @relation("DailyReconciliationSavedBy", fields: [savedById], references: [id])
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
+  // «Применить к остаткам»: the counted differences were written to stock as
+  // ADJUSTMENT rows (StockMovement.dailyReconciliationId). Once, ever — the
+  // counts are locked after it.
+  appliedAt       DateTime?
+  appliedById     String?
+  appliedBy       User?        @relation("DailyReconciliationAppliedBy", fields: [appliedById], references: [id])
 
-  lines DailyReconciliationLine[]
+  lines       DailyReconciliationLine[]
+  adjustments StockMovement[]
 
   @@unique([organizationId, locationId, businessDate])
   @@index([organizationId, businessDate])
