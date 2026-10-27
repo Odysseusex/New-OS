@@ -21,6 +21,9 @@ export interface ReconciliationStockLineDto {
   productName: string;
   sku: string | null;
   unit: Unit;
+  // «Родитель › Подкатегория»; the worksheet and the printed count sheet are in
+  // category order, so the paper and the screen read top to bottom the same way.
+  categoryName: string | null;
   // Goods «под реализацию»: counted like any other, owed to their supplier.
   consignment: boolean;
   // The product's price — what a missing unit would have brought at the till.
@@ -71,8 +74,17 @@ export interface DailyReconciliationDto {
   countedCard: number | null;
   countedTransfer: number | null;
   note: string | null;
+  // «Применить к остаткам»: when the counted differences went into stock (once;
+  // the counts are locked after it).
+  appliedAt: string | null;
+  appliedByName: string | null;
   money: ReconciliationMoneyDto;
   lines: ReconciliationStockLineDto[];
+}
+
+export interface ApplyDailyReconciliationRequestDto {
+  locationId: string;
+  date: string;
 }
 
 export interface SaveDailyReconciliationRequestDto {

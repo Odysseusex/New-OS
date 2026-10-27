@@ -3,6 +3,7 @@ import { CashMovementType, PaymentMethod, ProductType, Role, summarizeReconcilia
 import { PrismaService } from "../prisma/prisma.service";
 import { createIsolatedOrg, destroyOrg, IsolatedOrg } from "../../test/support/isolated-org";
 import { buildServices } from "../../test/support/services";
+import { CostingService } from "../costing/costing.service";
 import { businessDateOf, businessDayRange, ReconciliationService } from "./reconciliation.service";
 
 // «Сверка дня» at one till: the shelf and the drawer against the ledgers.
@@ -55,7 +56,7 @@ describe("summary arithmetic", () => {
 describe("a day at the till", () => {
   const prisma = new PrismaService();
   const services = buildServices(prisma);
-  const service = new ReconciliationService(prisma);
+  const service = new ReconciliationService(prisma, new CostingService(prisma));
   let org: IsolatedOrg;
   let breadId: string;
   let cheeseId: string;

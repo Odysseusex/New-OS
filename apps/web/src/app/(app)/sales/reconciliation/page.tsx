@@ -1,13 +1,14 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import clsx from "clsx";
-import { ArrowLeft, Search } from "lucide-react";
+import { ArrowLeft, Printer, Search } from "lucide-react";
 import type { DailyReconciliationDto, LocationDto, ReconciliationHistoryItemDto } from "@bakery-os/shared";
 import {
   CASH_MOVEMENT_TYPE_LABELS_RU,
+  INVENTORY_MANAGE_ROLES,
   lineDifference,
   ORG_WIDE_ROLES,
   RECONCILIATION_ROLES,
@@ -32,6 +33,51 @@ const parseAmount = (value: string): number | null => {
 };
 const asInput = (value: number | null) => (value === null ? "" : String(value));
 
+const escapeHtml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const NO_CATEGORY = "Без категории";
+const CONSIGNMENT_GROUP = "Под реализацию";
+const groupOf = (line: { consignment: boolean; categoryName: string | null }) =>
+  line.consignment ? CONSIGNMENT_GROUP : (line.categoryName ?? NO_CATEGORY);
+
+// The paper the cashiers walk the shelf with: every product of the point in the
+// screen's own order, a blank to write the count in — and NOT what the system
+// expects, so the count is blind.
+function printCountSheet(day: DailyReconciliationDto) {
+  let group: string | null = null;
+  const rows = day.lines
+    .map((line) => {
+      const head = groupOf(line) !== group ? `<tr class="g"><td colspan="2">${escapeHtml((group = groupOf(line)))}</td></tr>` : "";
+      return `${head}<tr><td>${escapeHtml(line.productName)}</td><td class="c">${escapeHtml(UNIT_LABELS_RU[line.unit])}</td></tr>`;
+    })
+    .join("");
+  const html = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Пересчёт витрины</title>
+<style>body{font-family:Arial,sans-serif;font-size:14px;margin:20px;color:#000}h1{font-size:18px;margin:0 0 4px}p{margin:4px 0}
+table{border-collapse:collapse;width:100%;margin-top:10px}td{border:1px solid #999;padding:7px 8px}td.c{width:150px;text-align:right;color:#666;font-size:12px;vertical-align:bottom}
+tr.g td{background:#eee;font-weight:bold;border-color:#999}tr{page-break-inside:avoid}</style></head><body>
+<h1>Пересчёт витрины · ${escapeHtml(day.locationName)} · ${escapeHtml(day.date.split("-").reverse().join("."))}</h1>
+<p>Считал(а): ______________________ &nbsp;&nbsp; Время: ________</p>
+<table><tbody>${rows}</tbody></table>
+</body></html>`;
+  const win = window.open("", "_blank");
+  if (!win) return;
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  win.print();
+}
+
+// Enter in a count field goes to the next one, top to bottom — the paper's order.
+function focusNextCount(current: HTMLInputElement) {
+  const all = Array.from(document.querySelectorAll<HTMLInputElement>("input[data-count-input]"));
+  const next = all[all.indexOf(current) + 1];
+  if (next) {
+    next.focus();
+    next.select();
+  } else {
+    current.blur();
+  }
+}
+
 const signTone = (value: number | null) =>
   value === null || Math.abs(value) < 0.005 ? "text-foreground" : value < 0 ? "text-red-600" : "text-green-600";
 const signedMoney = (value: number) => (value > 0 ? `+${formatMoney(value)}` : formatMoney(value));
@@ -50,6 +96,8 @@ function ReconciliationScreen() {
   const params = useSearchParams();
   const isOrgWide = user ? ORG_WIDE_ROLES.includes(user.role) : false;
   const allowed = user ? RECONCILIATION_ROLES.includes(user.role) : false;
+  // Applying the counts corrects stock: the same people as «Корректировка» on Склад.
+  const canApply = user ? INVENTORY_MANAGE_ROLES.includes(user.role) : false;
 
   const [locations, setLocations] = useState<LocationDto[]>([]);
   const [locationId, setLocationId] = useState(params.get("locationId") ?? "");
@@ -67,6 +115,7 @@ function ReconciliationScreen() {
   const [counts, setCounts] = useState<Record<string, string>>({});
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isApplying, setIsApplying] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [onlyDifferences, setOnlyDifferences] = useState(false);
@@ -195,6 +244,29 @@ function ReconciliationScreen() {
     }
   }
 
+  async function handleApply() {
+    if (!day || !summary) return;
+    const changed = lines.filter((l) => {
+      const d = lineDifference(l);
+      return d !== null && Math.abs(d) >= 0.0005;
+    }).length;
+    const question =
+      changed === 0
+        ? "Расхождений нет — остатки совпадают. Отметить сверку как проведённую?"
+        : `Записать в остатки разницу по ${changed} товар(ам): недостача ${formatMoney(summary.shortageValue)}, излишек ${formatMoney(summary.surplusValue)}?\n\nЭто делается один раз: после этого пересчёт товаров в этой сверке изменить нельзя.`;
+    if (!window.confirm(question)) return;
+    setIsApplying(true);
+    setSaveError(null);
+    try {
+      fill(await api.reconciliation.apply(day.locationId, day.date));
+      loadHistory();
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : "Не удалось применить сверку к остаткам");
+    } finally {
+      setIsApplying(false);
+    }
+  }
+
   if (user && !allowed) {
     return <p className="py-10 text-center text-sm text-muted">Нет доступа к сверке дня</p>;
   }
@@ -231,18 +303,41 @@ function ReconciliationScreen() {
             <input type="date" value={date} max={zonedDateKey()} onChange={(e) => setDate(e.target.value)} className={inputClass} />
           </div>
           <button
+            onClick={() => day && printCountSheet(day)}
+            disabled={!day || day.lines.length === 0}
+            className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted disabled:opacity-50"
+          >
+            <Printer className="h-4 w-4" strokeWidth={1.75} />
+            Печать бланка
+          </button>
+          <button
             onClick={handleSave}
             disabled={!day || isSaving}
             className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-50"
           >
             {isSaving ? "Сохранение…" : "Сохранить"}
           </button>
+          {canApply && day && !day.appliedAt && (
+            <button
+              onClick={handleApply}
+              disabled={isApplying || isDirty || !day.savedAt || (summary?.countedLines ?? 0) === 0}
+              title={isDirty || !day.savedAt ? "Сначала сохраните сверку" : undefined}
+              className="rounded-xl border border-accent px-4 py-2 text-sm font-medium text-accent transition hover:bg-accent/10 disabled:opacity-50"
+            >
+              {isApplying ? "Применяю…" : "Применить к остаткам"}
+            </button>
+          )}
         </div>
       </div>
 
       {day && (
         <p className="mb-4 text-xs text-muted">
           {isDirty ? "Есть несохранённые изменения" : day.savedAt ? `Сохранено ${formatDateTime(day.savedAt)} · ${day.savedByName}` : "Сверка за этот день ещё не сохранялась"}
+          {day.appliedAt && (
+            <span className="ml-2 rounded-full bg-green-50 px-2 py-0.5 font-medium text-green-700">
+              Остатки проведены {formatDateTime(day.appliedAt)} · {day.appliedByName}
+            </span>
+          )}
         </p>
       )}
       {saveError && <div className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{saveError}</div>}
@@ -340,10 +435,20 @@ function ReconciliationScreen() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {visibleLines.map((line) => {
+                  {visibleLines.map((line, index) => {
                     const d = lineDifference(line);
+                    const group = groupOf(line);
+                    const newGroup = index === 0 || groupOf(visibleLines[index - 1]) !== group;
                     return (
-                      <tr key={line.productId}>
+                      <Fragment key={line.productId}>
+                      {newGroup && (
+                        <tr className="bg-surface-muted/60">
+                          <td colSpan={10} className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+                            {group}
+                          </td>
+                        </tr>
+                      )}
+                      <tr>
                         <td className="px-4 py-2 text-foreground">
                           <button
                             type="button"
@@ -368,6 +473,13 @@ function ReconciliationScreen() {
                             type="number"
                             min="0"
                             step="any"
+                            data-count-input
+                            disabled={!!day.appliedAt}
+                            onKeyDown={(e) => {
+                              if (e.key !== "Enter") return;
+                              e.preventDefault();
+                              focusNextCount(e.currentTarget);
+                            }}
                             value={counts[line.productId] ?? ""}
                             onChange={(e) => {
                               const value = e.target.value;
@@ -379,12 +491,13 @@ function ReconciliationScreen() {
                               });
                               setIsDirty(true);
                             }}
-                            className="w-24 rounded-lg border border-border bg-surface px-2 py-1 text-right text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                            className="w-24 rounded-lg border border-border bg-surface px-2 py-1 text-right text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:opacity-60"
                           />
                         </td>
                         <td className={clsx("px-3 py-2 text-right font-medium", signTone(d))}>{d === null ? "—" : signedQuantity(d)}</td>
                         <td className={clsx("px-4 py-2 text-right", signTone(d))}>{d === null ? "—" : signedMoney(Math.round(d * line.price * 100) / 100)}</td>
                       </tr>
+                      </Fragment>
                     );
                   })}
                   {visibleLines.length === 0 && (
