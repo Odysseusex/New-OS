@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { Printer } from "lucide-react";
 import {
+  convertUnitQuantity,
+  getCompatibleUnits,
   ORG_WIDE_ROLES,
   parseCountInput,
   PRODUCT_TYPE_LABELS_RU,
@@ -13,6 +15,8 @@ import {
   STOCKTAKE_MANAGE_ROLES,
   STOCKTAKE_STATUS_LABELS_RU,
   StocktakeStatus,
+  Unit,
+  UNIT_ALTERNATE,
   UNIT_LABELS_RU,
 } from "@bakery-os/shared";
 import type { LocationDto, StocktakeDto, StocktakeLineDto, StocktakeSummaryDto } from "@bakery-os/shared";
@@ -20,6 +24,23 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
 import { focusNextCount, printCountSheet } from "@/lib/count-sheet";
+
+// Per-viewer convenience: the unit a product is usually counted in (yeast in grams).
+const COUNT_UNIT_KEY = (productId: string) => `stocktake-unit:${productId}`;
+function readCountUnit(productId: string): Unit | null {
+  try {
+    return (localStorage.getItem(COUNT_UNIT_KEY(productId)) as Unit | null) ?? null;
+  } catch {
+    return null;
+  }
+}
+function writeCountUnit(productId: string, unit: Unit) {
+  try {
+    localStorage.setItem(COUNT_UNIT_KEY(productId), unit);
+  } catch {
+    // storage unavailable: the switch simply is not remembered
+  }
+}
 
 const STATUS_STYLES: Record<StocktakeStatus, string> = {
   [StocktakeStatus.COUNTING]: "bg-amber-50 text-amber-700",
@@ -229,11 +250,11 @@ function StocktakeDetail({
     }
   }
 
-  async function saveCount(line: StocktakeLineDto, raw: string) {
+  async function saveCount(line: StocktakeLineDto, raw: string, inputUnit: Unit) {
     if (!st) return;
     const trimmed = raw.trim();
     // «3*25+12» (sacks and loose), «350г» for a product kept in kg — read, never guessed.
-    const next = trimmed === "" ? null : parseCountInput(trimmed, line.unit);
+    const next = trimmed === "" ? null : parseCountInput(trimmed, line.unit, inputUnit);
     if (trimmed !== "" && next === null) {
       setError(`Не удалось прочитать количество для «${line.productName}»: «${trimmed}»`);
       return;
@@ -345,7 +366,7 @@ function StocktakeDetail({
         </button>
       </div>
       {counting && canManage && (
-        <p className="mb-3 text-xs text-muted">Количество можно вводить так: 3*25+12 (мешки и россыпь), 350г — для товара в кг. Enter — к следующему.</p>
+        <p className="mb-3 text-xs text-muted">Количество можно вводить так: 3*25+12 (мешки и россыпь), 350г — для товара в кг; кнопка «кг/г» у поля переключает единицу. Enter — к следующему.</p>
       )}
 
       <div className="overflow-hidden rounded-2xl border border-border bg-surface">
@@ -484,12 +505,31 @@ function CountRow({
   line: StocktakeLineDto;
   blind: boolean;
   editable: boolean;
-  onSave: (line: StocktakeLineDto, raw: string) => void;
+  onSave: (line: StocktakeLineDto, raw: string, inputUnit: Unit) => void;
 }) {
-  const [value, setValue] = useState(line.countedQuantity === null ? "" : String(line.countedQuantity));
+  // The field's own unit (кг ↔ г, л ↔ мл), remembered per product in this browser.
+  const alternate = UNIT_ALTERNATE[line.unit];
+  const [inputUnit, setInputUnit] = useState<Unit>(line.unit);
   useEffect(() => {
-    setValue(line.countedQuantity === null ? "" : String(line.countedQuantity));
-  }, [line.countedQuantity]);
+    const saved = readCountUnit(line.productId);
+    if (saved && getCompatibleUnits(line.unit).includes(saved)) setInputUnit(saved);
+  }, [line.productId, line.unit]);
+  const shown = (quantity: number | null) =>
+    quantity === null ? "" : formatQuantity(Math.round(convertUnitQuantity(quantity, line.unit, inputUnit) * 1000) / 1000);
+  const [value, setValue] = useState(shown(line.countedQuantity));
+  useEffect(() => {
+    setValue(shown(line.countedQuantity));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [line.countedQuantity, inputUnit]);
+  function switchUnit() {
+    if (!alternate) return;
+    const next = inputUnit === line.unit ? alternate : line.unit;
+    // What is typed but not saved keeps its meaning: converted with the switch.
+    const typed = value.trim() === "" ? null : parseCountInput(value, line.unit, inputUnit);
+    setInputUnit(next);
+    writeCountUnit(line.productId, next);
+    if (typed !== null) setValue(formatQuantity(Math.round(convertUnitQuantity(typed, line.unit, next) * 1000) / 1000));
+  }
 
   const diff = line.difference;
   return (
@@ -514,9 +554,9 @@ function CountRow({
               onChange={(e) => setValue(e.target.value)}
               onBlur={() => {
                 // An expression is shown as what it came to, so the counter sees what was saved.
-                const parsed = value.trim() === "" ? null : parseCountInput(value, line.unit);
-                if (parsed !== null) setValue(String(parsed));
-                onSave(line, value);
+                const parsed = value.trim() === "" ? null : parseCountInput(value, line.unit, inputUnit);
+                if (parsed !== null) setValue(shown(parsed));
+                onSave(line, value, inputUnit);
               }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
@@ -526,7 +566,18 @@ function CountRow({
               }}
               className="w-28 rounded-lg border border-border bg-surface px-3 py-2 text-right text-base text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
             />
-            <span className="w-6 text-left text-xs text-muted">{UNIT_LABELS_RU[line.unit]}</span>
+            {alternate ? (
+              <button
+                type="button"
+                onClick={switchUnit}
+                title={`Переключить на ${UNIT_LABELS_RU[inputUnit === line.unit ? alternate : line.unit]}`}
+                className="w-9 rounded-md border border-border px-1 py-1 text-xs font-medium text-foreground transition hover:bg-surface-muted"
+              >
+                {UNIT_LABELS_RU[inputUnit]}
+              </button>
+            ) : (
+              <span className="w-9 text-center text-xs text-muted">{UNIT_LABELS_RU[line.unit]}</span>
+            )}
           </span>
         ) : line.countedQuantity === null ? (
           "—"

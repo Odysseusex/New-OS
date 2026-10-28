@@ -93,11 +93,14 @@ const UNIT_SUFFIXES: [string, Unit][] = [
   ["шт", Unit.PCS],
 ];
 
-export function parseCountInput(text: string, unit: Unit): number | null {
+// `inputUnit` is what a bare number means (the field's кг/г switch); the result is
+// always in `unit`, the product's own.
+export function parseCountInput(text: string, unit: Unit, inputUnit: Unit = unit): number | null {
   let s = text.trim().toLowerCase().replace(/\s+/g, "").replace(/,/g, ".").replace(/[×хx]/g, "*");
   if (s === "") return null;
+  if (!getCompatibleUnits(unit).includes(inputUnit)) return null;
   // A unit typed after the number: converted when it is of the same kind, refused otherwise.
-  let typedUnit = unit;
+  let typedUnit = inputUnit;
   const suffix = UNIT_SUFFIXES.find(([text]) => s.endsWith(text));
   if (suffix) {
     s = s.slice(0, -suffix[0].length);
