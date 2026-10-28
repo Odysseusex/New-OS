@@ -390,8 +390,8 @@ export const api = {
   inventory: {
     stockLevels: (locationId?: string) =>
       request<StockLevelDto[]>(withQuery("/inventory/stock-levels", { locationId })),
-    movements: (locationId?: string) =>
-      request<StockMovementDto[]>(withQuery("/inventory/movements", { locationId })),
+    movements: (filter: { locationId?: string; productId?: string; type?: string; from?: string; to?: string } = {}) =>
+      request<StockMovementDto[]>(withQuery("/inventory/movements", filter)),
     receive: (dto: CreateStockMovementRequestDto) =>
       request<StockMovementDto>("/inventory/receipts", {
         method: "POST",

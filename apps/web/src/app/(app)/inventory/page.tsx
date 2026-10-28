@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { AlertTriangle, ArrowDownCircle, ArrowLeft, ArrowUpCircle, Ban, Plus, Search, Wrench, X } from "lucide-react";
-import type { CategoryDto, CategoryTypeGroup, LocationDto, ProductDto, StockLevelDto, StockMovementDto } from "@bakery-os/shared";
+import type { CategoryDto, CategoryTypeGroup, LocationDto, ProductDto, StockLevelDto } from "@bakery-os/shared";
 import {
   HARD_DELETE_ROLES,
   STOCK_VOID_ROLES,
@@ -17,13 +17,11 @@ import {
   buildCategoryTree,
   categoryIdsWithDescendants,
   categoryPathLabel,
-  STOCK_MOVEMENT_TYPE_LABELS_RU,
-  StockMovementType,
   UNIT_LABELS_RU,
 } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
+import { formatMoney, formatQuantity } from "@/lib/format";
 import { StockMovementModal } from "@/components/stock-movement-modal";
 import { LabelPrintModal } from "@/components/label-print-modal";
 import { NewProductModal } from "@/components/new-product-modal";
@@ -35,8 +33,9 @@ import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-acti
 import { LocationPricesTab } from "@/components/location-prices-tab";
 import { StocktakeTab } from "@/components/stocktake-tab";
 import { StockVoidModal } from "@/components/stock-void-modal";
+import { MovementProductFilter, StockMovementsTab } from "@/components/stock-movements-tab";
 
-type Tab = "stock" | "catalog" | "categories" | "prices" | "stocktake";
+type Tab = "stock" | "movements" | "catalog" | "categories" | "prices" | "stocktake";
 
 export default function InventoryPage() {
   const { user } = useAuth();
@@ -52,7 +51,8 @@ export default function InventoryPage() {
   const [products, setProducts] = useState<ProductDto[]>([]);
   const [categories, setCategories] = useState<CategoryDto[]>([]);
   const [stockLevels, setStockLevels] = useState<StockLevelDto[]>([]);
-  const [movements, setMovements] = useState<StockMovementDto[]>([]);
+  const [movementProduct, setMovementProduct] = useState<MovementProductFilter | null>(null);
+  const [movementLocationId, setMovementLocationId] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
   const [showArchivedProducts, setShowArchivedProducts] = useState(false);
   const [showArchivedCategories, setShowArchivedCategories] = useState(false);
@@ -102,10 +102,8 @@ export default function InventoryPage() {
       )
     : products;
 
-  // Same rule for both tables on the Остатки tab — the point of searching
-  // here is "where is this product and what happened to it", so the balance
-  // and its history have to answer about the same product. Movements carry no
-  // SKU of their own, hence the lookup through the already-loaded catalogue.
+  // Balances carry no SKU of their own, hence the lookup through the
+  // already-loaded catalogue.
   const stockQuery = stockSearch.trim().toLowerCase();
   const skuByProductId = new Map(products.map((p) => [p.id, (p.sku ?? "").toLowerCase()]));
   const matchesStockQuery = (productId: string, productName: string) =>
@@ -114,7 +112,6 @@ export default function InventoryPage() {
     (skuByProductId.get(productId) ?? "").includes(stockQuery);
 
   const visibleStockLevels = stockLevels.filter((l) => matchesStockQuery(l.productId, l.productName));
-  const visibleMovements = movements.filter((m) => matchesStockQuery(m.productId, m.productName));
 
   const selectedCategory = selectedCategoryId
     ? categories.find((c) => c.id === selectedCategoryId) ?? null
@@ -140,14 +137,9 @@ export default function InventoryPage() {
   }
 
   const loadStock = useCallback(() => {
-    Promise.all([
-      api.inventory.stockLevels(locationFilter || undefined),
-      api.inventory.movements(locationFilter || undefined),
-    ])
-      .then(([levels, moves]) => {
-        setStockLevels(levels);
-        setMovements(moves);
-      })
+    api.inventory
+      .stockLevels(locationFilter || undefined)
+      .then(setStockLevels)
       .catch(() => setError("Не удалось загрузить данные склада"));
   }, [locationFilter]);
 
@@ -300,6 +292,16 @@ export default function InventoryPage() {
         <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
           <TabButton active={tab === "stock"} onClick={() => openTab("stock")}>
             Остатки
+          </TabButton>
+          <TabButton
+            active={tab === "movements"}
+            onClick={() => {
+              setMovementProduct(null);
+              setMovementLocationId(locationFilter);
+              openTab("movements");
+            }}
+          >
+            Движения
           </TabButton>
           <TabButton active={tab === "catalog"} onClick={() => openTab("catalog")}>
             Номенклатура
@@ -454,7 +456,7 @@ export default function InventoryPage() {
             </div>
           )}
 
-          <div className="mb-8 rounded-2xl border border-border bg-surface shadow-card">
+          <div className="rounded-2xl border border-border bg-surface shadow-card">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
@@ -467,7 +469,15 @@ export default function InventoryPage() {
               </thead>
               <tbody className="divide-y divide-border">
                 {visibleStockLevels.map((level) => (
-                  <tr key={level.id}>
+                  <tr
+                    key={level.id}
+                    onClick={() => {
+                      setMovementProduct({ id: level.productId, name: level.productName });
+                      setMovementLocationId(isOrgWide ? level.locationId : "");
+                      openTab("movements");
+                    }}
+                    className="cursor-pointer transition hover:bg-surface-muted/60"
+                  >
                     <td className="px-5 py-3 font-medium text-foreground">{level.productName}</td>
                     {isOrgWide && <td className="px-5 py-3 text-muted">{level.locationName}</td>}
                     <td className="px-5 py-3 text-muted">{level.categoryName ?? "—"}</td>
@@ -500,60 +510,18 @@ export default function InventoryPage() {
             </table>
           </div>
 
-          <div className="rounded-2xl border border-border bg-surface shadow-card">
-            <div className="border-b border-border px-5 py-4">
-              <h2 className="text-sm font-semibold text-foreground">История движений</h2>
-            </div>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
-                  <th className="px-5 py-3 font-medium">Дата</th>
-                  <th className="px-5 py-3 font-medium">Товар</th>
-                  {isOrgWide && <th className="px-5 py-3 font-medium">Точка</th>}
-                  <th className="px-5 py-3 font-medium">Тип</th>
-                  <th className="px-5 py-3 font-medium">Причина</th>
-                  <th className="px-5 py-3 text-right font-medium">Кол-во</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {visibleMovements.map((m) => (
-                  <tr key={m.id}>
-                    <td className="px-5 py-3 text-muted">{formatDateTime(m.createdAt)}</td>
-                    <td className="px-5 py-3 font-medium text-foreground">{m.productName}</td>
-                    {isOrgWide && <td className="px-5 py-3 text-muted">{m.locationName}</td>}
-                    <td className="px-5 py-3 text-muted">
-                      {STOCK_MOVEMENT_TYPE_LABELS_RU[m.type]}
-                      {m.voided && <span className="ml-2 rounded-full bg-surface-muted px-2 py-0.5 text-xs text-muted">аннулировано</span>}
-                    </td>
-                    <td className="px-5 py-3 text-muted">{m.reason ?? "—"}</td>
-                    <td
-                      className={clsx(
-                        "px-5 py-3 text-right font-medium",
-                        m.type === StockMovementType.ADJUSTMENT && m.quantity > 0
-                          ? "text-green-600"
-                          : m.type === StockMovementType.ADJUSTMENT && m.quantity < 0
-                            ? "text-red-600"
-                            : "text-foreground",
-                      )}
-                    >
-                      {m.type === StockMovementType.ADJUSTMENT && m.quantity > 0 ? "+" : ""}
-                      {formatQuantity(m.quantity)} {UNIT_LABELS_RU[m.unit]}
-                    </td>
-                  </tr>
-                ))}
-                {visibleMovements.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-5 py-8 text-center text-sm text-muted">
-                      {stockQuery
-                        ? `Ничего не найдено по запросу «${stockSearch.trim()}»`
-                        : "Движений пока нет"}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
         </>
+      )}
+
+      {tab === "movements" && (
+        <StockMovementsTab
+          locations={locations}
+          isOrgWide={isOrgWide}
+          products={products}
+          initialLocationId={movementLocationId}
+          product={movementProduct}
+          onProductChange={setMovementProduct}
+        />
       )}
 
       {tab === "prices" && <LocationPricesTab locations={locations} canManage={canManageProducts} />}

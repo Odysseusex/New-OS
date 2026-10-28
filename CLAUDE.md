@@ -171,6 +171,12 @@ constants each source module already uses.
 over time, prices sold at, per location, and the active техкарта priced per ingredient. Always live, even for a
 frozen month (sale lines carry their own cost stamp).
 
+**Stock history is its own tab** (Склад → «Движения», `StockMovementsTab`): period / type / location / product
+filters on `GET /inventory/movements` (no filter = the latest 50 as before, e.g. the Telegram bot; with a period or a
+product up to `STOCK_MOVEMENTS_MAX` rows). Clicking a balance row on «Остатки» opens that product's history. Each row
+shows the cost stamped on the movement (`unitCost`, `costAmount`) and, for sales/returns, the buyer's average price per
+unit on that document (`salePrice`).
+
 **Product SKU** is optional; if blank, `ProductsService.generateSku()`
 atomically increments `Organization.productSkuSequence` (a single
 `UPDATE ... increment`, not a retry loop) and formats

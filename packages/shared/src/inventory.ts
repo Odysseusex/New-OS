@@ -89,7 +89,16 @@ export interface StockMovementDto {
   // Annulled as part of an erroneous receipt/write-off pair (StockVoid): it
   // stays in the history but is no longer counted as a loss anywhere.
   voided?: boolean;
+  // Cost of one unit stamped on the movement when it happened, and that cost ×
+  // the quantity moved; null when no cost was known then.
+  unitCost?: number | null;
+  costAmount?: number | null;
+  // Sale and return rows: what the buyer paid per unit.
+  salePrice?: number | null;
 }
+
+// Most rows the history returns at once (a period or a product narrows it).
+export const STOCK_MOVEMENTS_MAX = 1000;
 
 export interface CreateStockMovementRequestDto {
   locationId?: string;

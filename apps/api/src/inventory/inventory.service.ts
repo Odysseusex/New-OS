@@ -13,6 +13,7 @@ import {
   WriteOffReason,
 } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
+import { round2 } from "../common/money";
 import { decrementStockOrThrow } from "../common/stock-guard";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
 import { ReceiveStockDto } from "./dto/receive-stock.dto";
@@ -113,6 +114,7 @@ export class InventoryService {
     user: AuthenticatedUser,
     requestedLocationId?: string,
     limit = 50,
+    filter: { productId?: string; type?: StockMovementType; from?: Date; to?: Date } = {},
   ): Promise<StockMovementDto[]> {
     const locationId = resolveLocationScope(user, requestedLocationId);
 
@@ -120,27 +122,67 @@ export class InventoryService {
       where: {
         organizationId: user.organizationId,
         ...(locationId ? { locationId } : {}),
+        ...(filter.productId ? { productId: filter.productId } : {}),
+        ...(filter.type ? { type: filter.type as PrismaStockMovementType } : {}),
+        ...(filter.from || filter.to ? { createdAt: { ...(filter.from ? { gte: filter.from } : {}), ...(filter.to ? { lte: filter.to } : {}) } } : {}),
       },
       include: { location: true, product: true, createdBy: true, voidLine: { select: { voidId: true } } },
       orderBy: { createdAt: "desc" },
       take: limit,
     });
 
-    return movements.map((m) => ({
-      id: m.id,
-      locationId: m.locationId,
-      locationName: m.location.name,
-      productId: m.productId,
-      productName: m.product.name,
-      unit: m.product.unit as Unit,
-      type: m.type as StockMovementType,
-      quantity: m.quantity.toNumber(),
-      reason: m.reason,
-      writeOffReason: m.writeOffReason as WriteOffReason | null,
-      createdByName: m.createdBy.fullName,
-      createdAt: m.createdAt.toISOString(),
-      voided: m.voidLine !== null,
-    }));
+    // What the buyer paid per unit, for the sale and return rows: the average
+    // over that document's lines of the product (a markdown line and a full-price
+    // line of the same loaf are two lines of one sale).
+    const saleIds = [...new Set(movements.map((m) => m.saleId).filter((id): id is string => id !== null))];
+    const returnIds = [...new Set(movements.map((m) => m.saleReturnId).filter((id): id is string => id !== null))];
+    const [saleItems, returnItems] = await Promise.all([
+      saleIds.length
+        ? this.prisma.saleItem.findMany({ where: { saleId: { in: saleIds } }, select: { saleId: true, productId: true, quantity: true, subtotal: true } })
+        : [],
+      returnIds.length
+        ? this.prisma.saleReturnItem.findMany({
+            where: { saleReturnId: { in: returnIds } },
+            select: { saleReturnId: true, productId: true, quantity: true, subtotal: true },
+          })
+        : [],
+    ]);
+    const priceTotals = new Map<string, { quantity: number; amount: number }>();
+    const addPrice = (key: string, quantity: number, amount: number) => {
+      const entry = priceTotals.get(key) ?? { quantity: 0, amount: 0 };
+      entry.quantity += quantity;
+      entry.amount += amount;
+      priceTotals.set(key, entry);
+    };
+    for (const i of saleItems) addPrice(`s:${i.saleId}:${i.productId}`, i.quantity.toNumber(), i.subtotal.toNumber());
+    for (const i of returnItems) addPrice(`r:${i.saleReturnId}:${i.productId}`, i.quantity.toNumber(), i.subtotal.toNumber());
+    const salePriceOf = (key: string): number | null => {
+      const entry = priceTotals.get(key);
+      return entry && entry.quantity > 0 ? round2(entry.amount / entry.quantity) : null;
+    };
+
+    return movements.map((m) => {
+      const quantity = m.quantity.toNumber();
+      const unitCost = m.unitCost ? m.unitCost.toNumber() : null;
+      return {
+        id: m.id,
+        locationId: m.locationId,
+        locationName: m.location.name,
+        productId: m.productId,
+        productName: m.product.name,
+        unit: m.product.unit as Unit,
+        type: m.type as StockMovementType,
+        quantity,
+        reason: m.reason,
+        writeOffReason: m.writeOffReason as WriteOffReason | null,
+        createdByName: m.createdBy.fullName,
+        createdAt: m.createdAt.toISOString(),
+        voided: m.voidLine !== null,
+        unitCost: unitCost === null ? null : round2(unitCost),
+        costAmount: unitCost === null ? null : round2(Math.abs(quantity) * unitCost),
+        salePrice: m.saleId ? salePriceOf(`s:${m.saleId}:${m.productId}`) : m.saleReturnId ? salePriceOf(`r:${m.saleReturnId}:${m.productId}`) : null,
+      };
+    });
   }
 
   async receive(user: AuthenticatedUser, dto: ReceiveStockDto): Promise<StockMovementDto> {
