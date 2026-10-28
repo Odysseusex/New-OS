@@ -19,6 +19,7 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
 import { zonedDateKey } from "@/lib/reporting-period";
+import { focusNextCount, printCountSheet } from "@/lib/count-sheet";
 import { ProductTrailModal } from "@/components/product-trail-modal";
 
 const inputClass =
@@ -33,58 +34,16 @@ const parseAmount = (value: string): number | null => {
 };
 const asInput = (value: number | null) => (value === null ? "" : String(value));
 
-const escapeHtml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const NO_CATEGORY = "Без категории";
 const CONSIGNMENT_GROUP = "Под реализацию";
 const groupOf = (line: { consignment: boolean; categoryName: string | null }) =>
   line.consignment ? CONSIGNMENT_GROUP : (line.categoryName ?? NO_CATEGORY);
 
-// The paper the cashiers walk the shelf with: every product of the point in the
-// screen's own order, a blank to write the count in — and NOT what the system
-// expects, so the count is blind.
-function printCountSheet(day: DailyReconciliationDto) {
-  // Two columns: names are short, so one column left half of every page empty.
-  // A group's heading travels with its first product, never alone at a column's foot.
-  const row = (line: DailyReconciliationDto["lines"][number]) =>
-    `<div class="r"><span class="n">${escapeHtml(line.productName)}</span><span class="b">${escapeHtml(UNIT_LABELS_RU[line.unit])}</span></div>`;
-  const groups: { name: string; lines: DailyReconciliationDto["lines"] }[] = [];
-  for (const line of day.lines) {
-    const name = groupOf(line);
-    if (groups.length === 0 || groups[groups.length - 1].name !== name) groups.push({ name, lines: [] });
-    groups[groups.length - 1].lines.push(line);
-  }
-  const body = groups
-    .map((g) => `<div class="k"><div class="g">${escapeHtml(g.name)}</div>${row(g.lines[0])}</div>${g.lines.slice(1).map(row).join("")}`)
-    .join("");
-  const html = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Пересчёт витрины</title>
-<style>body{font-family:Arial,sans-serif;font-size:13px;margin:14px;color:#000}h1{font-size:17px;margin:0 0 4px}p{margin:4px 0 10px}
-.cols{column-count:2;column-gap:18px}.k,.r{break-inside:avoid}
-.g{background:#eee;font-weight:bold;padding:5px 6px;border:1px solid #999;margin-top:6px}.k:first-child .g{margin-top:0}
-.r{display:flex;align-items:stretch;border:1px solid #999;margin-top:-1px}
-.n{flex:1;padding:6px;line-height:1.25}.b{width:70px;border-left:1px solid #999;text-align:right;color:#666;font-size:11px;padding:2px 4px;display:flex;align-items:flex-end;justify-content:flex-end}</style></head><body>
-<h1>Пересчёт витрины · ${escapeHtml(day.locationName)} · ${escapeHtml(day.date.split("-").reverse().join("."))}</h1>
-<p>Считал(а): ______________________ &nbsp;&nbsp; Время: ________</p>
-<div class="cols">${body}</div>
-</body></html>`;
-  const win = window.open("", "_blank");
-  if (!win) return;
-  win.document.write(html);
-  win.document.close();
-  win.focus();
-  win.print();
-}
-
-// Enter in a count field goes to the next one, top to bottom — the paper's order.
-function focusNextCount(current: HTMLInputElement) {
-  const all = Array.from(document.querySelectorAll<HTMLInputElement>("input[data-count-input]"));
-  const next = all[all.indexOf(current) + 1];
-  if (next) {
-    next.focus();
-    next.select();
-  } else {
-    current.blur();
-  }
-}
+const printDaySheet = (day: DailyReconciliationDto) =>
+  printCountSheet(
+    `Пересчёт витрины · ${day.locationName} · ${day.date.split("-").reverse().join(".")}`,
+    day.lines.map((line) => ({ name: line.productName, unit: line.unit, group: groupOf(line) })),
+  );
 
 const signTone = (value: number | null) =>
   value === null || Math.abs(value) < 0.005 ? "text-foreground" : value < 0 ? "text-red-600" : "text-green-600";
@@ -311,7 +270,7 @@ function ReconciliationScreen() {
             <input type="date" value={date} max={zonedDateKey()} onChange={(e) => setDate(e.target.value)} className={inputClass} />
           </div>
           <button
-            onClick={() => day && printCountSheet(day)}
+            onClick={() => day && printDaySheet(day)}
             disabled={!day || day.lines.length === 0}
             className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted disabled:opacity-50"
           >

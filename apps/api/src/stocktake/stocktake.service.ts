@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, StockMovementType, StocktakeStatus as PrismaStocktakeStatus } from "@prisma/client";
 import {
+  STOCKTAKE_APPROVE_ROLES,
   StocktakeDto,
   StocktakeLineDto,
   StocktakeStatus,
@@ -30,6 +31,11 @@ const STOCKTAKE_INCLUDE = {
 type StocktakeWithLines = Prisma.StocktakeGetPayload<{ include: typeof STOCKTAKE_INCLUDE }>;
 
 const round3 = (v: number) => Number(v.toFixed(3));
+
+// While a count is in progress, whoever counts is not shown what the books say
+// (they would count towards it). Those who approve see everything, always.
+const isBlind = (user: AuthenticatedUser, status: PrismaStocktakeStatus) =>
+  status === PrismaStocktakeStatus.COUNTING && !STOCKTAKE_APPROVE_ROLES.includes(user.role);
 const round2 = (v: number) => Number(v.toFixed(2));
 
 @Injectable()
@@ -52,7 +58,7 @@ export class StocktakeService {
 
   async findOne(user: AuthenticatedUser, id: string): Promise<StocktakeDto> {
     const row = await this.load(user, id);
-    return this.toDto(row);
+    return this.toDto(row, isBlind(user, row.status));
   }
 
   // Snapshot: one line per stock-tracked product that is active or still has
@@ -86,6 +92,7 @@ export class StocktakeService {
             organizationId: user.organizationId,
             trackInventory: true,
             ...(categoryIds ? { categoryId: { in: categoryIds } } : {}),
+            ...(dto.productType ? { type: dto.productType } : {}),
           },
           select: { id: true, isActive: true },
         }),
@@ -118,7 +125,7 @@ export class StocktakeService {
         action: "stocktake.create",
         entityType: "Stocktake",
         entityId: stocktake.id,
-        after: { locationId, lineCount: included.length, categoryId: dto.categoryId ?? null },
+        after: { locationId, lineCount: included.length, categoryId: dto.categoryId ?? null, productType: dto.productType ?? null },
       });
       return stocktake;
     });
@@ -151,7 +158,7 @@ export class StocktakeService {
       include: { product: { include: { categoryRef: CATEGORY_WITH_PARENT } } },
     });
     const costs = await this.costing.currentUnitCosts(user.organizationId);
-    return this.toLineDto(updated, costs.get(updated.productId)?.unitCost ?? null);
+    return this.toLineDto(updated, costs.get(updated.productId)?.unitCost ?? null, isBlind(user, stocktake.status));
   }
 
   async submit(user: AuthenticatedUser, id: string): Promise<StocktakeDto> {
@@ -325,13 +332,13 @@ export class StocktakeService {
     return row;
   }
 
-  private async toDto(row: StocktakeWithLines): Promise<StocktakeDto> {
+  private async toDto(row: StocktakeWithLines, blind: boolean): Promise<StocktakeDto> {
     const [costs, drift] = await Promise.all([
       this.costing.currentUnitCosts(row.organizationId),
       this.snapshotDrift(row),
     ]);
     const lines = row.lines
-      .map((l) => this.toLineDto(l, costs.get(l.productId)?.unitCost ?? null))
+      .map((l) => this.toLineDto(l, costs.get(l.productId)?.unitCost ?? null, blind))
       .sort((a, b) => (a.categoryName ?? "").localeCompare(b.categoryName ?? "") || a.productName.localeCompare(b.productName));
     let shortageValue = 0;
     let surplusValue = 0;
@@ -346,6 +353,7 @@ export class StocktakeService {
       shortageValue: round2(shortageValue),
       surplusValue: round2(surplusValue),
       snapshotDriftCount: drift,
+      blind,
     };
   }
 
@@ -393,10 +401,11 @@ export class StocktakeService {
   private toLineDto(
     line: StocktakeWithLines["lines"][number],
     unitCost: number | null,
+    blind = false,
   ): StocktakeLineDto {
     const systemQuantity = line.systemQuantity.toNumber();
     const countedQuantity = line.countedQuantity?.toNumber() ?? null;
-    const difference = countedQuantity === null ? null : round3(countedQuantity - systemQuantity);
+    const difference = countedQuantity === null || blind ? null : round3(countedQuantity - systemQuantity);
     return {
       id: line.id,
       productId: line.productId,
@@ -404,7 +413,7 @@ export class StocktakeService {
       sku: line.product.sku,
       unit: line.product.unit as Unit,
       categoryName: categoryLabel(line.product.categoryRef),
-      systemQuantity,
+      systemQuantity: blind ? null : systemQuantity,
       countedQuantity,
       difference,
       unitCost,

@@ -127,7 +127,7 @@ describe("a realistic run of business", () => {
     await services.inventory.writeOff(u, { locationId: org.storeId, productId: flourId, quantity: 3, reason: "Порча", writeOffReason: "DAMAGED" as never });
     const st = await services.stocktake.create(u, { locationId: org.storeId });
     const line = st.lines.find((l) => l.productId === flourId)!;
-    await services.stocktake.updateLine(u, st.id, line.id, { countedQuantity: line.systemQuantity - 2 });
+    await services.stocktake.updateLine(u, st.id, line.id, { countedQuantity: line.systemQuantity! - 2 });
     await services.stocktake.submit(u, st.id);
     await services.stocktake.approve(u, st.id);
     // expenses: paid operating, capital, partly unpaid, tax

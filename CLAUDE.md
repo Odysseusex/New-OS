@@ -178,6 +178,14 @@ product up to `STOCK_MOVEMENTS_MAX` rows). Clicking a balance row on «Оста�
 shows the cost stamped on the movement (`unitCost`, `costAmount`) and, for sales/returns, the buyer's average price per
 unit on that document (`salePrice`).
 
+**Stocktake (Склад → «Инвентаризация») for a store of raw materials:** created per location and optionally per
+`productType` (and category); while COUNTING it is **blind** for anyone outside `STOCKTAKE_APPROVE_ROLES` — the server
+withholds `systemQuantity`/differences/values (`StocktakeDto.blind`), so a counter cannot fit the count to the books;
+approvers always see everything. Counts are typed as expressions read by shared `parseCountInput` («3*25+12» sacks,
+«350г» for a kg product, never eval'd, null = not understood); Enter moves to the next field. «Печать бланка» prints the
+same two-column blind sheet as «Сверка дня» (`apps/web/src/lib/count-sheet.ts`, shared by both). A user tied to one
+location can only pick that location.
+
 **Product SKU** is optional; if blank, `ProductsService.generateSku()`
 atomically increments `Organization.productSkuSequence` (a single
 `UPDATE ... increment`, not a retry loop) and formats

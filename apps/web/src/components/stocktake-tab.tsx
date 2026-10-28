@@ -2,16 +2,24 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
+import { Printer } from "lucide-react";
 import {
+  ORG_WIDE_ROLES,
+  parseCountInput,
+  PRODUCT_TYPE_LABELS_RU,
+  PRODUCT_TYPE_ORDER,
+  ProductType,
   STOCKTAKE_APPROVE_ROLES,
   STOCKTAKE_MANAGE_ROLES,
   STOCKTAKE_STATUS_LABELS_RU,
   StocktakeStatus,
+  UNIT_LABELS_RU,
 } from "@bakery-os/shared";
 import type { LocationDto, StocktakeDto, StocktakeLineDto, StocktakeSummaryDto } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
+import { focusNextCount, printCountSheet } from "@/lib/count-sheet";
 
 const STATUS_STYLES: Record<StocktakeStatus, string> = {
   [StocktakeStatus.COUNTING]: "bg-amber-50 text-amber-700",
@@ -36,6 +44,12 @@ export function StocktakeTab({ locations }: { locations: LocationDto[] }) {
   const { user } = useAuth();
   const canManage = user ? STOCKTAKE_MANAGE_ROLES.includes(user.role) : false;
   const canApprove = user ? STOCKTAKE_APPROVE_ROLES.includes(user.role) : false;
+  // Someone tied to one location can count only there.
+  const isOrgWide = user ? ORG_WIDE_ROLES.includes(user.role) : false;
+  const choosable = useMemo(
+    () => (isOrgWide ? locations : locations.filter((l) => l.id === user?.locationId)),
+    [isOrgWide, locations, user?.locationId],
+  );
 
   const [openId, setOpenId] = useState<string | null>(null);
   const [locationId, setLocationId] = useState("");
@@ -43,10 +57,12 @@ export function StocktakeTab({ locations }: { locations: LocationDto[] }) {
   const [state, setState] = useState<"loading" | "error" | "ready">("loading");
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  // What to count: the whole location, or one kind of product (the raw-material store on its own).
+  const [productType, setProductType] = useState<ProductType | "">("");
 
   useEffect(() => {
-    if (!locationId && locations.length > 0) setLocationId(locations[0].id);
-  }, [locations, locationId]);
+    if (!locationId && choosable.length > 0) setLocationId(choosable[0].id);
+  }, [choosable, locationId]);
 
   const load = useCallback(() => {
     setState("loading");
@@ -65,7 +81,7 @@ export function StocktakeTab({ locations }: { locations: LocationDto[] }) {
     setCreating(true);
     setError(null);
     try {
-      const st = await api.stocktakes.create({ locationId });
+      const st = await api.stocktakes.create({ locationId, productType: productType || undefined });
       setOpenId(st.id);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось начать инвентаризацию");
@@ -97,9 +113,21 @@ export function StocktakeTab({ locations }: { locations: LocationDto[] }) {
             onChange={(e) => setLocationId(e.target.value)}
             className="rounded-xl border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
           >
-            {locations.map((loc) => (
+            {choosable.map((loc) => (
               <option key={loc.id} value={loc.id}>
                 {loc.name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={productType}
+            onChange={(e) => setProductType(e.target.value as ProductType | "")}
+            className="rounded-xl border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+          >
+            <option value="">Все товары</option>
+            {PRODUCT_TYPE_ORDER.map((type) => (
+              <option key={type} value={type}>
+                {PRODUCT_TYPE_LABELS_RU[type]}
               </option>
             ))}
           </select>
@@ -204,9 +232,10 @@ function StocktakeDetail({
   async function saveCount(line: StocktakeLineDto, raw: string) {
     if (!st) return;
     const trimmed = raw.trim();
-    const next = trimmed === "" ? null : Number(trimmed.replace(/\s/g, "").replace(",", "."));
-    if (next !== null && (!Number.isFinite(next) || next < 0)) {
-      setError(`Неверное количество для «${line.productName}»`);
+    // «3*25+12» (sacks and loose), «350г» for a product kept in kg — read, never guessed.
+    const next = trimmed === "" ? null : parseCountInput(trimmed, line.unit);
+    if (trimmed !== "" && next === null) {
+      setError(`Не удалось прочитать количество для «${line.productName}»: «${trimmed}»`);
       return;
     }
     if (next === line.countedQuantity) return;
@@ -267,11 +296,20 @@ function StocktakeDetail({
         </div>
       )}
 
+      {st.blind && (
+        <div className="mb-4 rounded-xl bg-surface-muted px-4 py-3 text-sm text-foreground">
+          Слепой пересчёт: остатки по учёту и расхождения видны после отправки на проверку
+        </div>
+      )}
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Посчитано" value={`${st.countedCount} из ${st.lineCount}`} />
-        <Stat label="Недостача" value={formatMoney(st.shortageValue)} tone="red" />
-        <Stat label="Излишек" value={formatMoney(st.surplusValue)} tone="green" />
-        <Stat label="Сальдо" value={formatMoney(st.surplusValue - st.shortageValue)} />
+        {!st.blind && (
+          <>
+            <Stat label="Недостача" value={formatMoney(st.shortageValue)} tone="red" />
+            <Stat label="Излишек" value={formatMoney(st.surplusValue)} tone="green" />
+            <Stat label="Сальдо" value={formatMoney(st.surplusValue - st.shortageValue)} />
+          </>
+        )}
       </div>
       {uncostedDiffs > 0 && (
         <p className="mb-4 text-sm text-amber-700">
@@ -287,11 +325,28 @@ function StocktakeDetail({
           placeholder="Поиск товара…"
           className="min-w-[200px] flex-1 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
         />
-        <label className="flex items-center gap-2 text-sm text-foreground">
-          <input type="checkbox" checked={onlyDiff} onChange={(e) => setOnlyDiff(e.target.checked)} />
-          Только расхождения
-        </label>
+        {!st.blind && (
+          <label className="flex items-center gap-2 text-sm text-foreground">
+            <input type="checkbox" checked={onlyDiff} onChange={(e) => setOnlyDiff(e.target.checked)} />
+            Только расхождения
+          </label>
+        )}
+        <button
+          onClick={() =>
+            printCountSheet(
+              `Инвентаризация · ${st.locationName} · ${formatDateTime(st.snapshotAt)}`,
+              st.lines.map((l) => ({ name: l.productName, unit: l.unit, group: l.categoryName ?? "Без категории" })),
+            )
+          }
+          className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+        >
+          <Printer className="h-4 w-4" strokeWidth={1.75} />
+          Печать бланка
+        </button>
       </div>
+      {counting && canManage && (
+        <p className="mb-3 text-xs text-muted">Количество можно вводить так: 3*25+12 (мешки и россыпь), 350г — для товара в кг. Enter — к следующему.</p>
+      )}
 
       <div className="overflow-hidden rounded-2xl border border-border bg-surface">
         <table className="w-full text-sm">
@@ -299,19 +354,19 @@ function StocktakeDetail({
             <tr>
               <th className="px-4 py-3 font-medium">Товар</th>
               <th className="px-4 py-3 font-medium">Категория</th>
-              <th className="px-4 py-3 text-right font-medium">По учёту</th>
+              {!st.blind && <th className="px-4 py-3 text-right font-medium">По учёту</th>}
               <th className="px-4 py-3 text-right font-medium">Факт</th>
-              <th className="px-4 py-3 text-right font-medium">Расхождение</th>
-              <th className="px-4 py-3 text-right font-medium">Сумма</th>
+              {!st.blind && <th className="px-4 py-3 text-right font-medium">Расхождение</th>}
+              {!st.blind && <th className="px-4 py-3 text-right font-medium">Сумма</th>}
             </tr>
           </thead>
           <tbody>
             {visible.map((line) => (
-              <CountRow key={line.id} line={line} editable={counting && canManage} onSave={saveCount} />
+              <CountRow key={line.id} line={line} blind={st.blind} editable={counting && canManage} onSave={saveCount} />
             ))}
             {visible.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-muted">Нет позиций</td>
+                <td colSpan={st.blind ? 3 : 6} className="px-4 py-6 text-center text-muted">Нет позиций</td>
               </tr>
             )}
           </tbody>
@@ -422,10 +477,12 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: "re
 
 function CountRow({
   line,
+  blind,
   editable,
   onSave,
 }: {
   line: StocktakeLineDto;
+  blind: boolean;
   editable: boolean;
   onSave: (line: StocktakeLineDto, raw: string) => void;
 }) {
@@ -442,39 +499,56 @@ function CountRow({
         <div className="text-xs text-muted">{line.sku}</div>
       </td>
       <td className="px-4 py-2.5 text-muted">{line.categoryName ?? "—"}</td>
-      <td className="px-4 py-2.5 text-right">
-        {formatQuantity(line.systemQuantity)}
-      </td>
+      {!blind && (
+        <td className="px-4 py-2.5 text-right">
+          {line.systemQuantity === null ? "—" : `${formatQuantity(line.systemQuantity)} ${UNIT_LABELS_RU[line.unit]}`}
+        </td>
+      )}
       <td className="px-4 py-2.5 text-right">
         {editable ? (
-          <input
-            type="text"
-            inputMode="decimal"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onBlur={() => onSave(line, value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-            }}
-            className="w-28 rounded-lg border border-border bg-surface px-3 py-2 text-right text-base text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-          />
+          <span className="inline-flex items-center gap-1.5">
+            <input
+              type="text"
+              data-count-input
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onBlur={() => {
+                // An expression is shown as what it came to, so the counter sees what was saved.
+                const parsed = value.trim() === "" ? null : parseCountInput(value, line.unit);
+                if (parsed !== null) setValue(String(parsed));
+                onSave(line, value);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  focusNextCount(e.currentTarget);
+                }
+              }}
+              className="w-28 rounded-lg border border-border bg-surface px-3 py-2 text-right text-base text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+            <span className="w-6 text-left text-xs text-muted">{UNIT_LABELS_RU[line.unit]}</span>
+          </span>
         ) : line.countedQuantity === null ? (
           "—"
         ) : (
-          formatQuantity(line.countedQuantity)
+          `${formatQuantity(line.countedQuantity)} ${UNIT_LABELS_RU[line.unit]}`
         )}
       </td>
-      <td
-        className={clsx(
-          "px-4 py-2.5 text-right font-medium",
-          diff === null || diff === 0 ? "text-muted" : diff < 0 ? "text-red-700" : "text-green-700",
-        )}
-      >
-        {diff === null ? "—" : diff > 0 ? `+${formatQuantity(diff)}` : formatQuantity(diff)}
-      </td>
-      <td className="px-4 py-2.5 text-right text-muted">
-        {line.differenceValue === null ? "—" : formatMoney(line.differenceValue)}
-      </td>
+      {!blind && (
+        <td
+          className={clsx(
+            "px-4 py-2.5 text-right font-medium",
+            diff === null || diff === 0 ? "text-muted" : diff < 0 ? "text-red-700" : "text-green-700",
+          )}
+        >
+          {diff === null ? "—" : diff > 0 ? `+${formatQuantity(diff)}` : formatQuantity(diff)}
+        </td>
+      )}
+      {!blind && (
+        <td className="px-4 py-2.5 text-right text-muted">
+          {line.differenceValue === null ? "—" : formatMoney(line.differenceValue)}
+        </td>
+      )}
     </tr>
   );
 }
