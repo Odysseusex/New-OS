@@ -28,6 +28,7 @@ import {
   NetProfitStatus,
   NotConfiguredItem,
   PnlLine,
+  CostBasis,
   CostBehavior,
   DepreciationMethod,
   ExpenseDto,
@@ -39,12 +40,19 @@ import {
   PlannedBreakEvenDto,
   PlannedFixedCostDto,
   PlannedPayrollExclusionDto,
+  ProductCostSourceDto,
+  ProductCostSourceKey,
+  ProductLocationRowDto,
+  ProductPnLDetailDto,
   ProductPnLDto,
+  ProductPriceRowDto,
   ProductType,
+  ProductUnitCostRowDto,
   ProfitAndLossDto,
   Unit,
 } from "@bakery-os/shared";
 import {
+  Prisma,
   EmployeeStatus as PrismaEmployeeStatus,
   StockMovementType,
   InvoiceStatus as PrismaInvoiceStatus,
@@ -569,6 +577,164 @@ export class FinanceService {
       costCoverage: coverage,
       costingMethod: this.costing.methodLabel,
       byProduct,
+    };
+  }
+
+  // One product's row of the P&L, opened up. Totals follow getProfitAndLoss
+  // line for line (same cost order: stamp, consignment terms, today's cost), so
+  // the detail always adds up to the row it was opened from.
+  async getProductPnlDetail(
+    organizationId: string,
+    productId: string,
+    from: Date,
+    to: Date,
+    locationId?: string,
+  ): Promise<ProductPnLDetailDto> {
+    const product = await this.prisma.product.findFirst({ where: { id: productId, organizationId } });
+    if (!product) throw new NotFoundException("Товар не найден");
+    const [saleItems, returnItems, currentCosts] = await Promise.all([
+      this.prisma.saleItem.findMany({
+        where: {
+          productId,
+          consignmentSupplierId: null,
+          sale: { organizationId, soldAt: { gte: from, lte: to }, ...(locationId ? { locationId } : {}) },
+        },
+        include: { sale: { select: { soldAt: true, locationId: true, location: { select: { name: true } } } } },
+      }),
+      this.prisma.saleReturnItem.findMany({
+        where: {
+          productId,
+          consignmentSupplierId: null,
+          saleReturn: { organizationId, returnedAt: { gte: from, lte: to }, ...(locationId ? { locationId } : {}) },
+        },
+        include: { saleReturn: { select: { restocked: true, locationId: true, location: { select: { name: true } } } } },
+      }),
+      this.costing.currentUnitCosts(organizationId, this.prisma, [productId]),
+    ]);
+    const current = currentCosts.get(productId) ?? null;
+
+    type Source = { key: ProductCostSourceKey; unitCost: number | null };
+    const sourceOf = (unitCost: Prisma.Decimal | null, costBasis: string | null, consignment: Prisma.Decimal | null): Source => {
+      if (unitCost) return { key: (costBasis as CostBasis | null) ?? "STAMPED", unitCost: unitCost.toNumber() };
+      if (consignment) return { key: CostBasis.CONSIGNMENT_TERMS, unitCost: consignment.toNumber() };
+      if (current) return { key: "CURRENT", unitCost: current.unitCost };
+      return { key: "NONE", unitCost: null };
+    };
+
+    const sources = new Map<ProductCostSourceKey, ProductCostSourceDto>();
+    const unitCosts = new Map<string, ProductUnitCostRowDto>();
+    const prices = new Map<string, ProductPriceRowDto>();
+    const locations = new Map<string, ProductLocationRowDto>();
+    const locationRow = (id: string, name: string) => {
+      let row = locations.get(id);
+      if (!row) {
+        row = { locationId: id, locationName: name, quantity: 0, revenue: 0, cogs: 0, hasCostData: true };
+        locations.set(id, row);
+      }
+      return row;
+    };
+
+    let salesQuantity = 0;
+    let salesRevenue = 0;
+    let salesCogs = 0;
+    let discounts = 0;
+    let hasCostData = true;
+    for (const item of saleItems) {
+      const quantity = item.quantity.toNumber();
+      const subtotal = item.subtotal.toNumber();
+      const source = sourceOf(item.unitCost, item.costBasis, item.consignmentUnitCost);
+      const cogs = source.unitCost !== null ? round2(source.unitCost * quantity) : 0;
+      salesQuantity += quantity;
+      salesRevenue += subtotal;
+      salesCogs += cogs;
+      if (source.unitCost === null) hasCostData = false;
+      if (item.fullUnitPrice) discounts += round2((item.fullUnitPrice.toNumber() - item.unitPrice.toNumber()) * quantity);
+
+      const bySource = sources.get(source.key) ?? { source: source.key, quantity: 0, cogs: 0 };
+      bySource.quantity += quantity;
+      bySource.cogs += cogs;
+      sources.set(source.key, bySource);
+
+      const at = item.sale.soldAt.toISOString();
+      const costKey = source.unitCost === null ? "none" : round2(source.unitCost).toFixed(2);
+      const byCost = unitCosts.get(costKey) ?? { unitCost: source.unitCost === null ? null : round2(source.unitCost), quantity: 0, firstAt: at, lastAt: at };
+      byCost.quantity += quantity;
+      if (at < byCost.firstAt) byCost.firstAt = at;
+      if (at > byCost.lastAt) byCost.lastAt = at;
+      unitCosts.set(costKey, byCost);
+
+      const full = item.fullUnitPrice?.toNumber() ?? null;
+      const priceKey = `${item.unitPrice.toFixed(2)}|${full ?? ""}`;
+      const byPrice = prices.get(priceKey) ?? { unitPrice: item.unitPrice.toNumber(), fullUnitPrice: full, quantity: 0, revenue: 0 };
+      byPrice.quantity += quantity;
+      byPrice.revenue += subtotal;
+      prices.set(priceKey, byPrice);
+
+      const byLocation = locationRow(item.sale.locationId, item.sale.location.name);
+      byLocation.quantity += quantity;
+      byLocation.revenue += subtotal;
+      byLocation.cogs += cogs;
+      byLocation.hasCostData = byLocation.hasCostData && source.unitCost !== null;
+    }
+
+    // Returns as in the P&L: revenue always reverses, cost only for goods put
+    // back on the shelf, at what the sale booked.
+    let returnsQuantity = 0;
+    let returnsRevenue = 0;
+    let returnsCogs = 0;
+    for (const item of returnItems) {
+      const quantity = item.quantity.toNumber();
+      const subtotal = item.subtotal.toNumber();
+      let cogs = 0;
+      if (item.saleReturn.restocked) {
+        const source = sourceOf(item.unitCost, null, item.consignmentUnitCost);
+        if (source.unitCost !== null) cogs = round2(source.unitCost * quantity);
+      }
+      returnsQuantity += quantity;
+      returnsRevenue += subtotal;
+      returnsCogs += cogs;
+      const byLocation = locationRow(item.saleReturn.locationId, item.saleReturn.location.name);
+      byLocation.quantity -= quantity;
+      byLocation.revenue -= subtotal;
+      byLocation.cogs -= cogs;
+    }
+
+    const quantitySold = round3(salesQuantity - returnsQuantity);
+    const revenue = round2(salesRevenue - returnsRevenue);
+    const cogs = round2(salesCogs - returnsCogs);
+    return {
+      productId,
+      productName: product.name,
+      productType: product.type as ProductType,
+      unit: product.unit as Unit,
+      from: from.toISOString(),
+      to: to.toISOString(),
+      quantitySold,
+      revenue,
+      cogs,
+      grossProfit: round2(revenue - cogs),
+      marginPercent: revenue > 0 ? ((revenue - cogs) / revenue) * 100 : null,
+      hasCostData,
+      salesQuantity: round3(salesQuantity),
+      salesRevenue: round2(salesRevenue),
+      returnsQuantity: round3(returnsQuantity),
+      returnsRevenue: round2(returnsRevenue),
+      returnsCogs: round2(returnsCogs),
+      discounts: round2(discounts),
+      averagePrice: quantitySold > 0 ? round2(revenue / quantitySold) : null,
+      averageUnitCost: quantitySold > 0 && hasCostData ? round2(cogs / quantitySold) : null,
+      currentUnitCost: current ? round2(current.unitCost) : null,
+      currentCostBasis: current?.basis ?? null,
+      costSources: [...sources.values()]
+        .map((s) => ({ ...s, quantity: round3(s.quantity), cogs: round2(s.cogs) }))
+        .sort((a, b) => b.quantity - a.quantity),
+      unitCosts: [...unitCosts.values()].map((u) => ({ ...u, quantity: round3(u.quantity) })).sort((a, b) => a.firstAt.localeCompare(b.firstAt)),
+      prices: [...prices.values()]
+        .map((p) => ({ ...p, quantity: round3(p.quantity), revenue: round2(p.revenue) }))
+        .sort((a, b) => b.quantity - a.quantity),
+      byLocation: [...locations.values()]
+        .map((l) => ({ ...l, quantity: round3(l.quantity), revenue: round2(l.revenue), cogs: round2(l.cogs) }))
+        .sort((a, b) => b.revenue - a.revenue),
     };
   }
 

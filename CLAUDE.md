@@ -165,6 +165,12 @@ rather than duplicating access control or aggregation logic in a separate
 reporting service. Tabs on `/reports` are filtered by the same role
 constants each source module already uses.
 
+**P&L product drill-down.** A row of Финансы → «Финансовый результат по товарам» opens `ProductPnlModal`
+(`GET /finance/pnl/product`, `FinanceService.getProductPnlDetail`): the same totals computed line for line like
+`getProfitAndLoss` (a spec asserts they match), plus cost source (stamped basis / today's cost / none), unit cost
+over time, prices sold at, per location, and the active техкарта priced per ingredient. Always live, even for a
+frozen month (sale lines carry their own cost stamp).
+
 **Product SKU** is optional; if blank, `ProductsService.generateSku()`
 atomically increments `Organization.productSkuSequence` (a single
 `UPDATE ... increment`, not a retry loop) and formats

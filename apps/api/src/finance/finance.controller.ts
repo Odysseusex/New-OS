@@ -10,6 +10,7 @@ import { FinancialPeriodsService } from "./periods/periods.service";
 import { CreateExpenseDto } from "./dto/create-expense.dto";
 import { RecordExpensePaymentDto } from "./dto/record-expense-payment.dto";
 import { GetPnlQueryDto } from "./dto/get-pnl-query.dto";
+import { GetProductPnlQueryDto } from "./dto/get-product-pnl-query.dto";
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(...FINANCE_VIEW_ROLES)
@@ -45,6 +46,19 @@ export class FinanceController {
     }
     return this.financeService.getProfitAndLoss(
       user.organizationId,
+      new Date(query.from),
+      new Date(query.to),
+      query.locationId,
+    );
+  }
+
+  // One row of «Финансовый результат по товарам», opened up. Always live:
+  // sale lines carry their cost stamp, so it agrees with a frozen month too.
+  @Get("pnl/product")
+  getProductPnl(@CurrentUser() user: AuthenticatedUser, @Query() query: GetProductPnlQueryDto) {
+    return this.financeService.getProductPnlDetail(
+      user.organizationId,
+      query.productId,
       new Date(query.from),
       new Date(query.to),
       query.locationId,

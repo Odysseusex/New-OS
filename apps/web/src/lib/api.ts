@@ -144,6 +144,7 @@ import type {
   LocationPriceRowDto,
   ProductDto,
   ProductionBatchDto,
+  ProductPnLDetailDto,
   ProfitAndLossDto,
   CashFlowDto,
   BusinessContextDto,
@@ -861,6 +862,8 @@ export const api = {
     inventoryValuation: () => request<InventoryValuationDto>("/finance/inventory-valuation"),
     pnl: (from: string, to: string, locationId?: string) =>
       request<ProfitAndLossDto>(withQuery("/finance/pnl", { from, to, locationId })),
+    productPnl: (productId: string, from: string, to: string, locationId?: string) =>
+      request<ProductPnLDetailDto>(withQuery("/finance/pnl/product", { productId, from, to, locationId })),
     balance: (asOf?: string) => request<BalanceSheetDto>(withQuery("/finance/balance", { asOf })),
     inventoryRollForward: (from: string, to: string) =>
       request<InventoryRollForwardDto>(withQuery("/finance/inventory-rollforward", { from, to })),

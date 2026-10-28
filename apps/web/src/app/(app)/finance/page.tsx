@@ -69,6 +69,7 @@ import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
 import { downloadCsv } from "@/lib/csv";
 import { NewExpenseModal } from "@/components/new-expense-modal";
+import { ProductPnlModal } from "@/components/product-pnl-modal";
 import { CategoryClassificationModal } from "@/components/category-classification-modal";
 import { FinancialPeriodsTab } from "@/components/financial-periods-tab";
 import { FixedAssetsTab } from "@/components/fixed-assets-tab";
@@ -194,6 +195,7 @@ export default function FinancePage() {
 
   const [dashboard, setDashboard] = useState<FinanceDashboardDto | null>(null);
   const [pnl, setPnl] = useState<ProfitAndLossDto | null>(null);
+  const [openProduct, setOpenProduct] = useState<{ id: string; name: string } | null>(null);
   const [breakEven, setBreakEven] = useState<BreakEvenDto | null>(null);
   // Плановая («что мы запланировали») vs фактическая («что реально
   // произошло») точка безубыточности — две отдельные цифры, никогда не
@@ -1115,7 +1117,11 @@ export default function FinancePage() {
               </thead>
               <tbody className="divide-y divide-border">
                 {pnl?.byProduct.map((p) => (
-                  <tr key={p.productId}>
+                  <tr
+                    key={p.productId}
+                    onClick={() => setOpenProduct({ id: p.productId, name: p.productName })}
+                    className="cursor-pointer transition hover:bg-surface-muted/60"
+                  >
                     <td className="px-5 py-3 font-medium text-foreground">
                       {p.productName}
                       {!p.hasCostData && (
@@ -1146,6 +1152,17 @@ export default function FinancePage() {
             </table>
           </div>
         </>
+      )}
+
+      {openProduct && pnl && (
+        <ProductPnlModal
+          productId={openProduct.id}
+          productName={openProduct.name}
+          from={pnl.from}
+          to={pnl.to}
+          locationId={locationFilter || undefined}
+          onClose={() => setOpenProduct(null)}
+        />
       )}
 
       {tab === "breakeven" && (
