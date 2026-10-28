@@ -1,12 +1,12 @@
 import { Prisma } from "@prisma/client";
-import { ProductType } from "@bakery-os/shared";
+import { ProductType, rawMaterialUnitCost } from "@bakery-os/shared";
 import { PrismaService } from "../prisma/prisma.service";
 
 // Recipes that use semi-finished products (полуфабрикаты). ONE place that knows
 // how a nested recipe is costed and expanded, so the recipe screen, the costing
 // resolver and production can never value the same product two ways.
 //
-//   cost of 1 unit  = Σ quantity × (price for raw material | unit cost of the
+//   cost of 1 unit  = Σ quantity × (raw material's average | unit cost of the
 //                     semi-finished's own recipe) ÷ recipe yield
 //   expansion       = a semi-finished line becomes the raw materials of its own
 //                     recipe, scaled by (quantity needed ÷ that recipe's yield)
@@ -22,9 +22,14 @@ export interface TreeIngredient {
   type: ProductType;
   price: number;
   trackInventory: boolean;
-  // Moving average cost of a STOCKED semi-finished product; null otherwise.
+  // Moving average: of a STOCKED semi-finished product's batches, or of a raw
+  // material's priced receipts; null when there is none.
   averageUnitCost: number | null;
 }
+
+// Cost of one unit of a raw material in a recipe (see rawMaterialUnitCost).
+export const rawIngredientCost = (ingredient: Pick<TreeIngredient, "price" | "averageUnitCost">): number =>
+  rawMaterialUnitCost(ingredient.price, ingredient.averageUnitCost);
 
 // A semi-finished product held as stock is a leaf, not a recipe to expand: it is
 // consumed from stock at its average cost, and its raw materials were already
@@ -120,7 +125,7 @@ export function recipeUnitCost(
       const sub = index.get(item.ingredient.productId);
       unit = sub ? recipeUnitCost(sub, index, memo, path) : null;
     } else {
-      unit = item.ingredient.price;
+      unit = rawIngredientCost(item.ingredient);
     }
     if (unit === null) {
       known = false;
@@ -190,7 +195,7 @@ export function expandRecipe(
         walk(sub, needed / sub.yieldQuantity, [...path, sub.productId]);
         continue;
       }
-      let unitCost: number | null = ingredient.price;
+      let unitCost: number | null = rawIngredientCost(ingredient);
       if (isStockedSemiFinished(ingredient)) {
         const sub = index.get(ingredient.productId);
         unitCost = ingredient.averageUnitCost ?? (sub ? recipeUnitCost(sub, index, memo) : null);

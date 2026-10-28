@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { audited, recordAudit } from "../audit/audit";
 import { PrismaService } from "../prisma/prisma.service";
-import { ProductType, RecipeBreakdownDto, RecipeDto, RecipeParameterKind, Unit } from "@bakery-os/shared";
+import { ProductType, rawMaterialUnitCost, RecipeBreakdownDto, RecipeDto, RecipeParameterKind, Unit } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { expandRecipe, findRecipeProblem, isStockedSemiFinished, loadRecipeIndex, semiFinishedUnitCosts } from "./recipe-tree";
 import { CreateRecipeDto } from "./dto/create-recipe.dto";
@@ -495,7 +495,7 @@ export class RecipesService {
     items: {
       id: string;
       ingredientProductId: string;
-      ingredientProduct: { name: string; unit: string; type: string; price: { toNumber: () => number } };
+      ingredientProduct: { name: string; unit: string; type: string; price: { toNumber: () => number }; averageUnitCost: { toNumber: () => number } | null };
       quantity: { toNumber: () => number };
     }[];
     stages: {
@@ -519,12 +519,16 @@ export class RecipesService {
     }[];
   }, semiCosts: Map<string, number | null> = new Map()): RecipeDto => {
     const yieldQuantity = recipe.yieldQuantity.toNumber();
-    // Price of one unit of an ingredient: its price for raw material, the unit
-    // cost of its own recipe for a semi-finished product (null = unknown).
-    const unitCostOf = (item: { ingredientProductId: string; ingredientProduct: { type: string; price: { toNumber: () => number } } }): number | null =>
+    // Price of one unit of an ingredient: the moving average of a raw material
+    // (its card price before the first priced receipt), the unit cost of its own
+    // recipe for a semi-finished product (null = unknown).
+    const unitCostOf = (item: {
+      ingredientProductId: string;
+      ingredientProduct: { type: string; price: { toNumber: () => number }; averageUnitCost: { toNumber: () => number } | null };
+    }): number | null =>
       item.ingredientProduct.type === ProductType.SEMI_FINISHED
         ? (semiCosts.get(item.ingredientProductId) ?? null)
-        : item.ingredientProduct.price.toNumber();
+        : rawMaterialUnitCost(item.ingredientProduct.price.toNumber(), item.ingredientProduct.averageUnitCost?.toNumber() ?? null);
     const costComplete = recipe.items.every((item) => unitCostOf(item) !== null);
     const totalIngredientCost = recipe.items.reduce(
       (sum, item) => sum + item.quantity.toNumber() * (unitCostOf(item) ?? 0),

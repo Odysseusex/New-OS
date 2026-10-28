@@ -1,6 +1,6 @@
 import { Type } from "class-transformer";
 import { WriteOffReason, STOCK_BATCH_MAX_LINES } from "@bakery-os/shared";
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsEnum, IsNumber, IsOptional, IsString, Min, MinLength, ValidateNested } from "class-validator";
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsEnum, IsNumber, IsOptional, IsPositive, IsString, Min, MinLength, ValidateNested } from "class-validator";
 
 export class StockBatchLineDto {
   @IsString()
@@ -10,6 +10,12 @@ export class StockBatchLineDto {
   @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0)
   quantity!: number;
+
+  // Receipts of raw materials only: what one unit cost (moves the weighted average).
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsPositive()
+  unitPrice?: number;
 }
 
 class StockBatchBase {

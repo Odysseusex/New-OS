@@ -1,3 +1,4 @@
+import { recordRawMaterialPurchase } from "../costing/raw-material-average";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import {
@@ -285,6 +286,8 @@ export class ProcurementService {
 
       for (const line of lines) {
         if (line.quantity === 0) continue;
+        // A raw material moves its weighted average by what this delivery cost.
+        await recordRawMaterialPurchase(tx, line.item.productId, line.quantity, line.unitCost);
         await tx.stockLevel.upsert({
           where: { locationId_productId: { locationId: order.locationId, productId: line.item.productId } },
           update: { quantity: { increment: line.quantity } },

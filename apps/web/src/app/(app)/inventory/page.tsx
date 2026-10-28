@@ -749,6 +749,8 @@ export default function InventoryPage() {
           onCreated={() => {
             setModal(null);
             loadStock();
+            // A priced receipt moves a raw material's average and latest price.
+            loadProducts();
           }}
         />
       )}

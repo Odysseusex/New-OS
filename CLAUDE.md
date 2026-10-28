@@ -145,7 +145,8 @@ pattern rather than assuming one universal meaning for "price".
 
 **Recipe cost calculation is already live**, not a future feature — do not
 re-propose building it. `RecipesService.toDto()` computes `unitCost` from
-`Σ(ingredient.quantity × ingredient.price) / effectiveYield` (loss-adjusted).
+`Σ(ingredient.quantity × ingredient cost) / yield`, where a raw material's cost is its moving
+weighted average (`rawMaterialUnitCost`, see «Raw materials at a moving weighted average» below).
 `FinanceService.getProfitAndLoss()` uses the same recipe-based cost as the
 primary source, falling back to weighted-average actual purchase price
 (from `PurchaseOrderItem`) for products with no active recipe, and reports
@@ -599,9 +600,21 @@ break by accident:
   average.** It is applied where it is safe — a bought-in product is costed at
   the average of what was actually RECEIVED (RECEIVED orders at delivered
   quantity/cost + CONFIRMED invoices; a PLACED/CANCELLED order counts for
-  nothing — it used to). Baked goods still cost from the recipe and ingredients
-  from `Product.price`; per-receipt moving average for those is NOT built and
-  the P&L label says so. Do not add FIFO.
+  nothing — it used to). Baked goods still cost from the recipe (valued at TODAY's
+  recipe, not at what their batch cost — a known CONTROL/diagnostic difference when
+  ingredient costs move). **Raw materials are at a moving weighted average of their
+  priced receipts** (owner-approved, iiko-style): `Product.averageUnitCost`, moved by
+  `costing/raw-material-average.ts` `recordRawMaterialPurchase()` — called BEFORE the
+  stock is added, with a `FOR UPDATE` lock on the product, by Склад → Приёмка lines with
+  a «Цена за ед.» (`unitPrice`, raw materials only, prefilled with the last price, a
+  >50 % deviation from the average asks first), purchase-order receipts and invoice
+  confirmations. It also sets `Product.price` to the latest purchase price. Before the
+  first priced receipt the average is the card price, so stock on hand keeps its value;
+  a receipt without a price, a return, a count or production comes in at the average
+  and leaves it alone. `rawMaterialUnitCost(price, average)` (shared) is the one rule
+  used by `CostingService` (basis `RAW_MATERIAL_AVERAGE`), `recipe-tree`, the recipe
+  card and the recipe form. History is never recomputed (every row keeps its stamp).
+  A product whose type changes loses its average. Do not add FIFO.
 - **Decisions: approved vs not.** APPROVED — D1 (recipe `yieldQuantity` is the
   normal sellable output AFTER normal loss: unit cost = ingredients ÷ yield,
   `lossPercent` only suggests a yield and is never taken off again; abnormal loss

@@ -386,6 +386,8 @@ export class ProductsService {
           // Becoming a semi-finished product starts it without stock; switching its own stock on or off is handled above.
           ...(finalType === ProductType.SEMI_FINISHED && product.type !== ProductType.SEMI_FINISHED ? { trackInventory: false } : {}),
           ...(switchesStock && !dto.trackInventory ? { averageUnitCost: null } : {}),
+          // An average belongs to what the product was bought or made as; a new type starts without one.
+          ...(finalType !== product.type ? { averageUnitCost: null } : {}),
           ...(dto.name !== undefined ? { name: tidyName(dto.name) } : {}),
           ...(dto.sku !== undefined ? { sku: dto.sku } : {}),
           ...(dto.barcode !== undefined ? { barcode: normalizeBarcode(dto.barcode) } : {}),

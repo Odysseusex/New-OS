@@ -4,6 +4,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { CATEGORY_WITH_PARENT, categoryLabel } from "../common/category-label";
 import {
   BusinessContextMovementRowDto,
+  CostBasis,
   isStockLow,
   StockBatchResultDto,
   StockLevelDto,
@@ -14,6 +15,7 @@ import {
 } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { round2 } from "../common/money";
+import { recordRawMaterialPurchase } from "../costing/raw-material-average";
 import { decrementStockOrThrow } from "../common/stock-guard";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
 import { ReceiveStockDto } from "./dto/receive-stock.dto";
@@ -199,6 +201,7 @@ export class InventoryService {
       reason: dto.reason ?? "Поступление",
       type: PrismaStockMovementType.RECEIPT,
       delta: dto.quantity,
+      unitPrice: dto.unitPrice,
     });
   }
 
@@ -292,6 +295,13 @@ export class InventoryService {
         throw new BadRequestException(`Полуфабрикат появляется на складе только из производства — приход вручную невозможен: ${semi.join(", ")}`);
       }
     }
+    const priced = dto.lines.filter((l) => l.unitPrice !== undefined);
+    if (priced.length > 0 && kind !== "receive") throw new BadRequestException("Цена указывается только при приёмке");
+    const notRaw = priced.filter((l) => products.find((p) => p.id === l.productId)?.type !== "RAW_MATERIAL");
+    if (notRaw.length > 0) {
+      throw new BadRequestException(`Цена закупки при приёмке указывается только для сырья: ${notRaw.map((l) => products.find((p) => p.id === l.productId)?.name).join(", ")}`);
+    }
+    const priceOf = new Map(priced.map((l) => [l.productId, l.unitPrice as number]));
     const byId = new Map(products.map((p) => [p.id, p]));
     const type =
       kind === "receive"
@@ -326,6 +336,10 @@ export class InventoryService {
       const movementIds: string[] = [];
       for (const line of lines) {
         const product = byId.get(line.productId)!;
+        // A priced raw material moves its average (before its stock is added) and
+        // enters at what it cost; everything else at the cost read above.
+        const unitPrice = priceOf.get(line.productId);
+        if (unitPrice !== undefined) await recordRawMaterialPurchase(tx, line.productId, line.quantity, unitPrice);
         const created = await tx.stockMovement.create({
           data: {
             organizationId,
@@ -336,7 +350,9 @@ export class InventoryService {
             reason: dto.reason?.trim() || (kind === "receive" ? "Поступление" : undefined),
             writeOffReason: kind === "write-off" ? dto.writeOffReason : undefined,
             createdById: user.id,
-            ...this.costing.fields(costs.get(line.productId)),
+            ...(unitPrice !== undefined
+              ? { unitCost: unitPrice, costBasis: CostBasis.PURCHASE_ACTUAL }
+              : this.costing.fields(costs.get(line.productId))),
           },
           select: { id: true },
         });
@@ -384,6 +400,7 @@ export class InventoryService {
       type: PrismaStockMovementType;
       delta: number;
       insufficientMessage?: string;
+      unitPrice?: number;
     },
   ): Promise<StockMovementDto> {
     const product = await this.prisma.product.findFirst({
@@ -392,11 +409,16 @@ export class InventoryService {
     if (!product) {
       throw new NotFoundException("Товар не найден");
     }
+    if (params.unitPrice !== undefined && product.type !== "RAW_MATERIAL") {
+      throw new BadRequestException("Цена закупки при приёмке указывается только для сырья");
+    }
 
     const movement = await this.prisma.$transaction(async (tx) => {
       // Valued when it happens, so a write-off or count difference keeps the
       // cost it had that day (see CostingService).
       const costs = await this.costing.snapshotCosts(user.organizationId, [params.productId], tx);
+      // A priced raw material moves its average (before its stock is added).
+      if (params.unitPrice !== undefined) await recordRawMaterialPurchase(tx, params.productId, params.quantity, params.unitPrice);
       const created = await tx.stockMovement.create({
         data: {
           organizationId: user.organizationId,
@@ -407,7 +429,9 @@ export class InventoryService {
           reason: params.reason,
           writeOffReason: params.writeOffReason,
           createdById: user.id,
-          ...this.costing.fields(costs.get(params.productId)),
+          ...(params.unitPrice !== undefined
+            ? { unitCost: params.unitPrice, costBasis: CostBasis.PURCHASE_ACTUAL }
+            : this.costing.fields(costs.get(params.productId))),
         },
         include: { location: true, product: true, createdBy: true },
       });

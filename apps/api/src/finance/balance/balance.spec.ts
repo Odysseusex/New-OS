@@ -242,13 +242,19 @@ describe("the balance sheet after the business", () => {
     expect(s.equity.lines.map((l) => l.amount)).toEqual([27000, 3000, -1000]);
     expect(s.equity.accumulatedResult).toBe(-1960); // the former +600 consignment cut is no longer ours
     expect(s.equity.total).toBe(27040);
-    // The 50 kg of flour was received at 110 but the costing service values raw
-    // material at its price field (100): a genuine basis difference, in CONTROL,
-    // added to nothing.
+    // The 50 kg of flour received at 110 moved its weighted average: 95 kg at 100 +
+    // 50 kg at 110 over 145 kg = 103.4483, so the flour itself is worth what the
+    // events say it cost (15 000). What remains in CONTROL is the bread on the shelf:
+    // baked goods are valued at TODAY's recipe (2 kg ÷ 4 × 103.4483 = 51.72 a loaf)
+    // while the events carry them at 50 — a genuine basis difference, added to nothing.
+    const average = (await prisma.product.findUniqueOrThrow({ where: { id: flourId } })).averageUnitCost!.toNumber();
+    expect(average).toBe(103.4483);
+    const breadOnShelf = (await prisma.stockLevel.findFirstOrThrow({ where: { organizationId: org.organizationId, productId: breadId } })).quantity.toNumber();
+    const effect = round(breadOnShelf * ((2 * average) / 4 - 50) + (145 * average - 15000));
     expect(s.status).toBe(BalanceStatus.NOT_BALANCED);
-    expect(s.control.difference).toBe(-500);
-    expect(s.control.lines).toEqual([{ label: expect.stringMatching(/Запасы/), actual: 16100, projected: 16600, effect: -500 }]);
-    expect(s.assets.total - s.liabilities.total).toBe(26540); // the owner is owed 1 800, not 1 200
+    expect(s.control.difference).toBeCloseTo(effect, 1);
+    expect(s.control.lines).toEqual([{ label: expect.stringMatching(/Запасы/), actual: expect.any(Number), projected: 16600, effect: s.control.difference }]);
+    expect(round(s.assets.total - s.liabilities.total)).toBeCloseTo(round(26540 + 500 + effect), 1); // the owner is owed 1 800, not 1 200
   });
 
   it("assets, liabilities and equity are built from their own sources", async () => {
@@ -295,7 +301,8 @@ describe("no plug", () => {
     const level = await prisma.stockLevel.findFirstOrThrow({ where: { organizationId: org.organizationId, productId: flourId } });
     await prisma.stockLevel.update({ where: { id: level.id }, data: { quantity: { increment: 10 } } });
     const after = await sheet();
-    expect(round(after.assets.total - before.assets.total)).toBe(1000); // 10 × 100
+    const average = (await prisma.product.findUniqueOrThrow({ where: { id: flourId } })).averageUnitCost!.toNumber();
+    expect(round(after.assets.total - before.assets.total)).toBeCloseTo(10 * average, 1); // 10 kg × the flour's average
     expect(after.equity.total).toBe(before.equity.total);
     expect(after.control.lines.some((l) => /Запасы/.test(l.label))).toBe(true);
     await prisma.stockLevel.update({ where: { id: level.id }, data: { quantity: { decrement: 10 } } });

@@ -131,9 +131,14 @@ export interface StockBatchRequestDto {
   // Write-offs only.
   writeOffReason?: WriteOffReason;
   // `quantity` is the amount received/written off, or — for an adjustment — the
-  // quantity actually on the shelf.
-  lines: { productId: string; quantity: number }[];
+  // quantity actually on the shelf. `unitPrice`: receipts of raw materials only —
+  // what one unit cost; it moves the product's weighted average.
+  lines: { productId: string; quantity: number; unitPrice?: number }[];
 }
+
+// A receipt price this far from the current average (either way) is asked about
+// before saving: a slipped digit would otherwise move the average for months.
+export const PRICE_DEVIATION_WARNING = 0.5;
 
 export interface StockBatchResultDto {
   created: number;

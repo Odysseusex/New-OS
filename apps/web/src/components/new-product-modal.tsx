@@ -5,6 +5,7 @@ import type { CategoryDto, ProductDto, SupplierDto } from "@bakery-os/shared";
 import { PRODUCT_TYPE_LABELS_RU, PRODUCT_TYPE_ORDER, ProductType, Unit, UNIT_LABELS_RU, categoryAcceptsType } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
+import { formatMoneyPrecise } from "@/lib/format";
 
 export function NewProductModal({
   categories,
@@ -270,7 +271,9 @@ export function NewProductModal({
           />
           <p className="mt-1.5 text-xs text-muted">
             {type === ProductType.RAW_MATERIAL
-              ? "Используется для автоматического расчёта себестоимости в рецептах — держите в актуальном состоянии по факту закупки"
+              ? product?.type === ProductType.RAW_MATERIAL && product.averageUnitCost !== null
+                ? `Последняя закупочная цена. Средневзвешенная себестоимость: ${formatMoneyPrecise(product.averageUnitCost)}`
+                : "Себестоимость в техкартах считается по этой цене до первой приёмки с ценой"
               : type === ProductType.PACKAGING
                 ? "Справочная цена — себестоимость упаковки берётся из фактических закупок"
                 : type === ProductType.SEMI_FINISHED

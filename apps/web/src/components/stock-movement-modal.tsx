@@ -3,21 +3,32 @@
 import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import type { LocationDto, ProductDto, StockLevelDto } from "@bakery-os/shared";
-import { ProductType, STOCK_BATCH_MAX_LINES, UNIT_LABELS_RU, WRITE_OFF_REASON_LABELS_RU, WriteOffReason } from "@bakery-os/shared";
+import {
+  PRICE_DEVIATION_WARNING,
+  ProductType,
+  rawMaterialUnitCost,
+  STOCK_BATCH_MAX_LINES,
+  UNIT_LABELS_RU,
+  WRITE_OFF_REASON_LABELS_RU,
+  WriteOffReason,
+} from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
 import { ProductSelect } from "@/components/product-select";
-import { formatMoney, formatQuantity } from "@/lib/format";
+import { formatMoney, formatMoneyPrecise, formatQuantity } from "@/lib/format";
 
 interface Row {
   key: number;
   productId: string;
   quantity: string;
+  // Receipts of raw materials: what one unit cost (prefilled with the last price).
+  price: string;
 }
 
 // What the product card's price means depends on the type: a finished good's is
 // what it sells for, raw material's and packaging's is what it is bought for. The
-// two are never added together. Shown for checking only — nothing here is saved.
+// two are never added together. Shown for checking only — except a receipt's
+// price of a raw material, which is saved and moves its weighted average.
 type PriceKind = "SALE" | "PURCHASE";
 const priceKindOf = (product: ProductDto): PriceKind | null =>
   product.type === ProductType.FINISHED_GOOD
@@ -31,7 +42,11 @@ const signedMoney = (v: number) => (v > 0 ? `+${formatMoney(v)}` : formatMoney(v
 const signedQuantity = (v: number) => (v > 0 ? `+${formatQuantity(v)}` : formatQuantity(v));
 
 let nextKey = 1;
-const newRow = (productId = ""): Row => ({ key: nextKey++, productId, quantity: "" });
+const newRow = (productId = ""): Row => ({ key: nextKey++, productId, quantity: "", price: "" });
+const isRaw = (product: ProductDto | undefined) => product?.type === ProductType.RAW_MATERIAL;
+// A raw material is valued at its weighted average, everything else at its card price.
+const valueOf = (product: ProductDto) => (isRaw(product) ? rawMaterialUnitCost(product.price, product.averageUnitCost) : product.price);
+const parseNumber = (text: string) => Number(text.replace(",", "."));
 
 // Receipt / write-off / correction of several products in ONE document: the
 // point, the reason and the comment are shared, and the server writes every line
@@ -104,9 +119,36 @@ export function StockMovementModal({
       setError("Укажите количество в каждой строке");
       return;
     }
-    const lines = filled.map((row) => ({ productId: row.productId, quantity: Number(row.quantity.replace(",", ".")) }));
+    const productOf = (id: string) => products.find((p) => p.id === id);
+    const lines = filled.map((row) => ({
+      productId: row.productId,
+      quantity: parseNumber(row.quantity),
+      ...(isReceive && isRaw(productOf(row.productId)) ? { unitPrice: parseNumber(row.price) } : {}),
+    }));
     if (lines.some((l) => !Number.isFinite(l.quantity) || l.quantity < 0 || (!isAdjustment && l.quantity <= 0))) {
       setError(isAdjustment ? "Укажите количество в каждой строке" : "Количество должно быть больше нуля в каждой строке");
+      return;
+    }
+    const unpriced = lines.filter((l) => l.unitPrice !== undefined && !(Number.isFinite(l.unitPrice) && l.unitPrice > 0));
+    if (unpriced.length > 0) {
+      setError(`Укажите цену за единицу: ${unpriced.map((l) => productOf(l.productId)?.name).join(", ")}`);
+      return;
+    }
+    // A slipped digit would move the average for months: ask before saving it.
+    const unusual = lines.filter((l) => {
+      const product = productOf(l.productId);
+      if (l.unitPrice === undefined || !product) return false;
+      const average = valueOf(product);
+      return average > 0 && Math.abs(l.unitPrice - average) / average > PRICE_DEVIATION_WARNING;
+    });
+    if (
+      unusual.length > 0 &&
+      !confirm(
+        `Цена сильно отличается от средней:\n${unusual
+          .map((l) => `${productOf(l.productId)?.name}: ${formatMoneyPrecise(l.unitPrice!)} (средняя ${formatMoneyPrecise(valueOf(productOf(l.productId)!))})`)
+          .join("\n")}\n\nВсё верно?`,
+      )
+    ) {
       return;
     }
     setIsSubmitting(true);
@@ -138,11 +180,14 @@ export function StockMovementModal({
   // from what the system holds), and its value at the card's price.
   const lineFigures = (row: Row) => {
     const product = products.find((p) => p.id === row.productId);
-    const typed = Number(row.quantity.replace(",", "."));
+    const typed = parseNumber(row.quantity);
     if (!product || row.quantity.trim() === "" || !Number.isFinite(typed)) return null;
     const moved = isAdjustment ? Math.round((typed - (levelOf(product.id)?.quantity ?? 0)) * 1000) / 1000 : typed;
     const kind = priceKindOf(product);
-    return { moved, kind, value: kind ? Math.round(moved * product.price * 100) / 100 : null };
+    // A raw material received at a typed price is worth that price.
+    const typedPrice = isReceive && isRaw(product) && row.price.trim() !== "" ? parseNumber(row.price) : null;
+    const unit = typedPrice !== null && Number.isFinite(typedPrice) ? typedPrice : valueOf(product);
+    return { moved, kind, value: kind ? Math.round(moved * unit * 100) / 100 : null };
   };
   const totals = new Map<PriceKind, number>();
   for (const row of rows) {
@@ -174,6 +219,7 @@ export function StockMovementModal({
         <div className="mb-2 flex items-end gap-2 text-sm font-medium text-foreground">
           <span className="flex-1">Товар</span>
           <span className="w-32">{isAdjustment ? "Фактически" : "Количество"}</span>
+          {isReceive && <span className="w-32">Цена за ед.</span>}
           <span className="w-8" />
         </div>
         <div className="mb-3 space-y-2">
@@ -187,7 +233,11 @@ export function StockMovementModal({
                   <ProductSelect
                     products={products}
                     value={row.productId}
-                    onChange={(productId) => updateRow(row.key, { productId })}
+                    onChange={(productId) => {
+                      const picked = products.find((p) => p.id === productId);
+                      // The last purchase price, to change when it was bought for more or less.
+                      updateRow(row.key, { productId, price: isReceive && isRaw(picked) ? String(picked!.price) : "" });
+                    }}
                     className="min-w-0 flex-1"
                   />
                   <input
@@ -199,6 +249,21 @@ export function StockMovementModal({
                     placeholder={product ? UNIT_LABELS_RU[product.unit] : ""}
                     className="w-32 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
                   />
+                  {isReceive &&
+                    (isRaw(product) ? (
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={row.price}
+                        onChange={(e) => updateRow(row.key, { price: e.target.value })}
+                        placeholder="₸"
+                        aria-label="Цена за единицу"
+                        className="w-32 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                      />
+                    ) : (
+                      <span className="w-32" />
+                    ))}
                   <button
                     type="button"
                     onClick={() => setRows((prev) => (prev.length > 1 ? prev.filter((r) => r.key !== row.key) : [newRow()]))}
@@ -213,7 +278,11 @@ export function StockMovementModal({
                     {[
                       !isReceive ? `По системе сейчас: ${level ? formatQuantity(level.quantity) : "0"} ${UNIT_LABELS_RU[product.unit]}` : null,
                       isAdjustment && figures ? `Разница: ${signedQuantity(figures.moved)} ${UNIT_LABELS_RU[product.unit]}` : null,
-                      priceKindOf(product) ? `${PRICE_LABEL[priceKindOf(product)!]}: ${formatMoney(product.price)}` : null,
+                      isRaw(product)
+                        ? `Средневзвешенная себестоимость: ${formatMoneyPrecise(valueOf(product))}`
+                        : priceKindOf(product)
+                          ? `${PRICE_LABEL[priceKindOf(product)!]}: ${formatMoney(product.price)}`
+                          : null,
                       figures?.value !== null && figures?.value !== undefined
                         ? `${isAdjustment ? "" : "Сумма: "}${isAdjustment ? signedMoney(figures.value) : formatMoney(figures.value)}`
                         : null,

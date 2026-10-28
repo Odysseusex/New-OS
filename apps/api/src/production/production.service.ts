@@ -379,7 +379,11 @@ export class ProductionService {
             batchId: batch.id,
             createdById: user.id,
             unitCost: round4(item.unitCost as number),
-            costBasis: isStockedSemiFinished(item.ingredient) ? CostBasis.PRODUCTION_AVERAGE : CostBasis.RAW_MATERIAL_PRICE,
+            costBasis: isStockedSemiFinished(item.ingredient)
+              ? CostBasis.PRODUCTION_AVERAGE
+              : item.ingredient.averageUnitCost !== null
+                ? CostBasis.RAW_MATERIAL_AVERAGE
+                : CostBasis.RAW_MATERIAL_PRICE,
           })),
         });
       }
