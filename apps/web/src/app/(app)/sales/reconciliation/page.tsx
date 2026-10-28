@@ -43,20 +43,28 @@ const groupOf = (line: { consignment: boolean; categoryName: string | null }) =>
 // screen's own order, a blank to write the count in — and NOT what the system
 // expects, so the count is blind.
 function printCountSheet(day: DailyReconciliationDto) {
-  let group: string | null = null;
-  const rows = day.lines
-    .map((line) => {
-      const head = groupOf(line) !== group ? `<tr class="g"><td colspan="2">${escapeHtml((group = groupOf(line)))}</td></tr>` : "";
-      return `${head}<tr><td>${escapeHtml(line.productName)}</td><td class="c">${escapeHtml(UNIT_LABELS_RU[line.unit])}</td></tr>`;
-    })
+  // Two columns: names are short, so one column left half of every page empty.
+  // A group's heading travels with its first product, never alone at a column's foot.
+  const row = (line: DailyReconciliationDto["lines"][number]) =>
+    `<div class="r"><span class="n">${escapeHtml(line.productName)}</span><span class="b">${escapeHtml(UNIT_LABELS_RU[line.unit])}</span></div>`;
+  const groups: { name: string; lines: DailyReconciliationDto["lines"] }[] = [];
+  for (const line of day.lines) {
+    const name = groupOf(line);
+    if (groups.length === 0 || groups[groups.length - 1].name !== name) groups.push({ name, lines: [] });
+    groups[groups.length - 1].lines.push(line);
+  }
+  const body = groups
+    .map((g) => `<div class="k"><div class="g">${escapeHtml(g.name)}</div>${row(g.lines[0])}</div>${g.lines.slice(1).map(row).join("")}`)
     .join("");
   const html = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Пересчёт витрины</title>
-<style>body{font-family:Arial,sans-serif;font-size:14px;margin:20px;color:#000}h1{font-size:18px;margin:0 0 4px}p{margin:4px 0}
-table{border-collapse:collapse;width:100%;margin-top:10px}td{border:1px solid #999;padding:7px 8px}td.c{width:150px;text-align:right;color:#666;font-size:12px;vertical-align:bottom}
-tr.g td{background:#eee;font-weight:bold;border-color:#999}tr{page-break-inside:avoid}</style></head><body>
+<style>body{font-family:Arial,sans-serif;font-size:13px;margin:14px;color:#000}h1{font-size:17px;margin:0 0 4px}p{margin:4px 0 10px}
+.cols{column-count:2;column-gap:18px}.k,.r{break-inside:avoid}
+.g{background:#eee;font-weight:bold;padding:5px 6px;border:1px solid #999;margin-top:6px}.k:first-child .g{margin-top:0}
+.r{display:flex;align-items:stretch;border:1px solid #999;margin-top:-1px}
+.n{flex:1;padding:6px;line-height:1.25}.b{width:70px;border-left:1px solid #999;text-align:right;color:#666;font-size:11px;padding:2px 4px;display:flex;align-items:flex-end;justify-content:flex-end}</style></head><body>
 <h1>Пересчёт витрины · ${escapeHtml(day.locationName)} · ${escapeHtml(day.date.split("-").reverse().join("."))}</h1>
 <p>Считал(а): ______________________ &nbsp;&nbsp; Время: ________</p>
-<table><tbody>${rows}</tbody></table>
+<div class="cols">${body}</div>
 </body></html>`;
   const win = window.open("", "_blank");
   if (!win) return;
