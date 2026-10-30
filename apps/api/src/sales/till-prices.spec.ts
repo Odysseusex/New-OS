@@ -3,9 +3,9 @@ import { PrismaService } from "../prisma/prisma.service";
 import { createIsolatedOrg, destroyOrg, IsolatedOrg } from "../../test/support/isolated-org";
 import { buildServices } from "../../test/support/services";
 
-// A cashier sells only at the till's prices: the point's own price, its fixed
-// markdown, or a typed amount on «Произвольная сумма». Anything else did not
-// come from the till screen and is refused.
+// A cashier sells only at the till's prices: the point's own price or its fixed
+// markdown. Anything else did not come from the till screen and is refused —
+// «Произвольная сумма» included (switched off: no product, nothing to check).
 
 describe("till prices are the server's, not the cashier's", () => {
   const prisma = new PrismaService();
@@ -39,10 +39,19 @@ describe("till prices are the server's, not the cashier's", () => {
   const sell = (user: IsolatedOrg["user"], items: { productId: string; quantity: number; unitPrice: number; fullUnitPrice?: number }[]) =>
     services.sales.create(user, { locationId: org.storeId, paymentMethod: PaymentMethod.CASH, items });
 
-  it("accepts the point's price, its markdown and a typed open amount", async () => {
+  it("accepts the point's price and its markdown", async () => {
     expect((await sell(cashier, [{ productId: cakeId, quantity: 1, unitPrice: 1000 }])).totalAmount).toBe(1000);
     expect((await sell(cashier, [{ productId: cakeId, quantity: 1, unitPrice: markdownPrice(1000), fullUnitPrice: 1000 }])).totalAmount).toBe(markdownPrice(1000));
-    expect((await sell(cashier, [{ productId: openPriceId, quantity: 1, unitPrice: 437 }])).totalAmount).toBe(437);
+  });
+
+  it("refuses «Произвольная сумма» from a cashier, alone or in a basket", async () => {
+    await expect(sell(cashier, [{ productId: openPriceId, quantity: 1, unitPrice: 437 }])).rejects.toThrow("Произвольная сумма на кассе отключена");
+    await expect(
+      sell(cashier, [
+        { productId: cakeId, quantity: 1, unitPrice: 1000 },
+        { productId: openPriceId, quantity: 1, unitPrice: 437 },
+      ]),
+    ).rejects.toThrow("Произвольная сумма на кассе отключена");
   });
 
   it("refuses a price the till never sends", async () => {

@@ -137,11 +137,6 @@ export default function PosPage() {
   // sale so far). Feeds the print-only block below; the on-screen flash/
   // ReceiptPanel above it stay exactly as they were.
   const [lastSale, setLastSale] = useState<SaleDetailDto | null>(null);
-  // The catalogue row behind «Произвольная сумма». Null until it loads (or if
-  // it fails to) — the button is simply not offered in that case rather than
-  // failing at payment time.
-  const [openPriceProduct, setOpenPriceProduct] = useState<ProductDto | null>(null);
-  const [openPriceOpen, setOpenPriceOpen] = useState(false);
   const [payMode, setPayMode] = useState<PayMode | null>(null);
   // A payment the terminal has ALREADY taken, whose sale did not record. The
   // money has moved, so the only safe retry is one that re-sends this exact
@@ -201,9 +196,6 @@ export default function PosPage() {
     api.categories.list().then(setCategories).catch(() => {});
     api.loyalty.settings().then(setLoyaltySettings).catch(() => setLoyaltySettings(null));
     api.locations.list().then(setLocations).catch(() => {});
-    // Created on the server the first time any till asks; a failure here just
-    // means the button is not offered.
-    api.products.openPrice().then(setOpenPriceProduct).catch(() => {});
   }, []);
 
   // Reloaded whenever the point of sale changes, because the price depends on
@@ -264,7 +256,7 @@ export default function PosPage() {
     // otherwise type into the search box behind the dialog and quietly drop
     // a product into the cart nobody asked for. The customer-by-phone dialog
     // is excluded for the same reason.
-    if (openPriceOpen || historyOpen || loyaltyOpen || payMode !== null) return;
+    if (historyOpen || loyaltyOpen || payMode !== null) return;
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target && ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
@@ -272,7 +264,7 @@ export default function PosPage() {
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [focusScan, openPriceOpen, historyOpen, loyaltyOpen, payMode]);
+  }, [focusScan, historyOpen, loyaltyOpen, payMode]);
 
   // Only categories that actually hold something sellable. Without this the
   // till offers chips like «Сырьё», which can only ever show an empty grid,
@@ -464,28 +456,6 @@ export default function PosPage() {
     // next order is being rung up. Starting the next order is the main way
     // it gets cleared — «Без чека» is for when the cashier wants the screen
     // clean before that.
-    setReceipt(null);
-    setFlash(null);
-  }
-
-  // Its own line every time, never merged with an earlier one: two open-price
-  // entries in one order are two different goods that happen to share a
-  // catalogue row.
-  function addOpenPriceLine(amount: number) {
-    if (!openPriceProduct) return;
-    setCart((current) => [
-      ...current,
-      {
-        key: `open-${Date.now()}-${current.length}`,
-        product: openPriceProduct,
-        quantity: 1,
-        unitPrice: amount,
-        // Never marked down: the cashier typed the price they meant, so
-        // halving it again would be a second discount nobody asked for.
-        markedDown: false,
-      },
-    ]);
-    setError(null);
     setReceipt(null);
     setFlash(null);
   }
@@ -887,18 +857,6 @@ export default function PosPage() {
                   <span className="text-lg font-bold text-accent">{formatMoney(p.effectivePrice)}</span>
                 </button>
               ))}
-            {/* Also gated on a location: without one nothing can be sold at
-                all, and an open-price line would only fill a cart whose
-                payment buttons silently do nothing. */}
-            {openPriceProduct && locationId && (
-              <button
-                onClick={() => setOpenPriceOpen(true)}
-                className="flex min-h-[5.5rem] flex-col justify-between gap-2 rounded-2xl border border-dashed border-accent bg-surface p-2.5 text-left transition hover:shadow-card active:scale-[0.98]"
-              >
-                <span className="line-clamp-3 text-base font-semibold text-foreground">Произвольная сумма</span>
-                <span className="text-base font-bold text-accent">Ввести вручную</span>
-              </button>
-            )}
             {visibleProducts.map((p) => (
               <button
                 key={p.id}
@@ -1197,19 +1155,6 @@ export default function PosPage() {
             ],
             terminalPayment,
           });
-        }}
-      />
-    )}
-    {openPriceOpen && (
-      <OpenPriceModal
-        onClose={() => {
-          setOpenPriceOpen(false);
-          focusScan();
-        }}
-        onSubmit={(amount) => {
-          addOpenPriceLine(amount);
-          setOpenPriceOpen(false);
-          focusScan();
         }}
       />
     )}
@@ -1699,48 +1644,6 @@ function quickCashAmounts(total: number): number[] {
 
 // Asks for the amount of an open-price line, on the same keypad as the cash
 // dialog — for the same reason: no <input>, no OS keyboard.
-function OpenPriceModal({
-  onClose,
-  onSubmit,
-}: {
-  onClose: () => void;
-  onSubmit: (amount: number) => void;
-}) {
-  const [value, setValue] = useState("");
-  const amount = value ? Number(value) : 0;
-  const valid = amount > 0;
-  const submit = () => {
-    if (valid) onSubmit(amount);
-  };
-
-  return (
-    <Modal title="Произвольная сумма" onClose={onClose} width="max-w-sm">
-      <div className="mb-3 rounded-xl border border-border bg-surface-muted px-4 py-3">
-        <div className="flex items-baseline justify-between">
-          <span className="text-sm text-muted">Сумма</span>
-          <span className="text-2xl font-semibold tabular-nums text-foreground">
-            {value ? formatMoney(amount) : "—"}
-          </span>
-        </div>
-      </div>
-
-      <NumberPad value={value} onChange={setValue} onSubmit={submit} />
-
-      <p className="mt-3 text-xs text-muted">
-        Для товара, которого ещё нет в номенклатуре. Склад по такой строке не списывается.
-      </p>
-      <button
-        type="button"
-        onClick={submit}
-        disabled={!valid}
-        className="mt-3 w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-40"
-      >
-        Добавить в чек
-      </button>
-    </Modal>
-  );
-}
-
 // Print-only: invisible on screen (`hidden print:block`), rendered instead of
 // the interactive till when the browser's print dialog fires — a slip
 // shaped like an actual receipt rather than a screenshot of the whole page

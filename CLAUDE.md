@@ -868,9 +868,11 @@ of its own day, so it keeps showing the shortage it found. Lines are in shelf or
 name, consignment last) — the printed count sheet (no expected column: blind count) and the screen read the same way,
 and Enter in a count jumps to the next one.
 
-**A cashier's price is the server's** (`SalesService.assertTillPrices`): a CASHIER line must be the point's price, its
-fixed markdown (`markdownPrice`, with `fullUnitPrice` = point price) or any amount on the `isOpenPrice` product — the
-only things the till sends; anything else is refused (a 0 ₸ check with the cash pocketed balances perfectly in «Сверка
+**A cashier's price is the server's** (`SalesService.assertTillPrices`): a CASHIER line must be the point's price or its
+fixed markdown (`markdownPrice`, with `fullUnitPrice` = point price) — the only things the till sends; anything else is
+refused. **«Произвольная сумма» is switched off at the till** (owner's decision, for «Сверка дня»: an amount with no
+product cannot be checked against the shelf) — the POS no longer offers it and a CASHIER line on the `isOpenPrice`
+product is refused; the product row itself stays (history, and other roles' sales on «Продажи») (a 0 ₸ check with the cash pocketed balances perfectly in «Сверка
 дня»). Coupons/points are applied by the server after this. Other roles keep a free price (wholesale on «Продажи»).
 The till's «История» loads the whole Almaty day (not the latest 50) and filters by product (`GET /sales?productId=`).
 
