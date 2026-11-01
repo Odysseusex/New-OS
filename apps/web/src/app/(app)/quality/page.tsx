@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import clsx from "clsx";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import type { LocationDto, ProductDto, QualitySummaryDto, StockMovementDto } from "@bakery-os/shared";
 import {
@@ -11,27 +10,13 @@ import {
   WRITE_OFF_REASON_LABELS_RU,
 } from "@bakery-os/shared";
 import { api } from "@/lib/api";
+import { PeriodPicker } from "@/components/period-picker";
+import { periodRange, type PeriodValue } from "@/lib/period";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
 import { StockMovementModal } from "@/components/stock-movement-modal";
 
-type Period = "7d" | "30d" | "month";
-
-const PERIOD_LABELS: Record<Period, string> = {
-  "7d": "7 дней",
-  "30d": "30 дней",
-  month: "Этот месяц",
-};
-
-function periodRange(period: Period): { from: Date; to: Date } {
-  const to = new Date();
-  const from = new Date();
-  from.setHours(0, 0, 0, 0);
-  if (period === "7d") from.setDate(from.getDate() - 6);
-  if (period === "30d") from.setDate(from.getDate() - 29);
-  if (period === "month") from.setDate(1);
-  return { from, to };
-}
+type Period = PeriodValue;
 
 export default function QualityPage() {
   const { user } = useAuth();
@@ -111,20 +96,7 @@ export default function QualityPage() {
       )}
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
-          {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className={clsx(
-                "rounded-lg px-3.5 py-1.5 text-sm font-medium transition",
-                period === p ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground",
-              )}
-            >
-              {PERIOD_LABELS[p]}
-            </button>
-          ))}
-        </div>
+        <PeriodPicker value={period} onChange={setPeriod} />
 
         {isOrgWide && (
           <select

@@ -23,6 +23,8 @@ import {
   ShiftStatus,
 } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
+import { PeriodPicker } from "@/components/period-picker";
+import { periodRange, type PeriodValue } from "@/lib/period";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { NewShiftModal } from "@/components/new-shift-modal";
@@ -31,24 +33,7 @@ import { EmployeeCompensationModal } from "@/components/employee-compensation-mo
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 
 type Tab = "employees" | "shifts" | "attendance" | "kpi";
-type Period = "today" | "7d" | "30d" | "month";
-
-const PERIOD_LABELS: Record<Period, string> = {
-  today: "Сегодня",
-  "7d": "7 дней",
-  "30d": "30 дней",
-  month: "Этот месяц",
-};
-
-function periodRange(period: Period): { from: Date; to: Date } {
-  const to = new Date();
-  const from = new Date();
-  from.setHours(0, 0, 0, 0);
-  if (period === "7d") from.setDate(from.getDate() - 6);
-  if (period === "30d") from.setDate(from.getDate() - 29);
-  if (period === "month") from.setDate(1);
-  return { from, to };
-}
+type Period = PeriodValue;
 
 export default function HrPage() {
   const { user } = useAuth();
@@ -320,15 +305,9 @@ export default function HrPage() {
               )}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {tab === "kpi" && (
-                <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
-                  {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
-                    <TabButton key={p} active={period === p} onClick={() => setPeriod(p)}>
-                      {PERIOD_LABELS[p]}
-                    </TabButton>
-                  ))}
-                </div>
+                <PeriodPicker value={period} onChange={setPeriod} />
               )}
               {tab === "employees" && <ArchivedToggle checked={showArchivedEmployees} onChange={setShowArchivedEmployees} />}
               {isOrgWide && (

@@ -186,6 +186,13 @@ approvers always see everything. Counts are typed as expressions read by shared 
 same two-column blind sheet as «Сверка дня» (`apps/web/src/lib/count-sheet.ts`, shared by both). A user tied to one
 location can only pick that location.
 
+**One period control for reports** (`components/period-picker.tsx` + `lib/period.ts`): Отчёты, Финансы (Сводка, P&L,
+Точка безубыточности), Качество, Сеть точек (Сравнение), Персонал (KPI) share presets (Сегодня … Прошлый месяц … Год) and
+«Период» с … по … . The value is a plain string (`PeriodValue`: a preset or `custom_YYYY-MM-DD_YYYY-MM-DD`) so it drops into
+effect deps and CSV names; `periodRange()` gives Almaty days — a range including today ends now, a closed one at the end
+of its last day, so «Прошлый месяц» matches `matchWholeMonth` and a closed month is served from its snapshot.
+Отчёты → «Динамика по клиенту» and Склад → «Движения» keep their own controls.
+
 **Product SKU** is optional; if blank, `ProductsService.generateSku()`
 atomically increments `Organization.productSkuSequence` (a single
 `UPDATE ... increment`, not a retry loop) and formats

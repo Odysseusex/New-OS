@@ -13,29 +13,15 @@ import {
   NETWORK_VIEW_ROLES,
 } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
+import { PeriodPicker } from "@/components/period-picker";
+import { periodRange, type PeriodValue } from "@/lib/period";
 import { useAuth } from "@/lib/auth-context";
 import { formatMoney } from "@/lib/format";
 import { NewLocationModal } from "@/components/new-location-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 
 type Tab = "registry" | "comparison";
-type Period = "7d" | "30d" | "month";
-
-const PERIOD_LABELS: Record<Period, string> = {
-  "7d": "7 дней",
-  "30d": "30 дней",
-  month: "Этот месяц",
-};
-
-function periodRange(period: Period): { from: Date; to: Date } {
-  const to = new Date();
-  const from = new Date();
-  from.setHours(0, 0, 0, 0);
-  if (period === "7d") from.setDate(from.getDate() - 6);
-  if (period === "30d") from.setDate(from.getDate() - 29);
-  if (period === "month") from.setDate(1);
-  return { from, to };
-}
+type Period = PeriodValue;
 
 const OWNERSHIP_STYLES: Record<LocationOwnership, string> = {
   [LocationOwnership.OWNED]: "bg-surface-muted text-muted",
@@ -151,18 +137,12 @@ export default function NetworkPage() {
           <div />
         )}
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {tab === "registry" && canManage && (
             <ArchivedToggle checked={showArchived} onChange={setShowArchived} />
           )}
           {tab === "comparison" && canViewComparison && (
-            <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
-              {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
-                <TabButton key={p} active={period === p} onClick={() => setPeriod(p)}>
-                  {PERIOD_LABELS[p]}
-                </TabButton>
-              ))}
-            </div>
+            <PeriodPicker value={period} onChange={setPeriod} />
           )}
         </div>
       </div>
