@@ -41,11 +41,8 @@ const groupOf = (line: { consignment: boolean; categoryName: string | null }) =>
 
 const printDaySheet = (day: DailyReconciliationDto) =>
   printCountSheet(
-    // No date in the heading: the list is the point's whole assortment, the same every
-    // day, so a stack can be printed ahead and the date written in by hand.
-    `Пересчёт витрины · ${day.locationName}`,
+    `Пересчёт витрины · ${day.locationName} · ${day.date.split("-").reverse().join(".")}`,
     day.lines.map((line) => ({ name: line.productName, unit: line.unit, group: groupOf(line) })),
-    { blankRows: 6 },
   );
 
 const signTone = (value: number | null) =>

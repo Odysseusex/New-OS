@@ -1,5 +1,5 @@
 import { ForbiddenException } from "@nestjs/common";
-import { CashMovementType, PaymentMethod, ProductType, Role, summarizeReconciliation, Unit, WriteOffReason } from "@bakery-os/shared";
+import { CashMovementType, PaymentMethod, ProductType, Role, summarizeReconciliation, Unit } from "@bakery-os/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { createIsolatedOrg, destroyOrg, IsolatedOrg } from "../../test/support/isolated-org";
 import { buildServices } from "../../test/support/services";
@@ -114,29 +114,6 @@ describe("a day at the till", () => {
     });
     await services.inventory.receive(org.user, { locationId: org.storeId, productId: spread.id, quantity: 10 });
     expect((await service.get(org.user, org.storeId, today)).lines.some((l) => l.productId === spread.id)).toBe(false);
-  });
-
-  it("lists the point's whole assortment, also what sold out before today", async () => {
-    const yesterday = new Date(businessDayRange(today).start.getTime() - 3600_000);
-    const make = async (name: string, sku: string) => {
-      const p = await prisma.product.create({ data: { organizationId: org.organizationId, name, sku, type: ProductType.FINISHED_GOOD, price: 400, unit: Unit.PCS } });
-      const ids = [
-        (await services.inventory.receive(org.user, { locationId: org.storeId, productId: p.id, quantity: 2 })).id,
-        (await services.inventory.writeOff(org.user, { locationId: org.storeId, productId: p.id, quantity: 2, writeOffReason: WriteOffReason.EXPIRED } as never)).id,
-      ];
-      await prisma.stockMovement.updateMany({ where: { id: { in: ids } }, data: { createdAt: yesterday } });
-      return p.id;
-    };
-    const soldOut = await make("Булочка", "R-4");
-    const retired = await make("Старый торт", "R-5");
-    await prisma.product.update({ where: { id: retired }, data: { isActive: false } });
-    const elsewhere = (await prisma.product.create({ data: { organizationId: org.organizationId, name: "Пирог", sku: "R-6", type: ProductType.FINISHED_GOOD, price: 500, unit: Unit.PCS } })).id;
-
-    const lines = (await service.get(org.user, org.storeId, today)).lines;
-    const line = lines.find((l) => l.productId === soldOut);
-    expect(line?.closing).toBe(0);
-    expect(lines.some((l) => l.productId === retired)).toBe(false); // no longer sold, nothing on the shelf
-    expect(lines.some((l) => l.productId === elsewhere)).toBe(false); // never at this point
   });
 
   it("knows what the drawer and the terminal should hold", async () => {
