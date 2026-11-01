@@ -320,7 +320,7 @@ function TodayTotals({ summary }: { summary: SalesSummaryDto }) {
 // list is read at a glance and is almost entirely today.
 function formatTime(iso: string): string {
   const date = new Date(iso);
-  const isToday = new Date().toDateString() === date.toDateString();
+  const isToday = zonedDateKey() === zonedDateKey(date);
   return isToday
     ? date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
     : date.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });

@@ -13,6 +13,7 @@ import {
   type BusinessContextModule,
   type LocationDto,
 } from "@bakery-os/shared";
+import { serverNow } from "@/lib/server-clock";
 import { api, ApiError } from "@/lib/api";
 import {
   addDaysKey,
@@ -43,7 +44,7 @@ const PERIOD_LABELS: Record<PeriodKey, string> = {
 // different place than the numbers inside.
 function periodRange(period: PeriodKey): { from: Date; to: Date } {
   const today = zonedDateKey();
-  const to = new Date();
+  const to = serverNow();
   if (period === "7d") return { from: startOfZonedDay(addDaysKey(today, -6)), to };
   if (period === "30d") return { from: startOfZonedDay(addDaysKey(today, -29)), to };
   if (period === "90d") return { from: startOfZonedDay(addDaysKey(today, -89)), to };

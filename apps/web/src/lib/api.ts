@@ -230,6 +230,8 @@ import type {
   VehicleDto,
 } from "@bakery-os/shared";
 
+import { noteServerDate } from "./server-clock";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
 
 export class ApiError extends Error {}
@@ -245,6 +247,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       ...options.headers,
     },
   });
+  noteServerDate(res.headers.get("date"));
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));

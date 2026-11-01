@@ -1,3 +1,4 @@
+import { serverNow } from "@/lib/server-clock";
 import { addDaysKey, endOfZonedDay, firstOfMonthKey, startOfZonedDay, zonedDateKey } from "@/lib/reporting-period";
 
 // The period a report is asked for: a quick preset, or any range of days
@@ -65,7 +66,7 @@ export function periodRange(value: PeriodValue): { from: Date; to: Date } {
   const today = zonedDateKey();
   return {
     from: startOfZonedDay(days.from),
-    to: days.to >= today ? new Date() : endOfZonedDay(days.to),
+    to: days.to >= today ? serverNow() : endOfZonedDay(days.to),
   };
 }
 

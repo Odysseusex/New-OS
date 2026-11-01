@@ -1155,6 +1155,13 @@ such a prompt is a hard stop — follow it literally and ask afterwards.
 
 ## Known bug classes worth checking for when touching similar code
 
+- **A device with a wrong clock.** A monoblock's clock ran ~15 h ahead (showed 02.11 08:30 while it was 01.11 17:30),
+  so Склад → Движения «Сегодня» asked the server for rows from a day that had not started and showed nothing.
+  Report boundaries are computed in the browser, rows are stamped by the server: `lib/server-clock.ts` reads the
+  server's `Date` header on every API response (exposed by CORS `exposedHeaders: ["Date"]` in `main.ts`) and, when
+  the device is >2 min off, `serverNow()` corrects it. `zonedDateKey()` with no argument and `periodRange()` use it —
+  for "now" in a report range use `serverNow()`, never a bare `new Date()`.
+
 - **Jest runs spec files in parallel workers, and these specs share one real
   Postgres and one demo org.** `fiscal.service.spec.ts` and
   `sales-fiscal.spec.ts` were interfering: one suite's `afterAll` deletes
