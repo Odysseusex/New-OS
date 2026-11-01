@@ -47,6 +47,7 @@ import {
   UNIT_LABELS_RU,
 } from "@bakery-os/shared";
 import { Modal } from "@/components/modal";
+import { UiScaleControl } from "@/components/ui-scale-control";
 import { NumberPad } from "@/components/number-pad";
 import { LabelPrintPicker } from "@/components/label-print-modal";
 import { CustomerScreenPickerModal } from "@/components/customer-screen-picker";
@@ -614,7 +615,9 @@ export default function PosPage() {
 
   return (
     <>
-    <div className="mx-auto max-w-7xl print:hidden">
+    {/* The width cap is in pixels, not rem: a smaller screen scale (UiScaleControl)
+        makes text and buttons smaller, not the till narrower. */}
+    <div className="mx-auto max-w-[1280px] print:hidden">
       {/* No «Касса» heading and no strapline. On a 768px-tall monoblock the
           title, its subtitle and their margins cost 72px — half a row of
           products — to tell a cashier, whose screen has nothing else on it,
@@ -698,6 +701,7 @@ export default function PosPage() {
           <MonitorSmartphone className="h-4 w-4" strokeWidth={1.75} />
           Экран покупателя
         </button>
+        <UiScaleControl />
         {/* Escape hatch for exactly what the owner hit: Windows decided a
             different physical monitor is now "главный", or a cable got
             swapped. Forgetting the remembered screen makes the next open show

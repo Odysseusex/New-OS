@@ -193,6 +193,12 @@ effect deps and CSV names; `periodRange()` gives Almaty days — a range includi
 of its last day, so «Прошлый месяц» matches `matchWholeMonth` and a closed month is served from its snapshot.
 Отчёты → «Динамика по клиенту» and Склад → «Движения» keep their own controls.
 
+**Screen scale per device** (`lib/ui-scale.ts`, `components/ui-scale-control.tsx`, «− 100% +» on the till): a monoblock
+whose Windows cannot go below 100 % showed the till too large. It sets the root font size (the app is in rem, so text,
+spacing and buttons scale together; viewport heights stay whole), kept in that browser's localStorage and applied before
+first paint by an inline script in the root layout (`<html suppressHydrationWarning>`; the public `/ar-amir` site is never
+scaled). The till's width cap is in px (`max-w-[1280px]`) so a smaller scale does not make the till narrower.
+
 **Product SKU** is optional; if blank, `ProductsService.generateSku()`
 atomically increments `Organization.productSkuSequence` (a single
 `UPDATE ... increment`, not a retry loop) and formats
