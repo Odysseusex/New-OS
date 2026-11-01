@@ -371,13 +371,33 @@ export class ReconciliationService {
       else a.other += e;
     }
 
-    const ids = [...acc.entries()].filter(([, a]) => a.moved || Math.abs(a.opening) > 1e-9).map(([id]) => id);
+    // The point's whole assortment, not only what is on the books today: every product
+    // that has ever moved here and is still sold, plus anything with a balance or a
+    // movement that day. The list (and the printed sheet) is then the same every day,
+    // so sheets can be printed ahead, and an item sold out yesterday can still be
+    // counted when it turns up on the shelf unrecorded.
+    const ids = [...acc.keys()];
     if (ids.length === 0) return [];
-    const products = await this.prisma.product.findMany({
-      // Only what the shop sells (own goods and goods «под реализацию»): raw materials,
-      // packaging and semi-finished stock are not part of the till's day.
-      where: { organizationId, id: { in: ids }, trackInventory: true, type: "FINISHED_GOOD" },
-      select: { id: true, name: true, sku: true, unit: true, price: true, consignmentSupplierId: true, categoryRef: CATEGORY_WITH_PARENT },
+    const products = (
+      await this.prisma.product.findMany({
+        // Only what the shop sells (own goods and goods «под реализацию»): raw materials,
+        // packaging and semi-finished stock are not part of the till's day.
+        where: { organizationId, id: { in: ids }, trackInventory: true, type: "FINISHED_GOOD" },
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          unit: true,
+          price: true,
+          isActive: true,
+          isOpenPrice: true,
+          consignmentSupplierId: true,
+          categoryRef: CATEGORY_WITH_PARENT,
+        },
+      })
+    ).filter((p) => {
+      const a = acc.get(p.id)!;
+      return a.moved || Math.abs(a.opening) > 1e-9 || (p.isActive && !p.isOpenPrice);
     });
     return products
       .map((p) => {

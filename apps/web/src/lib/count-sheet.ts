@@ -14,7 +14,9 @@ export interface CountSheetLine {
 // expects, so the count is blind. Two columns: names are short, so one column
 // left half of every page empty. A group's heading travels with its first
 // product, never alone at a column's foot.
-export function printCountSheet(title: string, lines: CountSheetLine[]) {
+// `blankRows`: empty lines at the end, under «Нет в списке», for something found on
+// the shelf that the list does not have (a delivery nobody recorded).
+export function printCountSheet(title: string, lines: CountSheetLine[], { blankRows = 0 }: { blankRows?: number } = {}) {
   const row = (line: CountSheetLine) =>
     `<div class="r"><span class="n">${escapeHtml(line.name)}</span><span class="b">${escapeHtml(UNIT_LABELS_RU[line.unit])}</span></div>`;
   const groups: { name: string; lines: CountSheetLine[] }[] = [];
@@ -25,6 +27,10 @@ export function printCountSheet(title: string, lines: CountSheetLine[]) {
   const body = groups
     .map((g) => `<div class="k"><div class="g">${escapeHtml(g.name)}</div>${row(g.lines[0])}</div>${g.lines.slice(1).map(row).join("")}`)
     .join("");
+  const blanks =
+    blankRows > 0
+      ? `<div class="k"><div class="g">Нет в списке</div>${'<div class="r"><span class="n">&nbsp;</span><span class="b"></span></div>'.repeat(blankRows)}</div>`
+      : "";
   const html = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Пересчёт</title>
 <style>body{font-family:Arial,sans-serif;font-size:13px;margin:14px;color:#000}h1{font-size:17px;margin:0 0 4px}p{margin:4px 0 10px}
 .cols{column-count:2;column-gap:18px}.k,.r{break-inside:avoid}
@@ -32,8 +38,8 @@ export function printCountSheet(title: string, lines: CountSheetLine[]) {
 .r{display:flex;align-items:stretch;border:1px solid #999;margin-top:-1px}
 .n{flex:1;padding:6px;line-height:1.25}.b{width:70px;border-left:1px solid #999;text-align:right;color:#666;font-size:11px;padding:2px 4px;display:flex;align-items:flex-end;justify-content:flex-end}</style></head><body>
 <h1>${escapeHtml(title)}</h1>
-<p>Считал(а): ______________________ &nbsp;&nbsp; Время: ________</p>
-<div class="cols">${body}</div>
+<p>Дата: ____________ &nbsp;&nbsp; Время: ________ &nbsp;&nbsp; Считал(а): ______________________</p>
+<div class="cols">${body}${blanks}</div>
 </body></html>`;
   const win = window.open("", "_blank");
   if (!win) return;
