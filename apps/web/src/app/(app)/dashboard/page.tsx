@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Building2, MapPin, Sparkles, TrendingUp, Users, Wallet } from "lucide-react";
+import { AlertTriangle, Building2, Clock, HandCoins, MapPin, Sparkles, TrendingUp, Users, Wallet } from "lucide-react";
 import type { DashboardSummaryDto } from "@bakery-os/shared";
 import { LOCATION_TYPE_LABELS_RU } from "@bakery-os/shared";
 import { api } from "@/lib/api";
@@ -50,6 +50,22 @@ export default function DashboardPage() {
           />
         </Link>
       </div>
+
+      {summary?.receivables && (
+        <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Link href="/finance?tab=receivables">
+            <StatCard icon={HandCoins} label="Дебиторская задолженность" value={formatMoney(summary.receivables.total)} />
+          </Link>
+          <Link href="/finance?tab=receivables">
+            <StatCard
+              icon={Clock}
+              label="Просроченная дебиторская задолженность"
+              value={formatMoney(summary.receivables.overdue)}
+              tone={summary.receivables.overdue > 0 ? "warning" : "default"}
+            />
+          </Link>
+        </div>
+      )}
 
       <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard icon={Building2} label="Точек в сети" value={summary?.locationsCount ?? "—"} />

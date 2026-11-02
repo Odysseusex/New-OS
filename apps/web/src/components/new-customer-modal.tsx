@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { CustomerDto } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
+import { CounterpartyTermsFields, termsPayload, termsValueOf } from "@/components/counterparty-terms-fields";
 
 export function NewCustomerModal({
   customer,
@@ -19,6 +20,7 @@ export function NewCustomerModal({
   const [email, setEmail] = useState(customer?.email ?? "");
   const [address, setAddress] = useState(customer?.address ?? "");
   const [notes, setNotes] = useState(customer?.notes ?? "");
+  const [terms, setTerms] = useState(termsValueOf(customer));
   const [creditLimit, setCreditLimit] = useState(
     customer?.creditLimit !== null && customer?.creditLimit !== undefined ? String(customer.creditLimit) : "",
   );
@@ -41,6 +43,7 @@ export function NewCustomerModal({
         creditLimit: creditLimit ? Number(creditLimit) : undefined,
         lat: lat ? Number(lat) : undefined,
         lng: lng ? Number(lng) : undefined,
+        ...termsPayload(terms, Boolean(customer)),
       };
       if (customer) {
         await api.customers.update(customer.id, dto);
@@ -49,7 +52,7 @@ export function NewCustomerModal({
       }
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Не удалось сохранить клиента");
+      setError(err instanceof ApiError || err instanceof Error ? err.message : "Не удалось сохранить клиента");
     } finally {
       setIsSubmitting(false);
     }
@@ -100,6 +103,8 @@ export function NewCustomerModal({
             className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
           />
         </div>
+
+        <CounterpartyTermsFields value={terms} onChange={setTerms} />
 
         <div className="mb-4">
           <label className="mb-1.5 block text-sm font-medium text-foreground">

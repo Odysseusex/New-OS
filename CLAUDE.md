@@ -901,6 +901,29 @@ a product twice is refused; an adjustment line that already matches is skipped a
 never read as 0 (that would empty the shelf on a correction). The single-product endpoints are unchanged — the
 Telegram bot still uses them.
 
+## Debts — дебиторка/кредиторка by document, акт сверки (built, ТЗ stage 1)
+
+From the financiers' ТЗ (iiko-style). `apps/api/src/debts/` (read-only service), shared pure maths in
+`packages/shared/src/debts.ts`, migration `20261102120000_debts` (additive: `Customer/Supplier.bin` + `paymentTermDays`,
+`Sale.paymentDueAt`, `Organization.legalName` + `bin`). Финансы → «Дебиторская/Кредиторская задолженность» = `DebtsReport`.
+- **Nothing is stored about debts**: open items come from the same documents the balances do — sale total − `amountPaid`;
+  received purchase orders after the cutover − payments not reversed; CONFIRMED invoices and expenses − `amountPaid`;
+  consignment takings per Almaty day settled oldest first by returns + payouts (`settleOldestFirst`). On a past date
+  («На дату»), cash movements after that day are put back. Today's totals equal `getAccountsReceivable` /
+  `getAccountsPayable` (a spec asserts it) — the old payables tab missed orders and consignment; this one does not.
+- Due date = the sale's own `paymentDueAt` (set at creation: stated in «Новая продажа», else today + the customer's
+  deferral) or document date + the counterparty's current `paymentTermDays` (none = due that day). Age buckets are
+  days since the document (0–1, 2–7, 8–30, 30+, as the ТЗ lists them); overdue days are past the due date.
+- Card / акт сверки (`GET /debts/statement`): our side, debit = raises what they owe us. Customer: sale debit, payments
+  credit (a paid-at-sale amount with no cash movement counts on the sale day), a return credit + its refund debit.
+  Supplier: delivery/invoice/consignment day credit, payments and consignment returns debit, reversal credit.
+  Balance > 0 = they owe us. The act prints from the browser (PDF via «Сохранить как PDF»), CSV alongside; .xlsx is ТЗ
+  stage 2. Organization requisites for its header: Настройки → «Реквизиты организации» (OWNER/ADMIN).
+- Overdue receivables: a live notification per customer (`OVERDUE_RECEIVABLE`, critical after 30 days) and two cards on
+  the dashboard for `DEBT_VIEW_ROLES`. `/finance?tab=…` opens a tab directly.
+- Not built: advances (авансы), a return of an UNPAID consignment shipment reducing the debt (returns refund only paid
+  money today — changing that touches money/ledger, needs the owner's yes), supplier returns.
+
 ## «Скачать все данные» (backup / disaster recovery) — built
 
 Настройки → «Резервная копия данных» (OWNER only): `GET /api/backup/export` streams the WHOLE database as one JSON

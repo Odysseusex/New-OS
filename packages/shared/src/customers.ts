@@ -20,6 +20,9 @@ export interface CustomerDto {
   lng: number | null;
   notes: string | null;
   creditLimit: number | null;
+  // БИН/ИИН and the agreed deferral in days (null = due the same day).
+  bin: string | null;
+  paymentTermDays: number | null;
   outstandingBalance: number;
   isActive: boolean;
 }
@@ -33,6 +36,8 @@ export interface CreateCustomerRequestDto {
   lng?: number;
   notes?: string;
   creditLimit?: number;
+  bin?: string | null;
+  paymentTermDays?: number | null;
 }
 
 export interface UpdateCustomerRequestDto {
@@ -44,6 +49,8 @@ export interface UpdateCustomerRequestDto {
   lng?: number | null;
   notes?: string;
   creditLimit?: number | null;
+  bin?: string | null;
+  paymentTermDays?: number | null;
 }
 
 export interface CustomerOrderDto {

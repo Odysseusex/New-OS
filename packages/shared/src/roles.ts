@@ -138,6 +138,9 @@ export const ROUTE_EXECUTE_ROLES: Role[] = [...LOGISTICS_MANAGE_ROLES, Role.DRIV
 // Financial data (margins, P&L, expenses) is restricted to the same roles
 // that already see the whole network rather than a single location.
 export const FINANCE_VIEW_ROLES: Role[] = ORG_WIDE_ROLES;
+// Debts by counterparty, the counterparty card and the акт сверки: the same
+// people who see Финансы.
+export const DEBT_VIEW_ROLES: Role[] = FINANCE_VIEW_ROLES;
 
 export const EXPENSE_MANAGE_ROLES: Role[] = ORG_WIDE_ROLES;
 

@@ -1,6 +1,7 @@
+import { CounterpartyTermsDto } from "../../debts/counterparty-terms.dto";
 import { IsEmail, IsOptional, IsString, MinLength } from "class-validator";
 
-export class UpdateSupplierDto {
+export class UpdateSupplierDto extends CounterpartyTermsDto {
   @IsOptional()
   @IsString()
   @MinLength(2)

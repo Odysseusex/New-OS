@@ -124,4 +124,7 @@ export interface DashboardSummaryDto {
   todayRevenue: number;
   last7DaysRevenue: number;
   lowStockCount: number;
+  // Дебиторская задолженность and the overdue part of it; null for a role
+  // that does not see debts. Optional for a client one build ahead of the API.
+  receivables?: { total: number; overdue: number } | null;
 }

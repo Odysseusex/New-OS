@@ -45,6 +45,8 @@ export interface SaleDto {
   totalAmount: number;
   amountPaid: number;
   balanceDue: number;
+  // "YYYY-MM-DD" the unpaid part is due; null when none was stated.
+  paymentDueDate?: string | null;
   paymentStatus: PaymentStatus;
   paymentMethod: PaymentMethod;
   itemsCount: number;
@@ -137,6 +139,9 @@ export interface CreateSaleRequestDto {
   terminalPayment?: CreateSaleTerminalPaymentRequestDto;
   customerId?: string;
   amountPaid?: number;
+  // A sale on credit: the day it is due, "YYYY-MM-DD" (Almaty). Omitted = the
+  // customer's own deferral.
+  paymentDueDate?: string;
   paymentMethod?: PaymentMethod;
   // A split payment: two or more tenders that must add up to the sale total.
   // Omit it for an ordinary sale and `paymentMethod` decides everything, as

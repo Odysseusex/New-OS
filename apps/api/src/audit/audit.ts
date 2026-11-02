@@ -62,6 +62,7 @@ export const AUDIT_ACTION_GROUPS = {
   loyaltyFamily: ["loyaltyFamily.add", "loyaltyFamily.update", "loyaltyFamily.remove"],
   // Posting from operations is traced by the journal itself (each entry carries
   // its source, poster and time); these are the deliberate human actions.
+  organization: ["organization.requisites"],
   ledger: [
     "ledger.enable",
     "ledger.systemAccounts.init",

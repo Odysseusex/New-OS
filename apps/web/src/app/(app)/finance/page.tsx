@@ -27,12 +27,10 @@ import type {
   PlannedFixedCostDto,
   CashAccountDto,
   CashMovementDto,
-  CustomerDto,
   ExpenseDto,
   FinanceCategoryDto,
   FinanceDashboardDto,
   FinanceSetupStatusDto,
-  InvoiceDto,
   LocationDto,
   ProfitAndLossDto,
 } from "@bakery-os/shared";
@@ -63,6 +61,7 @@ import {
   PAYMENT_STATUS_LABELS_RU,
   PaymentStatus,
   SUPPLIER_PAYMENT_ROLES,
+  PAYMENT_RECORD_ROLES,
 } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -83,6 +82,7 @@ import { CashTransferModal } from "@/components/cash-transfer-modal";
 import { FinanceCategoryModal } from "@/components/finance-category-modal";
 import { PlannedFixedCostModal } from "@/components/planned-fixed-cost-modal";
 import { RecordDebtPaymentModal } from "@/components/record-debt-payment-modal";
+import { DebtsReport } from "@/components/debts-report";
 import { RowActions } from "@/components/row-actions";
 
 type Tab =
@@ -169,10 +169,16 @@ export default function FinancePage() {
   const canOperateCash = user ? CASH_REGISTER_MANAGE_ROLES.includes(user.role) : false;
   const canManageExpenses = user ? EXPENSE_MANAGE_ROLES.includes(user.role) : false;
   const canPaySuppliers = user ? SUPPLIER_PAYMENT_ROLES.includes(user.role) : false;
+  const canRecordCustomerPayments = user ? PAYMENT_RECORD_ROLES.includes(user.role) : false;
   const canRunSetup = user ? FINANCE_SETUP_ROLES.includes(user.role) : false;
 
   const [setupStatus, setSetupStatus] = useState<FinanceSetupStatusDto | null>(null);
   const [tab, setTab] = useState<Tab>("summary");
+  // A link may open a tab directly (/finance?tab=receivables from the dashboard).
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get("tab");
+    if (wanted && TABS.some((t) => t.id === wanted)) setTab(wanted as Tab);
+  }, []);
   const [period, setPeriod] = useState<PeriodValue>("month");
   const [locations, setLocations] = useState<LocationDto[]>([]);
   const [locationFilter, setLocationFilter] = useState("");
@@ -197,8 +203,8 @@ export default function FinancePage() {
   const [movementAccountFilter, setMovementAccountFilter] = useState("");
   const [categories, setCategories] = useState<FinanceCategoryDto[]>([]);
   const [showArchivedCategories, setShowArchivedCategories] = useState(false);
-  const [customers, setCustomers] = useState<CustomerDto[]>([]);
-  const [invoices, setInvoices] = useState<InvoiceDto[]>([]);
+  // Bumped to make the debts report on the open tab load again.
+  const [debtsReload, setDebtsReload] = useState(0);
 
   const [expenseModalOpen, setExpenseModalOpen] = useState(false);
   const [accountModalOpen, setAccountModalOpen] = useState(false);
@@ -291,11 +297,6 @@ export default function FinancePage() {
       .catch(() => setError("Не удалось загрузить статьи ДДС"));
   }, [showArchivedCategories]);
 
-  const loadDebts = useCallback(() => {
-    api.customers.list().then(setCustomers).catch(() => {});
-    api.invoices.list().then(setInvoices).catch(() => {});
-  }, []);
-
   useEffect(() => {
     if (!canView) return;
     api.locations.list().then(setLocations).catch(() => {});
@@ -333,10 +334,6 @@ export default function FinancePage() {
   }, [canView, tab, loadExpenses]);
 
   useEffect(() => {
-    if (canView && (tab === "receivables" || tab === "payables")) loadDebts();
-  }, [canView, tab, loadDebts]);
-
-  useEffect(() => {
     if (canView) loadAccounts();
   }, [canView, loadAccounts]);
 
@@ -353,7 +350,7 @@ export default function FinancePage() {
     loadMovements();
     if (tab === "summary") loadDashboard();
     if (tab === "expenses" || tab === "payables") loadExpenses();
-    if (tab === "receivables" || tab === "payables") loadDebts();
+    if (tab === "receivables" || tab === "payables") setDebtsReload((n) => n + 1);
     if (tab === "pnl") loadPnl();
     if (tab === "breakeven") {
       if (breakEvenMode === "fact") loadBreakEven();
@@ -463,7 +460,6 @@ export default function FinancePage() {
     try {
       await api.finance.confirmExpense(expense.id);
       loadExpenses();
-      loadDebts();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось подтвердить расход");
     }
@@ -483,39 +479,11 @@ export default function FinancePage() {
   const bankAccounts = accounts.filter((a) => a.type === CashAccountType.BANK);
   const cashAccounts = accounts.filter((a) => a.type === CashAccountType.CASH);
 
-  const debtorCustomers = customers
-    .filter((c) => c.outstandingBalance > 0)
-    .sort((a, b) => b.outstandingBalance - a.outstandingBalance);
-  const totalReceivable = debtorCustomers.reduce((sum, c) => sum + c.outstandingBalance, 0);
-
-  const payableRows: PayableRow[] = [
-    ...invoices
-      .filter((i) => i.balanceDue > 0)
-      .map((i): PayableRow => ({
-        kind: "invoice",
-        id: i.id,
-        label: `Накладная №${i.number}`,
-        counterparty: i.supplierName,
-        date: i.issuedAt,
-        balanceDue: i.balanceDue,
-        paymentStatus: i.paymentStatus,
-      })),
-    ...expenses
-      .filter((e) => e.status === ExpenseStatus.CONFIRMED && e.balanceDue > 0)
-      .map((e): PayableRow => ({
-        kind: "expense",
-        id: e.id,
-        label: e.description || e.categoryName || "Расход",
-        counterparty: e.categoryName ?? "—",
-        date: e.incurredOn,
-        balanceDue: e.balanceDue,
-        paymentStatus: e.paymentStatus,
-      })),
-  ].sort((a, b) => b.balanceDue - a.balanceDue);
-  const totalPayable = payableRows.reduce((sum, r) => sum + r.balanceDue, 0);
-
-  function daysSince(dateIso: string): number {
-    return Math.max(0, Math.floor((Date.now() - new Date(dateIso).getTime()) / 86400000));
+  function refreshAfterDebtPayment() {
+    loadExpenses();
+    loadAccounts();
+    loadMovements();
+    loadDashboard();
   }
 
   async function submitDebtPayment(row: PayableRow, amount: number, accountId: string) {
@@ -525,7 +493,6 @@ export default function FinancePage() {
       await api.finance.recordExpensePayment(row.id, { amount, accountId });
     }
     setPayingDebt(null);
-    loadDebts();
     loadExpenses();
     loadAccounts();
     loadMovements();
@@ -787,101 +754,11 @@ export default function FinancePage() {
       )}
 
       {tab === "receivables" && (
-        <div className="rounded-2xl border border-border bg-surface shadow-card">
-          <div className="flex items-center justify-between border-b border-border px-5 py-4">
-            <div>
-              <h2 className="text-sm font-semibold text-foreground">Дебиторская задолженность</h2>
-              <p className="mt-0.5 text-xs text-muted">Задолженность покупателей перед нами</p>
-            </div>
-            <span className="text-base font-semibold text-foreground">{formatMoney(totalReceivable)}</span>
-          </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
-                <th className="px-5 py-3 font-medium">Контрагент</th>
-                <th className="px-5 py-3 text-right font-medium">Кредитный лимит</th>
-                <th className="px-5 py-3 text-right font-medium">Использовано</th>
-                <th className="px-5 py-3 text-right font-medium">Задолженность</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {debtorCustomers.map((c) => {
-                const utilization = c.creditLimit ? (c.outstandingBalance / c.creditLimit) * 100 : null;
-                return (
-                  <tr key={c.id}>
-                    <td className="px-5 py-3 text-foreground">{c.name}</td>
-                    <td className="px-5 py-3 text-right text-muted">{c.creditLimit !== null ? formatMoney(c.creditLimit) : "—"}</td>
-                    <td className={clsx("px-5 py-3 text-right", utilization !== null && utilization >= 100 ? "font-medium text-red-600" : "text-muted")}>
-                      {utilization !== null ? `${utilization.toFixed(0)}%` : "—"}
-                    </td>
-                    <td className="px-5 py-3 text-right font-medium text-foreground">{formatMoney(c.outstandingBalance)}</td>
-                  </tr>
-                );
-              })}
-              {debtorCustomers.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-5 py-8 text-center text-sm text-muted">
-                    Дебиторской задолженности нет
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <DebtsReport side="receivables" accounts={activeAccounts} canPay={canRecordCustomerPayments} onPaid={refreshAfterDebtPayment} reloadToken={debtsReload} />
       )}
 
       {tab === "payables" && (
-        <div className="rounded-2xl border border-border bg-surface shadow-card">
-          <div className="flex items-center justify-between border-b border-border px-5 py-4">
-            <div>
-              <h2 className="text-sm font-semibold text-foreground">Кредиторская задолженность</h2>
-              <p className="mt-0.5 text-xs text-muted">Наша задолженность перед поставщиками и по расходам</p>
-            </div>
-            <span className="text-base font-semibold text-foreground">{formatMoney(totalPayable)}</span>
-          </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
-                <th className="px-5 py-3 font-medium">Документ</th>
-                <th className="px-5 py-3 font-medium">Контрагент / статья</th>
-                <th className="px-5 py-3 text-right font-medium">Дней</th>
-                <th className="px-5 py-3 font-medium">Статус</th>
-                <th className="px-5 py-3 text-right font-medium">Остаток</th>
-                <th className="px-5 py-3 text-right font-medium">Действия</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {payableRows.map((r) => (
-                <tr key={`${r.kind}-${r.id}`}>
-                  <td className="px-5 py-3 text-foreground">{r.label}</td>
-                  <td className="px-5 py-3 text-muted">{r.counterparty}</td>
-                  <td className="px-5 py-3 text-right text-muted">{daysSince(r.date)}</td>
-                  <td className="px-5 py-3">
-                    <PaymentStatusBadge status={r.paymentStatus} />
-                  </td>
-                  <td className="px-5 py-3 text-right font-medium text-foreground">{formatMoney(r.balanceDue)}</td>
-                  <td className="px-5 py-3 text-right">
-                    {canPaySuppliers && (
-                      <button
-                        onClick={() => setPayingDebt(r)}
-                        className="rounded-lg bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground transition hover:opacity-90"
-                      >
-                        Погасить
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {payableRows.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-5 py-8 text-center text-sm text-muted">
-                    Кредиторской задолженности нет
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <DebtsReport side="payables" accounts={activeAccounts} canPay={canPaySuppliers} onPaid={refreshAfterDebtPayment} reloadToken={debtsReload} />
       )}
 
       {tab === "expenses" && (

@@ -7,6 +7,8 @@ export enum NotificationType {
   // No active default BANK account: card and transfer payments at the till
   // are sold normally but their money is recorded in no account.
   MISSING_BANK_ACCOUNT = "MISSING_BANK_ACCOUNT",
+  // A customer is past the agreed date of payment.
+  OVERDUE_RECEIVABLE = "OVERDUE_RECEIVABLE",
 }
 
 export enum NotificationSeverity {

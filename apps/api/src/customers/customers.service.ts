@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { audited } from "../audit/audit";
 import { PrismaService } from "../prisma/prisma.service";
+import { termsData } from "../debts/counterparty-terms.dto";
 import { ownAmount } from "../common/own-sales";
 import {
   BusinessContextCustomerRowDto,
@@ -144,7 +145,7 @@ export class CustomersService {
 
   async create(organizationId: string, dto: CreateCustomerDto): Promise<CustomerDto> {
     const customer = await this.prisma.customer.create({
-      data: { ...dto, organizationId },
+      data: { ...dto, ...termsData(dto), organizationId },
     });
 
     return this.toCustomerDto(customer, 0);
@@ -160,7 +161,7 @@ export class CustomersService {
       this.prisma,
       { organizationId, actorId, action: "customer.update", entityType: "Customer", entityId: customerId, before: customer },
       async (tx) => {
-        const saved = await tx.customer.update({ where: { id: customerId }, data: dto });
+        const saved = await tx.customer.update({ where: { id: customerId }, data: { ...dto, ...termsData(dto) } });
         return { result: saved, after: saved };
       },
     );
@@ -272,6 +273,8 @@ export class CustomersService {
       lng: number | null;
       notes: string | null;
       creditLimit: { toNumber: () => number } | null;
+      bin: string | null;
+      paymentTermDays: number | null;
       isActive: boolean;
     },
     outstandingBalance: number,
@@ -286,6 +289,8 @@ export class CustomersService {
       lng: customer.lng,
       notes: customer.notes,
       creditLimit: customer.creditLimit ? customer.creditLimit.toNumber() : null,
+      bin: customer.bin,
+      paymentTermDays: customer.paymentTermDays,
       outstandingBalance,
       isActive: customer.isActive,
     };

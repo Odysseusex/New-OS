@@ -288,6 +288,10 @@ enum FiscalReceiptStatus {
 model Organization {
   id        String   @id @default(cuid())
   name      String
+  // Requisites printed on documents sent to counterparties (акт сверки).
+  // Optional: an empty one is simply left off the paper.
+  legalName String?
+  bin       String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -787,6 +791,10 @@ model Sale {
   // are always paid in full at creation; wholesale customer orders may be
   // placed on credit and paid down over time via recordPayment().
   amountPaid     Decimal   @default(0) @db.Decimal(12, 2)
+  // When a sale on credit is due, set when it is made (default: the customer's
+  // deferral). Null = not stated; the due date then follows the customer's
+  // current terms.
+  paymentDueAt   DateTime?
   // Which CashAccount a payment lands in: CASH -> the selling location's
   // cash register, CARD/TRANSFER -> the organization's default bank account.
   // MIXED means the sale was split; the `payments` rows carry the real
@@ -1355,6 +1363,10 @@ model Supplier {
   phone          String?
   email          String?
   notes          String?
+  // БИН/ИИН and the deferral we were given: a delivery is due this many days
+  // after it was received (null = due the same day).
+  bin             String?
+  paymentTermDays Int?
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -1741,6 +1753,10 @@ model Customer {
   lng            Float?
   notes          String?
   creditLimit    Decimal? @db.Decimal(12, 2)
+  // БИН/ИИН (12 digits) and the agreed deferral: a sale to this customer is
+  // due this many days after it was made (null = due the same day).
+  bin             String?
+  paymentTermDays Int?
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

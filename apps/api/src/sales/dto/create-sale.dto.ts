@@ -7,6 +7,7 @@ import {
   IsOptional,
   IsPositive,
   IsString,
+  Matches,
   MaxLength,
   Min,
   ValidateNested,
@@ -80,6 +81,10 @@ export class CreateSaleDto {
   @IsNumber()
   @Min(0)
   amountPaid?: number;
+
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: "Срок оплаты — дата в формате ГГГГ-ММ-ДД" })
+  paymentDueDate?: string;
 
   @IsOptional()
   @IsEnum(PaymentMethod)

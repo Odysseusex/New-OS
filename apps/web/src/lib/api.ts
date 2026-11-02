@@ -1,4 +1,9 @@
 import type {
+  CounterpartyStatementDto,
+  DebtCounterpartyKind,
+  DebtReportDto,
+  OrganizationRequisitesDto,
+  UpdateOrganizationRequisitesRequestDto,
   CreateCrmContactRequestDto,
   CrmContactDto,
   CrmMemberListDto,
@@ -811,6 +816,19 @@ export const api = {
     activateWorkflow: () => request<PurchaseWorkflowDto>("/procurement/workflow/activate", { method: "POST" }),
     cancelOrder: (id: string) =>
       request<PurchaseOrderDto>(`/procurement/orders/${id}/cancel`, { method: "POST" }),
+  },
+
+  debts: {
+    receivables: (asOf?: string) => request<DebtReportDto>(withQuery("/debts/receivables", { asOf })),
+    payables: (asOf?: string) => request<DebtReportDto>(withQuery("/debts/payables", { asOf })),
+    statement: (q: { kind: DebtCounterpartyKind; id: string; from?: string; to?: string }) =>
+      request<CounterpartyStatementDto>(withQuery("/debts/statement", q)),
+  },
+
+  organization: {
+    requisites: () => request<OrganizationRequisitesDto>("/organization/requisites"),
+    updateRequisites: (dto: UpdateOrganizationRequisitesRequestDto) =>
+      request<OrganizationRequisitesDto>("/organization/requisites", { method: "PATCH", body: JSON.stringify(dto) }),
   },
 
   invoices: {

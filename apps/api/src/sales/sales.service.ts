@@ -56,6 +56,7 @@ import { postLedgerSources } from "../ledger/event-posting";
 import { LoyaltyPointsService, PreparedSaleLoyalty } from "../loyalty/loyalty-points.service";
 import { CustomerBotService } from "../loyalty/customer-bot.service";
 import { startOfZonedDay } from "../common/zoned-day";
+import { dueDateFor, dueKeyOf } from "../debts/due-date";
 
 // Calendar days in reports are the owner's days, not the server's. Render runs
 // in UTC, so without this an early-morning delivery in Almaty (UTC+5) would be
@@ -1249,6 +1250,11 @@ export class SalesService {
     // Walk-in retail sales are always settled immediately. Only a sale tied
     // to a customer account can be placed on credit (partially or fully).
     const amountPaid = dto.customerId ? Math.min(dto.amountPaid ?? 0, totalAmount) : totalAmount;
+    // When the unpaid part of a sale on credit is due: as stated, else the
+    // customer's deferral. Settled sales carry none.
+    const paymentDueAt = dto.customerId && totalAmount - amountPaid > 0.004
+      ? await dueDateFor(this.prisma, user.organizationId, { customerId: dto.customerId }, dto.paymentDueDate)
+      : null;
 
     // A split payment ("2 000 картой, остальное наличными"). Validated here,
     // before anything is written or any receipt is punched.
@@ -1351,6 +1357,7 @@ export class SalesService {
           totalAmount,
           consignmentAmount,
           amountPaid,
+          paymentDueAt,
           paymentMethod,
           createdById: user.id,
           // Recorded exactly as the terminal reported it. The money has
@@ -1727,6 +1734,7 @@ export class SalesService {
     soldAt: Date;
     totalAmount: { toNumber: () => number };
     amountPaid: { toNumber: () => number };
+    paymentDueAt?: Date | null;
     paymentMethod: string;
     createdBy: { fullName: string };
     items: unknown[];
@@ -1745,6 +1753,7 @@ export class SalesService {
       totalAmount,
       amountPaid,
       balanceDue,
+      paymentDueDate: sale.paymentDueAt ? dueKeyOf(sale.paymentDueAt) : null,
       paymentStatus:
         balanceDue <= 0 ? PaymentStatus.PAID : amountPaid > 0 ? PaymentStatus.PARTIALLY_PAID : PaymentStatus.UNPAID,
       paymentMethod: sale.paymentMethod as PaymentMethod,

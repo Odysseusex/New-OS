@@ -24,6 +24,7 @@ import { api, ApiError } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import { useAuth } from "@/lib/auth-context";
 import { KaspiTerminalCard } from "@/components/kaspi-terminal-card";
+import { OrganizationRequisitesCard } from "@/components/organization-requisites-card";
 import { AccountingPolicyCard } from "@/components/accounting-policy-card";
 import { AuditLogCard } from "@/components/audit-log-card";
 import { BackupCard } from "@/components/backup-card";
@@ -101,6 +102,7 @@ export default function SettingsPage() {
             which is exactly the machine this page is open on. */}
         {canSeeFiscal && <KaspiTerminalCard />}
         {canManagePromotions && <PromotionsCard />}
+        {canSeeFiscal && <OrganizationRequisitesCard />}
         {canSeeFiscal && <AccountingPolicyCard />}
         {canSeeFiscal && <AuditLogCard />}
         {isOwner && !isDemo && <BackupCard />}

@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { audited } from "../audit/audit";
 import { PrismaService } from "../prisma/prisma.service";
+import { termsData } from "../debts/counterparty-terms.dto";
 import { SupplierDto } from "@bakery-os/shared";
 import { CreateSupplierDto } from "./dto/create-supplier.dto";
 import { UpdateSupplierDto } from "./dto/update-supplier.dto";
@@ -20,7 +21,7 @@ export class SuppliersService {
 
   async create(organizationId: string, dto: CreateSupplierDto): Promise<SupplierDto> {
     const supplier = await this.prisma.supplier.create({
-      data: { ...dto, organizationId },
+      data: { ...dto, ...termsData(dto), organizationId },
     });
 
     return this.toDto(supplier);
@@ -35,7 +36,7 @@ export class SuppliersService {
       this.prisma,
       { organizationId, actorId, action: "supplier.update", entityType: "Supplier", entityId: supplierId, before: supplier },
       async (tx) => {
-        const saved = await tx.supplier.update({ where: { id: supplierId }, data: dto });
+        const saved = await tx.supplier.update({ where: { id: supplierId }, data: { ...dto, ...termsData(dto) } });
         return { result: saved, after: saved };
       },
     );
@@ -95,6 +96,8 @@ export class SuppliersService {
     phone: string | null;
     email: string | null;
     notes: string | null;
+    bin: string | null;
+    paymentTermDays: number | null;
     isActive: boolean;
   }): SupplierDto {
     return {
@@ -103,6 +106,8 @@ export class SuppliersService {
       phone: supplier.phone,
       email: supplier.email,
       notes: supplier.notes,
+      bin: supplier.bin,
+      paymentTermDays: supplier.paymentTermDays,
       isActive: supplier.isActive,
     };
   }

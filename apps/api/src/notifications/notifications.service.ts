@@ -17,6 +17,7 @@ import { AuthenticatedUser } from "../auth/auth.types";
 import { resolveLocationScope } from "../common/location-scope";
 import { InventoryService } from "../inventory/inventory.service";
 import { CustomersService } from "../customers/customers.service";
+import { DebtsService } from "../debts/debts.service";
 
 const STALE_PURCHASE_ORDER_DAYS = 3;
 const STALE_INVOICE_DAYS = 3;
@@ -28,6 +29,8 @@ export class NotificationsService {
     private prisma: PrismaService,
     private inventoryService: InventoryService,
     private customersService: CustomersService,
+    // Last and defaulted, so hand-wired specs keep working.
+    private debtsService: DebtsService = new DebtsService(prisma),
   ) {}
 
   async getNotifications(user: AuthenticatedUser): Promise<NotificationDto[]> {
@@ -75,7 +78,7 @@ export class NotificationsService {
     const staleInvoiceCutoff = new Date(now.getTime() - STALE_INVOICE_DAYS * 24 * 60 * 60 * 1000);
     const stalePurchaseOrderCutoff = new Date(now.getTime() - STALE_PURCHASE_ORDER_DAYS * 24 * 60 * 60 * 1000);
 
-    const [stockLevels, staleInvoices, stalePurchaseOrders, overdueBatches, customers, missingBank] = await Promise.all([
+    const [stockLevels, staleInvoices, stalePurchaseOrders, overdueBatches, customers, missingBank, receivables] = await Promise.all([
       this.inventoryService.getStockLevels(user),
       this.prisma.invoice.findMany({
         where: {
@@ -106,6 +109,7 @@ export class NotificationsService {
       }),
       isOrgWide ? this.customersService.findAllForOrganization(user.organizationId) : Promise.resolve([]),
       isOrgWide ? this.missingBankAccount(user.organizationId, now) : Promise.resolve(null),
+      isOrgWide ? this.debtsService.receivables(user.organizationId) : Promise.resolve(null),
     ]);
 
     const notifications: NotificationDto[] = [];
@@ -140,6 +144,23 @@ export class NotificationsService {
         locationId: null,
         locationName: null,
         link: "/customers",
+        createdAt: now.toISOString(),
+      });
+    }
+
+    // A customer past the agreed date of payment: once per customer, with the
+    // overdue sum and the oldest delay. More than a month late is critical.
+    for (const row of receivables?.counterparties ?? []) {
+      if (row.overdue <= 0 || !row.counterpartyId) continue;
+      notifications.push({
+        key: `overdue-receivable:${row.counterpartyId}:${today}`,
+        type: NotificationType.OVERDUE_RECEIVABLE,
+        severity: row.maxOverdueDays > 30 ? NotificationSeverity.CRITICAL : NotificationSeverity.WARNING,
+        title: "Просрочена оплата покупателя",
+        message: `«${row.name}»: просрочено ${Math.round(row.overdue).toLocaleString("ru-RU")} ₸, до ${row.maxOverdueDays} дн.`,
+        locationId: null,
+        locationName: null,
+        link: "/finance?tab=receivables",
         createdAt: now.toISOString(),
       });
     }

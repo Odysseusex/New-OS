@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { SupplierDto } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
+import { CounterpartyTermsFields, termsPayload, termsValueOf } from "@/components/counterparty-terms-fields";
 
 export function NewSupplierModal({
   supplier,
@@ -18,6 +19,7 @@ export function NewSupplierModal({
   const [phone, setPhone] = useState(supplier?.phone ?? "");
   const [email, setEmail] = useState(supplier?.email ?? "");
   const [notes, setNotes] = useState(supplier?.notes ?? "");
+  const [terms, setTerms] = useState(termsValueOf(supplier));
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -31,6 +33,7 @@ export function NewSupplierModal({
         phone: phone || undefined,
         email: email || undefined,
         notes: notes || undefined,
+        ...termsPayload(terms, Boolean(supplier)),
       };
       if (supplier) {
         await api.suppliers.update(supplier.id, dto);
@@ -39,7 +42,7 @@ export function NewSupplierModal({
       }
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Не удалось сохранить поставщика");
+      setError(err instanceof ApiError || err instanceof Error ? err.message : "Не удалось сохранить поставщика");
     } finally {
       setIsSubmitting(false);
     }
@@ -79,6 +82,8 @@ export function NewSupplierModal({
             />
           </div>
         </div>
+
+        <CounterpartyTermsFields value={terms} onChange={setTerms} />
 
         <div className="mb-5">
           <label className="mb-1.5 block text-sm font-medium text-foreground">

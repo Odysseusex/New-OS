@@ -19,6 +19,9 @@ export interface SupplierDto {
   phone: string | null;
   email: string | null;
   notes: string | null;
+  // БИН/ИИН and the deferral the supplier gives us (null = due on delivery).
+  bin: string | null;
+  paymentTermDays: number | null;
   isActive: boolean;
 }
 
@@ -27,6 +30,8 @@ export interface CreateSupplierRequestDto {
   phone?: string;
   email?: string;
   notes?: string;
+  bin?: string | null;
+  paymentTermDays?: number | null;
 }
 
 export interface UpdateSupplierRequestDto {
@@ -34,6 +39,8 @@ export interface UpdateSupplierRequestDto {
   phone?: string;
   email?: string;
   notes?: string;
+  bin?: string | null;
+  paymentTermDays?: number | null;
 }
 
 export interface PurchaseOrderItemDto {

@@ -7,6 +7,7 @@ import type { CustomerDto, LocationDto, ProductDto } from "@bakery-os/shared";
 import { PAYMENT_METHOD_LABELS_RU, PaymentMethod, UNIT_LABELS_RU } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
+import { addDaysKey, zonedDateKey } from "@/lib/reporting-period";
 import { formatMoney } from "@/lib/format";
 
 interface Row {
@@ -34,6 +35,7 @@ export function NewSaleModal({
   const [rows, setRows] = useState<Row[]>([{ productId: "", quantity: "1", unitPrice: "" }]);
   const [customerId, setCustomerId] = useState("");
   const [amountPaid, setAmountPaid] = useState("");
+  const [dueDate, setDueDate] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.CASH);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -56,6 +58,16 @@ export function NewSaleModal({
   }, [products]);
 
   const total = rows.reduce((sum, r) => sum + (Number(r.quantity) || 0) * (Number(r.unitPrice) || 0), 0);
+  const unpaid = customerId ? total - Math.min(Number(amountPaid) || 0, total) : 0;
+  const today = zonedDateKey();
+
+  // A customer's deferral fills in the due date; it can still be changed.
+  function pickCustomer(id: string) {
+    setCustomerId(id);
+    if (!id) setAmountPaid("");
+    const term = customers.find((c) => c.id === id)?.paymentTermDays;
+    setDueDate(id && term !== null && term !== undefined ? addDaysKey(zonedDateKey(), term) : "");
+  }
 
   function updateRow(index: number, patch: Partial<Row>) {
     setRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
@@ -83,6 +95,7 @@ export function NewSaleModal({
         locationId: fixedLocationId ?? locationId,
         customerId: customerId || undefined,
         amountPaid: customerId ? Number(amountPaid) || 0 : undefined,
+        paymentDueDate: customerId && unpaid > 0.004 && dueDate ? dueDate : undefined,
         paymentMethod,
         items: rows.map((r) => ({
           productId: r.productId,
@@ -206,10 +219,7 @@ export function NewSaleModal({
           </label>
           <select
             value={customerId}
-            onChange={(e) => {
-              setCustomerId(e.target.value);
-              if (!e.target.value) setAmountPaid("");
-            }}
+            onChange={(e) => pickCustomer(e.target.value)}
             className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
           >
             <option value="">Розничная продажа (без клиента)</option>
@@ -234,6 +244,21 @@ export function NewSaleModal({
               value={amountPaid}
               onChange={(e) => setAmountPaid(e.target.value)}
               placeholder="0"
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+          </div>
+        )}
+
+        {customerId && unpaid > 0.004 && (
+          <div className="mb-4">
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
+              Срок оплаты <span className="text-muted">(необязательно)</span>
+            </label>
+            <input
+              type="date"
+              min={today}
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
               className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
             />
           </div>
