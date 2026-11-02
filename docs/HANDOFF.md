@@ -75,3 +75,10 @@ Built and shipped: `/crm` (Сегодня board «Кому написать» wi
 timeline/rhythm, Группы (RFM + churn radar), Торты на заказ board). New role «Менеджер по клиентам». See CLAUDE.md
 «CRM». Meta number verification is still pending on the owner's side (Facebook asked for ~2 days of account trust).
 Next candidates: «Чаты» inbox when WhatsApp is connected, automatic welcome/win-back chains.
+
+## Known failing spec (found 2026-11-02, not fixed)
+
+`src/demo/demo-company.spec.ts` › «is generated day by day…» fails on clean `main` too: 80 sandbox stock movements are
+left dated «now» instead of shifted back to their simulated day (`demo_shift_since`). Started after the month changed
+(it passed on 2026-10-27/28), so likely a date-boundary issue in the generator. Production data is not affected; a
+sandbox generated now may have a few rows dated today. Owner of the sandbox code should look first.

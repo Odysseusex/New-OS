@@ -55,7 +55,8 @@ export const ORG_WIDE_ROLES: Role[] = [
 // the owner's decision: the operator rings up sales and works with documents and
 // with the list of individual checks, but not with the totals. The till's
 // cashier keeps the day's takings, which they count against the drawer.
-export const REVENUE_VIEW_ROLES: Role[] = Object.values(Role).filter((role) => role !== Role.OPERATOR);
+// The client manager works only in the CRM and sees no takings either.
+export const REVENUE_VIEW_ROLES: Role[] = Object.values(Role).filter((role) => role !== Role.OPERATOR && role !== Role.CLIENT_MANAGER);
 
 export const SALE_CREATE_ROLES: Role[] = [
   Role.OWNER,

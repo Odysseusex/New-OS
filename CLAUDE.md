@@ -1099,6 +1099,10 @@ backend `apps/api/src/crm/`, shared `packages/shared/src/crm.ts`, migration `202
   recorded**: price is what was agreed, a prepayment is rung up at the till as an ordinary sale.
 - Role `CLIENT_MANAGER` («Менеджер по клиентам»): `CRM_ROLES`, also added to `LOYALTY_TILL_ROLES`/`LOYALTY_MANAGE_ROLES`
   and `ORG_WIDE_ROLES`; the `(app)` layout sends them to `/crm` the way a cashier is kept on `/pos`.
+  **Enforced on the server too**, not only the screen (most GET routes are open to any role): `JwtAuthGuard` refuses
+  every path outside `ROLE_API_SCOPE` (`common/role-scope.ts`: `/auth`, `/crm`, `/loyalty`) with 403, the staff
+  Telegram bot treats them as unlinked (`STAFF_BOT_EXCLUDED_ROLES`), and they are out of `REVENUE_VIEW_ROLES`. A new
+  CRM screen that calls another module's endpoint must add its prefix to the scope deliberately.
 - Not built yet (next): a WhatsApp inbox («Чаты») once Meta approves the number (or via Wazzup's API), automatic
   welcome/win-back chains, campaign results. The ERP's Клиенты → «Розница» still exists alongside.
 
