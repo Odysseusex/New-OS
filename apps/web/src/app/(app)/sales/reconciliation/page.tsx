@@ -19,6 +19,7 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
 import { zonedDateKey } from "@/lib/reporting-period";
+import { focusNextCount, printCountSheet } from "@/lib/count-sheet";
 import { ProductTrailModal } from "@/components/product-trail-modal";
 
 const inputClass =
@@ -33,50 +34,16 @@ const parseAmount = (value: string): number | null => {
 };
 const asInput = (value: number | null) => (value === null ? "" : String(value));
 
-const escapeHtml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const NO_CATEGORY = "Без категории";
 const CONSIGNMENT_GROUP = "Под реализацию";
 const groupOf = (line: { consignment: boolean; categoryName: string | null }) =>
   line.consignment ? CONSIGNMENT_GROUP : (line.categoryName ?? NO_CATEGORY);
 
-// The paper the cashiers walk the shelf with: every product of the point in the
-// screen's own order, a blank to write the count in — and NOT what the system
-// expects, so the count is blind.
-function printCountSheet(day: DailyReconciliationDto) {
-  let group: string | null = null;
-  const rows = day.lines
-    .map((line) => {
-      const head = groupOf(line) !== group ? `<tr class="g"><td colspan="2">${escapeHtml((group = groupOf(line)))}</td></tr>` : "";
-      return `${head}<tr><td>${escapeHtml(line.productName)}</td><td class="c">${escapeHtml(UNIT_LABELS_RU[line.unit])}</td></tr>`;
-    })
-    .join("");
-  const html = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Пересчёт витрины</title>
-<style>body{font-family:Arial,sans-serif;font-size:14px;margin:20px;color:#000}h1{font-size:18px;margin:0 0 4px}p{margin:4px 0}
-table{border-collapse:collapse;width:100%;margin-top:10px}td{border:1px solid #999;padding:7px 8px}td.c{width:150px;text-align:right;color:#666;font-size:12px;vertical-align:bottom}
-tr.g td{background:#eee;font-weight:bold;border-color:#999}tr{page-break-inside:avoid}</style></head><body>
-<h1>Пересчёт витрины · ${escapeHtml(day.locationName)} · ${escapeHtml(day.date.split("-").reverse().join("."))}</h1>
-<p>Считал(а): ______________________ &nbsp;&nbsp; Время: ________</p>
-<table><tbody>${rows}</tbody></table>
-</body></html>`;
-  const win = window.open("", "_blank");
-  if (!win) return;
-  win.document.write(html);
-  win.document.close();
-  win.focus();
-  win.print();
-}
-
-// Enter in a count field goes to the next one, top to bottom — the paper's order.
-function focusNextCount(current: HTMLInputElement) {
-  const all = Array.from(document.querySelectorAll<HTMLInputElement>("input[data-count-input]"));
-  const next = all[all.indexOf(current) + 1];
-  if (next) {
-    next.focus();
-    next.select();
-  } else {
-    current.blur();
-  }
-}
+const printDaySheet = (day: DailyReconciliationDto) =>
+  printCountSheet(
+    `Пересчёт витрины · ${day.locationName} · ${day.date.split("-").reverse().join(".")}`,
+    day.lines.map((line) => ({ name: line.productName, unit: line.unit, group: groupOf(line) })),
+  );
 
 const signTone = (value: number | null) =>
   value === null || Math.abs(value) < 0.005 ? "text-foreground" : value < 0 ? "text-red-600" : "text-green-600";
@@ -303,7 +270,7 @@ function ReconciliationScreen() {
             <input type="date" value={date} max={zonedDateKey()} onChange={(e) => setDate(e.target.value)} className={inputClass} />
           </div>
           <button
-            onClick={() => day && printCountSheet(day)}
+            onClick={() => day && printDaySheet(day)}
             disabled={!day || day.lines.length === 0}
             className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted disabled:opacity-50"
           >

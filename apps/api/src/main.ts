@@ -8,6 +8,9 @@ async function bootstrap() {
   app.enableCors({
     origin: process.env.WEB_ORIGIN?.split(",") ?? ["http://localhost:3000"],
     credentials: true,
+    // The web app reads the server's clock from it (a device with a wrong clock
+    // otherwise asks for a «Сегодня» that has not started yet).
+    exposedHeaders: ["Date"],
   });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.setGlobalPrefix("api");

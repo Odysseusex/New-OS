@@ -1,4 +1,5 @@
-import { IsNumber, IsOptional, IsString, Min, MinLength, ValidateIf } from "class-validator";
+import { IsEnum, IsNumber, IsOptional, IsString, Min, MinLength, ValidateIf } from "class-validator";
+import { ProductType } from "@bakery-os/shared";
 
 export class CreateStocktakeDto {
   @IsOptional()
@@ -8,6 +9,11 @@ export class CreateStocktakeDto {
   @IsOptional()
   @IsString()
   categoryId?: string;
+
+  // Only products of this type — e.g. the raw-material store counted on its own.
+  @IsOptional()
+  @IsEnum(ProductType)
+  productType?: ProductType;
 
   @IsOptional()
   @IsString()

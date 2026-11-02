@@ -1,7 +1,8 @@
 import type { BalanceTreatment, CashActivity, PnlTreatment } from "./financial-classification";
 import type { CashSection } from "./financial-events";
 import { PaymentStatus } from "./customers";
-import { Unit } from "./catalog";
+import { ProductType, Unit } from "./catalog";
+import type { CostBasis } from "./costing";
 import { CompensationType } from "./hr";
 
 // How a sale was settled — decides which CashAccount a receipt lands in
@@ -292,6 +293,73 @@ export interface ProductPnLDto {
   grossProfit: number;
   marginPercent: number | null;
   hasCostData: boolean;
+}
+
+// One row of «Финансовый результат по товарам», opened up: the same totals,
+// computed the same way, plus where the cost came from and what moved it.
+// Lines whose cost was NOT stamped at the sale are grouped by how the P&L
+// valued them instead: today's cost («CURRENT») or nothing at all («NONE»).
+// «STAMPED» = a stamped cost whose basis was not recorded (older rows).
+export type ProductCostSourceKey = CostBasis | "CURRENT" | "NONE" | "STAMPED";
+
+export const PRODUCT_COST_SOURCE_LABELS_RU: Record<"CURRENT" | "NONE" | "STAMPED", string> = {
+  CURRENT: "Текущая себестоимость (не зафиксирована при продаже)",
+  NONE: "Себестоимость неизвестна",
+  STAMPED: "Зафиксирована при продаже",
+};
+
+export interface ProductCostSourceDto {
+  source: ProductCostSourceKey;
+  quantity: number;
+  cogs: number;
+}
+
+export interface ProductUnitCostRowDto {
+  // null = no cost known for these lines.
+  unitCost: number | null;
+  quantity: number;
+  firstAt: string;
+  lastAt: string;
+}
+
+export interface ProductPriceRowDto {
+  unitPrice: number;
+  // Price before a markdown / coupon / points, null when sold at full price.
+  fullUnitPrice: number | null;
+  quantity: number;
+  revenue: number;
+}
+
+export interface ProductLocationRowDto {
+  locationId: string;
+  locationName: string;
+  quantity: number;
+  revenue: number;
+  cogs: number;
+  hasCostData: boolean;
+}
+
+export interface ProductPnLDetailDto extends ProductPnLDto {
+  from: string;
+  to: string;
+  productType: ProductType;
+  unit: Unit;
+  // Sales before returns, and the returns themselves.
+  salesQuantity: number;
+  salesRevenue: number;
+  returnsQuantity: number;
+  returnsRevenue: number;
+  returnsCogs: number;
+  discounts: number;
+  averagePrice: number | null;
+  averageUnitCost: number | null;
+  // What one unit costs if it were sold now — null when unknown.
+  currentUnitCost: number | null;
+  currentCostBasis: CostBasis | null;
+  costSources: ProductCostSourceDto[];
+  unitCosts: ProductUnitCostRowDto[];
+  prices: ProductPriceRowDto[];
+  byLocation: ProductLocationRowDto[];
 }
 
 // Whether the bottom line is final. It is PRELIMINARY for as long as anything

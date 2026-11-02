@@ -1533,10 +1533,11 @@ export class SalesService {
   // returns it only if the operator registered it. Every other outcome throws
   // in Russian, before a single row of the sale is written.
   // A cashier's price is never their own to choose: the till only ever sends
-  // this point's price, the fixed markdown of it, or a typed amount on the
-  // «Произвольная сумма» product — so anything else did not come from the till
-  // screen, and the server must not take the client's word for it (a check
-  // rung up at 0 ₸ with the cash pocketed balances perfectly in «Сверка дня»).
+  // this point's price or the fixed markdown of it — so anything else did not
+  // come from the till screen, and the server must not take the client's word
+  // for it (a check rung up at 0 ₸ with the cash pocketed balances perfectly in
+  // «Сверка дня»). «Произвольная сумма» is refused too (the owner's decision):
+  // an amount with no product behind it cannot be checked against the shelf.
   // Coupons and points are applied by the server afterwards, from these prices.
   // Other roles keep a free price: a wholesale sale on «Продажи» is negotiated.
   private async assertTillPrices(
@@ -1561,7 +1562,10 @@ export class SalesService {
     for (const item of items) {
       const product = byId.get(item.productId);
       // An unknown product is refused further on with its own message.
-      if (!product || product.isOpenPrice) continue;
+      if (!product) continue;
+      if (product.isOpenPrice) {
+        throw new BadRequestException("Произвольная сумма на кассе отключена — пробейте товар из каталога");
+      }
       const price = pointPrice.get(product.id) ?? product.price.toNumber();
       const ok =
         item.fullUnitPrice === undefined

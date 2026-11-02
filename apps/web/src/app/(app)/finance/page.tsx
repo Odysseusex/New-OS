@@ -69,6 +69,9 @@ import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
 import { downloadCsv } from "@/lib/csv";
 import { NewExpenseModal } from "@/components/new-expense-modal";
+import { PeriodPicker } from "@/components/period-picker";
+import { periodLabel, periodRange, type PeriodValue } from "@/lib/period";
+import { ProductPnlModal } from "@/components/product-pnl-modal";
 import { CategoryClassificationModal } from "@/components/category-classification-modal";
 import { FinancialPeriodsTab } from "@/components/financial-periods-tab";
 import { FixedAssetsTab } from "@/components/fixed-assets-tab";
@@ -97,7 +100,6 @@ type Tab =
   | "assets"
   | "balance"
   | "ledger";
-type Period = "today" | "7d" | "30d" | "month";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "summary", label: "Сводка" },
@@ -117,23 +119,6 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 const MOVEMENTS_PAGE_SIZE = 100;
-
-const PERIOD_LABELS: Record<Period, string> = {
-  today: "Сегодня",
-  "7d": "7 дней",
-  "30d": "30 дней",
-  month: "Этот месяц",
-};
-
-function periodRange(period: Period): { from: Date; to: Date } {
-  const to = new Date();
-  const from = new Date();
-  from.setHours(0, 0, 0, 0);
-  if (period === "7d") from.setDate(from.getDate() - 6);
-  if (period === "30d") from.setDate(from.getDate() - 29);
-  if (period === "month") from.setDate(1);
-  return { from, to };
-}
 
 // Every non-OK status means the number is intentionally withheld rather than
 // shown wrong (see BreakEvenStatus in packages/shared/src/finance.ts).
@@ -188,12 +173,13 @@ export default function FinancePage() {
 
   const [setupStatus, setSetupStatus] = useState<FinanceSetupStatusDto | null>(null);
   const [tab, setTab] = useState<Tab>("summary");
-  const [period, setPeriod] = useState<Period>("month");
+  const [period, setPeriod] = useState<PeriodValue>("month");
   const [locations, setLocations] = useState<LocationDto[]>([]);
   const [locationFilter, setLocationFilter] = useState("");
 
   const [dashboard, setDashboard] = useState<FinanceDashboardDto | null>(null);
   const [pnl, setPnl] = useState<ProfitAndLossDto | null>(null);
+  const [openProduct, setOpenProduct] = useState<{ id: string; name: string } | null>(null);
   const [breakEven, setBreakEven] = useState<BreakEvenDto | null>(null);
   // Плановая («что мы запланировали») vs фактическая («что реально
   // произошло») точка безубыточности — две отдельные цифры, никогда не
@@ -613,17 +599,11 @@ export default function FinancePage() {
 
       {tab === "summary" && (
         <>
-          <div className="mb-5 flex items-center justify-between">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-muted">
               Остатки и расчёты — на текущий момент. Финансовый результат — за период ниже.
             </p>
-            <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
-              {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
-                <TabButton key={p} active={period === p} onClick={() => setPeriod(p)}>
-                  {PERIOD_LABELS[p]}
-                </TabButton>
-              ))}
-            </div>
+            <PeriodPicker value={period} onChange={setPeriod} />
           </div>
 
           <SummarySection title="Денежные средства">
@@ -658,7 +638,7 @@ export default function FinancePage() {
             />
           </SummarySection>
 
-          <SummarySection title={`Финансовый результат — ${PERIOD_LABELS[period].toLowerCase()}`} last>
+          <SummarySection title={`Финансовый результат — ${periodLabel(period).toLowerCase()}`} last>
             <StatCard icon={Wallet} label="Валовая прибыль" value={formatMoney(dashboard?.grossProfit ?? 0)} />
             <StatCard
               icon={Wallet}
@@ -1049,14 +1029,8 @@ export default function FinancePage() {
             <div>
               <h2 className="text-base font-semibold text-foreground">Отчёт о прибылях и убытках (P&amp;L)</h2>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
-                {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
-                  <TabButton key={p} active={period === p} onClick={() => setPeriod(p)}>
-                    {PERIOD_LABELS[p]}
-                  </TabButton>
-                ))}
-              </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <PeriodPicker value={period} onChange={setPeriod} />
               <select
                 value={locationFilter}
                 onChange={(e) => setLocationFilter(e.target.value)}
@@ -1115,7 +1089,11 @@ export default function FinancePage() {
               </thead>
               <tbody className="divide-y divide-border">
                 {pnl?.byProduct.map((p) => (
-                  <tr key={p.productId}>
+                  <tr
+                    key={p.productId}
+                    onClick={() => setOpenProduct({ id: p.productId, name: p.productName })}
+                    className="cursor-pointer transition hover:bg-surface-muted/60"
+                  >
                     <td className="px-5 py-3 font-medium text-foreground">
                       {p.productName}
                       {!p.hasCostData && (
@@ -1148,11 +1126,22 @@ export default function FinancePage() {
         </>
       )}
 
+      {openProduct && pnl && (
+        <ProductPnlModal
+          productId={openProduct.id}
+          productName={openProduct.name}
+          from={pnl.from}
+          to={pnl.to}
+          locationId={locationFilter || undefined}
+          onClose={() => setOpenProduct(null)}
+        />
+      )}
+
       {tab === "breakeven" && (
         <>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-base font-semibold text-foreground">Точка безубыточности</h2>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
                 <TabButton active={breakEvenMode === "fact"} onClick={() => setBreakEvenMode("fact")}>
                   Факт
@@ -1161,13 +1150,7 @@ export default function FinancePage() {
                   План
                 </TabButton>
               </div>
-              <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
-                {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
-                  <TabButton key={p} active={period === p} onClick={() => setPeriod(p)}>
-                    {PERIOD_LABELS[p]}
-                  </TabButton>
-                ))}
-              </div>
+              <PeriodPicker value={period} onChange={setPeriod} />
               <select
                 value={locationFilter}
                 onChange={(e) => setLocationFilter(e.target.value)}

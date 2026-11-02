@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, Query, UseGuards } from "@nestjs/common";
-import { CreateStockVoidRequestDto, INVENTORY_MANAGE_ROLES, STOCK_VOID_ROLES } from "@bakery-os/shared";
+import { CreateStockVoidRequestDto, INVENTORY_MANAGE_ROLES, STOCK_MOVEMENTS_MAX, STOCK_VOID_ROLES } from "@bakery-os/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
 import { Roles } from "../common/decorators/roles.decorator";
@@ -12,6 +12,7 @@ import { AdjustStockDto } from "./dto/adjust-stock.dto";
 import { AdjustStockBatchDto, ReceiveStockBatchDto, WriteOffStockBatchDto } from "./dto/stock-batch.dto";
 import { StockVoidService } from "./stock-void.service";
 import { CreateStockVoidDto, PreviewStockVoidDto } from "./dto/stock-void.dto";
+import { ListStockMovementsQueryDto } from "./dto/list-stock-movements-query.dto";
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("inventory")
@@ -29,12 +30,17 @@ export class InventoryController {
     return this.inventoryService.getStockLevels(user, locationId);
   }
 
+  // Without a period or a product: the latest 50, as the history always was.
+  // With one: everything in it, up to STOCK_MOVEMENTS_MAX rows.
   @Get("movements")
-  getMovements(
-    @CurrentUser() user: AuthenticatedUser,
-    @Query("locationId") locationId?: string,
-  ) {
-    return this.inventoryService.getMovements(user, locationId);
+  getMovements(@CurrentUser() user: AuthenticatedUser, @Query() query: ListStockMovementsQueryDto) {
+    const narrowed = Boolean(query.from || query.to || query.productId);
+    return this.inventoryService.getMovements(user, query.locationId, narrowed ? STOCK_MOVEMENTS_MAX : 50, {
+      productId: query.productId,
+      type: query.type,
+      from: query.from ? new Date(query.from) : undefined,
+      to: query.to ? new Date(query.to) : undefined,
+    });
   }
 
   @Post("receipts")

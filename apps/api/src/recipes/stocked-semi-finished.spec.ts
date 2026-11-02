@@ -328,12 +328,14 @@ describe("the revaluation of finished goods is the architecture's existing rule,
       return levels.reduce((sum, l) => sum + l.quantity.toNumber() * (costs.get(l.productId)?.unitCost ?? 0), 0);
     };
     const [checkBefore, valueBefore] = [await inventoryCheck(), await stockValue()];
-    await prisma.product.update({ where: { id: ids.flour }, data: { price: 80 } });
+    // Flour bought through an order is at its weighted average, so the card's price no longer
+    // values it; move the average itself behind the books' back (what a hand-edited price used to do).
+    await prisma.product.update({ where: { id: ids.flour }, data: { averageUnitCost: 80 } });
     const [checkAfter, valueAfter] = [await inventoryCheck(), await stockValue()];
     // The books did not move; the valuation did (raw flour AND every product whose recipe uses it),
     // so the difference moved by exactly that — with no filling involved at all.
     expect(Math.abs(valueAfter - valueBefore)).toBeGreaterThan(50);
     expect(Math.abs((checkAfter.difference ?? 0) - (checkBefore.difference ?? 0))).toBeCloseTo(Math.abs(valueAfter - valueBefore), 0);
-    await prisma.product.update({ where: { id: ids.flour }, data: { price: 50 } });
+    await prisma.product.update({ where: { id: ids.flour }, data: { averageUnitCost: 50 } });
   });
 });

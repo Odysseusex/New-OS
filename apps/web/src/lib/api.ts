@@ -144,6 +144,7 @@ import type {
   LocationPriceRowDto,
   ProductDto,
   ProductionBatchDto,
+  ProductPnLDetailDto,
   ProfitAndLossDto,
   CashFlowDto,
   BusinessContextDto,
@@ -229,6 +230,8 @@ import type {
   VehicleDto,
 } from "@bakery-os/shared";
 
+import { noteServerDate } from "./server-clock";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
 
 export class ApiError extends Error {}
@@ -244,6 +247,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       ...options.headers,
     },
   });
+  noteServerDate(res.headers.get("date"));
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -389,8 +393,8 @@ export const api = {
   inventory: {
     stockLevels: (locationId?: string) =>
       request<StockLevelDto[]>(withQuery("/inventory/stock-levels", { locationId })),
-    movements: (locationId?: string) =>
-      request<StockMovementDto[]>(withQuery("/inventory/movements", { locationId })),
+    movements: (filter: { locationId?: string; productId?: string; type?: string; from?: string; to?: string } = {}) =>
+      request<StockMovementDto[]>(withQuery("/inventory/movements", filter)),
     receive: (dto: CreateStockMovementRequestDto) =>
       request<StockMovementDto>("/inventory/receipts", {
         method: "POST",
@@ -861,6 +865,8 @@ export const api = {
     inventoryValuation: () => request<InventoryValuationDto>("/finance/inventory-valuation"),
     pnl: (from: string, to: string, locationId?: string) =>
       request<ProfitAndLossDto>(withQuery("/finance/pnl", { from, to, locationId })),
+    productPnl: (productId: string, from: string, to: string, locationId?: string) =>
+      request<ProductPnLDetailDto>(withQuery("/finance/pnl/product", { productId, from, to, locationId })),
     balance: (asOf?: string) => request<BalanceSheetDto>(withQuery("/finance/balance", { asOf })),
     inventoryRollForward: (from: string, to: string) =>
       request<InventoryRollForwardDto>(withQuery("/finance/inventory-rollforward", { from, to })),

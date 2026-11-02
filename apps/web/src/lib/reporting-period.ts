@@ -5,12 +5,16 @@
 // server slice it by Almaty days makes the two disagree, and «Вчера» comes back
 // spanning two days. Invisible on the monoblock, which sits in Almaty; wrong
 // the moment the owner opens the same report from anywhere else.
+import { serverNow } from "./server-clock";
+
 export const REPORTING_TIME_ZONE = "Asia/Almaty";
 
 // "YYYY-MM-DD" as it reads on a wall clock in the reporting zone. en-CA formats
 // as ISO, and Intl resolves the zone's real offset rather than hardcoding +5,
 // so this stays correct if the rules ever change.
-export function zonedDateKey(date: Date = new Date()): string {
+// Without an argument it is today by the server's clock, not the device's
+// (see server-clock.ts).
+export function zonedDateKey(date: Date = serverNow()): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: REPORTING_TIME_ZONE,
     year: "numeric",

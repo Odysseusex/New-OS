@@ -8,6 +8,7 @@ import {
   ProductionCostComponent,
   ProductionCostComponentStatusDto,
   ProductType,
+  rawMaterialUnitCost,
 } from "@bakery-os/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { resolveProductUnitCosts } from "../common/product-costs";
@@ -67,7 +68,12 @@ export class CostingService {
     const out = new Map<string, UnitCost>();
     for (const product of products) {
       if (product.type === ProductType.RAW_MATERIAL) {
-        out.set(product.id, { unitCost: product.price.toNumber(), basis: CostBasis.RAW_MATERIAL_PRICE });
+        // The moving average of its priced receipts; the card's price until the first one.
+        const average = product.averageUnitCost?.toNumber() ?? null;
+        out.set(product.id, {
+          unitCost: rawMaterialUnitCost(product.price.toNumber(), average),
+          basis: average !== null ? CostBasis.RAW_MATERIAL_AVERAGE : CostBasis.RAW_MATERIAL_PRICE,
+        });
         continue;
       }
       const cost = resolved.get(product.id);

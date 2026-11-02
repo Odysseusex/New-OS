@@ -145,7 +145,8 @@ pattern rather than assuming one universal meaning for "price".
 
 **Recipe cost calculation is already live**, not a future feature — do not
 re-propose building it. `RecipesService.toDto()` computes `unitCost` from
-`Σ(ingredient.quantity × ingredient.price) / effectiveYield` (loss-adjusted).
+`Σ(ingredient.quantity × ingredient cost) / yield`, where a raw material's cost is its moving
+weighted average (`rawMaterialUnitCost`, see «Raw materials at a moving weighted average» below).
 `FinanceService.getProfitAndLoss()` uses the same recipe-based cost as the
 primary source, falling back to weighted-average actual purchase price
 (from `PurchaseOrderItem`) for products with no active recipe, and reports
@@ -164,6 +165,39 @@ summary, HR KPI, Inventory stock levels, plus one added Sales aggregation)
 rather than duplicating access control or aggregation logic in a separate
 reporting service. Tabs on `/reports` are filtered by the same role
 constants each source module already uses.
+
+**P&L product drill-down.** A row of Финансы → «Финансовый результат по товарам» opens `ProductPnlModal`
+(`GET /finance/pnl/product`, `FinanceService.getProductPnlDetail`): the same totals computed line for line like
+`getProfitAndLoss` (a spec asserts they match), plus cost source (stamped basis / today's cost / none), unit cost
+over time, prices sold at, per location, and the active техкарта priced per ingredient. Always live, even for a
+frozen month (sale lines carry their own cost stamp).
+
+**Stock history is its own tab** (Склад → «Движения», `StockMovementsTab`): period / type / location / product
+filters on `GET /inventory/movements` (no filter = the latest 50 as before, e.g. the Telegram bot; with a period or a
+product up to `STOCK_MOVEMENTS_MAX` rows). Clicking a balance row on «Остатки» opens that product's history. Each row
+shows the cost stamped on the movement (`unitCost`, `costAmount`) and, for sales/returns, the buyer's average price per
+unit on that document (`salePrice`).
+
+**Stocktake (Склад → «Инвентаризация») for a store of raw materials:** created per location and optionally per
+`productType` (and category); while COUNTING it is **blind** for anyone outside `STOCKTAKE_APPROVE_ROLES` — the server
+withholds `systemQuantity`/differences/values (`StocktakeDto.blind`), so a counter cannot fit the count to the books;
+approvers always see everything. Counts are typed as expressions read by shared `parseCountInput` («3*25+12» sacks,
+«350г» for a kg product, never eval'd, null = not understood); Enter moves to the next field. «Печать бланка» prints the
+same two-column blind sheet as «Сверка дня» (`apps/web/src/lib/count-sheet.ts`, shared by both). A user tied to one
+location can only pick that location.
+
+**One period control for reports** (`components/period-picker.tsx` + `lib/period.ts`): Отчёты, Финансы (Сводка, P&L,
+Точка безубыточности), Качество, Сеть точек (Сравнение), Персонал (KPI) share presets (Сегодня … Прошлый месяц … Год) and
+«Период» с … по … . The value is a plain string (`PeriodValue`: a preset or `custom_YYYY-MM-DD_YYYY-MM-DD`) so it drops into
+effect deps and CSV names; `periodRange()` gives Almaty days — a range including today ends now, a closed one at the end
+of its last day, so «Прошлый месяц» matches `matchWholeMonth` and a closed month is served from its snapshot.
+Отчёты → «Динамика по клиенту» and Склад → «Движения» keep their own controls.
+
+**Screen scale per device** (`lib/ui-scale.ts`, `components/ui-scale-control.tsx`, «− 100% +» on the till): a monoblock
+whose Windows cannot go below 100 % showed the till too large. It sets the root font size (the app is in rem, so text,
+spacing and buttons scale together; viewport heights stay whole), kept in that browser's localStorage and applied before
+first paint by an inline script in the root layout (`<html suppressHydrationWarning>`; the public `/ar-amir` site is never
+scaled). The till's width cap is in px (`max-w-[1280px]`) so a smaller scale does not make the till narrower.
 
 **Product SKU** is optional; if blank, `ProductsService.generateSku()`
 atomically increments `Organization.productSkuSequence` (a single
@@ -587,9 +621,21 @@ break by accident:
   average.** It is applied where it is safe — a bought-in product is costed at
   the average of what was actually RECEIVED (RECEIVED orders at delivered
   quantity/cost + CONFIRMED invoices; a PLACED/CANCELLED order counts for
-  nothing — it used to). Baked goods still cost from the recipe and ingredients
-  from `Product.price`; per-receipt moving average for those is NOT built and
-  the P&L label says so. Do not add FIFO.
+  nothing — it used to). Baked goods still cost from the recipe (valued at TODAY's
+  recipe, not at what their batch cost — a known CONTROL/diagnostic difference when
+  ingredient costs move). **Raw materials are at a moving weighted average of their
+  priced receipts** (owner-approved, iiko-style): `Product.averageUnitCost`, moved by
+  `costing/raw-material-average.ts` `recordRawMaterialPurchase()` — called BEFORE the
+  stock is added, with a `FOR UPDATE` lock on the product, by Склад → Приёмка lines with
+  a «Цена за ед.» (`unitPrice`, raw materials only, prefilled with the last price, a
+  >50 % deviation from the average asks first), purchase-order receipts and invoice
+  confirmations. It also sets `Product.price` to the latest purchase price. Before the
+  first priced receipt the average is the card price, so stock on hand keeps its value;
+  a receipt without a price, a return, a count or production comes in at the average
+  and leaves it alone. `rawMaterialUnitCost(price, average)` (shared) is the one rule
+  used by `CostingService` (basis `RAW_MATERIAL_AVERAGE`), `recipe-tree`, the recipe
+  card and the recipe form. History is never recomputed (every row keeps its stamp).
+  A product whose type changes loses its average. Do not add FIFO.
 - **Decisions: approved vs not.** APPROVED — D1 (recipe `yieldQuantity` is the
   normal sellable output AFTER normal loss: unit cost = ingredients ÷ yield,
   `lossPercent` only suggests a yield and is never taken off again; abnormal loss
@@ -835,9 +881,11 @@ of its own day, so it keeps showing the shortage it found. Lines are in shelf or
 name, consignment last) — the printed count sheet (no expected column: blind count) and the screen read the same way,
 and Enter in a count jumps to the next one.
 
-**A cashier's price is the server's** (`SalesService.assertTillPrices`): a CASHIER line must be the point's price, its
-fixed markdown (`markdownPrice`, with `fullUnitPrice` = point price) or any amount on the `isOpenPrice` product — the
-only things the till sends; anything else is refused (a 0 ₸ check with the cash pocketed balances perfectly in «Сверка
+**A cashier's price is the server's** (`SalesService.assertTillPrices`): a CASHIER line must be the point's price or its
+fixed markdown (`markdownPrice`, with `fullUnitPrice` = point price) — the only things the till sends; anything else is
+refused. **«Произвольная сумма» is switched off at the till** (owner's decision, for «Сверка дня»: an amount with no
+product cannot be checked against the shelf) — the POS no longer offers it and a CASHIER line on the `isOpenPrice`
+product is refused; the product row itself stays (history, and other roles' sales on «Продажи») (a 0 ₸ check with the cash pocketed balances perfectly in «Сверка
 дня»). Coupons/points are applied by the server after this. Other roles keep a free price (wholesale on «Продажи»).
 The till's «История» loads the whole Almaty day (not the latest 50) and filters by product (`GET /sales?productId=`).
 
@@ -1110,6 +1158,13 @@ reading them: a line like «don't touch production / don't run the migration» i
 such a prompt is a hard stop — follow it literally and ask afterwards.
 
 ## Known bug classes worth checking for when touching similar code
+
+- **A device with a wrong clock.** A monoblock's clock ran ~15 h ahead (showed 02.11 08:30 while it was 01.11 17:30),
+  so Склад → Движения «Сегодня» asked the server for rows from a day that had not started and showed nothing.
+  Report boundaries are computed in the browser, rows are stamped by the server: `lib/server-clock.ts` reads the
+  server's `Date` header on every API response (exposed by CORS `exposedHeaders: ["Date"]` in `main.ts`) and, when
+  the device is >2 min off, `serverNow()` corrects it. `zonedDateKey()` with no argument and `periodRange()` use it —
+  for "now" in a report range use `serverNow()`, never a bare `new Date()`.
 
 - **Jest runs spec files in parallel workers, and these specs share one real
   Postgres and one demo org.** `fiscal.service.spec.ts` and

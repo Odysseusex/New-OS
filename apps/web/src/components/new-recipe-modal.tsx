@@ -12,6 +12,7 @@ import {
   UNIT_LABELS_RU,
   convertUnitQuantity,
   getCompatibleUnits,
+  rawMaterialUnitCost,
 } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
@@ -87,14 +88,15 @@ export function NewRecipeModal({
   const ingredientPickerOptions = ingredientOptions.map((p) =>
     p.type === ProductType.SEMI_FINISHED ? { ...p, name: `${p.name} (полуфабрикат)` } : p,
   );
-  // What one unit of an ingredient costs: its price for raw material, the unit
-  // cost of its own active recipe for a semi-finished product (0 when it has none).
+  // What one unit of an ingredient costs: the moving average of a raw material
+  // (its card price before the first priced receipt), the unit cost of its own
+  // active recipe for a semi-finished product (0 when it has none).
   const unitCostOfIngredient = (p: ProductDto): number =>
     p.type === ProductType.SEMI_FINISHED
       ? p.trackInventory && p.averageUnitCost !== null
         ? p.averageUnitCost // held as stock: what its batches cost
         : (allRecipes.find((r) => r.productId === p.id && r.isActive && r.costComplete)?.unitCost ?? 0)
-      : p.price;
+      : rawMaterialUnitCost(p.price, p.averageUnitCost);
 
   const [stageTypes, setStageTypes] = useState<RecipeStageTypeDto[]>([]);
 

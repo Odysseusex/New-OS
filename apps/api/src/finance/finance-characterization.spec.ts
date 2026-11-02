@@ -283,7 +283,7 @@ describe("profit and loss", () => {
     expect(pnl.incomeTax).toBeNull();
     expect(pnl.netProfitStatus).toBe("PRELIMINARY");
     expect(pnl.notConfigured).toContain("INCOME_TAX");
-    expect(pnl.costingMethod).toBe("средневзвешенная стоимость закупок; ингредиенты — по цене из номенклатуры");
+    expect(pnl.costingMethod).toContain("сырьё — скользящая средневзвешенная по приёмкам");
   });
 
   it("the dashboard's net profit carries the same status as the P&L", async () => {

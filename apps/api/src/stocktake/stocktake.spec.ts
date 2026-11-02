@@ -1,4 +1,4 @@
-import { PaymentMethod, WriteOffReason } from "@bakery-os/shared";
+import { PaymentMethod, ProductType, Role, WriteOffReason } from "@bakery-os/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { createIsolatedOrg, destroyOrg, IsolatedOrg } from "../../test/support/isolated-org";
 import { buildServices } from "../../test/support/services";
@@ -205,5 +205,45 @@ describe("stocktake", () => {
     await services.stocktake.submit(org.user, st.id);
     await services.stocktake.approve(org.user, st.id);
     expect(await level(p)).toBe(7); // diff 0 → nothing applied
+  });
+});
+
+describe("a raw-material count, done blind", () => {
+  it("counts only the chosen product type", async () => {
+    const flour = await product(5, { type: "RAW_MATERIAL", unit: "KG" });
+    const st = await services.stocktake.create(org.user, { locationId: org.storeId, productType: ProductType.RAW_MATERIAL });
+    try {
+      expect(st.lines.length).toBeGreaterThan(0);
+      expect(st.lines.map((l) => l.productId)).toContain(flour);
+      const types = await prisma.product.findMany({ where: { id: { in: st.lines.map((l) => l.productId) } }, select: { type: true } });
+      expect(new Set(types.map((t) => t.type))).toEqual(new Set(["RAW_MATERIAL"]));
+    } finally {
+      await services.stocktake.cancel(org.user, st.id, "проверка типа");
+    }
+  });
+
+  it("whoever counts does not see the books until it is sent for review; whoever approves always does", async () => {
+    const flour = await product(8, { type: "RAW_MATERIAL", unit: "KG" });
+    const counter = { ...org.user, role: Role.WAREHOUSE_STAFF, locationId: org.storeId };
+    const st = await services.stocktake.create(counter, { locationId: org.storeId, productType: ProductType.RAW_MATERIAL });
+    try {
+      expect(st.blind).toBe(true);
+      const line = st.lines.find((l) => l.productId === flour)!;
+      expect(line.systemQuantity).toBeNull();
+      const saved = await services.stocktake.updateLine(counter, st.id, line.id, { countedQuantity: 7.5 });
+      expect([saved.systemQuantity, saved.difference, saved.differenceValue]).toEqual([null, null, null]);
+      const again = await services.stocktake.findOne(counter, st.id);
+      expect([again.shortageValue, again.surplusValue]).toEqual([0, 0]);
+
+      const owner = await services.stocktake.findOne(org.user, st.id);
+      expect(owner.blind).toBe(false);
+      expect(owner.lines.find((l) => l.productId === flour)).toMatchObject({ systemQuantity: 8, countedQuantity: 7.5, difference: -0.5 });
+
+      const review = await services.stocktake.submit(counter, st.id);
+      expect(review.blind).toBe(false);
+      expect(review.lines.find((l) => l.productId === flour)?.difference).toBe(-0.5);
+    } finally {
+      await services.stocktake.cancel(org.user, st.id, "проверка слепого пересчёта");
+    }
   });
 });

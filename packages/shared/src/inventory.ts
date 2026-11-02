@@ -89,7 +89,16 @@ export interface StockMovementDto {
   // Annulled as part of an erroneous receipt/write-off pair (StockVoid): it
   // stays in the history but is no longer counted as a loss anywhere.
   voided?: boolean;
+  // Cost of one unit stamped on the movement when it happened, and that cost ×
+  // the quantity moved; null when no cost was known then.
+  unitCost?: number | null;
+  costAmount?: number | null;
+  // Sale and return rows: what the buyer paid per unit.
+  salePrice?: number | null;
 }
+
+// Most rows the history returns at once (a period or a product narrows it).
+export const STOCK_MOVEMENTS_MAX = 1000;
 
 export interface CreateStockMovementRequestDto {
   locationId?: string;
@@ -122,9 +131,14 @@ export interface StockBatchRequestDto {
   // Write-offs only.
   writeOffReason?: WriteOffReason;
   // `quantity` is the amount received/written off, or — for an adjustment — the
-  // quantity actually on the shelf.
-  lines: { productId: string; quantity: number }[];
+  // quantity actually on the shelf. `unitPrice`: receipts of raw materials only —
+  // what one unit cost; it moves the product's weighted average.
+  lines: { productId: string; quantity: number; unitPrice?: number }[];
 }
+
+// A receipt price this far from the current average (either way) is asked about
+// before saving: a slipped digit would otherwise move the average for months.
+export const PRICE_DEVIATION_WARNING = 0.5;
 
 export interface StockBatchResultDto {
   created: number;

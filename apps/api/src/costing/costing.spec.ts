@@ -210,7 +210,7 @@ describe("inventory losses", () => {
     try {
       const st = await services.stocktake.create(org.user, { locationId: org.storeId });
       const line = st.lines.find((l) => l.productId === flourId)!;
-      await services.stocktake.updateLine(org.user, st.id, line.id, { countedQuantity: line.systemQuantity - 3 });
+      await services.stocktake.updateLine(org.user, st.id, line.id, { countedQuantity: line.systemQuantity! - 3 });
       await services.stocktake.submit(org.user, st.id);
       await services.stocktake.approve(org.user, st.id);
       const after = await pnl();

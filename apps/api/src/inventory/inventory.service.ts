@@ -4,6 +4,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { CATEGORY_WITH_PARENT, categoryLabel } from "../common/category-label";
 import {
   BusinessContextMovementRowDto,
+  CostBasis,
   isStockLow,
   StockBatchResultDto,
   StockLevelDto,
@@ -13,6 +14,8 @@ import {
   WriteOffReason,
 } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
+import { round2 } from "../common/money";
+import { recordRawMaterialPurchase } from "../costing/raw-material-average";
 import { decrementStockOrThrow } from "../common/stock-guard";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
 import { ReceiveStockDto } from "./dto/receive-stock.dto";
@@ -113,6 +116,7 @@ export class InventoryService {
     user: AuthenticatedUser,
     requestedLocationId?: string,
     limit = 50,
+    filter: { productId?: string; type?: StockMovementType; from?: Date; to?: Date } = {},
   ): Promise<StockMovementDto[]> {
     const locationId = resolveLocationScope(user, requestedLocationId);
 
@@ -120,27 +124,67 @@ export class InventoryService {
       where: {
         organizationId: user.organizationId,
         ...(locationId ? { locationId } : {}),
+        ...(filter.productId ? { productId: filter.productId } : {}),
+        ...(filter.type ? { type: filter.type as PrismaStockMovementType } : {}),
+        ...(filter.from || filter.to ? { createdAt: { ...(filter.from ? { gte: filter.from } : {}), ...(filter.to ? { lte: filter.to } : {}) } } : {}),
       },
       include: { location: true, product: true, createdBy: true, voidLine: { select: { voidId: true } } },
       orderBy: { createdAt: "desc" },
       take: limit,
     });
 
-    return movements.map((m) => ({
-      id: m.id,
-      locationId: m.locationId,
-      locationName: m.location.name,
-      productId: m.productId,
-      productName: m.product.name,
-      unit: m.product.unit as Unit,
-      type: m.type as StockMovementType,
-      quantity: m.quantity.toNumber(),
-      reason: m.reason,
-      writeOffReason: m.writeOffReason as WriteOffReason | null,
-      createdByName: m.createdBy.fullName,
-      createdAt: m.createdAt.toISOString(),
-      voided: m.voidLine !== null,
-    }));
+    // What the buyer paid per unit, for the sale and return rows: the average
+    // over that document's lines of the product (a markdown line and a full-price
+    // line of the same loaf are two lines of one sale).
+    const saleIds = [...new Set(movements.map((m) => m.saleId).filter((id): id is string => id !== null))];
+    const returnIds = [...new Set(movements.map((m) => m.saleReturnId).filter((id): id is string => id !== null))];
+    const [saleItems, returnItems] = await Promise.all([
+      saleIds.length
+        ? this.prisma.saleItem.findMany({ where: { saleId: { in: saleIds } }, select: { saleId: true, productId: true, quantity: true, subtotal: true } })
+        : [],
+      returnIds.length
+        ? this.prisma.saleReturnItem.findMany({
+            where: { saleReturnId: { in: returnIds } },
+            select: { saleReturnId: true, productId: true, quantity: true, subtotal: true },
+          })
+        : [],
+    ]);
+    const priceTotals = new Map<string, { quantity: number; amount: number }>();
+    const addPrice = (key: string, quantity: number, amount: number) => {
+      const entry = priceTotals.get(key) ?? { quantity: 0, amount: 0 };
+      entry.quantity += quantity;
+      entry.amount += amount;
+      priceTotals.set(key, entry);
+    };
+    for (const i of saleItems) addPrice(`s:${i.saleId}:${i.productId}`, i.quantity.toNumber(), i.subtotal.toNumber());
+    for (const i of returnItems) addPrice(`r:${i.saleReturnId}:${i.productId}`, i.quantity.toNumber(), i.subtotal.toNumber());
+    const salePriceOf = (key: string): number | null => {
+      const entry = priceTotals.get(key);
+      return entry && entry.quantity > 0 ? round2(entry.amount / entry.quantity) : null;
+    };
+
+    return movements.map((m) => {
+      const quantity = m.quantity.toNumber();
+      const unitCost = m.unitCost ? m.unitCost.toNumber() : null;
+      return {
+        id: m.id,
+        locationId: m.locationId,
+        locationName: m.location.name,
+        productId: m.productId,
+        productName: m.product.name,
+        unit: m.product.unit as Unit,
+        type: m.type as StockMovementType,
+        quantity,
+        reason: m.reason,
+        writeOffReason: m.writeOffReason as WriteOffReason | null,
+        createdByName: m.createdBy.fullName,
+        createdAt: m.createdAt.toISOString(),
+        voided: m.voidLine !== null,
+        unitCost: unitCost === null ? null : round2(unitCost),
+        costAmount: unitCost === null ? null : round2(Math.abs(quantity) * unitCost),
+        salePrice: m.saleId ? salePriceOf(`s:${m.saleId}:${m.productId}`) : m.saleReturnId ? salePriceOf(`r:${m.saleReturnId}:${m.productId}`) : null,
+      };
+    });
   }
 
   async receive(user: AuthenticatedUser, dto: ReceiveStockDto): Promise<StockMovementDto> {
@@ -157,6 +201,7 @@ export class InventoryService {
       reason: dto.reason ?? "Поступление",
       type: PrismaStockMovementType.RECEIPT,
       delta: dto.quantity,
+      unitPrice: dto.unitPrice,
     });
   }
 
@@ -250,6 +295,13 @@ export class InventoryService {
         throw new BadRequestException(`Полуфабрикат появляется на складе только из производства — приход вручную невозможен: ${semi.join(", ")}`);
       }
     }
+    const priced = dto.lines.filter((l) => l.unitPrice !== undefined);
+    if (priced.length > 0 && kind !== "receive") throw new BadRequestException("Цена указывается только при приёмке");
+    const notRaw = priced.filter((l) => products.find((p) => p.id === l.productId)?.type !== "RAW_MATERIAL");
+    if (notRaw.length > 0) {
+      throw new BadRequestException(`Цена закупки при приёмке указывается только для сырья: ${notRaw.map((l) => products.find((p) => p.id === l.productId)?.name).join(", ")}`);
+    }
+    const priceOf = new Map(priced.map((l) => [l.productId, l.unitPrice as number]));
     const byId = new Map(products.map((p) => [p.id, p]));
     const type =
       kind === "receive"
@@ -284,6 +336,10 @@ export class InventoryService {
       const movementIds: string[] = [];
       for (const line of lines) {
         const product = byId.get(line.productId)!;
+        // A priced raw material moves its average (before its stock is added) and
+        // enters at what it cost; everything else at the cost read above.
+        const unitPrice = priceOf.get(line.productId);
+        if (unitPrice !== undefined) await recordRawMaterialPurchase(tx, line.productId, line.quantity, unitPrice);
         const created = await tx.stockMovement.create({
           data: {
             organizationId,
@@ -294,7 +350,9 @@ export class InventoryService {
             reason: dto.reason?.trim() || (kind === "receive" ? "Поступление" : undefined),
             writeOffReason: kind === "write-off" ? dto.writeOffReason : undefined,
             createdById: user.id,
-            ...this.costing.fields(costs.get(line.productId)),
+            ...(unitPrice !== undefined
+              ? { unitCost: unitPrice, costBasis: CostBasis.PURCHASE_ACTUAL }
+              : this.costing.fields(costs.get(line.productId))),
           },
           select: { id: true },
         });
@@ -342,6 +400,7 @@ export class InventoryService {
       type: PrismaStockMovementType;
       delta: number;
       insufficientMessage?: string;
+      unitPrice?: number;
     },
   ): Promise<StockMovementDto> {
     const product = await this.prisma.product.findFirst({
@@ -350,11 +409,16 @@ export class InventoryService {
     if (!product) {
       throw new NotFoundException("Товар не найден");
     }
+    if (params.unitPrice !== undefined && product.type !== "RAW_MATERIAL") {
+      throw new BadRequestException("Цена закупки при приёмке указывается только для сырья");
+    }
 
     const movement = await this.prisma.$transaction(async (tx) => {
       // Valued when it happens, so a write-off or count difference keeps the
       // cost it had that day (see CostingService).
       const costs = await this.costing.snapshotCosts(user.organizationId, [params.productId], tx);
+      // A priced raw material moves its average (before its stock is added).
+      if (params.unitPrice !== undefined) await recordRawMaterialPurchase(tx, params.productId, params.quantity, params.unitPrice);
       const created = await tx.stockMovement.create({
         data: {
           organizationId: user.organizationId,
@@ -365,7 +429,9 @@ export class InventoryService {
           reason: params.reason,
           writeOffReason: params.writeOffReason,
           createdById: user.id,
-          ...this.costing.fields(costs.get(params.productId)),
+          ...(params.unitPrice !== undefined
+            ? { unitCost: params.unitPrice, costBasis: CostBasis.PURCHASE_ACTUAL }
+            : this.costing.fields(costs.get(params.productId))),
         },
         include: { location: true, product: true, createdBy: true },
       });

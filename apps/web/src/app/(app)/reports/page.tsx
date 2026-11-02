@@ -38,14 +38,10 @@ import {
 } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { periodRange, type PeriodValue } from "@/lib/period";
+import { PeriodPicker } from "@/components/period-picker";
 import { downloadCsv } from "@/lib/csv";
-import {
-  addDaysKey,
-  endOfZonedDay,
-  firstOfMonthKey,
-  startOfZonedDay,
-  zonedDateKey,
-} from "@/lib/reporting-period";
+import { addDaysKey } from "@/lib/reporting-period";
 import { formatAverage, formatDayKey, formatMoney, formatQuantity } from "@/lib/format";
 import { SalesTrendChart, type TrendMetric } from "@/components/sales-trend-chart";
 import {
@@ -65,46 +61,8 @@ type ReportKey =
   | "hr"
   | "stock"
   | "promotions";
-type Period = "today" | "yesterday" | "7d" | "30d" | "month" | "90d" | "year";
-
-// Ordered shortest to longest, which is the order they are rendered in.
-// «Вчера» exists because it is the single most asked-for report — the owner is
-// asked for yesterday's numbers the next morning, and computing them from a
-// 7-day total is not something anyone should have to do by hand. The two long
-// ones exist so the month-by-month history below has more than one month in it.
-const PERIOD_LABELS: Record<Period, string> = {
-  today: "Сегодня",
-  yesterday: "Вчера",
-  "7d": "7 дней",
-  "30d": "30 дней",
-  month: "Этот месяц",
-  "90d": "3 месяца",
-  year: "Год",
-};
-
-// Built on Almaty calendar days, not the browser's, because that is how the
-// server buckets every report — see lib/reporting-period.ts. Asked for in the
-// browser's own days instead, «Вчера» came back spanning two of the server's.
-function periodRange(period: Period): { from: Date; to: Date } {
-  const today = zonedDateKey();
-  const startDaysBack = (days: number) => startOfZonedDay(addDaysKey(today, -days));
-
-  if (period === "yesterday") {
-    // The only period that does not end "now": yesterday is a closed day, so
-    // its window has to close at the end of it. Left running to now, it would
-    // silently include today's sales and stop being yesterday at all.
-    const key = addDaysKey(today, -1);
-    return { from: startOfZonedDay(key), to: endOfZonedDay(key) };
-  }
-
-  const to = new Date();
-  if (period === "7d") return { from: startDaysBack(6), to };
-  if (period === "30d") return { from: startDaysBack(29), to };
-  if (period === "month") return { from: startOfZonedDay(firstOfMonthKey(today)), to };
-  if (period === "90d") return { from: startDaysBack(89), to };
-  if (period === "year") return { from: startDaysBack(364), to };
-  return { from: startOfZonedDay(today), to };
-}
+// Every tab but Динамика shares one period: a preset or any range of days.
+type Period = PeriodValue;
 
 export default function ReportsPage() {
   const { user } = useAuth();
@@ -169,25 +127,12 @@ export default function ReportsPage() {
       </div>
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {/* Динамика carries its own period control (it needs 3 месяца and a
               custom range, which the other tabs don't), so the shared one
               would just contradict it. */}
           {activeReport !== "stock" && activeReport !== "trend" && (
-            <div className="flex flex-wrap items-center gap-1 rounded-xl bg-surface-muted p-1">
-              {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setPeriod(p)}
-                  className={clsx(
-                    "rounded-lg px-3.5 py-1.5 text-sm font-medium transition",
-                    period === p ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground",
-                  )}
-                >
-                  {PERIOD_LABELS[p]}
-                </button>
-              ))}
-            </div>
+            <PeriodPicker value={period} onChange={setPeriod} />
           )}
 
           {isOrgWide && (
