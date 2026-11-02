@@ -103,7 +103,7 @@ export function CrmShell({ children }: { children: React.ReactNode }) {
           <aside className={`crm-side${menuOpen ? " open" : ""}`} aria-label="Меню CRM">
             <div className="crm-ws">
               <img src="/crm/avatar.jpg" alt="" className="crm-logo-img" />
-              <span>Ар Амир</span>
+              <span>Ar Amir</span>
               <span className="crm-mini" style={{ marginLeft: 2 }}>
                 CRM
               </span>
@@ -159,7 +159,7 @@ export function CrmShell({ children }: { children: React.ReactNode }) {
                 <Menu size={18} />
               </button>
               <img src="/crm/avatar.jpg" alt="" className="crm-logo-img" />
-              <span style={{ fontWeight: 600 }}>Ар Амир CRM</span>
+              <span style={{ fontWeight: 600 }}>Ar Amir CRM</span>
             </div>
             {children}
           </div>
