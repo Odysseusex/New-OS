@@ -101,8 +101,8 @@ export function CrmShell({ children }: { children: React.ReactNode }) {
         <div className="crm-shell">
           {menuOpen && <div className="crm-scrim" onClick={() => setMenuOpen(false)} aria-hidden="true" />}
           <aside className={`crm-side${menuOpen ? " open" : ""}`} aria-label="Меню CRM">
+            <img src="/crm/avatar.jpg" alt="" className="crm-hero" />
             <div className="crm-ws">
-              <img src="/crm/avatar.jpg" alt="" className="crm-logo crm-logo-img" />
               <span>Ар Амир</span>
               <span className="crm-mini" style={{ marginLeft: 2 }}>
                 CRM

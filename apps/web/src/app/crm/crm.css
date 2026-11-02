@@ -61,6 +61,7 @@
 .crm.light .crm-side { border-right: 1px solid var(--line); }
 .crm-ws { display: flex; align-items: center; gap: 10px; padding: 6px 10px 10px; font-weight: 600; font-size: 15px; }
 .crm-logo { width: 24px; height: 24px; border-radius: 7px; background: var(--orange); color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.crm-hero { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 12px; display: block; margin-bottom: 8px; }
 .crm-logo-img { width: 28px; height: 28px; border-radius: 8px; object-fit: cover; }
 .crm-grp { font-size: 12.5px; font-weight: 500; color: var(--tx3); padding: 16px 10px 4px; }
 .crm-si { display: flex; align-items: center; gap: 10px; min-height: 32px; padding: 0 10px; border-radius: 7px; color: var(--tx2); font-weight: 500; border: 0; background: transparent; width: 100%; text-align: left; cursor: pointer; }
