@@ -101,6 +101,9 @@ export interface LoyaltyMemberDto {
   consents: LoyaltyConsentStateDto;
   // Points held now (expired ones excluded).
   pointsBalance: number;
+  // Points already given but not usable yet (the welcome bonus waits for the next
+  // day): how many and from when. Null when nothing is waiting.
+  pointsPending: { points: number; from: string } | null;
   // Linked to the customer Telegram bot (messages also need the TELEGRAM consent).
   telegramLinked: boolean;
   createdAt: string;
@@ -227,6 +230,13 @@ export const LOYALTY_LIST_LIMIT = 200;
 export interface LoyaltySettingsDto {
   enabled: boolean;
   firstPurchaseEarnPercent: number;
+  // Fixed welcome bonus (₸ = points) for the first purchase, INSTEAD of the
+  // first-purchase percent when > 0; 0 = the percent applies.
+  welcomeBonusPoints: number;
+  // Usable from the start of this many days after the purchase (Almaty); 0 = at once.
+  welcomeBonusDelayDays: number;
+  // Usable for this many days from then.
+  welcomeBonusDays: number;
   earnPercent: number;
   maxRedeemPercent: number;
   pointsLifetimeMonths: number;
@@ -244,6 +254,9 @@ export type UpdateLoyaltySettingsRequestDto = Partial<LoyaltySettingsDto>;
 export const DEFAULT_LOYALTY_SETTINGS: LoyaltySettingsDto = {
   enabled: false,
   firstPurchaseEarnPercent: 5,
+  welcomeBonusPoints: 0,
+  welcomeBonusDelayDays: 1,
+  welcomeBonusDays: 10,
   earnPercent: 1,
   maxRedeemPercent: 30,
   pointsLifetimeMonths: 12,
@@ -283,6 +296,8 @@ export interface LoyaltyPointsEntryDto {
   type: LoyaltyPointsEntryType;
   points: number;
   expiresAt: string | null;
+  // Set when the points cannot be spent before this moment (welcome bonus).
+  availableAt: string | null;
   saleId: string | null;
   ratePercent: number | null;
   reason: string | null;

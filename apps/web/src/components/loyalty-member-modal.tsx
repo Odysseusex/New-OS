@@ -286,6 +286,11 @@ export function LoyaltyMemberModal({
               <h3 className="text-sm font-semibold text-foreground">Баллы</h3>
               <p className="text-lg font-semibold text-foreground">{formatPoints(member.pointsBalance)}</p>
             </div>
+            {member.pointsPending && (
+              <p className="mb-2 text-right text-xs text-muted">
+                Ещё {formatPoints(member.pointsPending.points)} — доступны с {formatDate(member.pointsPending.from)}
+              </p>
+            )}
             {member.pointsHistory.length > 0 ? (
               <div className="max-h-64 overflow-auto rounded-xl border border-border">
                 <table className="w-full text-sm">
@@ -312,7 +317,10 @@ export function LoyaltyMemberModal({
                           {e.points > 0 ? "+" : "−"}
                           {formatPoints(Math.abs(e.points))}
                         </td>
-                        <td className="whitespace-nowrap px-3 py-2 text-muted">{e.expiresAt ? formatDate(e.expiresAt) : ""}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-muted">
+                          {e.expiresAt ? formatDate(e.expiresAt) : ""}
+                          {e.availableAt && <span className="block text-xs">доступны с {formatDate(e.availableAt)}</span>}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

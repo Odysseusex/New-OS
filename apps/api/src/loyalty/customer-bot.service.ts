@@ -261,12 +261,15 @@ export class CustomerBotService implements OnModuleInit {
     for (const link of links) {
       const rows = await this.prisma.loyaltyPointsEntry.findMany({ where: { memberId: link.memberId } });
       const position = pointsPosition(
-        rows.map((r) => ({ id: r.id, type: r.type, points: r.points.toNumber(), expiresAt: r.expiresAt, createdAt: r.createdAt })),
+        rows.map((r) => ({ id: r.id, type: r.type, points: r.points.toNumber(), expiresAt: r.expiresAt, availableAt: r.availableAt, createdAt: r.createdAt })),
         new Date(),
       );
       lines.push(`На счёте: <b>${pointsFmt.format(position.available)}</b> баллов (1 балл = 1 ₸).`);
-      const soon = position.liveLots[0];
+      const soon = position.liveLots.find((l) => !l.availableAt || l.availableAt.getTime() <= Date.now());
       if (soon) lines.push(`${pointsFmt.format(soon.remaining)} из них сгорят ${dateFmt.format(soon.expiresAt)}.`);
+      if (position.pending > 0 && position.pendingFrom) {
+        lines.push(`Ещё ${pointsFmt.format(position.pending)} бонусных баллов можно будет потратить с ${dateFmt.format(position.pendingFrom)}.`);
+      }
     }
     return { text: lines.join("\n"), extra: MENU };
   }
@@ -332,7 +335,7 @@ export class CustomerBotService implements OnModuleInit {
       try {
         const rows = await this.prisma.loyaltyPointsEntry.findMany({ where: { memberId } });
         const position = pointsPosition(
-          rows.map((r) => ({ id: r.id, type: r.type, points: r.points.toNumber(), expiresAt: r.expiresAt, createdAt: r.createdAt })),
+          rows.map((r) => ({ id: r.id, type: r.type, points: r.points.toNumber(), expiresAt: r.expiresAt, availableAt: r.availableAt, createdAt: r.createdAt })),
           now,
         );
         const soon = position.liveLots.filter((l) => l.expiresAt.getTime() - now.getTime() <= EXPIRY_NOTICE_DAYS * DAY);

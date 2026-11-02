@@ -156,6 +156,24 @@ export class UpdateLoyaltySettingsDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
+  @Max(1_000_000)
+  welcomeBonusPoints?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(30)
+  welcomeBonusDelayDays?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  welcomeBonusDays?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
   @Max(100)
   earnPercent?: number;
 

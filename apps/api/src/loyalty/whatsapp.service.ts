@@ -396,12 +396,15 @@ export class WhatsAppService {
     for (const memberId of memberIds) {
       const rows = await this.prisma.loyaltyPointsEntry.findMany({ where: { memberId } });
       const position = pointsPosition(
-        rows.map((r) => ({ id: r.id, type: r.type, points: r.points.toNumber(), expiresAt: r.expiresAt, createdAt: r.createdAt })),
+        rows.map((r) => ({ id: r.id, type: r.type, points: r.points.toNumber(), expiresAt: r.expiresAt, availableAt: r.availableAt, createdAt: r.createdAt })),
         new Date(),
       );
       lines.push(`На счёте: ${pointsFmt.format(position.available)} баллов (1 балл = 1 ₸).`);
-      const soon = position.liveLots[0];
+      const soon = position.liveLots.find((l) => !l.availableAt || l.availableAt.getTime() <= Date.now());
       if (soon) lines.push(`${pointsFmt.format(soon.remaining)} из них сгорят ${dateFmt.format(soon.expiresAt)}.`);
+      if (position.pending > 0 && position.pendingFrom) {
+        lines.push(`Ещё ${pointsFmt.format(position.pending)} бонусных баллов можно будет потратить с ${dateFmt.format(position.pendingFrom)}.`);
+      }
     }
     return lines.join("\n");
   }

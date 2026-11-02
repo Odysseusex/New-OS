@@ -4,7 +4,9 @@
 // Every positive entry is a lot with its own expiry date. A negative entry
 // consumes lots earliest-expiring first: an EXPIRE entry consumes the lots that
 // had expired when it was written, anything else (a purchase, a return, a
-// correction) consumes lots still alive at that moment. Amounts are handled in
+// correction) consumes lots still alive and already usable at that moment (a lot
+// with `availableAt` in the future — the welcome bonus — waits; a merge moves it
+// as it is, and a return of the purchase that earned it takes it back). Amounts are handled in
 // whole тиын so no float noise accumulates.
 
 export interface PointsRow {
@@ -12,11 +14,13 @@ export interface PointsRow {
   type: string;
   points: number;
   expiresAt: Date | null;
+  availableAt?: Date | null;
   createdAt: Date;
 }
 
 export interface PointsLot {
   expiresAt: Date;
+  availableAt: Date | null;
   remaining: number; // in points (₸), 2 decimals
 }
 
@@ -25,7 +29,10 @@ export interface PointsPosition {
   available: number;
   // Expired but not yet written off by an EXPIRE entry.
   dueToExpire: number;
-  // Lots still alive, earliest expiry first (what a merge carries over).
+  // Given but not usable yet (availableAt in the future), and when the first becomes usable.
+  pending: number;
+  pendingFrom: Date | null;
+  // Lots still alive, usable or waiting, earliest expiry first (what a merge carries over).
   liveLots: PointsLot[];
 }
 
@@ -33,9 +40,10 @@ const tiyn = (value: number) => Math.round(value * 100);
 
 export function pointsPosition(rows: PointsRow[], now: Date): PointsPosition {
   const ordered = [...rows].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
-  const lots: { expiresAt: Date; remaining: number }[] = [];
+  const lots: { expiresAt: Date; availableAt: Date | null; remaining: number }[] = [];
+  const usableAt = (l: { availableAt: Date | null }, at: number) => !l.availableAt || l.availableAt.getTime() <= at;
 
-  const consume = (amount: number, eligible: (lot: { expiresAt: Date }) => boolean) => {
+  const consume = (amount: number, eligible: (lot: { expiresAt: Date; availableAt: Date | null }) => boolean) => {
     let left = amount;
     const candidates = lots.filter((l) => l.remaining > 0 && eligible(l)).sort((a, b) => a.expiresAt.getTime() - b.expiresAt.getTime());
     for (const lot of candidates) {
@@ -51,25 +59,31 @@ export function pointsPosition(rows: PointsRow[], now: Date): PointsPosition {
     const amount = tiyn(row.points);
     if (amount > 0) {
       // A positive entry always carries an expiry (database CHECK).
-      lots.push({ expiresAt: row.expiresAt ?? new Date(8.64e15), remaining: amount });
+      lots.push({ expiresAt: row.expiresAt ?? new Date(8.64e15), availableAt: row.availableAt ?? null, remaining: amount });
       continue;
     }
     const at = row.createdAt.getTime();
     let left =
       row.type === "EXPIRE"
         ? consume(-amount, (l) => l.expiresAt.getTime() <= at)
-        : consume(-amount, (l) => l.expiresAt.getTime() > at);
+        : row.type === "MERGE_OUT" || row.type === "EARN_REVERSAL"
+          ? consume(-amount, (l) => l.expiresAt.getTime() > at)
+          : consume(-amount, (l) => l.expiresAt.getTime() > at && usableAt(l, at));
     // Defensive: never leave a consumption unaccounted for.
     if (left > 0) left = consume(left, () => true);
   }
 
   const t = now.getTime();
   const live = lots.filter((l) => l.remaining > 0 && l.expiresAt.getTime() > t).sort((a, b) => a.expiresAt.getTime() - b.expiresAt.getTime());
+  const ready = live.filter((l) => usableAt(l, t));
+  const waiting = live.filter((l) => !usableAt(l, t));
   const due = lots.filter((l) => l.remaining > 0 && l.expiresAt.getTime() <= t).reduce((sum, l) => sum + l.remaining, 0);
   return {
-    available: live.reduce((sum, l) => sum + l.remaining, 0) / 100,
+    available: ready.reduce((sum, l) => sum + l.remaining, 0) / 100,
     dueToExpire: due / 100,
-    liveLots: live.map((l) => ({ expiresAt: l.expiresAt, remaining: l.remaining / 100 })),
+    pending: waiting.reduce((sum, l) => sum + l.remaining, 0) / 100,
+    pendingFrom: waiting.length ? new Date(Math.min(...waiting.map((l) => l.availableAt!.getTime()))) : null,
+    liveLots: live.map((l) => ({ expiresAt: l.expiresAt, availableAt: l.availableAt, remaining: l.remaining / 100 })),
   };
 }
 
