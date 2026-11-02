@@ -211,6 +211,7 @@ import type {
   FinancialPeriodDto,
   PeriodPreflightDto,
   PeriodSnapshotDto,
+  CostCorrectionDto,
   ReceivePurchaseOrderRequestDto,
   RevisePurchaseOrderRequestDto,
   DocumentHistoryEntryDto,
@@ -787,6 +788,8 @@ export const api = {
       request<PeriodSnapshotDto>(withQuery(`/finance/periods/${year}/${month}/snapshot`, { version: version ? String(version) : undefined })),
     snapshots: (year: number, month: number) =>
       request<PeriodSnapshotDto[]>(`/finance/periods/${year}/${month}/snapshots`),
+    costCorrection: (year: number, month: number) =>
+      request<CostCorrectionDto>(`/finance/periods/${year}/${month}/cost-correction`),
     close: (year: number, month: number) =>
       request<PeriodSnapshotDto>(`/finance/periods/${year}/${month}/close`, { method: "POST" }),
     reopen: (year: number, month: number, reason: string) =>

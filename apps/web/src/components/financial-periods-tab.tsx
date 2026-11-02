@@ -15,6 +15,7 @@ import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { Modal } from "@/components/modal";
 import { PnlLadder } from "@/components/pnl-ladder";
+import { CostCorrectionModal } from "@/components/cost-correction-modal";
 
 const MONTHS_RU = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
 
@@ -37,6 +38,7 @@ export function FinancialPeriodsTab() {
   const [check, setCheck] = useState<{ period: FinancialPeriodDto; result: PeriodPreflightDto } | null>(null);
   const [snapshot, setSnapshot] = useState<PeriodSnapshotDto | null>(null);
   const [reopening, setReopening] = useState<FinancialPeriodDto | null>(null);
+  const [correcting, setCorrecting] = useState<FinancialPeriodDto | null>(null);
   const [reason, setReason] = useState("");
 
   const load = useCallback(() => {
@@ -129,6 +131,11 @@ export function FinancialPeriodsTab() {
                         Снимок
                       </button>
                     )}
+                    {new Date(p.from).getTime() <= Date.now() && (
+                      <button onClick={() => setCorrecting(p)} className="text-accent hover:underline">
+                        Себестоимость
+                      </button>
+                    )}
                     {p.status === FinancialPeriodStatus.OPEN && new Date(p.to).getTime() < Date.now() && (
                       <>
                         <button disabled={busy === key(p)} onClick={() => runCheck(p)} className="text-accent hover:underline disabled:opacity-50">
@@ -205,6 +212,8 @@ export function FinancialPeriodsTab() {
           </div>
         </Modal>
       )}
+
+      {correcting && <CostCorrectionModal year={correcting.year} month={correcting.month} onClose={() => setCorrecting(null)} />}
 
       {snapshot && (
         <Modal

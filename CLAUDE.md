@@ -989,8 +989,18 @@ Decided by the owner on 03.11.2026, so not to be re-asked:
 - **Till checks are never edited**: a wrong check = a return + a new check (owner's choice after weighing an
   owner-only edit). Still open for the financiers: VAT/tax regime; list of business directions and the base for
   allocating common costs.
-- Plan: step 3 = a read-only preview of the correction for a month; step 4 = the correcting entry at close (needs
-  the owner's yes before `main`).
+- **Step 3 BUILT — preview** (Финансы → Периоды → «Себестоимость» on any started month; `GET
+  /finance/periods/:y/:m/cost-correction`, read-only). Engine: `finance/cost-correction/replay.ts` (pure, tested) +
+  `cost-correction.service.ts` (loads flows). Walks ALL history to the month's end, network-wide (transfers skipped):
+  a purchase order's receipt is taken from the ORDER as corrected (at `receivedAt`), not its movements; invoice and
+  priced manual receipts (`PURCHASE_ACTUAL`) move the average; sales = COGS, write-offs/adjustments = losses,
+  production consumption = internal (its recomputed value becomes the batch cost, plus the untracked part = stamped
+  ingredient cost − consumption stamps), restocked returns/surpluses reduce what they belong to; consignment and
+  untracked products are not walked; annulled movements left out. Stock with no history behind it (level − Σ
+  movements > 0) enters at the very start at the «starting average» = first average-based stamp, else card price;
+  the same value is used for unpriced stock before any average is known. Outflows with no stamp are counted, not
+  corrected. Only the month's outflows are corrected (recomputed − stamped).
+- Step 4 = the correcting entry at close (needs the owner's yes before `main`).
 
 ## «Скачать все данные» (backup / disaster recovery) — built
 

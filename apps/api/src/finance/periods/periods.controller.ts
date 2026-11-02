@@ -6,6 +6,7 @@ import { Roles } from "../../common/decorators/roles.decorator";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { AuthenticatedUser } from "../../auth/auth.types";
 import { FinancialPeriodsService } from "./periods.service";
+import { CostCorrectionService } from "../cost-correction/cost-correction.service";
 import { IsString, MinLength } from "class-validator";
 
 class ReopenPeriodDto {
@@ -18,7 +19,10 @@ class ReopenPeriodDto {
 @Roles(...FINANCE_VIEW_ROLES)
 @Controller("finance/periods")
 export class FinancialPeriodsController {
-  constructor(private periods: FinancialPeriodsService) {}
+  constructor(
+    private periods: FinancialPeriodsService,
+    private costCorrection: CostCorrectionService,
+  ) {}
 
   @Get()
   list(@CurrentUser() user: AuthenticatedUser) {
@@ -32,6 +36,17 @@ export class FinancialPeriodsController {
     @Param("month", ParseIntPipe) month: number,
   ) {
     return this.periods.preflight(user.organizationId, year, month);
+  }
+
+  // The month-end cost correction: the one recorded at close, or what it
+  // would be if the month were closed now (writes nothing).
+  @Get(":year/:month/cost-correction")
+  costCorrectionOf(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("year", ParseIntPipe) year: number,
+    @Param("month", ParseIntPipe) month: number,
+  ) {
+    return this.costCorrection.forMonth(user.organizationId, year, month);
   }
 
   @Get(":year/:month/snapshot")

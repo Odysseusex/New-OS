@@ -93,3 +93,40 @@ export interface ProductionCostComponentStatusDto {
   status: "ACTIVE" | "NOT_CONFIGURED";
   amount: number | null;
 }
+
+// ── Month-end cost correction (method «Б», see apps/api/src/finance/cost-correction) ──
+
+export interface CostCorrectionLineDto {
+  productId: string;
+  productName: string;
+  unit: string;
+  quantityOut: number;
+  cogsStamped: number;
+  cogsRecomputed: number;
+  lossStamped: number;
+  lossRecomputed: number;
+  // Raw materials and semi-finished goods consumed by production: internal,
+  // they reach the P&L through the finished goods sold.
+  productionStamped: number;
+  productionRecomputed: number;
+  // cost of goods sold + losses: recomputed − stamped (positive = more expense).
+  difference: number;
+  openingAverage: number | null;
+  closingAverage: number | null;
+  unstampedLines: number;
+}
+
+export interface CostCorrectionDto {
+  year: number;
+  month: number;
+  // PREVIEW = computed now, nothing written; POSTED = recorded at the month's close.
+  status: "PREVIEW" | "POSTED";
+  version: number | null;
+  computedAt: string;
+  postedByName: string | null;
+  cogsCorrection: number;
+  lossCorrection: number;
+  totalCorrection: number;
+  unstampedLines: number;
+  lines: CostCorrectionLineDto[];
+}

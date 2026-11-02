@@ -15,6 +15,7 @@ import { AccountingPolicyService } from "./accounting-policy.service";
 import { AccountingPolicyController } from "./accounting-policy.controller";
 import { FinancialEventProjector } from "./events/projector";
 import { FinancialPeriodsService } from "./periods/periods.service";
+import { CostCorrectionService } from "./cost-correction/cost-correction.service";
 import { PeriodGuard } from "./periods/period-guard";
 import { BalanceService } from "./balance/balance.service";
 import { BalanceController } from "./balance/balance.controller";
@@ -31,6 +32,7 @@ import { FinancialPeriodsController } from "./periods/periods.controller";
     AccountingPolicyService,
     FinancialEventProjector,
     FinancialPeriodsService,
+    CostCorrectionService,
     PeriodGuard,
     BalanceService,
   ],
@@ -53,6 +55,6 @@ import { FinancialPeriodsController } from "./periods/periods.controller";
   // balances) instead of re-querying the same tables.
   // FinanceCategoriesService is exported for TelegramModule's "add expense"
   // wizard, which needs the EXPENSE-kind category list for its picker.
-  exports: [CashMovementsService, FinanceService, CashAccountsService, FinanceCategoriesService, FinancialEventProjector, FinancialPeriodsService, PeriodGuard, BalanceService, AccountingPolicyService],
+  exports: [CashMovementsService, FinanceService, CashAccountsService, FinanceCategoriesService, FinancialEventProjector, FinancialPeriodsService, CostCorrectionService, PeriodGuard, BalanceService, AccountingPolicyService],
 })
 export class FinanceModule {}
