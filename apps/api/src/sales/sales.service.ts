@@ -537,6 +537,7 @@ export class SalesService {
           cost: round2(v.cost),
           margin: round2(margin),
           marginPercent: v.revenue > 0 && v.hasCostData ? round2((margin / v.revenue) * 100) : null,
+          markupPercent: v.cost > 0 && v.hasCostData ? round2((margin / v.cost) * 100) : null,
           revenueShare: totalRevenue > 0 && v.hasCostData ? round2((v.revenue / totalRevenue) * 100) : 0,
           // Share of margin is meaningless when the period lost money overall:
           // dividing by a negative total flips every sign and would label the

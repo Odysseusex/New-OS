@@ -10,6 +10,7 @@ import { FinancialPeriodsService } from "./periods/periods.service";
 import { CreateExpenseDto } from "./dto/create-expense.dto";
 import { RecordExpensePaymentDto } from "./dto/record-expense-payment.dto";
 import { GetPnlQueryDto } from "./dto/get-pnl-query.dto";
+import { CashFlowMonthlyQueryDto, CashFlowOperationsQueryDto } from "./dto/cash-flow-monthly-query.dto";
 import { GetProductPnlQueryDto } from "./dto/get-product-pnl-query.dto";
 
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -73,6 +74,18 @@ export class FinanceController {
     const frozen = month && (await this.periods.frozenSection<CashFlowDto>(user.organizationId, month.year, month.month, "cashFlow"));
     if (frozen) return { ...frozen.data, frozen: frozen.info };
     return this.financeService.getCashFlow(user.organizationId, new Date(query.from), new Date(query.to));
+  }
+
+  // ДДС with a column per month: from/to are months, "YYYY-MM".
+  @Get("cash-flow/monthly")
+  getCashFlowMonthly(@CurrentUser() user: AuthenticatedUser, @Query() query: CashFlowMonthlyQueryDto) {
+    return this.financeService.getCashFlowMonthly(user.organizationId, query.fromMonth, query.toMonth);
+  }
+
+  // The movements behind one cell of that report.
+  @Get("cash-flow/operations")
+  getCashFlowOperations(@CurrentUser() user: AuthenticatedUser, @Query() query: CashFlowOperationsQueryDto) {
+    return this.financeService.getCashFlowOperations(user.organizationId, query.section, query.label, query.fromMonth, query.toMonth);
   }
 
   @Get("break-even")

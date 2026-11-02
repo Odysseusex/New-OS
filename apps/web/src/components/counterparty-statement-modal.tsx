@@ -6,7 +6,7 @@ import type { CounterpartyStatementDto } from "@bakery-os/shared";
 import { DebtCounterpartyKind, statementConclusion } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
-import { downloadCsv } from "@/lib/csv";
+import { downloadTable } from "@/lib/export-table";
 import { formatMoneyPrecise } from "@/lib/format";
 import { firstOfMonthKey, zonedDateKey } from "@/lib/reporting-period";
 
@@ -74,7 +74,7 @@ function exportCsv(s: CounterpartyStatementDto) {
     ["", "Обороты за период", s.turnoverDebit, s.turnoverCredit, ""],
     ["", `Сальдо на ${keyLabel(s.toKey)}`, "", "", s.closing],
   ];
-  downloadCsv(`akt-sverki-${s.counterparty.name}-${s.fromKey}-${s.toKey}.csv`, ["Дата", "Документ", "Дебет", "Кредит", "Сальдо"], rows);
+  downloadTable(`akt-sverki-${s.counterparty.name}-${s.fromKey}-${s.toKey}.csv`, ["Дата", "Документ", "Дебет", "Кредит", "Сальдо"], rows);
 }
 
 export function CounterpartyStatementModal({
@@ -129,7 +129,7 @@ export function CounterpartyStatementModal({
             className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted disabled:opacity-50"
           >
             <Download className="h-4 w-4" strokeWidth={1.75} />
-            CSV
+            Excel
           </button>
           <button
             type="button"

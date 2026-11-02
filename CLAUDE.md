@@ -917,12 +917,31 @@ From the financiers' ТЗ (iiko-style). `apps/api/src/debts/` (read-only service
 - Card / акт сверки (`GET /debts/statement`): our side, debit = raises what they owe us. Customer: sale debit, payments
   credit (a paid-at-sale amount with no cash movement counts on the sale day), a return credit + its refund debit.
   Supplier: delivery/invoice/consignment day credit, payments and consignment returns debit, reversal credit.
-  Balance > 0 = they owe us. The act prints from the browser (PDF via «Сохранить как PDF»), CSV alongside; .xlsx is ТЗ
-  stage 2. Organization requisites for its header: Настройки → «Реквизиты организации» (OWNER/ADMIN).
+  Balance > 0 = they owe us. The act prints from the browser (PDF via «Сохранить как PDF»), Excel alongside (see «Excel exports»). Organization requisites for its header: Настройки → «Реквизиты организации» (OWNER/ADMIN).
 - Overdue receivables: a live notification per customer (`OVERDUE_RECEIVABLE`, critical after 30 days) and two cards on
   the dashboard for `DEBT_VIEW_ROLES`. `/finance?tab=…` opens a tab directly.
 - Not built: advances (авансы), a return of an UNPAID consignment shipment reducing the debt (returns refund only paid
   money today — changing that touches money/ledger, needs the owner's yes), supplier returns.
+
+## Excel exports, ДДС by month, markup (built, ТЗ stage 2)
+
+- **Every «Excel» button writes a real .xlsx** (numbers are numbers, bold frozen header, widths, title lines). One call:
+  `downloadTable(filename, headers, rows, {sheetName, titleLines})` in `apps/web/src/lib/export-table.ts` — same shape the
+  old `downloadCsv` had, which stays only as the fallback if the writer chunk fails to load. The writer is `lib/xlsx.ts`:
+  an .xlsx is a zip of XML, written by hand with `fflate` (no SheetJS/exceljs — old advisories, heavy bundle), imported
+  lazily on click. Strings that look like numbers («1234.50», «12») become numbers; `007`, a БИН (12 digits), phones, «—» stay
+  text. Pass `{v, fmt: "percent"|"money"|"int", bold}` for a typed cell. Verified by opening the files in LibreOffice.
+- **ДДС by month** (Отчёты → ДДС → «По месяцам», `GET /finance/cash-flow/monthly?fromMonth&toMonth` as `YYYY-MM`, ≤ 24
+  months, no future month): `events/cash-flow-monthly.ts` runs the ordinary period statement (`buildCashFlowFromEvents`)
+  once per Almaty calendar month and joins the lines by article, so it is the period report's own figures, not a second way
+  of counting. Months split at Almaty midnight (`common/month-ranges.ts`); the current month stops at now. A month's opening
+  is everything before it, so it equals the previous closing EXCEPT where an account's opening balance is dated inside the
+  month — shown as its own row («в т.ч. начальные остатки счетов…»), never as an inflow. Click a cell → the movements behind
+  it (`GET /finance/cash-flow/operations`, ≤ 500, newest first). Live from events, not the frozen snapshot: writes into a
+  closed month are refused, so they cannot differ.
+- **Наценка %** = gross profit / cost (`markupPercent`, null when cost is zero or unknown), next to Маржа/Маржинальность in
+  Финансы → P&L by product, Отчёты (P&L, Рентабельность), the product P&L card and the техкарта card.
+- Not built: PDF export of reports other than the акт сверки (print → «Сохранить как PDF» works on Отчёты), ДДС by week/day.
 
 ## «Скачать все данные» (backup / disaster recovery) — built
 

@@ -543,6 +543,7 @@ export class RecipesService {
     const unitCost = yieldQuantity > 0 ? totalIngredientCost / yieldQuantity : 0;
     const productPrice = recipe.product.price.toNumber();
     const marginPercent = productPrice > 0 ? ((productPrice - unitCost) / productPrice) * 100 : null;
+    const markupPercent = productPrice > 0 && unitCost > 0 ? ((productPrice - unitCost) / unitCost) * 100 : null;
 
     const doughWeightExcludedIngredients: string[] = [];
     const itemWeightsKg = new Map<string, number>();
@@ -631,6 +632,7 @@ export class RecipesService {
           : null,
       unitCost,
       marginPercent,
+      markupPercent,
       isActive: recipe.isActive,
       doughWeightKg: resolvedDoughWeightKg,
       doughWeightExcludedIngredients,

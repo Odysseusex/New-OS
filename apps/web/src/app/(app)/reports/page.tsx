@@ -40,7 +40,8 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { periodRange, type PeriodValue } from "@/lib/period";
 import { PeriodPicker } from "@/components/period-picker";
-import { downloadCsv } from "@/lib/csv";
+import { CashFlowMonthly } from "@/components/cash-flow-monthly";
+import { downloadTable } from "@/lib/export-table";
 import { addDaysKey } from "@/lib/reporting-period";
 import { formatAverage, formatDayKey, formatMoney, formatQuantity } from "@/lib/format";
 import { SalesTrendChart, type TrendMetric } from "@/components/sales-trend-chart";
@@ -95,6 +96,7 @@ export default function ReportsPage() {
 
   const [activeReport, setActiveReport] = useState<ReportKey>(availableReports[0]?.key ?? "sales");
   const [period, setPeriod] = useState<Period>("30d");
+  const [cashFlowMode, setCashFlowMode] = useState<"period" | "months">("period");
   const [locationFilter, setLocationFilter] = useState("");
   const [locations, setLocations] = useState<LocationDto[]>([]);
 
@@ -131,7 +133,24 @@ export default function ReportsPage() {
           {/* Динамика carries its own period control (it needs 3 месяца and a
               custom range, which the other tabs don't), so the shared one
               would just contradict it. */}
-          {activeReport !== "stock" && activeReport !== "trend" && (
+          {activeReport === "cashflow" && (
+            <div className="flex gap-1 rounded-xl bg-surface-muted p-1">
+              {([["period", "За период"], ["months", "По месяцам"]] as const).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setCashFlowMode(mode)}
+                  className={clsx(
+                    "rounded-lg px-3 py-1.5 text-sm font-medium transition",
+                    cashFlowMode === mode ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {activeReport !== "stock" && activeReport !== "trend" && !(activeReport === "cashflow" && cashFlowMode === "months") && (
             <PeriodPicker value={period} onChange={setPeriod} />
           )}
 
@@ -169,7 +188,7 @@ export default function ReportsPage() {
           <ProfitabilityReport period={period} locationId={locationFilter} />
         )}
         {activeReport === "dynamics" && <DynamicsReport period={period} locationId={locationFilter} />}
-        {activeReport === "cashflow" && <CashFlowReport period={period} />}
+        {activeReport === "cashflow" && (cashFlowMode === "months" ? <CashFlowMonthly /> : <CashFlowReport period={period} />)}
         {activeReport === "trend" && <CustomerSalesTrendCard locationId={locationFilter} />}
         {activeReport === "quality" && <QualityReport period={period} locationId={locationFilter} />}
         {activeReport === "hr" && <HrReport period={period} locationId={locationFilter} />}
@@ -217,7 +236,7 @@ function ReportCard({
             className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted transition hover:bg-surface-muted hover:text-foreground print:hidden"
           >
             <Download className="h-3.5 w-3.5" strokeWidth={1.75} />
-            CSV
+            Excel
           </button>
         )}
       </div>
@@ -253,16 +272,17 @@ function FinanceReport({ period, locationId }: { period: Period; locationId: str
     <ReportCard
       title="Прибыли и убытки"
       onExport={() =>
-        downloadCsv(
+        downloadTable(
           `pnl-${period}.csv`,
-          ["Товар", "Продано", "Выручка", "Себестоимость", "Валовая прибыль", "Маржа %"],
+          ["Товар", "Продано", "Выручка", "Себестоимость", "Валовая прибыль", "Маржа %", "Наценка %"],
           pnl.byProduct.map((p) => [
             p.productName,
             formatQuantity(p.quantitySold),
             p.revenue.toFixed(2),
             p.hasCostData ? p.cogs.toFixed(2) : "нет данных",
             p.grossProfit.toFixed(2),
-            p.marginPercent !== null ? p.marginPercent.toFixed(1) : "—",
+            p.marginPercent !== null ? { v: p.marginPercent, fmt: "percent" as const } : "—",
+            p.markupPercent !== null ? { v: p.markupPercent, fmt: "percent" as const } : "—",
           ]),
         )
       }
@@ -277,7 +297,7 @@ function FinanceReport({ period, locationId }: { period: Period; locationId: str
         ]}
       />
       <ReportTable
-        columns={["Товар", "Продано", "Выручка", "Себестоимость", "Прибыль", "Маржа"]}
+        columns={["Товар", "Продано", "Выручка", "Себестоимость", "Прибыль", "Маржа", "Наценка"]}
         rows={pnl.byProduct.map((p) => [
           p.productName,
           formatQuantity(p.quantitySold),
@@ -285,6 +305,7 @@ function FinanceReport({ period, locationId }: { period: Period; locationId: str
           p.hasCostData ? formatMoney(p.cogs) : "нет данных",
           formatMoney(p.grossProfit),
           p.marginPercent !== null ? `${p.marginPercent.toFixed(1)}%` : "—",
+          p.markupPercent !== null ? `${p.markupPercent.toFixed(1)}%` : "—",
         ])}
       />
     </ReportCard>
@@ -339,7 +360,7 @@ function SalesReport({
         <ReportCard
           title="По точкам"
           onExport={() =>
-            downloadCsv(
+            downloadTable(
               `sales-by-location-${period}.csv`,
               ["Точка", "Выручка", "Продаж", "Средний чек"],
               report.byLocation.map((l) => [
@@ -370,7 +391,7 @@ function SalesReport({
       <ReportCard
         title="По товарам"
         onExport={() =>
-          downloadCsv(
+          downloadTable(
             `sales-by-product-${period}.csv`,
             ["Товар", "Продано", "Выручка", "Из них по уценке", "Потери на уценке"],
             report.byProduct.map((p) => [
@@ -399,7 +420,7 @@ function SalesReport({
         <ReportCard
           title="Уценка по товарам"
           onExport={() =>
-            downloadCsv(
+            downloadTable(
               `sales-markdown-${period}.csv`,
               ["Товар", "Продано по уценке", "Выручка по уценке", "Потери на уценке"],
               report.markdownByProduct.map((p) => [
@@ -427,7 +448,7 @@ function SalesReport({
         <ReportCard
           title="Под реализацию по товарам"
           onExport={() =>
-            downloadCsv(
+            downloadTable(
               `sales-consignment-${period}.csv`,
               ["Товар", "Поставщик", "Продано", "Сумма"],
               report.consignmentByProduct.map((p) => [
@@ -536,7 +557,7 @@ function SalesDemandCard({ period, locationId }: { period: Period; locationId: s
       onExport={
         demand
           ? () =>
-              downloadCsv(
+              downloadTable(
                 `sales-demand-${period}.csv`,
                 [groupLabel, "Продано", "Среднее/день", "Среднее/продажу", "Выручка"],
                 rows.map((r) => [
@@ -729,7 +750,7 @@ function CustomerSalesTrendCard({ locationId }: { locationId: string }) {
       onExport={
         trend
           ? () =>
-              downloadCsv(
+              downloadTable(
                 `customer-trend-${trend.customerName}-${period}.csv`,
                 ["Дата", "Отгружено", "Сумма", "Продаж"],
                 trend.points.map((p) => [p.date, formatQuantity(p.quantity), p.revenue.toFixed(2), p.salesCount]),
@@ -883,7 +904,7 @@ function QualityReport({ period, locationId }: { period: Period; locationId: str
     <ReportCard
       title="Качество и списания"
       onExport={() =>
-        downloadCsv(
+        downloadTable(
           `quality-${period}.csv`,
           ["Причина", "Количество", "Сумма"],
           summary.byReason.map((r) => [WRITE_OFF_REASON_LABELS_RU[r.reason], formatQuantity(r.quantity), r.value.toFixed(2)]),
@@ -918,7 +939,7 @@ function HrReport({ period, locationId }: { period: Period; locationId: string }
     <ReportCard
       title="KPI сотрудников"
       onExport={() =>
-        downloadCsv(
+        downloadTable(
           `hr-kpi-${period}.csv`,
           ["Сотрудник", "Продаж", "Выручка", "Партий", "Единиц произведено"],
           kpi.employees.map((e) => [
@@ -958,7 +979,7 @@ function StockReport({ locationId, isOrgWide }: { locationId: string; isOrgWide:
     <ReportCard
       title="Остатки склада"
       onExport={() =>
-        downloadCsv(
+        downloadTable(
           "stock-levels.csv",
           [...(isOrgWide ? ["Точка"] : []), "Товар", "Остаток", "Мин. остаток", "Низкий остаток"],
           levels.map((l) => [
@@ -1037,7 +1058,7 @@ function PromotionsReport({ period }: { period: Period }) {
         <ReportCard
           title={report.promotionName}
           onExport={() =>
-            downloadCsv(
+            downloadTable(
               `promotion-${report.promotionId}-${period}.csv`,
               ["Товар", "Количество", "Скидка", "Выручка после скидки"],
               report.topProducts.map((p) => [
@@ -1198,7 +1219,7 @@ function ProfitabilityReport({ period, locationId }: { period: Period; locationI
       <ReportCard
         title="По товарам"
         onExport={() =>
-          downloadCsv(
+          downloadTable(
             `profitability-${period}.csv`,
             [
               "Товар",
@@ -1207,6 +1228,7 @@ function ProfitabilityReport({ period, locationId }: { period: Period; locationI
               "Себестоимость",
               "Маржинальная прибыль",
               "Маржинальность, %",
+              "Наценка, %",
               "Доля в выручке, %",
               "Доля в прибыли, %",
               "ABC",
@@ -1218,6 +1240,7 @@ function ProfitabilityReport({ period, locationId }: { period: Period; locationI
               r.hasCostData ? r.cost.toFixed(2) : "",
               r.hasCostData ? r.margin.toFixed(2) : "",
               r.marginPercent !== null ? r.marginPercent.toFixed(1) : "",
+              r.markupPercent !== null ? r.markupPercent.toFixed(1) : "",
               r.hasCostData ? r.revenueShare.toFixed(1) : "",
               r.hasCostData ? r.marginShare.toFixed(1) : "",
               r.abcClass ?? "",
@@ -1233,6 +1256,7 @@ function ProfitabilityReport({ period, locationId }: { period: Period; locationI
             "Себестоимость",
             "Маржинальная прибыль",
             "Маржинальность",
+            "Наценка",
             "Доля в прибыли",
             "ABC",
           ]}
@@ -1243,6 +1267,7 @@ function ProfitabilityReport({ period, locationId }: { period: Period; locationI
             r.hasCostData ? formatMoney(r.cost) : "нет данных",
             r.hasCostData ? formatMoney(r.margin) : "—",
             r.marginPercent !== null ? `${r.marginPercent.toFixed(1)}%` : "—",
+            r.markupPercent !== null ? `${r.markupPercent.toFixed(1)}%` : "—",
             r.hasCostData ? `${r.marginShare.toFixed(1)}%` : "—",
             r.abcClass ?? "—",
           ])}
@@ -1333,7 +1358,7 @@ function DynamicsReport({ period, locationId }: { period: Period; locationId: st
       <ReportCard
         title="Выручка по дням недели"
         onExport={() =>
-          downloadCsv(
+          downloadTable(
             `revenue-by-weekday-${period}.csv`,
             ["День недели", "Выручка", "Продаж", "Таких дней в периоде", "В среднем за день"],
             report.byWeekday.map((d) => [
@@ -1441,7 +1466,7 @@ function SalesHistoryTable({ report, period }: { report: SalesDynamicsDto; perio
     <ReportCard
       title="История продаж"
       onExport={() =>
-        downloadCsv(
+        downloadTable(
           `sales-history-${grouping}-${period}.csv`,
           ["Период", "Выручка", "Продаж", "Средний чек"],
           visible.map((r) => [
@@ -1568,7 +1593,7 @@ function CashFlowReport({ period }: { period: Period }) {
       <ReportCard
         title="Выплаты по категориям"
         onExport={() =>
-          downloadCsv(
+          downloadTable(
             `cash-outflow-by-category-${period}.csv`,
             ["Категория", "Сумма", "Операций"],
             report.outflowByCategory.map((c) => [c.categoryName, c.amount.toFixed(2), c.count]),

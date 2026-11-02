@@ -95,6 +95,6 @@ export function buildCashFlowFromEvents(events: FinancialEvent[], from: Date, to
 }
 
 // The category when the source has one («Аренда»), else what the event is.
-function lineLabel(e: FinancialEvent): string {
+export function lineLabel(e: FinancialEvent): string {
   return e.categoryName ?? e.description;
 }

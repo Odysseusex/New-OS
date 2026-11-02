@@ -161,6 +161,8 @@ export interface RecipeDto {
   // totalIngredientCost.
   unitCost: number;
   marginPercent: number | null;
+  // Наценка: (price − unit cost) / unit cost, in percent. Null without a price or cost.
+  markupPercent?: number | null;
   isActive: boolean;
   // Derived, not stored: sum of ingredient quantities that are in
   // weight-compatible units (KG/G/L, treating 1L water as ~1kg). Null if no

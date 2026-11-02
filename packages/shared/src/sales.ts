@@ -429,6 +429,8 @@ export interface ProductProfitabilityRowDto {
   // Маржинальность, % of revenue. Null when revenue is zero (undefined
   // ratio), which happens for a product given away at a 100% markdown.
   marginPercent: number | null;
+  // Наценка, % — margin over cost. Null when the cost is zero or unknown.
+  markupPercent: number | null;
   // Share of the period's total revenue and total margin, in percent. The
   // two differ, and the gap between them is the point of this whole report.
   revenueShare: number;

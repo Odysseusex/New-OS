@@ -9,6 +9,8 @@ import { monthRange } from "../common/reporting-period";
 import { signedCashAmount } from "./events/cash-events";
 import { expenseAccrualEffect, isCategoryFullyClassified, pnlLineOfTreatment } from "./events/rules";
 import { buildCashFlowFromEvents } from "./events/cash-flow-statement";
+import { buildCashFlowMonthly, cashFlowOperations } from "./events/cash-flow-monthly";
+import { monthRanges } from "../common/month-ranges";
 import { round2, round3 } from "../common/money";
 import {
   BreakEvenDto,
@@ -17,6 +19,9 @@ import {
   CASH_MOVEMENT_TYPE_LABELS_RU,
   CashFlowDto,
   CashFlowLineDto,
+  CashFlowMonthlyDto,
+  CashFlowOperationsDto,
+  CashSection,
   CASH_MOVEMENT_INFLOW_TYPES,
   CashAccountType,
   CashMovementType,
@@ -422,6 +427,7 @@ export class FinanceService {
           cogs: 0,
           grossProfit: 0,
           marginPercent: null,
+          markupPercent: null,
           hasCostData: true,
         };
         byProductMap.set(productId, row);
@@ -480,6 +486,7 @@ export class FinanceService {
           cogs,
           grossProfit: round2(revenue - cogs),
           marginPercent: revenue > 0 ? ((revenue - cogs) / revenue) * 100 : null,
+          markupPercent: p.hasCostData && cogs > 0 ? ((revenue - cogs) / cogs) * 100 : null,
         };
       })
       .sort((a, b) => b.revenue - a.revenue);
@@ -714,6 +721,7 @@ export class FinanceService {
       cogs,
       grossProfit: round2(revenue - cogs),
       marginPercent: revenue > 0 ? ((revenue - cogs) / revenue) * 100 : null,
+      markupPercent: hasCostData && cogs > 0 ? ((revenue - cogs) / cogs) * 100 : null,
       hasCostData,
       salesQuantity: round3(salesQuantity),
       salesRevenue: round2(salesRevenue),
@@ -1334,6 +1342,31 @@ export class FinanceService {
         .sort((a, b) => b.amount - a.amount),
       uncategorizedOutflow: roundMoney(uncategorizedOutflow),
     };
+  }
+
+  // ДДС with a column per calendar month (Almaty months), `fromMonth`…`toMonth`
+  // inclusive as "YYYY-MM". Live from the events: a closed month's writes are
+  // refused, so what it shows cannot differ from the month's frozen snapshot.
+  async getCashFlowMonthly(organizationId: string, fromMonth: string, toMonth: string): Promise<CashFlowMonthlyDto> {
+    const ranges = monthRanges(fromMonth, toMonth);
+    const events = await this.events.project(organizationId, { upTo: ranges[ranges.length - 1].to });
+    return buildCashFlowMonthly(events, ranges);
+  }
+
+  // The movements behind one cell of the monthly ДДС (or a row's total: pass the
+  // first month as `fromMonth` and the last as `toMonth`).
+  async getCashFlowOperations(
+    organizationId: string,
+    section: CashSection,
+    label: string,
+    fromMonth: string,
+    toMonth: string,
+  ): Promise<CashFlowOperationsDto> {
+    const ranges = monthRanges(fromMonth, toMonth);
+    const from = ranges[0].from;
+    const to = ranges[ranges.length - 1].to;
+    const events = await this.events.project(organizationId, { upTo: to });
+    return cashFlowOperations(events, section, label, from, to);
   }
 
   async getDashboard(organizationId: string, from?: Date, to?: Date): Promise<FinanceDashboardDto> {

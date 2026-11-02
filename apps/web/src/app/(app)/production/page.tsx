@@ -524,6 +524,7 @@ export default function ProductionPage() {
                     )}
                   >
                     Маржа {recipe.marginPercent.toFixed(0)}%
+                    {recipe.markupPercent !== null && recipe.markupPercent !== undefined && ` · Наценка ${recipe.markupPercent.toFixed(0)}%`}
                   </span>
                 )}
               </div>

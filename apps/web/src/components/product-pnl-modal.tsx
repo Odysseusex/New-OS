@@ -84,6 +84,7 @@ export function ProductPnlModal({
             <Stat label="Себестоимость" value={detail.hasCostData ? formatMoney(detail.cogs) : "—"} tone={detail.hasCostData ? undefined : "warn"} />
             <Stat label="Валовая прибыль" value={formatMoney(detail.grossProfit)} />
             <Stat label="Маржинальность" value={percent(detail.marginPercent)} />
+            <Stat label="Наценка" value={percent(detail.markupPercent)} />
             <Stat label="Средняя цена" value={detail.averagePrice === null ? "—" : formatMoneyPrecise(detail.averagePrice)} />
             <Stat
               label="Себестоимость единицы (средняя)"

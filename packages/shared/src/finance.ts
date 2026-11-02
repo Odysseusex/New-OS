@@ -292,6 +292,9 @@ export interface ProductPnLDto {
   cogs: number;
   grossProfit: number;
   marginPercent: number | null;
+  // Наценка: gross profit over cost, in percent. Null without a cost (nothing
+  // to divide by) or when the cost is unknown.
+  markupPercent: number | null;
   hasCostData: boolean;
 }
 
@@ -759,6 +762,77 @@ export interface CashFlowReconciliationDto {
   difference: number;
   reconciles: boolean;
 }
+
+// ДДС by calendar month: rows are the articles (grouped by kind of activity),
+// columns the months, so a quarter or a year reads at a glance. Built from the
+// same events as the period statement above, month by month — a month's
+// closing is the next month's opening.
+export interface CashFlowMonthDto {
+  // "YYYY-MM"
+  key: string;
+  // The month as an Almaty-day range (the last month stops at now).
+  from: string;
+  to: string;
+  openingBalance: number;
+  // Account opening balances DATED inside this month: part of its opening, not
+  // an inflow — and the reason its opening may differ from the previous
+  // month's closing (the account did not exist in the books before).
+  openingDeclared: number;
+  closingBalance: number;
+  totalInflow: number;
+  totalOutflow: number;
+  netFlow: number;
+  // Own-account transfers net to zero across the business; shown so a month's
+  // closing can be rebuilt by hand from the figures on the page.
+  internalNet: number;
+}
+
+export interface CashFlowMonthCellDto {
+  inflow: number;
+  outflow: number;
+  count: number;
+}
+
+export interface CashFlowMonthlyLineDto {
+  label: string;
+  months: CashFlowMonthCellDto[];
+  total: CashFlowMonthCellDto;
+}
+
+export interface CashFlowMonthlySectionDto {
+  section: CashSection;
+  months: { inflow: number; outflow: number; net: number }[];
+  total: { inflow: number; outflow: number; net: number };
+  lines: CashFlowMonthlyLineDto[];
+}
+
+export interface CashFlowMonthlyDto {
+  months: CashFlowMonthDto[];
+  sections: CashFlowMonthlySectionDto[];
+  openingBalance: number;
+  closingBalance: number;
+}
+
+// One money movement behind a cell of the monthly ДДС.
+export interface CashFlowOperationDto {
+  occurredAt: string;
+  description: string;
+  // What the movement came from: «Продажа», «Расход», «Оплата поставщику»…
+  sourceType: string;
+  sourceId: string;
+  // Positive = money in, negative = money out.
+  amount: number;
+}
+
+export interface CashFlowOperationsDto {
+  operations: CashFlowOperationDto[];
+  // More matched than are listed (the list is capped).
+  truncated: boolean;
+  total: number;
+}
+
+export const CASH_FLOW_MONTHS_MAX = 24;
+export const CASH_FLOW_OPERATIONS_MAX = 500;
 
 export interface CashFlowDto {
   from: string;

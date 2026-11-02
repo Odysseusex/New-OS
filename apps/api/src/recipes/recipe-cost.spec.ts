@@ -34,6 +34,7 @@ it("a recipe with 10 % technological loss still costs ingredients ÷ yield, on t
   expect(card.unitCost).toBe(50); // not 200 ÷ (4 × 0.9) = 55.56
   expect(card.unitCost).toBe(costing.get(bread.id)?.unitCost);
   expect(card.marginPercent).toBe(90);
+  expect(card.markupPercent).toBe(900); // price 500 over unit cost 50
   // The percentage is still kept (it helps suggest a yield) — it just does not change the cost.
   expect(card.lossPercent).toBe(10);
 });

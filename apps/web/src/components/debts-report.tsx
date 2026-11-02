@@ -6,7 +6,7 @@ import { ChevronDown, ChevronRight, Download, FileText } from "lucide-react";
 import type { CashAccountDto, DebtCounterpartyRowDto, DebtItemDto, DebtReportDto } from "@bakery-os/shared";
 import { DEBT_AGE_BUCKET_LABELS_RU, DEBT_AGE_BUCKETS, DebtCounterpartyKind, DebtDocumentKind } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
-import { downloadCsv } from "@/lib/csv";
+import { downloadTable } from "@/lib/export-table";
 import { formatMoney } from "@/lib/format";
 import { zonedDateKey } from "@/lib/reporting-period";
 import { RecordDebtPaymentModal } from "@/components/record-debt-payment-modal";
@@ -93,7 +93,7 @@ export function DebtsReport({
 
   function exportCsv() {
     if (!report) return;
-    downloadCsv(
+    downloadTable(
       `${side === "receivables" ? "debitorka" : "kreditorka"}-${report.asOfKey}.csv`,
       ["Контрагент", "БИН/ИИН", "Задолженность", "Просрочено", "Дней просрочки", ...DEBT_AGE_BUCKETS.map((b) => DEBT_AGE_BUCKET_LABELS_RU[b])],
       report.counterparties.map((r) => [r.name, r.bin ?? "", r.outstanding, r.overdue, r.maxOverdueDays || "", ...DEBT_AGE_BUCKETS.map((b) => r.byAge[b])]),
@@ -123,7 +123,7 @@ export function DebtsReport({
             className="flex items-center gap-1.5 rounded-xl border border-border px-3 py-1.5 text-sm font-medium text-foreground transition hover:bg-surface-muted disabled:opacity-50"
           >
             <Download className="h-4 w-4" strokeWidth={1.75} />
-            CSV
+            Excel
           </button>
         </div>
       </div>

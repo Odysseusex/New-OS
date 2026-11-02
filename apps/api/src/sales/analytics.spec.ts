@@ -174,6 +174,7 @@ describe("product profitability", () => {
     expect(earner.cost).toBe(200);
     expect(earner.margin).toBe(800);
     expect(earner.marginPercent).toBe(80);
+    expect(earner.markupPercent).toBe(400); // 800 profit on 200 cost
 
     const thin = rows.find((r) => r.productId === thinId)!;
     expect(thin.quantity).toBe(4);
@@ -181,6 +182,7 @@ describe("product profitability", () => {
     expect(thin.cost).toBe(380);
     expect(thin.margin).toBe(20);
     expect(thin.marginPercent).toBe(5);
+    expect(thin.markupPercent).toBeCloseTo(5.26, 2); // 20 on 380
   });
 
   it("ranks by margin, so volume alone does not put a product on top", async () => {
@@ -220,6 +222,7 @@ describe("product profitability", () => {
     // The tell that it was excluded rather than treated as free money: a zero
     // cost would have made this a 100% margin and given it an ABC class.
     expect(uncostable.marginPercent).toBeNull();
+    expect(uncostable.markupPercent).toBeNull();
     expect(uncostable.abcClass).toBeNull();
     expect(report.revenueWithoutCostData).toBeGreaterThanOrEqual(700);
     expect(report.productsWithoutCostData).toBeGreaterThanOrEqual(1);

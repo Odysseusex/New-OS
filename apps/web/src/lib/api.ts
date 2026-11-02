@@ -1,4 +1,6 @@
 import type {
+  CashFlowMonthlyDto,
+  CashFlowOperationsDto,
   CounterpartyStatementDto,
   DebtCounterpartyKind,
   DebtReportDto,
@@ -892,6 +894,10 @@ export const api = {
       request<MonthlyReportDto>(withQuery("/finance/monthly-report", { year: String(year), month: String(month) })),
     cashFlow: (from: string, to: string) =>
       request<CashFlowDto>(withQuery("/finance/cash-flow", { from, to })),
+    cashFlowMonthly: (fromMonth: string, toMonth: string) =>
+      request<CashFlowMonthlyDto>(withQuery("/finance/cash-flow/monthly", { fromMonth, toMonth })),
+    cashFlowOperations: (q: { section: string; label: string; fromMonth: string; toMonth: string }) =>
+      request<CashFlowOperationsDto>(withQuery("/finance/cash-flow/operations", q)),
     breakEven: (from: string, to: string, locationId?: string) =>
       request<BreakEvenDto>(withQuery("/finance/break-even", { from, to, locationId })),
     plannedBreakEven: (from: string, to: string, locationId?: string) =>

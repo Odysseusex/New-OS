@@ -54,6 +54,8 @@ describe("product P&L detail", () => {
     expect(detail.cogs).toBe(row.cogs);
     expect(detail.grossProfit).toBe(row.grossProfit);
     expect(detail.marginPercent).toBeCloseTo(row.marginPercent!, 6);
+    expect(detail.markupPercent).toBeCloseTo(row.markupPercent!, 6);
+    expect(row.markupPercent).toBeCloseTo((row.grossProfit / row.cogs) * 100, 6);
 
     // 3 × 350 + 2 × 250 − 350 returned; cost 3 × 150 + 2 × 200 − 150 back on the shelf.
     expect(detail.revenue).toBe(1200);

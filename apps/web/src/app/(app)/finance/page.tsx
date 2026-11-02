@@ -66,7 +66,7 @@ import {
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
-import { downloadCsv } from "@/lib/csv";
+import { downloadTable } from "@/lib/export-table";
 import { NewExpenseModal } from "@/components/new-expense-modal";
 import { PeriodPicker } from "@/components/period-picker";
 import { periodLabel, periodRange, type PeriodValue } from "@/lib/period";
@@ -387,16 +387,17 @@ export default function FinancePage() {
 
   function exportPnlCsv() {
     if (!pnl) return;
-    downloadCsv(
+    downloadTable(
       `pnl-${period}.csv`,
-      ["Товар", "Продано", "Выручка", "Себестоимость", "Валовая прибыль", "Маржа %"],
+      ["Товар", "Продано", "Выручка", "Себестоимость", "Валовая прибыль", "Маржа %", "Наценка %"],
       pnl.byProduct.map((p) => [
         p.productName,
         formatQuantity(p.quantitySold),
         p.revenue.toFixed(2),
         p.hasCostData ? p.cogs.toFixed(2) : "нет данных",
         p.grossProfit.toFixed(2),
-        p.marginPercent !== null ? p.marginPercent.toFixed(1) : "—",
+        p.marginPercent !== null ? { v: p.marginPercent, fmt: "percent" as const } : "—",
+        p.markupPercent !== null ? { v: p.markupPercent, fmt: "percent" as const } : "—",
       ]),
     );
   }
@@ -926,7 +927,7 @@ export default function FinancePage() {
                 className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3.5 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted disabled:opacity-50"
               >
                 <Download className="h-4 w-4" strokeWidth={1.75} />
-                CSV
+                Excel
               </button>
             </div>
           </div>
@@ -962,6 +963,7 @@ export default function FinancePage() {
                   <th className="px-5 py-3 text-right font-medium">Себестоимость</th>
                   <th className="px-5 py-3 text-right font-medium">Валовая прибыль</th>
                   <th className="px-5 py-3 text-right font-medium">Маржа</th>
+                  <th className="px-5 py-3 text-right font-medium">Наценка</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -988,11 +990,14 @@ export default function FinancePage() {
                     <td className="px-5 py-3 text-right text-muted">
                       {p.marginPercent !== null ? `${p.marginPercent.toFixed(0)}%` : "—"}
                     </td>
+                    <td className="px-5 py-3 text-right text-muted">
+                      {p.markupPercent !== null ? `${p.markupPercent.toFixed(0)}%` : "—"}
+                    </td>
                   </tr>
                 ))}
                 {(!pnl || pnl.byProduct.length === 0) && (
                   <tr>
-                    <td colSpan={6} className="px-5 py-8 text-center text-sm text-muted">
+                    <td colSpan={7} className="px-5 py-8 text-center text-sm text-muted">
                       Продаж за этот период нет
                     </td>
                   </tr>
