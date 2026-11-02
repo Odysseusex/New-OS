@@ -40,6 +40,7 @@ export const AUDIT_ACTION_GROUPS = {
   classification: ["financeCategory.classification", "cashAccount.adjust"],
   fixedAssets: ["fixedAsset.register", "fixedAsset.terms", "fixedAsset.dispose", "depreciation.run"],
   periods: ["period.close", "period.reopen"],
+  costCorrection: ["costCorrection.record"],
   procurement: ["procurement.cutover", "purchaseOrder.payment", "purchaseOrder.paymentReverse", "purchaseOrder.revise"],
   master: [
     "supplier.update", "supplier.archive", "supplier.restore", "supplier.delete",

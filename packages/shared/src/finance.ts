@@ -303,12 +303,13 @@ export interface ProductPnLDto {
 // Lines whose cost was NOT stamped at the sale are grouped by how the P&L
 // valued them instead: today's cost («CURRENT») or nothing at all («NONE»).
 // «STAMPED» = a stamped cost whose basis was not recorded (older rows).
-export type ProductCostSourceKey = CostBasis | "CURRENT" | "NONE" | "STAMPED";
+export type ProductCostSourceKey = CostBasis | "CURRENT" | "NONE" | "STAMPED" | "COST_CORRECTION";
 
-export const PRODUCT_COST_SOURCE_LABELS_RU: Record<"CURRENT" | "NONE" | "STAMPED", string> = {
+export const PRODUCT_COST_SOURCE_LABELS_RU: Record<"CURRENT" | "NONE" | "STAMPED" | "COST_CORRECTION", string> = {
   CURRENT: "Текущая себестоимость (не зафиксирована при продаже)",
   NONE: "Себестоимость неизвестна",
   STAMPED: "Зафиксирована при продаже",
+  COST_CORRECTION: "Корректировка себестоимости при закрытии месяца",
 };
 
 export interface ProductCostSourceDto {
@@ -396,12 +397,16 @@ export enum InventoryLossKind {
   WRITE_OFF = "WRITE_OFF",
   STOCKTAKE = "STOCKTAKE",
   ADJUSTMENT = "ADJUSTMENT",
+  // The month-end cost correction's part that belongs to losses (written-off
+  // and counted stock valued again at the average it really had).
+  COST_CORRECTION = "COST_CORRECTION",
 }
 
 export const INVENTORY_LOSS_KIND_LABELS_RU: Record<InventoryLossKind, string> = {
   [InventoryLossKind.WRITE_OFF]: "Списания",
   [InventoryLossKind.STOCKTAKE]: "Недостачи и излишки по инвентаризации",
   [InventoryLossKind.ADJUSTMENT]: "Ручные корректировки остатков",
+  [InventoryLossKind.COST_CORRECTION]: "Корректировка себестоимости при закрытии месяца",
 };
 
 export interface InventoryLossLineDto {

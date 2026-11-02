@@ -6,6 +6,7 @@ import { CategoryLike } from "./rules";
 import { purchaseEvents } from "./purchase-events";
 import { fixedAssetEvents } from "./fixed-asset-events";
 import { accrualEvents } from "./accrual-events";
+import { costCorrectionEvents } from "./cost-correction-events";
 import { CostingService } from "../../costing/costing.service";
 import { DbClient, ProjectionScope, scoped } from "./scope";
 export type { DbClient, ProjectionScope } from "./scope";
@@ -37,6 +38,7 @@ export class FinancialEventProjector {
       purchaseEvents(this.prisma, organizationId, opts),
       fixedAssetEvents(this.prisma, organizationId, opts),
       accrualEvents(this.prisma, this.costing, organizationId, opts),
+      costCorrectionEvents(this.prisma, organizationId, opts),
     ]);
     const events = parts.flat();
     // Deterministic order: time, then key. Never insertion order.

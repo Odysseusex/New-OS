@@ -45,6 +45,7 @@ const FIELDS: (keyof ProjectionScope)[] = [
   "invoiceIds",
   "depreciationEntryIds",
   "fixedAssetIds",
+  "costCorrectionIds",
 ];
 
 // True when a queue is open (we are inside a wrapped transaction) and the

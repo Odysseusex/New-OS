@@ -1000,7 +1000,20 @@ Decided by the owner on 03.11.2026, so not to be re-asked:
   movements > 0) enters at the very start at the «starting average» = first average-based stamp, else card price;
   the same value is used for unpriced stock before any average is known. Outflows with no stamp are counted, not
   corrected. Only the month's outflows are corrected (recomputed − stamped).
-- Step 4 = the correcting entry at close (needs the owner's yes before `main`).
+- **Step 4 BUILT — the correction at close.** `FinancialPeriodsService.close()` → after the period is CLOSING (no
+  business write can be dated in it) `CostCorrectionService.record()` stores a `CostCorrection` (migration
+  `20261104120000`, append-only by trigger, `lines` JSON = the per-product figures, next `version` per month) and posts
+  it; THEN the snapshot is taken, so the frozen month includes it. Projected as ONE event per month, LATEST version only
+  (`finance/events/cost-correction-events.ts`, key `costCorrection:{id}`, type `COST_CORRECTION`, dated at the month's
+  last ms): COGS −cogs, INVENTORY_LOSS −loss, INVENTORY −(cogs+loss). A re-close (after reopen) writes version n+1;
+  the old event vanishes and its entry is reversed (scope `costCorrectionIds` names both). The ledger accepts this one
+  event type into a CLOSING period (`event-posting.ts`); reversals stay dated in the open present. The direct P&L adds
+  the same latest corrections whose month ends in the range (`cost-correction/stored.ts`): each product row's COGS
+  moves by its own delta, losses get a line «Корректировка себестоимости при закрытии месяца»
+  (`InventoryLossKind.COST_CORRECTION`); not on a single location's P&L (the average is network-wide); the product
+  drill-down shows it as source `COST_CORRECTION`. Audited `costCorrection.record`. A failed close after the record
+  leaves the correction in place; the next close supersedes it. The CONTROL «Запасы» check still values finished
+  goods at today's recipe (a known difference; the correction makes the BOOK equal the walk's valuation).
 
 ## «Скачать все данные» (backup / disaster recovery) — built
 

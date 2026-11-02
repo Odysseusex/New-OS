@@ -9,7 +9,7 @@ import {
   HARD_DELETE_ROLES,
   Role,
 } from "@bakery-os/shared";
-import type { FinancialPeriodDto, PeriodDiagnosticsDto, PeriodPreflightDto, PeriodSnapshotDto } from "@bakery-os/shared";
+import type { CostCorrectionDto, FinancialPeriodDto, PeriodDiagnosticsDto, PeriodPreflightDto, PeriodSnapshotDto } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney } from "@/lib/format";
@@ -35,7 +35,7 @@ export function FinancialPeriodsTab() {
   const [state, setState] = useState<"loading" | "error" | "ready">("loading");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [check, setCheck] = useState<{ period: FinancialPeriodDto; result: PeriodPreflightDto } | null>(null);
+  const [check, setCheck] = useState<{ period: FinancialPeriodDto; result: PeriodPreflightDto; correction: CostCorrectionDto | null } | null>(null);
   const [snapshot, setSnapshot] = useState<PeriodSnapshotDto | null>(null);
   const [reopening, setReopening] = useState<FinancialPeriodDto | null>(null);
   const [correcting, setCorrecting] = useState<FinancialPeriodDto | null>(null);
@@ -74,7 +74,11 @@ export function FinancialPeriodsTab() {
     setBusy(key(p));
     setError(null);
     try {
-      setCheck({ period: p, result: await api.periods.preflight(p.year, p.month) });
+      const [result, correction] = await Promise.all([
+        api.periods.preflight(p.year, p.month),
+        api.periods.costCorrection(p.year, p.month).catch(() => null),
+      ]);
+      setCheck({ period: p, result, correction });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось выполнить проверку");
     } finally {
@@ -169,6 +173,14 @@ export function FinancialPeriodsTab() {
               </p>
             ))}
             <DiagnosticsList d={check.result.diagnostics} />
+            {check.correction && (
+              <div className="flex items-center justify-between rounded-xl border border-border px-4 py-3 text-sm">
+                <span className="text-muted">Корректировка себестоимости при закрытии</span>
+                <button onClick={() => setCorrecting(check.period)} className="font-semibold text-foreground hover:underline">
+                  {formatMoney(check.correction.totalCorrection)}
+                </button>
+              </div>
+            )}
             <div className="flex justify-end gap-3">
               <button onClick={() => setCheck(null)} className="rounded-xl border border-border px-4 py-2.5 text-sm text-foreground hover:bg-surface-muted">
                 Отмена

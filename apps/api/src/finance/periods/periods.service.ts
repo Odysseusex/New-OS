@@ -24,6 +24,7 @@ import { AccountingPolicyService } from "../accounting-policy.service";
 import { PeriodSectionBuilder } from "./section-builders";
 import { PeriodGuard } from "./period-guard";
 import { pnlFromEvents } from "../events/pnl-from-events";
+import { CostCorrectionService } from "../cost-correction/cost-correction.service";
 
 export const SNAPSHOT_SCHEMA_VERSION = 1;
 // A close that started this long ago and never finished (a crash) may be taken over.
@@ -36,6 +37,7 @@ export class FinancialPeriodsService {
     private finance: FinanceService,
     private events: FinancialEventProjector = new FinancialEventProjector(prisma),
     private policy: AccountingPolicyService = new AccountingPolicyService(prisma),
+    private costCorrection: CostCorrectionService = new CostCorrectionService(prisma),
   ) {}
 
   // Sections contributed by later modules (balance, inventory roll-forward…).
@@ -197,7 +199,11 @@ export class FinancialPeriodsService {
     }
 
     try {
-      // 2. Compute the figures and the findings (outside any long transaction).
+      // 2. The month-end cost correction (method «Б»): recorded and posted
+      //    before the figures are taken, so the frozen month includes it.
+      await this.costCorrection.record(user, year, month);
+
+      // 3. Compute the figures and the findings (outside any long transaction).
       const [payload, diagnostics, mode] = await Promise.all([
         this.buildPayload(organizationId, year, month),
         this.diagnostics(organizationId, year, month),
@@ -208,7 +214,7 @@ export class FinancialPeriodsService {
         throw new BadRequestException("Закрытие остановлено: контрольные проверки нашли расхождения (режим «блокировать»)");
       }
 
-      // 3. Persist the snapshot and flip to CLOSED together.
+      // 4. Persist the snapshot and flip to CLOSED together.
       const created = await this.prisma.$transaction(async (tx) => {
         const period = await tx.financialPeriod.findUniqueOrThrow({
           where: { organizationId_year_month: { organizationId, year, month } },

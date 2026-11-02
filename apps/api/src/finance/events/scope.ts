@@ -19,6 +19,7 @@ export interface ProjectionScope {
   invoiceIds?: string[];
   depreciationEntryIds?: string[];
   fixedAssetIds?: string[];
+  costCorrectionIds?: string[];
 }
 
 // undefined = unscoped (take all); an array (possibly empty) = take exactly those.

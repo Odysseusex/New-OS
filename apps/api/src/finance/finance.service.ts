@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { cogsDeltaOf, correctionsInRange, lossDeltaOf } from "./cost-correction/stored";
 import { CostingService } from "../costing/costing.service";
 import { FinancialEventProjector } from "./events/projector";
 import { PeriodGuard } from "./periods/period-guard";
@@ -475,6 +476,22 @@ export class FinanceService {
       }
     }
 
+    // The month-end cost corrections recorded at close for months inside the
+    // range (network-wide, so not on a single point's P&L): each product's cost
+    // of goods moves by its own correction, losses get one line of their own.
+    const corrections = locationId ? [] : await correctionsInRange(this.prisma, organizationId, from, to);
+    let correctionLoss = 0;
+    let correctionLossLines = 0;
+    for (const correction of corrections) {
+      for (const line of correction.lines) {
+        const cogsDelta = cogsDeltaOf(line);
+        if (cogsDelta !== 0) productRow(line.productId, line.productName).cogs += cogsDelta;
+        const lossDelta = lossDeltaOf(line);
+        if (lossDelta !== 0) correctionLossLines += 1;
+      }
+      correctionLoss += correction.lossAmount;
+    }
+
     const byProduct = Array.from(byProductMap.values())
       .map((p) => {
         const revenue = round2(p.revenue);
@@ -528,6 +545,9 @@ export class FinanceService {
       entry.amount += round2(lossQuantity * unitCost);
       entry.count += 1;
       lossByKind.set(kind, entry);
+    }
+    if (corrections.length > 0 && round2(correctionLoss) !== 0) {
+      lossByKind.set(InventoryLossKind.COST_CORRECTION, { amount: round2(correctionLoss), count: correctionLossLines });
     }
     const inventoryLossLines: InventoryLossLineDto[] = Array.from(lossByKind.entries()).map(([kind, v]) => ({
       kind,
@@ -708,6 +728,18 @@ export class FinanceService {
 
     const quantitySold = round3(salesQuantity - returnsQuantity);
     const revenue = round2(salesRevenue - returnsRevenue);
+    // The month-end cost correction of this product, as on the P&L row.
+    if (!locationId) {
+      let correction = 0;
+      for (const c of await correctionsInRange(this.prisma, organizationId, from, to)) {
+        for (const line of c.lines) if (line.productId === productId) correction += cogsDeltaOf(line);
+      }
+      correction = round2(correction);
+      if (correction !== 0) {
+        salesCogs += correction;
+        sources.set("COST_CORRECTION", { source: "COST_CORRECTION", quantity: 0, cogs: correction });
+      }
+    }
     const cogs = round2(salesCogs - returnsCogs);
     return {
       productId,

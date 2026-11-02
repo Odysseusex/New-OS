@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import {
   AccountingEventStatus,
   FinancialEvent,
+  FinancialEventType,
   JournalDimensions,
   NotPostedReason,
   SYSTEM_ACCOUNT_KEYS,
@@ -259,7 +260,9 @@ export async function postEvents(
     }
 
     const period = await periodOf(occurredAt);
-    if (period.status !== "OPEN") {
+    // A month being closed takes only what its own close posts (the cost
+    // correction): every business write dated in it is refused by PeriodGuard.
+    if (period.status !== "OPEN" && !(period.status === "CLOSING" && event.type === FinancialEventType.COST_CORRECTION)) {
       record(AccountingEventStatus.NOT_POSTED, NotPostedReason.PERIOD_CLOSED, { periodId: period.id });
       summary.notPosted += 1;
       continue;
@@ -362,6 +365,7 @@ const SCOPE_SOURCES: [keyof ProjectionScope, string][] = [
   ["invoiceIds", "Invoice"],
   ["depreciationEntryIds", "DepreciationEntry"],
   ["fixedAssetIds", "FixedAsset"],
+  ["costCorrectionIds", "CostCorrection"],
 ];
 
 async function reverseVanishedSources(

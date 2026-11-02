@@ -518,6 +518,7 @@ model User {
   depreciationEntriesCreated DepreciationEntry[] @relation("DepreciationEntryCreatedBy")
   purchasePaymentsCreated   PurchaseOrderPayment[] @relation("PurchasePaymentCreatedBy")
   purchaseOrderRevisions    PurchaseOrderRevision[] @relation("PurchaseOrderRevisionCreatedBy")
+  costCorrections           CostCorrection[]        @relation("CostCorrectionCreatedBy")
   purchasePaymentsReversed  PurchaseOrderPayment[] @relation("PurchasePaymentReversedBy")
 
   @@unique([organizationId, email])
@@ -1454,6 +1455,30 @@ model PurchaseOrderItem {
   revisionLines   PurchaseOrderRevisionLine[]
 
   @@map("purchase_order_items")
+}
+
+// The month-end cost correction (method «Б», finance/cost-correction) as it was
+// recorded when the month was closed. Append-only (UPDATE rejected by a
+// trigger): closing the month again after a reopen writes the next version, and
+// only the latest version of a month counts (its financial event replaces the
+// earlier one, whose journal entry is reversed). `lines` holds the per-product
+// figures exactly as shown on the screen (CostCorrectionLineDto[]).
+model CostCorrection {
+  id             String   @id @default(cuid())
+  organizationId String
+  year           Int
+  month          Int
+  version        Int
+  cogsAmount     Decimal  @db.Decimal(14, 2)
+  lossAmount     Decimal  @db.Decimal(14, 2)
+  unstampedLines Int      @default(0)
+  lines          Json
+  createdById    String
+  createdBy      User     @relation("CostCorrectionCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime @default(now())
+
+  @@unique([organizationId, year, month, version])
+  @@map("cost_corrections")
 }
 
 // A correction of a RECEIVED order, made inside the document (quantity or price

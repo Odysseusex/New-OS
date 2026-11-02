@@ -117,6 +117,9 @@ export enum FinancialEventType {
   DEPRECIATION = "DEPRECIATION",
   ASSET_DISPOSAL = "ASSET_DISPOSAL",
   OPENING_POSITION = "OPENING_POSITION",
+  // The month-end cost correction recorded at close: cost of goods sold and
+  // losses valued again at the averages they really had (method «Б»).
+  COST_CORRECTION = "COST_CORRECTION",
 }
 
 export interface CashLeg {

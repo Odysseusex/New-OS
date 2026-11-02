@@ -8,7 +8,7 @@ import { api, ApiError } from "@/lib/api";
 import { formatDate, formatMoney, formatMoneyPrecise, formatQuantity } from "@/lib/format";
 
 function sourceLabel(source: ProductCostSourceKey): string {
-  return source in COST_BASIS_LABELS_RU ? COST_BASIS_LABELS_RU[source as CostBasis] : PRODUCT_COST_SOURCE_LABELS_RU[source as "CURRENT" | "NONE" | "STAMPED"];
+  return source in COST_BASIS_LABELS_RU ? COST_BASIS_LABELS_RU[source as CostBasis] : PRODUCT_COST_SOURCE_LABELS_RU[source as "CURRENT" | "NONE" | "STAMPED" | "COST_CORRECTION"];
 }
 
 const percent = (value: number | null) => (value === null ? "—" : `${value.toFixed(1)}%`);

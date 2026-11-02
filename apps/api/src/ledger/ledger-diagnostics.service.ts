@@ -270,6 +270,7 @@ export class LedgerDiagnosticsService {
       { key: "customerPayments", label: "Платежи покупателей и возвраты денег", match: (e) => e.type === T.CUSTOMER_RECEIPT || e.type === T.CUSTOMER_REFUND },
       { key: "expenses", label: "Расходы (начисление и оплата)", match: (e) => e.type === T.EXPENSE_ACCRUAL || e.type === T.EXPENSE_PAYMENT },
       { key: "stockLosses", label: "Списания и результаты инвентаризации", match: (e) => (e.type === T.INVENTORY_LOSS || e.type === T.INVENTORY_GAIN) && !e.unclassified },
+      { key: "costCorrection", label: "Корректировка себестоимости при закрытии месяца", match: (e) => e.type === T.COST_CORRECTION },
       { key: "manualReceipts", label: "Приход на склад без закупочного документа", match: (e) => e.type === T.INVENTORY_GAIN && e.unclassified, note: "Чем оплачен приход — не записано; вторая сторона неизвестна, проводка не выдумывается" },
       { key: "transfers", label: "Переводы между своими счетами", match: (e) => e.type === T.INTERNAL_TRANSFER },
       { key: "fixedAssets", label: "Основные средства (амортизация, выбытие)", match: (e) => e.type === T.DEPRECIATION || e.type === T.ASSET_DISPOSAL },
