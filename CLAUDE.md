@@ -977,6 +977,21 @@ From the financiers' answer: a posted document is corrected INSIDE the document,
   the shelf, anything not RECEIVED. Till checks/sales are never edited (a return is the correction there).
 - Not built: adding/removing lines, changing supplier/location, correcting manual Склад → Приёмка (use Корректировка).
 
+## Month-end cost correction — owner DECISIONS (not built yet; steps 3–4 of the financiers' ТЗ)
+
+Decided by the owner on 03.11.2026, so not to be re-asked:
+- **Method «Б»**: during the month the raw-material average moves after every receipt (as today). At month close the
+  system re-walks the month DAY BY DAY in document-date order (late-entered and corrected receipts in their place) and
+  posts the difference as a SEPARATE correcting entry. Documents are never changed. Not a single monthly average.
+- **One average for the whole network** (not per location) — transfers between points stay at the same price.
+- **Finished goods are recomputed too**, through the recomputed raw-material prices of what actually went into
+  production.
+- **Till checks are never edited**: a wrong check = a return + a new check (owner's choice after weighing an
+  owner-only edit). Still open for the financiers: VAT/tax regime; list of business directions and the base for
+  allocating common costs.
+- Plan: step 3 = a read-only preview of the correction for a month; step 4 = the correcting entry at close (needs
+  the owner's yes before `main`).
+
 ## «Скачать все данные» (backup / disaster recovery) — built
 
 Настройки → «Резервная копия данных» (OWNER only): `GET /api/backup/export` streams the WHOLE database as one JSON
