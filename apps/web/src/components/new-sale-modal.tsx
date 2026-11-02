@@ -2,19 +2,26 @@
 
 import { useEffect, useState } from "react";
 import clsx from "clsx";
-import { Plus, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import type { CustomerDto, LocationDto, ProductDto } from "@bakery-os/shared";
-import { PAYMENT_METHOD_LABELS_RU, PaymentMethod, UNIT_LABELS_RU } from "@bakery-os/shared";
+import { PAYMENT_METHOD_LABELS_RU, PaymentMethod } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
+import { ProductSelect } from "@/components/product-select";
+import { enterNext, withTrailingRow } from "@/lib/keyboard";
+import { SubmitShortcutHint } from "@/components/submit-shortcut-hint";
 import { addDaysKey, zonedDateKey } from "@/lib/reporting-period";
 import { formatMoney } from "@/lib/format";
 
 interface Row {
+  key: number;
   productId: string;
   quantity: string;
   unitPrice: string;
 }
+
+let nextKey = 1;
+const emptyRow = (): Row => ({ key: nextKey++, productId: "", quantity: "", unitPrice: "" });
 
 export function NewSaleModal({
   locations,
@@ -32,7 +39,7 @@ export function NewSaleModal({
   onCreated: () => void;
 }) {
   const [locationId, setLocationId] = useState(fixedLocationId ?? locations[0]?.id ?? "");
-  const [rows, setRows] = useState<Row[]>([{ productId: "", quantity: "1", unitPrice: "" }]);
+  const [rows, setRows] = useState<Row[]>([emptyRow()]);
   const [customerId, setCustomerId] = useState("");
   const [amountPaid, setAmountPaid] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -50,13 +57,6 @@ export function NewSaleModal({
     }
   }, [locations, locationId, fixedLocationId]);
 
-  useEffect(() => {
-    if (products.length === 0) return;
-    setRows((prev) =>
-      prev.map((r) => (r.productId ? r : { ...r, productId: products[0].id, unitPrice: String(products[0].price) })),
-    );
-  }, [products]);
-
   const total = rows.reduce((sum, r) => sum + (Number(r.quantity) || 0) * (Number(r.unitPrice) || 0), 0);
   const unpaid = customerId ? total - Math.min(Number(amountPaid) || 0, total) : 0;
   const today = zonedDateKey();
@@ -69,26 +69,30 @@ export function NewSaleModal({
     setDueDate(id && term !== null && term !== undefined ? addDaysKey(zonedDateKey(), term) : "");
   }
 
-  function updateRow(index: number, patch: Partial<Row>) {
-    setRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
-  }
+  // There is always one empty line at the end: picking a product in it adds the next.
+  const trailing = (list: Row[]) => withTrailingRow(list, (r) => !r.productId, emptyRow);
 
-  function addRow() {
-    setRows((prev) => [...prev, { productId: products[0]?.id ?? "", quantity: "1", unitPrice: String(products[0]?.price ?? "") }]);
+  function updateRow(index: number, patch: Partial<Row>) {
+    setRows((prev) => trailing(prev.map((r, i) => (i === index ? { ...r, ...patch } : r))));
   }
 
   function removeRow(index: number) {
-    setRows((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
+    setRows((prev) => trailing(prev.filter((_, i) => i !== index)));
   }
 
   function onProductChange(index: number, productId: string) {
     const product = products.find((p) => p.id === productId);
-    updateRow(index, { productId, unitPrice: String(product?.price ?? "") });
+    updateRow(index, { productId, unitPrice: String(product?.price ?? ""), quantity: rows[index]?.quantity || "1" });
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    const lines = rows.filter((r) => r.productId);
+    if (lines.length === 0) {
+      setError("Добавьте хотя бы один товар");
+      return;
+    }
     setIsSubmitting(true);
     try {
       await api.sales.create({
@@ -97,7 +101,7 @@ export function NewSaleModal({
         amountPaid: customerId ? Number(amountPaid) || 0 : undefined,
         paymentDueDate: customerId && unpaid > 0.004 && dueDate ? dueDate : undefined,
         paymentMethod,
-        items: rows.map((r) => ({
+        items: lines.map((r) => ({
           productId: r.productId,
           quantity: Number(r.quantity),
           unitPrice: Number(r.unitPrice),
@@ -133,21 +137,18 @@ export function NewSaleModal({
           </div>
         )}
 
-        <div className="mb-3 space-y-2">
+        <div className="mb-5 space-y-2">
           {rows.map((row, index) => (
-            <div key={index} className="flex items-center gap-2">
-              <select
+            <div key={row.key} className="flex items-center gap-2">
+              <ProductSelect
+                products={products}
                 value={row.productId}
-                onChange={(e) => onProductChange(index, e.target.value)}
-                className="flex-1 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-              >
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({UNIT_LABELS_RU[p.unit]})
-                  </option>
-                ))}
-              </select>
+                onChange={(productId) => onProductChange(index, productId)}
+                className="min-w-0 flex-1"
+                enterFlow
+              />
               <input
+                {...enterNext}
                 type="number"
                 min="0"
                 step="any"
@@ -157,6 +158,7 @@ export function NewSaleModal({
                 placeholder="Кол-во"
               />
               <input
+                {...enterNext}
                 type="number"
                 min="0"
                 step="any"
@@ -175,15 +177,6 @@ export function NewSaleModal({
             </div>
           ))}
         </div>
-
-        <button
-          type="button"
-          onClick={addRow}
-          className="mb-5 flex items-center gap-1.5 text-sm font-medium text-accent hover:opacity-80"
-        >
-          <Plus className="h-4 w-4" strokeWidth={1.75} />
-          Добавить товар
-        </button>
 
         <div className="mb-4">
           <label className="mb-1.5 block text-sm font-medium text-foreground">Оплата</label>
@@ -279,6 +272,7 @@ export function NewSaleModal({
           className="w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-60"
         >
           {isSubmitting ? "Проведение…" : "Провести продажу"}
+          {!isSubmitting && <SubmitShortcutHint />}
         </button>
       </form>
     </Modal>

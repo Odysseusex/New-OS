@@ -5,6 +5,8 @@ import type { PurchaseOrderDto } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
 import { formatMoney, formatQuantity } from "@/lib/format";
+import { enterNext } from "@/lib/keyboard";
+import { SubmitShortcutHint } from "@/components/submit-shortcut-hint";
 
 const inputClass =
   "w-28 rounded-lg border border-border bg-surface px-3 py-2 text-right text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
@@ -77,6 +79,7 @@ export function ReceiveOrderModal({
                 </td>
                 <td className="py-2 text-right">
                   <input
+                    {...enterNext}
                     inputMode="decimal"
                     className={inputClass}
                     value={rows[idx].quantity}
@@ -85,6 +88,7 @@ export function ReceiveOrderModal({
                 </td>
                 <td className="py-2 text-right">
                   <input
+                    {...enterNext}
                     inputMode="decimal"
                     className={inputClass}
                     value={rows[idx].unitCost}
@@ -105,11 +109,13 @@ export function ReceiveOrderModal({
             Отмена
           </button>
           <button
+            data-submit=""
             onClick={submit}
             disabled={saving || invalid}
             className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground transition hover:opacity-90 disabled:opacity-50"
           >
             {saving ? "Приёмка…" : "Принять"}
+            {!saving && <SubmitShortcutHint />}
           </button>
         </div>
       </div>

@@ -14,6 +14,8 @@ import {
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
 import { formatDateTime, formatMoneyPrecise, formatQuantity } from "@/lib/format";
+import { enterNext } from "@/lib/keyboard";
+import { SubmitShortcutHint } from "@/components/submit-shortcut-hint";
 
 const inputClass =
   "w-24 rounded-lg border border-border bg-surface px-2 py-1.5 text-right text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
@@ -134,6 +136,7 @@ export function PurchaseOrderDocumentModal({
                     <td className="whitespace-nowrap px-3 py-2 text-right text-foreground">
                       {editing ? (
                         <input
+                          {...enterNext}
                           inputMode="decimal"
                           className={inputClass}
                           value={rows[idx].quantity}
@@ -146,6 +149,7 @@ export function PurchaseOrderDocumentModal({
                     <td className="whitespace-nowrap px-3 py-2 text-right text-foreground">
                       {editing ? (
                         <input
+                          {...enterNext}
                           inputMode="decimal"
                           className={inputClass}
                           value={rows[idx].unitCost}
@@ -193,6 +197,7 @@ export function PurchaseOrderDocumentModal({
             <div>
               <label className="mb-1 block text-xs font-medium text-muted">Причина исправления</label>
               <input
+                {...enterNext}
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 placeholder="Например: ошибка в цене накладной"
@@ -211,11 +216,13 @@ export function PurchaseOrderDocumentModal({
                 Отмена
               </button>
               <button
+                data-submit=""
                 onClick={save}
                 disabled={saving || invalid || changed.length === 0 || belowPaid || reason.trim().length < PURCHASE_REVISION_REASON_MIN}
                 className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition hover:opacity-90 disabled:opacity-50"
               >
                 {saving ? "Сохранение…" : "Сохранить исправление"}
+                {!saving && <SubmitShortcutHint />}
               </button>
             </div>
           </div>

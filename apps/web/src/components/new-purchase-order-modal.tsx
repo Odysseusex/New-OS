@@ -1,18 +1,24 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import type { LocationDto, ProductDto, SupplierDto } from "@bakery-os/shared";
-import { UNIT_LABELS_RU } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
+import { ProductSelect } from "@/components/product-select";
 import { formatMoney } from "@/lib/format";
+import { enterNext, withTrailingRow } from "@/lib/keyboard";
+import { SubmitShortcutHint } from "@/components/submit-shortcut-hint";
 
 interface Row {
+  key: number;
   productId: string;
   quantity: string;
   unitCost: string;
 }
+
+let nextKey = 1;
+const emptyRow = (): Row => ({ key: nextKey++, productId: "", quantity: "", unitCost: "" });
 
 export function NewPurchaseOrderModal({
   suppliers,
@@ -31,7 +37,7 @@ export function NewPurchaseOrderModal({
 }) {
   const [supplierId, setSupplierId] = useState(suppliers[0]?.id ?? "");
   const [locationId, setLocationId] = useState(fixedLocationId ?? locations[0]?.id ?? "");
-  const [rows, setRows] = useState<Row[]>([{ productId: "", quantity: "1", unitCost: "0" }]);
+  const [rows, setRows] = useState<Row[]>([emptyRow()]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -48,34 +54,45 @@ export function NewPurchaseOrderModal({
     }
   }, [locations, locationId, fixedLocationId]);
 
-  useEffect(() => {
-    if (products.length === 0) return;
-    setRows((prev) => prev.map((r) => (r.productId ? r : { ...r, productId: products[0].id })));
-  }, [products]);
-
+  // A semi-finished product is never bought (the server refuses it too).
+  const purchasable = products.filter((p) => p.type !== "SEMI_FINISHED");
   const total = rows.reduce((sum, r) => sum + (Number(r.quantity) || 0) * (Number(r.unitCost) || 0), 0);
 
+  // There is always one empty line at the end: picking a product in it adds the next.
+  const trailing = (list: Row[]) => withTrailingRow(list, (r) => !r.productId, emptyRow);
+
   function updateRow(index: number, patch: Partial<Row>) {
-    setRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+    setRows((prev) => trailing(prev.map((r, i) => (i === index ? { ...r, ...patch } : r))));
   }
 
-  function addRow() {
-    setRows((prev) => [...prev, { productId: products[0]?.id ?? "", quantity: "1", unitCost: "0" }]);
+  function pickProduct(index: number, productId: string) {
+    // The last purchase price on the card, to change when it costs more or less now.
+    const product = products.find((p) => p.id === productId);
+    updateRow(index, { productId, unitCost: product ? String(product.price) : "" });
   }
 
   function removeRow(index: number) {
-    setRows((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
+    setRows((prev) => trailing(prev.filter((_, i) => i !== index)));
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    const lines = rows.filter((r) => r.productId);
+    if (lines.length === 0) {
+      setError("Добавьте хотя бы один товар");
+      return;
+    }
+    if (lines.some((r) => r.quantity.trim() === "" || !(Number(r.quantity) > 0))) {
+      setError("Укажите количество в каждой строке");
+      return;
+    }
     setIsSubmitting(true);
     try {
       await api.procurement.createOrder({
         supplierId,
         locationId: fixedLocationId ?? locationId,
-        items: rows.map((r) => ({
+        items: lines.map((r) => ({
           productId: r.productId,
           quantity: Number(r.quantity),
           unitCost: Number(r.unitCost),
@@ -137,21 +154,18 @@ export function NewPurchaseOrderModal({
           )}
         </div>
 
-        <div className="mb-3 space-y-2">
+        <div className="mb-5 space-y-2">
           {rows.map((row, index) => (
-            <div key={index} className="flex items-center gap-2">
-              <select
+            <div key={row.key} className="flex items-center gap-2">
+              <ProductSelect
+                products={purchasable}
                 value={row.productId}
-                onChange={(e) => updateRow(index, { productId: e.target.value })}
-                className="flex-1 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-              >
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({UNIT_LABELS_RU[p.unit]})
-                  </option>
-                ))}
-              </select>
+                onChange={(productId) => pickProduct(index, productId)}
+                className="min-w-0 flex-1"
+                enterFlow
+              />
               <input
+                {...enterNext}
                 type="number"
                 min="0"
                 step="any"
@@ -161,6 +175,7 @@ export function NewPurchaseOrderModal({
                 placeholder="Кол-во"
               />
               <input
+                {...enterNext}
                 type="number"
                 min="0"
                 step="any"
@@ -180,15 +195,6 @@ export function NewPurchaseOrderModal({
           ))}
         </div>
 
-        <button
-          type="button"
-          onClick={addRow}
-          className="mb-5 flex items-center gap-1.5 text-sm font-medium text-accent hover:opacity-80"
-        >
-          <Plus className="h-4 w-4" strokeWidth={1.75} />
-          Добавить товар
-        </button>
-
         <div className="mb-5 flex items-center justify-between rounded-xl bg-surface-muted px-4 py-3">
           <span className="text-sm text-muted">Итого</span>
           <span className="text-base font-semibold text-foreground">{formatMoney(total)}</span>
@@ -204,6 +210,7 @@ export function NewPurchaseOrderModal({
           className="w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-60"
         >
           {isSubmitting ? "Создание…" : "Создать заказ"}
+          {!isSubmitting && <SubmitShortcutHint />}
         </button>
       </form>
     </Modal>

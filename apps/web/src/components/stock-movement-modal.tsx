@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import type { LocationDto, ProductDto, StockLevelDto } from "@bakery-os/shared";
 import {
   PRICE_DEVIATION_WARNING,
@@ -16,6 +16,8 @@ import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
 import { ProductSelect } from "@/components/product-select";
 import { formatMoney, formatMoneyPrecise, formatQuantity } from "@/lib/format";
+import { enterNext, withTrailingRow } from "@/lib/keyboard";
+import { SubmitShortcutHint } from "@/components/submit-shortcut-hint";
 
 interface Row {
   key: number;
@@ -93,8 +95,11 @@ export function StockMovementModal({
   const chosen = rows.filter((r) => r.productId);
   const duplicateIds = new Set(chosen.map((r) => r.productId).filter((id, i, all) => all.indexOf(id) !== i));
 
+  // There is always one empty line at the end: picking a product in it adds the next.
+  const trailing = (list: Row[]) => withTrailingRow(list, (r) => !r.productId, () => newRow(), STOCK_BATCH_MAX_LINES);
+
   function updateRow(key: number, patch: Partial<Row>) {
-    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+    setRows((prev) => trailing(prev.map((r) => (r.key === key ? { ...r, ...patch } : r))));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -222,7 +227,7 @@ export function StockMovementModal({
           {isReceive && <span className="w-32">Цена за ед.</span>}
           <span className="w-8" />
         </div>
-        <div className="mb-3 space-y-2">
+        <div className="mb-5 space-y-2">
           {rows.map((row) => {
             const product = products.find((p) => p.id === row.productId);
             const level = row.productId ? levelOf(row.productId) : undefined;
@@ -239,8 +244,10 @@ export function StockMovementModal({
                       updateRow(row.key, { productId, price: isReceive && isRaw(picked) ? String(picked!.price) : "" });
                     }}
                     className="min-w-0 flex-1"
+                    enterFlow
                   />
                   <input
+                    {...enterNext}
                     type="number"
                     min="0"
                     step="any"
@@ -252,6 +259,7 @@ export function StockMovementModal({
                   {isReceive &&
                     (isRaw(product) ? (
                       <input
+                        {...enterNext}
                         type="number"
                         min="0"
                         step="any"
@@ -266,7 +274,7 @@ export function StockMovementModal({
                     ))}
                   <button
                     type="button"
-                    onClick={() => setRows((prev) => (prev.length > 1 ? prev.filter((r) => r.key !== row.key) : [newRow()]))}
+                    onClick={() => setRows((prev) => trailing(prev.filter((r) => r.key !== row.key)))}
                     title="Убрать строку"
                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-red-600"
                   >
@@ -296,16 +304,6 @@ export function StockMovementModal({
             );
           })}
         </div>
-        {rows.length < STOCK_BATCH_MAX_LINES && (
-          <button
-            type="button"
-            onClick={() => setRows((prev) => [...prev, newRow()])}
-            className="mb-5 flex items-center gap-1.5 text-sm font-medium text-accent hover:opacity-80"
-          >
-            <Plus className="h-4 w-4" strokeWidth={1.75} />
-            Добавить товар
-          </button>
-        )}
 
         {!isReceive && !isAdjustment && (
           <div className="mb-4">
@@ -368,6 +366,7 @@ export function StockMovementModal({
           className="w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-60"
         >
           {isSubmitting ? "Сохранение…" : count > 1 ? `${action} (${count})` : action}
+          {!isSubmitting && <SubmitShortcutHint />}
         </button>
       </form>
     </Modal>

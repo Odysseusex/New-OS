@@ -335,6 +335,17 @@ cannot stop the Modal's sibling `document` listener from also firing and
 closing the whole form. Hit and fixed once in `stock-movement-modal.tsx`;
 check for it in any future custom-dropdown-inside-Modal.
 
+**Keyboard flow for multi-line documents** (`lib/keyboard.ts`, owner on an iPad with a keyboard): Склад →
+Приёмка/Списание/Корректировка, «Новый заказ поставщику», «Новая продажа», приёмка/исправление заказа.
+- A line always has one empty line after it (`withTrailingRow`) — no «Добавить товар» button; empty lines are
+  ignored on save.
+- Enter in a field marked `{...enterNext}` moves to the next marked field of the form; a `ProductSelect` with
+  `enterFlow` is OPENED when reached and, once a product is picked, moves on itself (product → кол-во → цена →
+  next line's search). Enter with an empty search picks nothing; ↑/↓ move the highlight.
+- ⌘/Ctrl+Enter in ANY `Modal` presses its `[data-submit]` button, else submits its form (`requestSubmit`, so
+  validation runs). `SubmitShortcutHint` (components/, Tailwind does not scan lib/) shows «⌘↵»/«Ctrl+↵».
+- Not on the recipe form (its quantity is `required`, an empty trailing line would block saving).
+
 **Brand color is one CSS custom property.** `--accent` in
 `apps/web/src/app/globals.css` (consumed everywhere via Tailwind's
 `accent`/`accent-foreground` tokens — never hardcoded hex in components)

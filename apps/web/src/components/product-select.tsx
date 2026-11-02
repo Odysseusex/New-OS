@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import type { ProductDto } from "@bakery-os/shared";
 import { UNIT_LABELS_RU } from "@bakery-os/shared";
+import { ENTER_ATTR, focusNextField } from "@/lib/keyboard";
 
 // Product picker with a search box. The whole catalogue is already loaded
 // client-side (api.products.list returns every product, no paging), so
@@ -19,6 +20,7 @@ export function ProductSelect({
   onChange,
   placeholder = "Выберите товар",
   className = "",
+  enterFlow = false,
 }: {
   products: ProductDto[];
   value: string;
@@ -27,11 +29,17 @@ export function ProductSelect({
   // For the caller's layout — the recipe form puts this in a flex row where
   // the picker takes the remaining width.
   className?: string;
+  // Part of a document's keyboard flow (lib/keyboard): Enter from the previous
+  // field opens this picker, and choosing a product moves on to the next field.
+  enterFlow?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [active, setActive] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
 
   const selected = products.find((p) => p.id === value);
   // Matches anywhere in the name, not just the start: "шок" finds
@@ -71,16 +79,29 @@ export function ProductSelect({
     };
   }, [isOpen]);
 
+  // The highlighted row follows the search; arrows move it.
+  useEffect(() => setActive(0), [query, isOpen]);
+  useEffect(() => {
+    listRef.current?.querySelector<HTMLElement>(`[data-index="${active}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [active]);
+
   function select(productId: string) {
     onChange(productId);
     setIsOpen(false);
     setQuery("");
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    trigger.focus();
+    // After the parent re-renders (a new empty line may appear below).
+    if (enterFlow) setTimeout(() => focusNextField(trigger), 0);
   }
 
   return (
     <div ref={containerRef} className={`relative ${className}`}>
       <button
+        ref={triggerRef}
         type="button"
+        {...(enterFlow ? { [ENTER_ATTR]: "open" } : {})}
         onClick={() => setIsOpen((open) => !open)}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
@@ -105,7 +126,15 @@ export function ProductSelect({
                 // submit it instead of picking a product.
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  if (filtered.length > 0) select(filtered[0].id);
+                  // With nothing typed, Enter picks nothing: a stray Enter on an
+                  // empty line must not drop the first product of the catalogue in.
+                  if (normalizedQuery && filtered[active]) select(filtered[active].id);
+                } else if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setActive((i) => Math.min(i + 1, filtered.length - 1));
+                } else if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setActive((i) => Math.max(i - 1, 0));
                 }
                 // Escape is handled by the capture-phase listener above.
               }}
@@ -113,9 +142,9 @@ export function ProductSelect({
               className="w-full rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-foreground outline-none focus:border-accent"
             />
           </div>
-          <ul role="listbox" className="max-h-60 overflow-y-auto py-1">
-            {filtered.map((p) => (
-              <li key={p.id}>
+          <ul ref={listRef} role="listbox" className="max-h-60 overflow-y-auto py-1">
+            {filtered.map((p, index) => (
+              <li key={p.id} data-index={index}>
                 <button
                   type="button"
                   role="option"
@@ -123,7 +152,7 @@ export function ProductSelect({
                   onClick={() => select(p.id)}
                   className={`w-full px-3 py-2 text-left text-sm transition hover:bg-surface-muted ${
                     p.id === value ? "text-accent" : "text-foreground"
-                  }`}
+                  } ${normalizedQuery && index === active ? "bg-surface-muted" : ""}`}
                 >
                   {p.name} ({UNIT_LABELS_RU[p.unit]})
                 </button>
