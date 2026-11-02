@@ -121,6 +121,11 @@ export const PURCHASE_ORDER_MANAGE_ROLES: Role[] = [
   Role.OPERATOR,
 ];
 
+// Correcting an order that is already on the shelf and in the payables changes
+// stock value and the supplier debt after the fact, so it is not day-to-day
+// receiving work: the roles that answer for the books.
+export const PURCHASE_ORDER_REVISE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT];
+
 // Recording and confirming supplier delivery notes is the same day-to-day
 // receiving job as purchase orders, so it follows the same roles.
 export const INVOICE_MANAGE_ROLES: Role[] = [

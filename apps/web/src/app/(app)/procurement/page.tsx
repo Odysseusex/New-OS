@@ -12,6 +12,7 @@ import {
   ORG_WIDE_ROLES,
   PAYMENT_STATUS_LABELS_RU,
   PURCHASE_ORDER_MANAGE_ROLES,
+  PURCHASE_ORDER_REVISE_ROLES,
   PURCHASE_ORDER_STATUS_LABELS_RU,
   PurchaseOrderStatus,
   SUPPLIER_MANAGE_ROLES,
@@ -22,6 +23,7 @@ import { formatDateTime, formatMoney } from "@/lib/format";
 import { NewPurchaseOrderModal } from "@/components/new-purchase-order-modal";
 import { ReceiveOrderModal } from "@/components/receive-order-modal";
 import { OrderPaymentModal } from "@/components/order-payment-modal";
+import { PurchaseOrderDocumentModal } from "@/components/purchase-order-document-modal";
 import { NewInvoiceModal } from "@/components/new-invoice-modal";
 import { NewSupplierModal } from "@/components/new-supplier-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
@@ -32,6 +34,7 @@ export default function ProcurementPage() {
   const { user } = useAuth();
   const isOrgWide = user ? ORG_WIDE_ROLES.includes(user.role) : false;
   const canManageOrders = user ? PURCHASE_ORDER_MANAGE_ROLES.includes(user.role) : false;
+  const canReviseOrders = user ? PURCHASE_ORDER_REVISE_ROLES.includes(user.role) : false;
   const canManageInvoices = user ? INVOICE_MANAGE_ROLES.includes(user.role) : false;
   const canManageSuppliers = user ? SUPPLIER_MANAGE_ROLES.includes(user.role) : false;
   const canDelete = user ? HARD_DELETE_ROLES.includes(user.role) : false;
@@ -49,6 +52,7 @@ export default function ProcurementPage() {
   const [error, setError] = useState<string | null>(null);
   const [receiving, setReceiving] = useState<PurchaseOrderDto | null>(null);
   const [paying, setPaying] = useState<PurchaseOrderDto | null>(null);
+  const [viewing, setViewing] = useState<PurchaseOrderDto | null>(null);
   const [workflow, setWorkflow] = useState<PurchaseWorkflowDto | null>(null);
   const [confirmCutover, setConfirmCutover] = useState(false);
   const canSwitchWorkflow = user ? HARD_DELETE_ROLES.includes(user.role) : false;
@@ -292,7 +296,12 @@ export default function ProcurementPage() {
             <tbody className="divide-y divide-border">
               {orders.map((order) => (
                 <tr key={order.id}>
-                  <td className="px-5 py-3 font-medium text-foreground">{order.supplierName}</td>
+                  <td className="px-5 py-3 font-medium text-foreground">
+                    <button onClick={() => setViewing(order)} className="text-left hover:underline">
+                      {order.supplierName}
+                    </button>
+                    {order.revisionCount > 0 && <span className="ml-2 text-xs font-normal text-muted">исправлен</span>}
+                  </td>
                   {isOrgWide && <td className="px-5 py-3 text-muted">{order.locationName}</td>}
                   <td className="px-5 py-3 text-right text-foreground">
                     {formatMoney(order.receivedTotal ?? order.totalCost)}
@@ -513,6 +522,14 @@ export default function ProcurementPage() {
         />
       )}
       {paying && <OrderPaymentModal order={paying} onClose={() => setPaying(null)} onChanged={loadOrders} />}
+      {viewing && (
+        <PurchaseOrderDocumentModal
+          order={viewing}
+          canRevise={canReviseOrders}
+          onClose={() => setViewing(null)}
+          onChanged={() => loadOrders()}
+        />
+      )}
     </div>
   );
 }

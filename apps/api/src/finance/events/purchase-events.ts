@@ -23,7 +23,13 @@ export async function purchaseEvents(
     prisma.organization.findUnique({ where: { id: organizationId }, select: { purchaseCutoverAt: true } }),
     orderIds && orderIds.length === 0 ? Promise.resolve([]) : prisma.purchaseOrder.findMany({
       where: { organizationId, ...(orderIds ? { id: { in: orderIds } } : {}), status: "RECEIVED", receivedAt: { not: null, ...(opts.upTo ? { lte: opts.upTo } : {}) } },
-      select: { id: true, totalCost: true, receivedTotal: true, receivedAt: true },
+      select: {
+        id: true,
+        totalCost: true,
+        receivedTotal: true,
+        receivedAt: true,
+        revisions: { select: { number: true, totalBefore: true, totalAfter: true }, orderBy: { number: "asc" } },
+      },
     }),
     invoiceIds && invoiceIds.length === 0 ? Promise.resolve([]) : prisma.invoice.findMany({
       where: { organizationId, ...(invoiceIds ? { id: { in: invoiceIds } } : {}), status: "CONFIRMED", confirmedAt: { not: null, ...(opts.upTo ? { lte: opts.upTo } : {}) } },
@@ -41,8 +47,33 @@ export async function purchaseEvents(
   const events: FinancialEvent[] = [];
 
   for (const o of orders) {
-    const total = round2((o.receivedTotal ?? o.totalCost).toNumber());
+    // A corrected order keeps its receipt event at what was received, and each
+    // correction is its own event for the difference, dated at the receipt
+    // (the document is corrected, not a new delivery). An entry already posted
+    // for the receipt therefore never changes; the correction posts beside it.
+    const deltas = o.revisions.map((r) => ({ number: r.number, delta: round2(r.totalAfter.toNumber() - r.totalBefore.toNumber()) }));
+    const total = round2((o.receivedTotal ?? o.totalCost).toNumber() - deltas.reduce((s, d) => s + d.delta, 0));
     const recognized = cutover !== null && o.receivedAt! >= cutover;
+    for (const d of deltas) {
+      if (d.delta === 0) continue;
+      events.push({
+        key: `purchaseOrder:${o.id}:revision:${d.number}`,
+        type: FinancialEventType.PURCHASE_RECEIPT,
+        occurredAt: o.receivedAt!.toISOString(),
+        sourceType: "PurchaseOrder",
+        sourceId: o.id,
+        description: `Исправление приёмки заказа поставщику (№${d.number})`,
+        cash: [],
+        balance: recognized
+          ? [
+              { line: BalanceLine.INVENTORY, delta: d.delta },
+              { line: BalanceLine.SUPPLIER_PAYABLES, delta: d.delta },
+            ]
+          : [{ line: BalanceLine.INVENTORY, delta: d.delta }],
+        pnl: [],
+        unclassified: !recognized,
+      });
+    }
     events.push({
       key: `purchaseOrder:${o.id}:receipt`,
       type: FinancialEventType.PURCHASE_RECEIPT,

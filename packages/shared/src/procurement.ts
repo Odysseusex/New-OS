@@ -91,6 +91,8 @@ export interface PurchaseOrderDto {
   balanceDue: number;
   paymentStatus: PaymentStatus | null;
   payments: PurchaseOrderPaymentDto[];
+  // How many times the received document was corrected (0 = never).
+  revisionCount: number;
 }
 
 // Optional actuals recorded at receipt; anything omitted is received as ordered.
@@ -108,6 +110,62 @@ export interface RecordPurchaseOrderPaymentRequestDto {
   accountId: string;
   amount: number;
   note?: string;
+}
+
+// Correcting a RECEIVED order inside the document: the delivered quantity and
+// price of each line as they should have been. Lines left out stay as they are.
+export interface RevisePurchaseOrderItemRequestDto {
+  itemId: string;
+  quantity: number;
+  unitCost: number;
+}
+
+export interface RevisePurchaseOrderRequestDto {
+  items: RevisePurchaseOrderItemRequestDto[];
+  reason: string;
+}
+
+export const PURCHASE_REVISION_REASON_MIN = 5;
+
+export enum DocumentHistoryKind {
+  CREATED = "CREATED",
+  RECEIVED = "RECEIVED",
+  REVISED = "REVISED",
+  CANCELLED = "CANCELLED",
+  PAID = "PAID",
+  PAYMENT_REVERSED = "PAYMENT_REVERSED",
+}
+
+export const DOCUMENT_HISTORY_LABELS_RU: Record<DocumentHistoryKind, string> = {
+  [DocumentHistoryKind.CREATED]: "Заказ создан",
+  [DocumentHistoryKind.RECEIVED]: "Принят на склад",
+  [DocumentHistoryKind.REVISED]: "Исправлен",
+  [DocumentHistoryKind.CANCELLED]: "Отменён",
+  [DocumentHistoryKind.PAID]: "Оплата",
+  [DocumentHistoryKind.PAYMENT_REVERSED]: "Оплата отменена",
+};
+
+export interface DocumentHistoryLineDto {
+  productName: string;
+  unit: string;
+  quantityBefore: number;
+  quantityAfter: number;
+  unitCostBefore: number;
+  unitCostAfter: number;
+}
+
+// One row of «История изменений»: who, when, what the document said before and after.
+export interface DocumentHistoryEntryDto {
+  kind: DocumentHistoryKind;
+  at: string;
+  actorName: string | null;
+  // The document's amount before and after the change (receipt, correction).
+  amountBefore: number | null;
+  amountAfter: number | null;
+  // A payment or its reversal.
+  amount: number | null;
+  reason: string | null;
+  lines: DocumentHistoryLineDto[];
 }
 
 export interface ReversePurchaseOrderPaymentRequestDto {

@@ -943,6 +943,29 @@ From the financiers' ТЗ (iiko-style). `apps/api/src/debts/` (read-only service
   Финансы → P&L by product, Отчёты (P&L, Рентабельность), the product P&L card and the техкарта card.
 - Not built: PDF export of reports other than the акт сверки (print → «Сохранить как PDF» works on Отчёты), ДДС by week/day.
 
+## Correcting a received purchase order + document history (built)
+
+From the financiers' answer: a posted document is corrected INSIDE the document, with «кто, когда, что было/стало».
+Закупки → click the supplier on an order row → the order as a document (lines ordered/received, «Исправить приёмку»,
+«История изменений»). `ProcurementService.revise()` (`POST /procurement/orders/:id/revise`, `PURCHASE_ORDER_REVISE_ROLES`
+= OWNER/ADMIN/ACCOUNTANT) and `history()` (`GET …/:id/history`, open like the list). Migration `20261103120000`
+(two additive append-only tables, UPDATE rejected by trigger).
+- Nothing already written is rewritten: the order's lines/`receivedTotal` carry the current values; a
+  `PurchaseOrderRevision` (+ lines) keeps before/after, actor, reason (≥ 5 chars); the stock difference is a NEW
+  `RECEIPT` movement on the order with a SIGNED quantity (negative = taken back; RECEIPT's sign is +1, so the stock
+  ledger stays consistent); the supplier debt follows by itself (received total − payments).
+- Money in the books: `purchase-events.ts` keeps the receipt event at the ORIGINAL total (current − Σ revision
+  deltas) and adds one event per revision (`purchaseOrder:{id}:revision:{n}`) for the difference, dated at the
+  receipt — so an entry already posted in the general ledger never drifts; the correction posts beside it.
+- Raw-material average: `revisePurchaseAverage()` takes the old line out at what it was booked at and puts the
+  corrected one in (stock × average stays equal to the book value). If part was already used, its stamped cost stays
+  and the remainder absorbs the difference until a month-end cost correction (not built yet, waits for the financiers).
+  No stock left / value would go negative → average untouched. The card price follows only if this order is the
+  product's latest priced receipt.
+- Refused: receipt month closed (`PeriodGuard`), corrected total below what is paid, taking back goods no longer on
+  the shelf, anything not RECEIVED. Till checks/sales are never edited (a return is the correction there).
+- Not built: adding/removing lines, changing supplier/location, correcting manual Склад → Приёмка (use Корректировка).
+
 ## «Скачать все данные» (backup / disaster recovery) — built
 
 Настройки → «Резервная копия данных» (OWNER only): `GET /api/backup/export` streams the WHOLE database as one JSON

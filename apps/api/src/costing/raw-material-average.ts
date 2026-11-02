@@ -36,3 +36,31 @@ export async function recordRawMaterialPurchase(
   await tx.product.update({ where: { id: productId }, data: { averageUnitCost: average, price: round2(unitPrice) } });
   return average;
 }
+
+// A received delivery corrected after the fact (quantity or price was wrong):
+// its old line comes out of the stock value at what it was booked at, the
+// corrected line goes in, over the corrected quantity. This keeps stock × average
+// equal to what the books hold for the product. When part of the delivery was
+// already used, its cost was stamped at the old average and stays in history,
+// so the remainder carries the difference until the month-end cost correction.
+// Nothing is guessed: with no stock left, or a value that would turn negative,
+// the average is left as it is. Called BEFORE the stock difference is applied,
+// with the product row locked. Returns the new average, or null when untouched.
+export async function revisePurchaseAverage(
+  tx: Prisma.TransactionClient,
+  productId: string,
+  before: { quantity: number; unitCost: number },
+  after: { quantity: number; unitCost: number },
+): Promise<number | null> {
+  const [product] = await tx.$queryRaw<{ type: string; price: Prisma.Decimal; averageUnitCost: Prisma.Decimal | null }[]>`
+    SELECT "type", "price", "averageUnitCost" FROM "products" WHERE "id" = ${productId} FOR UPDATE`;
+  if (!product || product.type !== ProductType.RAW_MATERIAL) return null;
+  const onHand = (await tx.stockLevel.aggregate({ _sum: { quantity: true }, where: { productId } }))._sum.quantity?.toNumber() ?? 0;
+  const average = product.averageUnitCost !== null ? Number(product.averageUnitCost) : Number(product.price);
+  const quantity = onHand - before.quantity + after.quantity;
+  const value = onHand * average - before.quantity * before.unitCost + after.quantity * after.unitCost;
+  if (!(quantity > 0) || value < 0) return null;
+  const next = round4(value / quantity);
+  await tx.product.update({ where: { id: productId }, data: { averageUnitCost: next } });
+  return next;
+}

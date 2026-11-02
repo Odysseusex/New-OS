@@ -212,6 +212,8 @@ import type {
   PeriodPreflightDto,
   PeriodSnapshotDto,
   ReceivePurchaseOrderRequestDto,
+  RevisePurchaseOrderRequestDto,
+  DocumentHistoryEntryDto,
   RecordPurchaseOrderPaymentRequestDto,
   ReversePurchaseOrderPaymentRequestDto,
   PurchaseWorkflowDto,
@@ -818,6 +820,9 @@ export const api = {
     activateWorkflow: () => request<PurchaseWorkflowDto>("/procurement/workflow/activate", { method: "POST" }),
     cancelOrder: (id: string) =>
       request<PurchaseOrderDto>(`/procurement/orders/${id}/cancel`, { method: "POST" }),
+    reviseOrder: (id: string, dto: RevisePurchaseOrderRequestDto) =>
+      request<PurchaseOrderDto>(`/procurement/orders/${id}/revise`, { method: "POST", body: JSON.stringify(dto) }),
+    orderHistory: (id: string) => request<DocumentHistoryEntryDto[]>(`/procurement/orders/${id}/history`),
   },
 
   debts: {

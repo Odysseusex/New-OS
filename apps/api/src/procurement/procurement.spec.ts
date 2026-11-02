@@ -229,6 +229,22 @@ describe("Order → Receive → Inventory → Pay", () => {
   });
 });
 
+describe("correcting a received order", () => {
+  it("changes the debt by the difference and keeps what it said before", async () => {
+    const po = await order([{ productId: sugarId, quantity: 4, unitCost: 250 }]);
+    await services.procurement.receive(org.user, po.id);
+    const before = await ap();
+    const fixed = await services.procurement.revise(org.user, po.id, {
+      items: [{ itemId: po.items[0].id, quantity: 4, unitCost: 200 }],
+      reason: "Цена в накладной другая",
+    });
+    expect(fixed.receivedTotal).toBe(800);
+    expect(await ap()).toBeCloseTo(before - 200, 2);
+    const history = await services.procurement.history(org.user, po.id);
+    expect(history.map((h) => h.kind)).toEqual(["CREATED", "RECEIVED", "REVISED"]);
+  });
+});
+
 describe("accounts payable and events agree", () => {
   it("legacy invoices and received orders are each counted once, and the event-derived payable equals the reported one", async () => {
     // Supplier payable = confirmed invoices (unpaid part) + received-after-cutover orders (unpaid part).

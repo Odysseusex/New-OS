@@ -1,4 +1,4 @@
-import { recordRawMaterialPurchase } from "../costing/raw-material-average";
+import { recordRawMaterialPurchase, revisePurchaseAverage } from "../costing/raw-material-average";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import {
@@ -7,7 +7,12 @@ import {
   BusinessContextPurchaseProductRowDto,
   BusinessContextPurchasesDto,
   CashMovementType,
+  DocumentHistoryEntryDto,
+  DocumentHistoryKind,
   PaymentStatus,
+  PURCHASE_REVISION_REASON_MIN,
+  ProductType,
+  RevisePurchaseOrderRequestDto,
   PurchaseOrderDto,
   PurchaseOrderStatus,
   PurchaseWorkflowDto,
@@ -17,7 +22,9 @@ import {
 } from "@bakery-os/shared";
 import { Prisma, PurchaseOrderStatus as PrismaPurchaseOrderStatus, StockMovementType } from "@prisma/client";
 import { CashMovementsService } from "../finance/cash-movements.service";
-import { round2 } from "../common/money";
+import { round2, round3 } from "../common/money";
+import { decrementStockOrThrow } from "../common/stock-guard";
+import { PeriodGuard } from "../finance/periods/period-guard";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
 import { CreatePurchaseOrderDto } from "./dto/create-purchase-order.dto";
@@ -140,6 +147,7 @@ export class ProcurementService {
     createdBy: true,
     items: { include: { product: true } },
     payments: { include: { account: true, createdBy: true }, orderBy: { createdAt: "asc" as const } },
+    _count: { select: { revisions: true } },
   };
 
   private async cutoverAt(organizationId: string, client: Prisma.TransactionClient | PrismaService = this.prisma) {
@@ -524,6 +532,333 @@ export class ProcurementService {
     });
   }
 
+  // Corrects a RECEIVED order inside the document — the delivered quantity or
+  // price of a line was entered wrong. Nothing already written is rewritten:
+  //   · the order's lines and received total carry the corrected values, and a
+  //     PurchaseOrderRevision keeps what they said before, who, when and why;
+  //   · the stock difference is a new movement on the order (a negative one
+  //     takes goods off the shelf only if they are still there);
+  //   · the money difference is its own financial event dated at the receipt
+  //     (purchase-events.ts), so a journal entry already posted stays as it is;
+  //   · the debt to the supplier follows by itself (received total − payments).
+  // Refused when the receipt's month is closed, when the corrected total would
+  // be less than already paid, and for anything but a received order.
+  async revise(user: AuthenticatedUser, orderId: string, dto: RevisePurchaseOrderRequestDto): Promise<PurchaseOrderDto> {
+    const reason = (dto.reason ?? "").trim();
+    if (reason.length < PURCHASE_REVISION_REASON_MIN) {
+      throw new BadRequestException(`Укажите причину исправления (не короче ${PURCHASE_REVISION_REASON_MIN} символов)`);
+    }
+    if (!dto.items || dto.items.length === 0) {
+      throw new BadRequestException("Нет изменений");
+    }
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "purchase_orders" WHERE id = ${orderId} FOR UPDATE`;
+      const order = await tx.purchaseOrder.findFirst({
+        where: { id: orderId, organizationId: user.organizationId },
+        include: {
+          items: { include: { product: true } },
+          payments: true,
+          revisions: { select: { number: true }, orderBy: { number: "desc" }, take: 1 },
+        },
+      });
+      if (!order) {
+        throw new NotFoundException("Заказ не найден");
+      }
+      resolveLocationScope(user, order.locationId);
+      if (order.status !== PrismaPurchaseOrderStatus.RECEIVED || !order.receivedAt) {
+        throw new BadRequestException("Исправить можно только принятый заказ");
+      }
+      await new PeriodGuard(this.prisma).assertOpen(user.organizationId, order.receivedAt, tx);
+
+      const current = (item: (typeof order.items)[number]) => ({
+        quantity: (item.receivedQuantity ?? item.quantity).toNumber(),
+        unitCost: (item.receivedUnitCost ?? item.unitCost).toNumber(),
+      });
+      const seen = new Set<string>();
+      const changes: { item: (typeof order.items)[number]; before: { quantity: number; unitCost: number }; after: { quantity: number; unitCost: number } }[] = [];
+      for (const line of dto.items) {
+        const item = order.items.find((i) => i.id === line.itemId);
+        if (!item) throw new BadRequestException("В заказе нет такой позиции");
+        if (seen.has(item.id)) throw new BadRequestException(`«${item.product.name}» указан дважды`);
+        seen.add(item.id);
+        if (!Number.isFinite(line.quantity) || !Number.isFinite(line.unitCost) || line.quantity < 0 || line.unitCost < 0) {
+          throw new BadRequestException(`«${item.product.name}»: количество и цена не могут быть отрицательными`);
+        }
+        const before = current(item);
+        const after = { quantity: round3(line.quantity), unitCost: round2(line.unitCost) };
+        if (after.quantity === before.quantity && after.unitCost === before.unitCost) continue;
+        changes.push({ item, before, after });
+      }
+      if (changes.length === 0) {
+        throw new BadRequestException("Ничего не изменилось");
+      }
+
+      const changed = new Map(changes.map((c) => [c.item.id, c.after]));
+      const totalBefore = round2((order.receivedTotal ?? order.totalCost).toNumber());
+      const totalAfter = round2(
+        order.items.reduce((sum, item) => {
+          const v = changed.get(item.id) ?? current(item);
+          return sum + round2(v.quantity * v.unitCost);
+        }, 0),
+      );
+      const cutoverAt = await this.cutoverAt(user.organizationId, tx);
+      if (this.payableRecognized(order, cutoverAt)) {
+        const paid = round2(order.payments.filter((p) => !p.reversedAt).reduce((sum, p) => sum + p.amount.toNumber(), 0));
+        if (totalAfter < paid - 0.005) {
+          throw new BadRequestException(
+            `После исправления сумма заказа (${totalAfter}) меньше уже оплаченной (${paid}). Сначала отмените лишнюю оплату.`,
+          );
+        }
+      }
+
+      for (const { item, before, after } of changes) {
+        const delta = round3(after.quantity - before.quantity);
+        // The latest purchase price on the card follows the correction only if
+        // this order is still the product's latest priced receipt.
+        if (item.product.type === ProductType.RAW_MATERIAL && after.unitCost !== before.unitCost) {
+          const latest = await tx.stockMovement.findFirst({
+            where: { productId: item.productId, type: StockMovementType.RECEIPT, unitCost: { not: null } },
+            orderBy: { createdAt: "desc" },
+            select: { purchaseOrderId: true },
+          });
+          if (latest?.purchaseOrderId === order.id) {
+            await tx.product.update({ where: { id: item.productId }, data: { price: after.unitCost } });
+          }
+        }
+        // The average moves before the stock does (it reads the stock on hand).
+        await revisePurchaseAverage(tx, item.productId, before, after);
+        if (delta < 0) {
+          await decrementStockOrThrow(
+            tx,
+            { locationId: order.locationId, productId: item.productId, quantity: -delta },
+            `«${item.product.name}»: на складе нет ${-delta} — часть уже израсходована или продана. Уменьшить приход на столько нельзя.`,
+          );
+        } else if (delta > 0) {
+          await tx.stockLevel.upsert({
+            where: { locationId_productId: { locationId: order.locationId, productId: item.productId } },
+            update: { quantity: { increment: delta } },
+            create: {
+              organizationId: user.organizationId,
+              locationId: order.locationId,
+              productId: item.productId,
+              quantity: delta,
+              minQuantity: item.product.minQuantity,
+            },
+          });
+        }
+        if (delta !== 0) {
+          await tx.stockMovement.create({
+            data: {
+              organizationId: user.organizationId,
+              locationId: order.locationId,
+              productId: item.productId,
+              type: StockMovementType.RECEIPT,
+              // Signed: a correction down takes the difference back off the receipt.
+              quantity: delta,
+              reason: `Исправление приёмки по заказу: ${reason}`,
+              purchaseOrderId: order.id,
+              createdById: user.id,
+              unitCost: after.unitCost,
+              costBasis: CostBasis.PURCHASE_ACTUAL,
+            },
+          });
+        }
+        await tx.purchaseOrderItem.update({
+          where: { id: item.id },
+          data: { receivedQuantity: after.quantity, receivedUnitCost: after.unitCost },
+        });
+      }
+
+      const number = (order.revisions[0]?.number ?? 0) + 1;
+      await tx.purchaseOrderRevision.create({
+        data: {
+          organizationId: user.organizationId,
+          purchaseOrderId: order.id,
+          number,
+          totalBefore,
+          totalAfter,
+          reason,
+          createdById: user.id,
+          lines: {
+            create: changes.map((c) => ({
+              itemId: c.item.id,
+              quantityBefore: c.before.quantity,
+              quantityAfter: c.after.quantity,
+              unitCostBefore: c.before.unitCost,
+              unitCostAfter: c.after.unitCost,
+            })),
+          },
+        },
+      });
+      const updated = await tx.purchaseOrder.update({
+        where: { id: order.id },
+        data: { receivedTotal: totalAfter },
+        include: ProcurementService.ORDER_INCLUDE,
+      });
+
+      // Only the difference reaches the books, as its own event.
+      await postLedgerSources(tx, { organizationId: user.organizationId, actorId: user.id, scope: { purchaseOrderIds: [order.id] } });
+
+      await recordAudit(tx, {
+        organizationId: user.organizationId,
+        actorId: user.id,
+        action: "purchaseOrder.revise",
+        entityType: "PurchaseOrder",
+        entityId: order.id,
+        before: { receivedTotal: totalBefore, lines: changes.map((c) => ({ product: c.item.product.name, ...c.before })) },
+        after: { receivedTotal: totalAfter, revision: number, lines: changes.map((c) => ({ product: c.item.product.name, ...c.after })) },
+        reason,
+      });
+
+      return this.toDto(updated, cutoverAt);
+    });
+  }
+
+  // «История изменений» of one order: who did what to it and when, with the
+  // document's figures before and after. Read from the rows the actions left
+  // behind (the order, its revisions, payments, the audit trail) — nothing is
+  // stored for the history itself.
+  async history(user: AuthenticatedUser, orderId: string): Promise<DocumentHistoryEntryDto[]> {
+    const order = await this.prisma.purchaseOrder.findFirst({
+      where: { id: orderId, organizationId: user.organizationId },
+      include: {
+        createdBy: { select: { fullName: true } },
+        items: { include: { product: { select: { name: true, unit: true } } } },
+        payments: { include: { createdBy: { select: { fullName: true } }, reversedBy: { select: { fullName: true } } } },
+        revisions: {
+          include: { createdBy: { select: { fullName: true } }, lines: true },
+          orderBy: { number: "asc" },
+        },
+      },
+    });
+    if (!order) {
+      throw new NotFoundException("Заказ не найден");
+    }
+    resolveLocationScope(user, order.locationId);
+    const [audit, firstReceipt] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where: {
+          organizationId: user.organizationId,
+          entityType: "PurchaseOrder",
+          entityId: orderId,
+          action: { in: ["purchaseOrder.receive", "purchaseOrder.cancel"] },
+        },
+        include: { actor: { select: { fullName: true } } },
+      }),
+      this.prisma.stockMovement.findFirst({
+        where: { purchaseOrderId: orderId, type: StockMovementType.RECEIPT },
+        orderBy: { createdAt: "asc" },
+        include: { createdBy: { select: { fullName: true } } },
+      }),
+    ]);
+    const actorOf = (action: string) => audit.find((a) => a.action === action)?.actor?.fullName ?? null;
+    const itemById = new Map(order.items.map((i) => [i.id, i]));
+    const line = (itemId: string, qb: number, qa: number, cb: number, ca: number) => {
+      const item = itemById.get(itemId)!;
+      return { productName: item.product.name, unit: item.product.unit, quantityBefore: qb, quantityAfter: qa, unitCostBefore: cb, unitCostAfter: ca };
+    };
+
+    const entries: DocumentHistoryEntryDto[] = [
+      {
+        kind: DocumentHistoryKind.CREATED,
+        at: order.orderedAt.toISOString(),
+        actorName: order.createdBy.fullName,
+        amountBefore: null,
+        amountAfter: order.totalCost.toNumber(),
+        amount: null,
+        reason: null,
+        lines: [],
+      },
+    ];
+
+    if (order.receivedAt) {
+      // What the receipt itself recorded: the values before the first correction
+      // of each line, otherwise what the line says now.
+      const firstBefore = new Map<string, { quantity: number; unitCost: number }>();
+      for (const r of order.revisions) {
+        for (const l of r.lines) {
+          if (!firstBefore.has(l.itemId)) firstBefore.set(l.itemId, { quantity: l.quantityBefore.toNumber(), unitCost: l.unitCostBefore.toNumber() });
+        }
+      }
+      const corrected = order.revisions.reduce((s, r) => s + r.totalAfter.toNumber() - r.totalBefore.toNumber(), 0);
+      const receivedTotal = (order.receivedTotal ?? order.totalCost).toNumber();
+      entries.push({
+        kind: DocumentHistoryKind.RECEIVED,
+        at: order.receivedAt.toISOString(),
+        actorName: actorOf("purchaseOrder.receive") ?? firstReceipt?.createdBy?.fullName ?? null,
+        amountBefore: order.totalCost.toNumber(),
+        amountAfter: round2(receivedTotal - corrected),
+        amount: null,
+        reason: null,
+        lines: order.items
+          .map((item) => {
+            const got = firstBefore.get(item.id) ?? {
+              quantity: (item.receivedQuantity ?? item.quantity).toNumber(),
+              unitCost: (item.receivedUnitCost ?? item.unitCost).toNumber(),
+            };
+            return line(item.id, item.quantity.toNumber(), got.quantity, item.unitCost.toNumber(), got.unitCost);
+          })
+          .filter((l) => l.quantityBefore !== l.quantityAfter || l.unitCostBefore !== l.unitCostAfter),
+      });
+    }
+
+    for (const r of order.revisions) {
+      entries.push({
+        kind: DocumentHistoryKind.REVISED,
+        at: r.createdAt.toISOString(),
+        actorName: r.createdBy.fullName,
+        amountBefore: r.totalBefore.toNumber(),
+        amountAfter: r.totalAfter.toNumber(),
+        amount: null,
+        reason: r.reason,
+        lines: r.lines.map((l) =>
+          line(l.itemId, l.quantityBefore.toNumber(), l.quantityAfter.toNumber(), l.unitCostBefore.toNumber(), l.unitCostAfter.toNumber()),
+        ),
+      });
+    }
+
+    if (order.status === PrismaPurchaseOrderStatus.CANCELLED) {
+      const cancel = audit.find((a) => a.action === "purchaseOrder.cancel");
+      entries.push({
+        kind: DocumentHistoryKind.CANCELLED,
+        at: (cancel?.createdAt ?? order.orderedAt).toISOString(),
+        actorName: cancel?.actor?.fullName ?? null,
+        amountBefore: null,
+        amountAfter: null,
+        amount: null,
+        reason: null,
+        lines: [],
+      });
+    }
+
+    for (const p of order.payments) {
+      entries.push({
+        kind: DocumentHistoryKind.PAID,
+        at: p.paidAt.toISOString(),
+        actorName: p.createdBy.fullName,
+        amountBefore: null,
+        amountAfter: null,
+        amount: p.amount.toNumber(),
+        reason: p.note,
+        lines: [],
+      });
+      if (p.reversedAt) {
+        entries.push({
+          kind: DocumentHistoryKind.PAYMENT_REVERSED,
+          at: p.reversedAt.toISOString(),
+          actorName: p.reversedBy?.fullName ?? null,
+          amountBefore: null,
+          amountAfter: null,
+          amount: p.amount.toNumber(),
+          reason: p.reversalReason,
+          lines: [],
+        });
+      }
+    }
+
+    return entries.sort((a, b) => a.at.localeCompare(b.at));
+  }
+
   private payableRecognized(order: { status: string; receivedAt: Date | null }, cutoverAt: Date | null): boolean {
     return (
       order.status === PrismaPurchaseOrderStatus.RECEIVED &&
@@ -567,6 +902,7 @@ export class ProcurementService {
         reversedAt: Date | null;
         reversalReason: string | null;
       }[];
+      _count?: { revisions: number };
     },
     cutoverAt: Date | null,
   ): PurchaseOrderDto => {
@@ -618,6 +954,7 @@ export class ProcurementService {
         receivedQuantity: item.receivedQuantity ? item.receivedQuantity.toNumber() : null,
         receivedUnitCost: item.receivedUnitCost ? item.receivedUnitCost.toNumber() : null,
       })),
+      revisionCount: order._count?.revisions ?? 0,
     };
   };
 }
