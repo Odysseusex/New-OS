@@ -1,0 +1,13 @@
+{
+  "name": "Ar Amir CRM",
+  "short_name": "Ar Amir CRM",
+  "description": "CRM пекарни Ar-Amir",
+  "start_url": "/crm",
+  "scope": "/crm",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    { "src": "/crm/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
