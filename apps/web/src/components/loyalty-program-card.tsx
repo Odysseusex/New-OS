@@ -99,12 +99,12 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
 
   const fields: [keyof NonNullable<typeof draft>, string][] = [
     ["welcomeBonusPoints", "Бонус за первую покупку, ₸"],
-    ["welcomeBonusDelayDays", "Бонус доступен через, дней"],
-    ["welcomeBonusDays", "Бонус действует, дней"],
+    ["welcomeBonusDelayDays", "Бонус за первую покупку доступен через, дней"],
+    ["welcomeBonusDays", "Бонус за первую покупку действует, дней"],
     ["firstPurchaseEarnPercent", "Начисление за первую покупку, %"],
     ["earnPercent", "Начисление за покупку, %"],
     ["maxRedeemPercent", "Оплата баллами, не больше % чека"],
-    ["pointsLifetimeMonths", "Срок жизни баллов, мес."],
+    ["pointsLifetimeMonths", "Срок жизни баллов за покупки, мес."],
     ["birthdayBonusPoints", "Подарок на день рождения, баллов"],
     ["birthdayBonusDays", "Подарок действует, дней"],
   ];
