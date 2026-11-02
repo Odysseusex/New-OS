@@ -83,7 +83,11 @@ export function PosLoyaltyBlock({
               {formatKzPhone(member.phone)}
               {member.name ? ` · ${member.name}` : ""}
             </p>
-            <p className="text-xs text-muted">Баллов: {formatPoints(member.pointsBalance)}</p>
+            <p className="text-xs text-muted">
+              Баллов: {formatPoints(member.pointsBalance)}
+              {member.pointsPending &&
+                ` · ещё ${formatPoints(member.pointsPending.points)} с ${new Date(member.pointsPending.from).toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "2-digit", month: "2-digit" })}`}
+            </p>
           </div>
           <button
             onClick={() => setBirthdaysOpen(true)}

@@ -25,6 +25,7 @@ import { AuthenticatedUser } from "../auth/auth.types";
 import { auditFields, recordAudit, recordAuditMany } from "../audit/audit";
 import { PrismaService } from "../prisma/prisma.service";
 import { LoyaltyPointsService } from "./loyalty-points.service";
+import { PointsPosition } from "./points-ledger";
 import { toFamilyDto } from "./birthdays";
 import {
   LoyaltyImportApplyRequestDto,
@@ -155,7 +156,7 @@ export class LoyaltyService {
         });
         return saved;
       });
-      return this.toDto(member, 0);
+      return this.toDto(member, undefined);
     } catch (err) {
       // Two tills registering the same number at the same moment: the unique index decides.
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
@@ -232,8 +233,8 @@ export class LoyaltyService {
       this.prisma.loyaltyMember.findMany({ where, include: CONSENTS_IN_ORDER, orderBy: { createdAt: "desc" }, take: LOYALTY_LIST_LIMIT }),
       this.prisma.loyaltyMember.count({ where }),
     ]);
-    const balances = await this.points.balances(organizationId, items.map((m) => m.id));
-    return { items: items.map((m) => this.toDto(m, balances.get(m.id) ?? 0)), total };
+    const positions = await this.points.positions(organizationId, items.map((m) => m.id));
+    return { items: items.map((m) => this.toDto(m, positions.get(m.id))), total };
   }
 
   async findOne(organizationId: string, memberId: string): Promise<LoyaltyMemberDetailDto> {
@@ -250,8 +251,8 @@ export class LoyaltyService {
       },
     });
     if (!member) throw new NotFoundException("Клиент не найден");
-    const [balances, pointsHistory, lastWhatsApp] = await Promise.all([
-      this.points.balances(organizationId, [member.id]),
+    const [positions, pointsHistory, lastWhatsApp] = await Promise.all([
+      this.points.positions(organizationId, [member.id]),
       this.points.history(organizationId, member.id),
       this.prisma.loyaltyMessageLog.findFirst({
         where: { memberId: member.id, channel: LoyaltyConsentChannel.WHATSAPP, status: { not: null } },
@@ -259,7 +260,7 @@ export class LoyaltyService {
       }),
     ]);
     return {
-      ...this.toDto(member, balances.get(member.id) ?? 0),
+      ...this.toDto(member, positions.get(member.id)),
       pointsHistory,
       family: member.family.map((f) => toFamilyDto(f)),
       whatsappLastMessage: lastWhatsApp?.status
@@ -516,11 +517,11 @@ export class LoyaltyService {
   }
 
   private async withBalance(organizationId: string, member: MemberWithConsents): Promise<LoyaltyMemberDto> {
-    const balances = await this.points.balances(organizationId, [member.id]);
-    return this.toDto(member, balances.get(member.id) ?? 0);
+    const positions = await this.points.positions(organizationId, [member.id]);
+    return this.toDto(member, positions.get(member.id));
   }
 
-  private toDto(member: MemberWithConsents, pointsBalance: number): LoyaltyMemberDto {
+  private toDto(member: MemberWithConsents, points: PointsPosition | undefined): LoyaltyMemberDto {
     return {
       id: member.id,
       phone: member.phone,
@@ -529,7 +530,8 @@ export class LoyaltyService {
       status: member.status as LoyaltyMemberStatus,
       mergedIntoId: member.mergedIntoId,
       consents: consentState(member.consents),
-      pointsBalance,
+      pointsBalance: points?.available ?? 0,
+      pointsPending: points && points.pending > 0 && points.pendingFrom ? { points: points.pending, from: points.pendingFrom.toISOString() } : null,
       telegramLinked: !!member.telegramLink,
       createdAt: member.createdAt.toISOString(),
     };

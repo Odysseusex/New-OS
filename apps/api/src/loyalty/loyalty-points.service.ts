@@ -13,8 +13,9 @@ import {
 } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { recordAudit } from "../audit/audit";
+import { startOfZonedDay } from "../common/zoned-day";
 import { PrismaService } from "../prisma/prisma.service";
-import { addMonths, pointsPosition, PointsRow } from "./points-ledger";
+import { addMonths, PointsPosition, pointsPosition, PointsRow } from "./points-ledger";
 
 type Db = Prisma.TransactionClient | PrismaService;
 
@@ -52,6 +53,9 @@ export class LoyaltyPointsService {
     return {
       enabled: row.enabled,
       firstPurchaseEarnPercent: row.firstPurchaseEarnPercent.toNumber(),
+      welcomeBonusPoints: row.welcomeBonusPoints.toNumber(),
+      welcomeBonusDelayDays: row.welcomeBonusDelayDays,
+      welcomeBonusDays: row.welcomeBonusDays,
       earnPercent: row.earnPercent.toNumber(),
       maxRedeemPercent: row.maxRedeemPercent.toNumber(),
       pointsLifetimeMonths: row.pointsLifetimeMonths,
@@ -76,6 +80,16 @@ export class LoyaltyPointsService {
     const gift = dto.birthdayBonusPoints;
     if (gift !== undefined && (gift < 0 || Math.round(gift * 100) !== gift * 100)) {
       throw new BadRequestException("Подарок на день рождения — неотрицательное число баллов, не больше двух знаков после запятой");
+    }
+    const welcome = dto.welcomeBonusPoints;
+    if (welcome !== undefined && (welcome < 0 || welcome > 1_000_000 || Math.round(welcome * 100) !== welcome * 100)) {
+      throw new BadRequestException("Бонус за первую покупку — неотрицательная сумма, не больше двух знаков после запятой");
+    }
+    if (dto.welcomeBonusDelayDays !== undefined && (!Number.isInteger(dto.welcomeBonusDelayDays) || dto.welcomeBonusDelayDays < 0 || dto.welcomeBonusDelayDays > 30)) {
+      throw new BadRequestException("Начало действия бонуса — целое число дней от 0 до 30");
+    }
+    if (dto.welcomeBonusDays !== undefined && (!Number.isInteger(dto.welcomeBonusDays) || dto.welcomeBonusDays < 1 || dto.welcomeBonusDays > 365)) {
+      throw new BadRequestException("Срок бонуса за первую покупку — целое число дней от 1 до 365");
     }
     if (dto.birthdayBonusDays !== undefined && (!Number.isInteger(dto.birthdayBonusDays) || dto.birthdayBonusDays < 1 || dto.birthdayBonusDays > 365)) {
       throw new BadRequestException("Срок подарка — целое число дней от 1 до 365");
@@ -104,10 +118,15 @@ export class LoyaltyPointsService {
   // ── reading balances ──────────────────────────────────────────────────────
 
   async balances(organizationId: string, memberIds: string[], db: Db = this.prisma): Promise<Map<string, number>> {
+    const positions = await this.positions(organizationId, memberIds, db);
+    return new Map(memberIds.map((id) => [id, positions.get(id)!.available]));
+  }
+
+  async positions(organizationId: string, memberIds: string[], db: Db = this.prisma): Promise<Map<string, PointsPosition>> {
     if (memberIds.length === 0) return new Map();
     const rows = await db.loyaltyPointsEntry.findMany({
       where: { organizationId, memberId: { in: memberIds } },
-      select: { id: true, memberId: true, type: true, points: true, expiresAt: true, createdAt: true },
+      select: { id: true, memberId: true, type: true, points: true, expiresAt: true, availableAt: true, createdAt: true },
     });
     const byMember = new Map<string, PointsRow[]>();
     for (const r of rows) {
@@ -116,7 +135,7 @@ export class LoyaltyPointsService {
       byMember.set(r.memberId, list);
     }
     const now = new Date();
-    return new Map(memberIds.map((id) => [id, pointsPosition(byMember.get(id) ?? [], now).available]));
+    return new Map(memberIds.map((id) => [id, pointsPosition(byMember.get(id) ?? [], now)]));
   }
 
   async history(organizationId: string, memberId: string): Promise<LoyaltyPointsEntryDto[]> {
@@ -129,6 +148,7 @@ export class LoyaltyPointsService {
       type: r.type as T,
       points: r.points.toNumber(),
       expiresAt: r.expiresAt?.toISOString() ?? null,
+      availableAt: r.availableAt?.toISOString() ?? null,
       saleId: r.saleId,
       ratePercent: r.ratePercent?.toNumber() ?? null,
       reason: r.reason,
@@ -200,19 +220,27 @@ export class LoyaltyPointsService {
 
     // «First purchase» = the first sale this member was attached to.
     const earlier = await tx.sale.count({ where: { loyaltyMemberId: memberId, id: { not: saleId } } });
-    const rate = earlier === 0 ? settings.firstPurchaseEarnPercent : settings.earnPercent;
     const base = round2(input.lines.filter((l) => isPointsEarningLine({ ...l, quantity: l.quantity, unitPrice: 0 })).reduce((s, l) => s + l.subtotal, 0));
-    const earned = loyaltyEarnPoints(base, rate);
+    // A fixed welcome bonus replaces the first-purchase percent. It still needs
+    // some of our own goods bought at their normal price (a basket of consignment
+    // or marked-down goods earns nothing, as with the percent).
+    const welcome = earlier === 0 && settings.welcomeBonusPoints > 0 && base > 0;
+    const rate = earlier === 0 ? settings.firstPurchaseEarnPercent : settings.earnPercent;
+    const earned = welcome ? round2(settings.welcomeBonusPoints) : loyaltyEarnPoints(base, rate);
     if (earned > 0) {
+      const delay = welcome ? settings.welcomeBonusDelayDays : 0;
       await tx.loyaltyPointsEntry.create({
         data: {
           organizationId: user.organizationId,
           memberId,
           type: T.EARN,
           points: earned,
-          expiresAt: addMonths(soldAt, settings.pointsLifetimeMonths),
+          // Welcome bonus: from local midnight `delay` days on, for `welcomeBonusDays` days.
+          expiresAt: welcome ? startOfZonedDay(soldAt, -(delay + settings.welcomeBonusDays)) : addMonths(soldAt, settings.pointsLifetimeMonths),
+          availableAt: welcome && delay > 0 ? startOfZonedDay(soldAt, -delay) : null,
           saleId,
-          ratePercent: rate,
+          ratePercent: welcome ? null : rate,
+          reason: welcome ? "Бонус за первую покупку" : null,
           ...actor,
           createdAt: soldAt,
         },
@@ -291,7 +319,8 @@ export class LoyaltyPointsService {
       });
     }
     // Points already spent elsewhere cannot be taken back; the balance never goes below zero.
-    const reversible = round2(position.available + Math.max(0, refund));
+    // A welcome bonus still waiting for its first day is taken back too.
+    const reversible = round2(position.available + position.pending + Math.max(0, refund));
     const reverse = round2(Math.min(reverseWanted, reversible));
     if (reverse > 0) {
       await tx.loyaltyPointsEntry.create({
@@ -367,10 +396,12 @@ export class LoyaltyPointsService {
     const now = new Date();
     await this.settle(tx, user.organizationId, primaryId, now);
     const position = await this.settle(tx, user.organizationId, duplicateId, now);
-    if (position.available <= 0) return 0;
+    // Points still waiting for their first day move too, and keep waiting.
+    const moving = round2(position.available + position.pending);
+    if (moving <= 0) return 0;
     const actor = { createdById: user.id, createdByName: user.fullName, createdAt: now };
     await tx.loyaltyPointsEntry.create({
-      data: { organizationId: user.organizationId, memberId: duplicateId, type: T.MERGE_OUT, points: -position.available, reason: "Объединение записей", ...actor },
+      data: { organizationId: user.organizationId, memberId: duplicateId, type: T.MERGE_OUT, points: -moving, reason: "Объединение записей", ...actor },
     });
     await tx.loyaltyPointsEntry.createMany({
       data: position.liveLots.map((lot) => ({
@@ -379,11 +410,12 @@ export class LoyaltyPointsService {
         type: T.MERGE_IN,
         points: lot.remaining,
         expiresAt: lot.expiresAt,
+        availableAt: lot.availableAt && lot.availableAt > now ? lot.availableAt : null,
         reason: "Объединение записей",
         ...actor,
       })),
     });
-    return position.available;
+    return moving;
   }
 
   // ── summary ───────────────────────────────────────────────────────────────
@@ -391,7 +423,7 @@ export class LoyaltyPointsService {
   async summary(organizationId: string, from: Date, to: Date): Promise<LoyaltySummaryDto> {
     const rows = await this.prisma.loyaltyPointsEntry.findMany({
       where: { organizationId },
-      select: { id: true, memberId: true, type: true, points: true, expiresAt: true, createdAt: true },
+      select: { id: true, memberId: true, type: true, points: true, expiresAt: true, availableAt: true, createdAt: true },
     });
     const byMember = new Map<string, PointsRow[]>();
     let earned = 0;
@@ -415,8 +447,9 @@ export class LoyaltyPointsService {
     for (const list of byMember.values()) {
       const position = pointsPosition(list, now);
       // What expired but was never written off is gone all the same.
-      outstanding += position.available;
-      if (position.available > 0) holders += 1;
+      // A welcome bonus waiting for its first day is held all the same.
+      outstanding += position.available + position.pending;
+      if (position.available + position.pending > 0) holders += 1;
       // Expired but not yet written off (it is, the next time the member is touched).
       if (position.dueToExpire > 0 && to >= now) expired += position.dueToExpire;
     }
@@ -434,7 +467,7 @@ export class LoyaltyPointsService {
   private async rows(db: Db, memberId: string): Promise<PointsRow[]> {
     const rows = await db.loyaltyPointsEntry.findMany({
       where: { memberId },
-      select: { id: true, type: true, points: true, expiresAt: true, createdAt: true },
+      select: { id: true, type: true, points: true, expiresAt: true, availableAt: true, createdAt: true },
     });
     return rows.map((r) => ({ ...r, points: r.points.toNumber() }));
   }

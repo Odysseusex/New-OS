@@ -18,6 +18,8 @@ const geistMono = localFont({
 export const metadata: Metadata = {
   title: "ArAmir OS — Платформа управления пекарней",
   description: "Единая платформа управления пекарней Ar-Amir",
+  // A static file (not app/manifest.ts) so /crm can point at its own manifest.
+  manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

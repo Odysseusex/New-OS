@@ -2804,6 +2804,13 @@ model LoyaltySettings {
   // Off until the owner switches it on: «first purchase» counts from then.
   enabled                  Boolean  @default(false)
   firstPurchaseEarnPercent Decimal  @default(5) @db.Decimal(5, 2)
+  // Welcome bonus: a fixed number of points for the first purchase, given
+  // INSTEAD of firstPurchaseEarnPercent when > 0. It can be spent only from the
+  // start of the day `welcomeBonusDelayDays` after the purchase (Almaty), and
+  // for `welcomeBonusDays` days from then.
+  welcomeBonusPoints       Decimal  @default(0) @db.Decimal(12, 2)
+  welcomeBonusDelayDays    Int      @default(1)
+  welcomeBonusDays         Int      @default(10)
   earnPercent              Decimal  @default(1) @db.Decimal(5, 2)
   // Max share of a check (its eligible goods) payable with points.
   maxRedeemPercent         Decimal  @default(30) @db.Decimal(5, 2)
@@ -2851,6 +2858,8 @@ model LoyaltyPointsEntry {
   points         Decimal                @db.Decimal(12, 2)
   // Set on positive entries only.
   expiresAt      DateTime?
+  // A lot that cannot be spent before this moment (the welcome bonus); null = at once.
+  availableAt    DateTime?
   saleId         String?
   sale           Sale?                  @relation(fields: [saleId], references: [id], onDelete: Restrict)
   saleReturnId   String?

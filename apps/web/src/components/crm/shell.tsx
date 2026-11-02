@@ -7,7 +7,7 @@ import { Cake, LayoutGrid, Layers, LogOut, Menu, Moon, Sun, Sunrise, Users } fro
 import { CRM_ROLES, CrmOrderStage, Role, ROLE_LABELS_RU } from "@bakery-os/shared";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { Avatar, WheatIcon } from "./ui";
+import { Avatar } from "./ui";
 
 type Theme = "light" | "dark";
 const THEME_KEY = "crm_theme";
@@ -102,10 +102,8 @@ export function CrmShell({ children }: { children: React.ReactNode }) {
           {menuOpen && <div className="crm-scrim" onClick={() => setMenuOpen(false)} aria-hidden="true" />}
           <aside className={`crm-side${menuOpen ? " open" : ""}`} aria-label="Меню CRM">
             <div className="crm-ws">
-              <span className="crm-logo">
-                <WheatIcon size={15} />
-              </span>
-              <span>Ар Амир</span>
+              <img src="/crm/avatar.jpg" alt="" className="crm-logo-img" />
+              <span>Ar Amir</span>
               <span className="crm-mini" style={{ marginLeft: 2 }}>
                 CRM
               </span>
@@ -160,10 +158,8 @@ export function CrmShell({ children }: { children: React.ReactNode }) {
               <button type="button" className="crm-ib" onClick={() => setMenuOpen(true)} aria-label="Меню">
                 <Menu size={18} />
               </button>
-              <span className="crm-logo">
-                <WheatIcon size={15} />
-              </span>
-              <span style={{ fontWeight: 600 }}>Ар Амир CRM</span>
+              <img src="/crm/avatar.jpg" alt="" className="crm-logo-img" />
+              <span style={{ fontWeight: 600 }}>Ar Amir CRM</span>
             </div>
             {children}
           </div>

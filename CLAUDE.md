@@ -1053,6 +1053,14 @@ earning on consignment, markdown/coupon lines or the part paid by points — all
   before any balance change and when the card is opened. Balances never go negative (a return's earn
   reversal is capped). Returns refund spent points and take back earned ones cumulatively (no тиын drift);
   merge moves live lots keeping their expiry; manual adjustment is OWNER/ADMIN with a reason (audited).
+- **Welcome bonus** (migration `20261102150000`): `LoyaltySettings.welcomeBonusPoints` > 0 gives a FIXED sum of points
+  for the first purchase INSTEAD of `firstPurchaseEarnPercent` (0 = the percent applies; the percent stays in settings).
+  It is an ordinary EARN lot (reason «Бонус за первую покупку», `ratePercent` null) with `LoyaltyPointsEntry.availableAt`
+  = Almaty midnight `welcomeBonusDelayDays` (default 1) after the sale and `expiresAt` = `welcomeBonusDays` (default 10)
+  days after that. Before `availableAt` it is held but not spendable (`PointsPosition.pending`/`pendingFrom`, shown as
+  `pointsPending` on the card and till). It needs some own goods at normal price in the basket (like the percent). A
+  return of the first purchase reverses it proportionally — even while it is still waiting (EARN_REVERSAL and MERGE_OUT
+  consume waiting lots); a merge carries it over still waiting.
 - «First purchase» = the first sale the member is attached to. Sales attach a member via `Sale.loyaltyMemberId`
   (till: «Клиент бонусной программы» in the cart). `SalesService`/`SaleReturnsService` take
   `LoyaltyPointsService` as their LAST constructor argument (defaulted) so hand-wired specs keep working.

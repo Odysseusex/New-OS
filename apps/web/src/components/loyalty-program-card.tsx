@@ -11,7 +11,12 @@ import { LoyaltyWhatsAppBlock } from "@/components/loyalty-whatsapp-block";
 
 const PERIOD_DAYS = 30;
 
-type NumericSetting = "firstPurchaseEarnPercent" | "earnPercent" | "maxRedeemPercent" | "pointsLifetimeMonths" | "birthdayBonusPoints" | "birthdayBonusDays";
+type NumericSetting =
+  | "welcomeBonusPoints"
+  | "welcomeBonusDelayDays"
+  | "welcomeBonusDays"
+  | "firstPurchaseEarnPercent"
+  | "earnPercent" | "maxRedeemPercent" | "pointsLifetimeMonths" | "birthdayBonusPoints" | "birthdayBonusDays";
 
 // Programme settings (owner/admin edit them) and the points figures. Points
 // are a discount when spent («способ Б»), so «Баллов у клиентов» is shown here
@@ -33,6 +38,9 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
   const fill = useCallback((s: LoyaltySettingsDto) => {
     setSettings(s);
     setDraft({
+      welcomeBonusPoints: String(s.welcomeBonusPoints),
+      welcomeBonusDelayDays: String(s.welcomeBonusDelayDays),
+      welcomeBonusDays: String(s.welcomeBonusDays),
       firstPurchaseEarnPercent: String(s.firstPurchaseEarnPercent),
       earnPercent: String(s.earnPercent),
       maxRedeemPercent: String(s.maxRedeemPercent),
@@ -90,10 +98,13 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
     : [];
 
   const fields: [keyof NonNullable<typeof draft>, string][] = [
+    ["welcomeBonusPoints", "Бонус за первую покупку, ₸"],
+    ["welcomeBonusDelayDays", "Бонус за первую покупку доступен через, дней"],
+    ["welcomeBonusDays", "Бонус за первую покупку действует, дней"],
     ["firstPurchaseEarnPercent", "Начисление за первую покупку, %"],
     ["earnPercent", "Начисление за покупку, %"],
     ["maxRedeemPercent", "Оплата баллами, не больше % чека"],
-    ["pointsLifetimeMonths", "Срок жизни баллов, мес."],
+    ["pointsLifetimeMonths", "Срок жизни баллов за покупки, мес."],
     ["birthdayBonusPoints", "Подарок на день рождения, баллов"],
     ["birthdayBonusDays", "Подарок действует, дней"],
   ];
@@ -160,7 +171,7 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
       )}
 
       {draft && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:items-end lg:grid-cols-[repeat(6,1fr)_auto]">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:items-end lg:grid-cols-5">
           {fields.map(([key, label]) => (
             <div key={key}>
               <label className="mb-1.5 block text-xs font-medium text-foreground">{label}</label>
@@ -176,6 +187,11 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
               />
             </div>
           ))}
+          {num(draft.welcomeBonusPoints) > 0 && (
+            <p className="text-xs text-muted sm:col-span-3 lg:col-span-5">
+              За первую покупку начисляется бонус {draft.welcomeBonusPoints} ₸ вместо процента.
+            </p>
+          )}
           {canEdit && (
             <button
               disabled={!changed || busy}
