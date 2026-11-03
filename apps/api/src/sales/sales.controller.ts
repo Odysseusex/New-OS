@@ -72,6 +72,12 @@ export class SalesController {
     );
   }
 
+  @Get("open-orders")
+  @Roles(...SALE_CREATE_ROLES)
+  openOrders(@CurrentUser() user: AuthenticatedUser) {
+    return this.salesService.openCrmOrders(user);
+  }
+
   @Get("cashiers")
   cashiers(@CurrentUser() user: AuthenticatedUser, @Query("locationId") locationId?: string) {
     return this.salesService.cashiers(user, locationId);

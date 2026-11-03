@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { isDemoOrganization } from "../common/demo-guard";
 import {
+  OpenCrmOrderDto,
   CashAccountType,
   CashMovementDto,
   CashMovementType,
@@ -89,7 +90,15 @@ export interface SaleListSearch {
   maxTotal?: number;
 }
 
-const SALE_INCLUDE = { location: true, customer: true, createdBy: true, items: true, _count: { select: { returns: true } } };
+const CRM_ORDER_SELECT = { select: { id: true, number: true, title: true } };
+const SALE_INCLUDE = {
+  location: true,
+  customer: true,
+  createdBy: true,
+  items: true,
+  crmOrder: CRM_ORDER_SELECT,
+  _count: { select: { returns: true } },
+};
 const SALE_DETAIL_INCLUDE = {
   location: true,
   customer: true,
@@ -102,6 +111,7 @@ const SALE_DETAIL_INCLUDE = {
   payments: true,
   loyaltyMember: { select: { id: true, phone: true, name: true } },
   loyaltyPointsEntries: { select: { type: true, points: true } },
+  crmOrder: CRM_ORDER_SELECT,
 };
 
 @Injectable()
@@ -210,6 +220,24 @@ export class SalesService {
 
   // Who rang checks up in this organization (or at this point): the cashier
   // filter of the sales list.
+  // Open cake orders the till can take a payment for (not finished, not cancelled).
+  async openCrmOrders(user: AuthenticatedUser): Promise<OpenCrmOrderDto[]> {
+    const orders = await this.prisma.crmOrder.findMany({
+      where: { organizationId: user.organizationId, stage: { notIn: ["DONE", "CANCELLED"] } },
+      orderBy: { dueAt: "asc" },
+      take: 100,
+      select: { id: true, number: true, title: true, customerName: true, dueAt: true, price: true },
+    });
+    return orders.map((o) => ({
+      id: o.id,
+      number: o.number,
+      title: o.title,
+      customerName: o.customerName,
+      dueAt: o.dueAt.toISOString(),
+      price: o.price ? o.price.toNumber() : null,
+    }));
+  }
+
   async cashiers(user: AuthenticatedUser, requestedLocationId?: string): Promise<{ id: string; name: string }[]> {
     const locationId = resolveLocationScope(user, requestedLocationId);
     const rows = await this.prisma.sale.groupBy({
@@ -1244,6 +1272,17 @@ export class SalesService {
     // at their normal price take points (never a markdown, a coupon line or
     // goods «под реализацию»). The balance is checked again inside the
     // transaction, under a lock on the member.
+    // A cake order this sale pays for (a prepayment or the rest): the sale
+    // then counts in the «Заказы» business direction.
+    if (dto.crmOrderId) {
+      const order = await this.prisma.crmOrder.findFirst({
+        where: { id: dto.crmOrderId, organizationId: user.organizationId },
+        select: { stage: true },
+      });
+      if (!order) throw new BadRequestException("Заказ не найден");
+      if (order.stage === "CANCELLED") throw new BadRequestException("Заказ отменён — оплату по нему принять нельзя");
+    }
+
     let loyalty: (PreparedSaleLoyalty & { redeem: number; consignmentById: Map<string, boolean> }) | null = null;
     if (dto.loyaltyMemberId) {
       const prepared = await this.loyaltyPoints.prepareSale(user.organizationId, dto.loyaltyMemberId);
@@ -1386,6 +1425,7 @@ export class SalesService {
           locationId,
           customerId: dto.customerId,
           loyaltyMemberId: loyalty?.memberId ?? null,
+          crmOrderId: dto.crmOrderId ?? null,
           totalAmount,
           consignmentAmount,
           amountPaid,
@@ -1772,6 +1812,7 @@ export class SalesService {
     createdById?: string;
     items: unknown[];
     _count?: { returns: number };
+    crmOrder?: { id: string; number: number; title: string } | null;
   }): SaleDto => {
     const totalAmount = sale.totalAmount.toNumber();
     const amountPaid = sale.amountPaid.toNumber();
@@ -1794,6 +1835,7 @@ export class SalesService {
       itemsCount: sale.items.length,
       createdByName: sale.createdBy.fullName,
       returnsCount: sale._count?.returns ?? 0,
+      crmOrder: sale.crmOrder ?? null,
     };
   };
 

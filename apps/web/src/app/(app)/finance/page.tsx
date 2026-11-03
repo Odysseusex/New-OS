@@ -1,5 +1,6 @@
 "use client";
 
+import { DirectionPnlCard } from "@/components/direction-pnl-card";
 import { PnlLadder } from "@/components/pnl-ladder";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -940,6 +941,8 @@ export default function FinancePage() {
           )}
 
           {pnl && <PnlLadder pnl={pnl} />}
+
+          {pnl && <DirectionPnlCard period={period} locationId={locationFilter} reloadKey={pnl} />}
 
           {pnl && pnl.unknownCostLineItems > 0 && (
             <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">

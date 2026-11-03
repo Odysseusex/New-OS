@@ -55,6 +55,8 @@ export interface SaleDto {
   productQuantity?: number;
   // Returns made against this check (a corrected check has at least one).
   returnsCount?: number;
+  // The cake order this sale pays for, if any.
+  crmOrder?: { id: string; number: number; title: string } | null;
 }
 
 // What the cashier needs to see about the fiscal side of a sale: the number
@@ -159,6 +161,8 @@ export interface CreateSaleRequestDto {
   // with (a discount on the check; the server re-checks balance and limit).
   loyaltyMemberId?: string;
   loyaltyPointsToRedeem?: number;
+  // The cake order (CRM) this sale pays for — puts it in «Заказы».
+  crmOrderId?: string;
   items: CreateSaleItemRequestDto[];
 }
 

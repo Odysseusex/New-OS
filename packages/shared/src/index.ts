@@ -37,3 +37,4 @@ export * from "./loyalty";
 export * from "./demo";
 export * from "./crm";
 export * from "./debts";
+export * from "./directions";

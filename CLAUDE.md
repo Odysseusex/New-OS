@@ -1000,6 +1000,23 @@ trigger; `StockMovementType.SUPPLIER_RETURN`, stock sign −1; `supplierReturnId
 - After a return, «Исправить приёмку» is refused for that order (the two would contradict each other).
 - Not built: a return of goods from a manual Склад → Приёмка or from a supplier invoice (накладная).
 
+## Прибыль по направлениям (опт / розница / заказы) — built
+
+Финансы → «Прибыли и убытки» → table «Прибыль по направлениям» (`DirectionPnlCard`, `GET /finance/pnl/directions`,
+same roles/period/location as the P&L). `finance/direction-pnl.ts`; shared `packages/shared/src/directions.ts`.
+- A sale's direction is read from the sale itself (`businessDirectionOf`): `Sale.crmOrderId` set → «Заказы»;
+  `customerId` → «Опт»; else «Розница». A return follows its sale. Nothing about directions is stored.
+- `Sale.crmOrderId` (migration `20261106120000`, nullable, SET NULL): the till's «Оплата заказа» (`PosOrderBlock`,
+  `GET /sales/open-orders`, SALE_CREATE_ROLES — a cashier cannot reach `/crm`) attaches a prepayment or the rest to an
+  open cake order; a CANCELLED order is refused. «Исправить чек» carries it over. Sales before this have no order, so
+  «Заказы» starts from now — nothing is back-filled.
+- Revenue and cost of goods are each direction's own, read like the P&L (own goods only, line stamp, today's cost
+  only without one); a month-end cost correction moves a product's COGS by each direction's share of that product
+  sold. **Common costs (inventory losses, operating expenses, depreciation, other result, recorded tax) are allocated
+  by share of net revenue — the owner's decision (03.11.2026).** Totals ARE the period's P&L; parts are made to add up
+  to the тиын (`allocate`, remainder on the largest). Net revenue ≤ 0 → nothing allocated (`allocated: false`).
+- Not built: direct (non-shared) expenses per direction — an expense has no direction field; ask before adding one.
+
 ## Month-end cost correction — owner DECISIONS (not built yet; steps 3–4 of the financiers' ТЗ)
 
 Decided by the owner on 03.11.2026, so not to be re-asked:
@@ -1010,8 +1027,7 @@ Decided by the owner on 03.11.2026, so not to be re-asked:
 - **Finished goods are recomputed too**, through the recomputed raw-material prices of what actually went into
   production.
 - **Till checks are never edited**: a wrong check = a return + a new check (owner's choice after weighing an
-  owner-only edit). Still open for the financiers: VAT/tax regime; list of business directions and the base for
-  allocating common costs.
+  owner-only edit). Still open for the financiers: VAT/tax regime. (Directions + allocation by revenue: decided and built, see above.)
 - **Step 3 BUILT — preview** (Финансы → Периоды → «Себестоимость» on any started month; `GET
   /finance/periods/:y/:m/cost-correction`, read-only). Engine: `finance/cost-correction/replay.ts` (pure, tested) +
   `cost-correction.service.ts` (loads flows). Walks ALL history to the month's end, network-wide (transfers skipped):

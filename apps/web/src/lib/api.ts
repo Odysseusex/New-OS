@@ -153,6 +153,8 @@ import type {
   ProductionBatchDto,
   ProductPnLDetailDto,
   ProfitAndLossDto,
+  DirectionPnlDto,
+  OpenCrmOrderDto,
   CashFlowDto,
   BusinessContextDto,
   BusinessContextLevel,
@@ -507,6 +509,7 @@ export const api = {
           ...search,
         }),
       ),
+    openOrders: () => request<OpenCrmOrderDto[]>("/sales/open-orders"),
     cashiers: (locationId?: string) => request<{ id: string; name: string }[]>(withQuery("/sales/cashiers", { locationId })),
     summary: (locationId?: string) =>
       request<SalesSummaryDto>(withQuery("/sales/summary", { locationId })),
@@ -909,6 +912,8 @@ export const api = {
     inventoryValuation: () => request<InventoryValuationDto>("/finance/inventory-valuation"),
     pnl: (from: string, to: string, locationId?: string) =>
       request<ProfitAndLossDto>(withQuery("/finance/pnl", { from, to, locationId })),
+    pnlDirections: (from: string, to: string, locationId?: string) =>
+      request<DirectionPnlDto>(withQuery("/finance/pnl/directions", { from, to, locationId })),
     productPnl: (productId: string, from: string, to: string, locationId?: string) =>
       request<ProductPnLDetailDto>(withQuery("/finance/pnl/product", { productId, from, to, locationId })),
     balance: (asOf?: string) => request<BalanceSheetDto>(withQuery("/finance/balance", { asOf })),

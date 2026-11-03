@@ -118,6 +118,11 @@ export class CreateSaleDto {
   @Min(0)
   loyaltyPointsToRedeem?: number;
 
+  // The cake order (CRM) this sale pays for.
+  @IsOptional()
+  @IsString()
+  crmOrderId?: string;
+
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })

@@ -53,6 +53,12 @@ export class FinanceController {
     );
   }
 
+  // Прибыль по направлениям: опт / розница / заказы. Always live.
+  @Get("pnl/directions")
+  getPnlByDirection(@CurrentUser() user: AuthenticatedUser, @Query() query: GetPnlQueryDto) {
+    return this.financeService.getPnlByDirection(user.organizationId, new Date(query.from), new Date(query.to), query.locationId);
+  }
+
   // One row of «Финансовый результат по товарам», opened up. Always live:
   // sale lines carry their cost stamp, so it agrees with a frozen month too.
   @Get("pnl/product")

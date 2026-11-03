@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { purchaseOrderOwed } from "../procurement/purchase-owed";
 import { PrismaService } from "../prisma/prisma.service";
 import { cogsDeltaOf, correctionsInRange, lossDeltaOf } from "./cost-correction/stored";
+import { buildDirectionPnl } from "./direction-pnl";
 import { CostingService } from "../costing/costing.service";
 import { FinancialEventProjector } from "./events/projector";
 import { PeriodGuard } from "./periods/period-guard";
@@ -606,6 +607,13 @@ export class FinanceService {
       costingMethod: this.costing.methodLabel,
       byProduct,
     };
+  }
+
+  // The P&L split by business direction (опт / розница / заказы); common costs
+  // by share of net revenue. Totals are this same period's P&L.
+  async getPnlByDirection(organizationId: string, from: Date, to: Date, locationId?: string) {
+    const pnl = await this.getProfitAndLoss(organizationId, from, to, locationId);
+    return buildDirectionPnl(this.prisma, this.costing, pnl, organizationId, from, to, locationId);
   }
 
   // One product's row of the P&L, opened up. Totals follow getProfitAndLoss

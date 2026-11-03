@@ -74,6 +74,11 @@ export function SaleDetailModal({
             <div className="mb-5 rounded-xl bg-surface-muted px-4 py-3 text-sm">
               <p className="text-muted">Получатель</p>
               <p className="font-medium text-foreground">{sale.customerName ?? "Розничный покупатель"}</p>
+              {sale.crmOrder && (
+                <p className="mt-1 text-foreground">
+                  Оплата заказа №{sale.crmOrder.number} · {sale.crmOrder.title}
+                </p>
+              )}
             </div>
 
             <div className="mb-5 overflow-hidden rounded-2xl border border-border">

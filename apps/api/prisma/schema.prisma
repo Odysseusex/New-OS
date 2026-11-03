@@ -836,6 +836,10 @@ model Sale {
   loyaltyMemberId      String?
   loyaltyMember        LoyaltyMember?       @relation(fields: [loyaltyMemberId], references: [id])
   loyaltyPointsEntries LoyaltyPointsEntry[]
+  // The cake order (CRM) this sale is paid for — a prepayment or the rest.
+  // Makes the sale part of the «Заказы» business direction.
+  crmOrderId           String?
+  crmOrder             CrmOrder?            @relation(fields: [crmOrderId], references: [id], onDelete: SetNull)
   // Set only when this sale was rung up against a promotion coupon — the
   // redemption fact itself lives on PromotionCoupon, this is just the back
   // pointer so a Sale can be checked for one.
@@ -844,6 +848,7 @@ model Sale {
   @@index([organizationId, locationId])
   @@index([soldAt])
   @@index([loyaltyMemberId])
+  @@index([crmOrderId])
   @@map("sales")
 }
 
@@ -3196,6 +3201,7 @@ model CrmOrder {
   updatedAt      DateTime       @updatedAt
 
   events CrmOrderEvent[]
+  sales  Sale[]
 
   @@unique([organizationId, number])
   @@index([organizationId, stage, dueAt])

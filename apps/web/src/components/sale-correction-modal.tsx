@@ -112,6 +112,7 @@ export function SaleCorrectionModal({
           amountPaid: sale.customerId ? Math.min(num(amountPaid) || 0, newTotal) : undefined,
           paymentMethod: method,
           loyaltyMemberId: sale.loyalty?.memberId,
+          crmOrderId: sale.crmOrder?.id,
           items: lines.map((r) => ({ productId: r.productId, quantity: num(r.quantity), unitPrice: num(r.unitPrice) })),
         });
       }

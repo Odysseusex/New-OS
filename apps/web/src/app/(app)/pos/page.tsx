@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import type {
+  OpenCrmOrderDto,
   CategoryDto,
   LocationDto,
   ProductDto,
@@ -66,6 +67,7 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { LoyaltyLookupPanel } from "@/components/loyalty-lookup-panel";
 import { PosLoyaltyBlock } from "@/components/pos-loyalty";
+import { PosOrderBlock } from "@/components/pos-order";
 import { formatMoney, formatPoints, formatQuantity } from "@/lib/format";
 
 // A cart line carries its own price rather than reading it off the product,
@@ -158,6 +160,7 @@ export default function PosPage() {
   // cannot read them), which simply hides the block.
   const [loyaltySettings, setLoyaltySettings] = useState<LoyaltySettingsDto | null>(null);
   const [loyaltyMember, setLoyaltyMember] = useState<LoyaltyMemberDto | null>(null);
+  const [crmOrder, setCrmOrder] = useState<OpenCrmOrderDto | null>(null);
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
   // Set only when openCustomerDisplay() cannot tell which physical monitor is
   // the customer's — no remembered choice yet, or Windows' own displays
@@ -218,6 +221,7 @@ export default function PosPage() {
     // across would keep the old prices while the grid shows new ones.
     setCart([]);
     setLoyaltyMember(null);
+    setCrmOrder(null);
     setPointsToRedeem(0);
     // A coupon is validated against one specific location (see
     // Promotion.locationId) — switching points invalidates whatever was
@@ -550,6 +554,7 @@ export default function PosPage() {
         ...(loyaltyActive && loyaltyMember
           ? { loyaltyMemberId: loyaltyMember.id, ...(pointsRequested > 0 ? { loyaltyPointsToRedeem: pointsRequested } : {}) }
           : {}),
+        ...(crmOrder ? { crmOrderId: crmOrder.id } : {}),
         items: cart.map((line) => ({
           productId: line.product.id,
           quantity: line.quantity,
@@ -578,6 +583,7 @@ export default function PosPage() {
       setQuery("");
       removeCoupon();
       setLoyaltyMember(null);
+      setCrmOrder(null);
       setPointsToRedeem(0);
       setChargedButUnrecorded(null);
     } catch (err) {
@@ -897,6 +903,7 @@ export default function PosPage() {
                   setCart([]);
                   removeCoupon();
                   setLoyaltyMember(null);
+                  setCrmOrder(null);
                   setPointsToRedeem(0);
                   focusScan();
                 }}
@@ -1045,6 +1052,10 @@ export default function PosPage() {
               </div>
             )}
             {couponError && <p className="mt-1.5 text-xs text-red-600">{couponError}</p>}
+          </div>
+
+          <div className="border-t border-border px-5 py-3">
+            <PosOrderBlock order={crmOrder} onChange={setCrmOrder} />
           </div>
 
           {loyaltySettings?.enabled && (
