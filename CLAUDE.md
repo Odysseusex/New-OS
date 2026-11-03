@@ -1049,7 +1049,14 @@ is NOT in the repo (personal data) — specs use invented lines.
   account, else the default bank. Used by sales; a refund goes back out of the account the sale's money came into (its
   SALE_RECEIPT movement), else the point's current one. One shop's card money goes to BCC (an ИП account), the rest to
   Kaspi Pay. Settlement comparison is per account, so it only matches once each point is bound right.
-- Not built: BCC (another format — needs a sample), customer (wholesale) payments matched to sales, advances to suppliers.
+- **Банк ЦентрКредит (BCC)** sends «Обороты по счетам» as an OLD binary Excel (.xls, BIFF8). `lib/xlsx-read.ts` sees the
+  OLE signature and hands it to shared `readXlsFirstSheet` (`xls-read.ts`, hand-written, no library). The parser takes
+  BCC's layout too: bilingual headers («Күні / Дата»), «Label: value» in one cell, period «Движения по счету за … по …»,
+  «Исходящее сальдо» AFTER the table, БИН from «БИН отправителя» (credit) / «БИН получателя» (debit). BCC pays a day's
+  card/QR takings the NEXT morning («Возмещение коммерсанту / НПК QR: у-во …», BCC's BIN 980640000093 is an aggregator)
+  → SALES_SETTLEMENT compared with the PREVIOUS Almaty day. Verified on the owner's October file: 25 lines,
+  opening + Σ = closing. Spec fixture `apps/api/test/fixtures/bcc-statement-invented.xls` is invented (xlwt).
+- Not built: customer (wholesale) payments matched to sales, advances to suppliers.
 
 ## Month-end cost correction — owner DECISIONS (not built yet; steps 3–4 of the financiers' ТЗ)
 

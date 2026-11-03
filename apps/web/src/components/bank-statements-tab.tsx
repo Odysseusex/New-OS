@@ -96,7 +96,12 @@ export function BankStatementsTab() {
     setParsed(null);
     try {
       const rows = await readFirstSheet(await file.arrayBuffer());
-      setParsed({ ...parseBankStatementRows(rows), fileName: file.name });
+      const result = parseBankStatementRows(rows);
+      setParsed({ ...result, fileName: file.name });
+      // The statement's bank names its account when one is called that way («BCC», «Kaspi Pay»).
+      const byName = result.bankName === "Банк ЦентрКредит" ? /bcc|бцк|центркредит/i : result.bankName === "Kaspi Bank" ? /kaspi|каспи/i : null;
+      const match = byName && accounts.find((a) => a.isActive && a.type === CashAccountType.BANK && byName.test(a.name));
+      if (match) setAccountId(match.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось прочитать файл");
     } finally {
@@ -170,13 +175,13 @@ export function BankStatementsTab() {
             </option>
           ))}
         </select>
-        <input ref={fileRef} type="file" accept=".xlsx" className="hidden" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
+        <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
         <button
           onClick={() => fileRef.current?.click()}
           className="flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition hover:opacity-90"
         >
           <Upload className="h-4 w-4" strokeWidth={1.75} />
-          Загрузить выписку (.xlsx)
+          Загрузить выписку (Excel)
         </button>
       </div>
 

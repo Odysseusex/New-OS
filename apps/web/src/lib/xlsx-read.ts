@@ -3,7 +3,10 @@
 // same way); this unzips it with fflate and walks the sheet: shared strings,
 // inline strings, numbers. Enough for a bank statement — no formulas are
 // evaluated (an exported statement stores values), no dates are converted
-// (statements write them as text).
+// (statements write them as text). An old .xls (Excel 97–2003, e.g. Банк
+// ЦентрКредит) is read by the shared BIFF reader instead.
+
+import { readXlsFirstSheet } from "@bakery-os/shared";
 
 export type ReadCell = string | number | null;
 
@@ -18,12 +21,14 @@ const textOf = (el: Element | null | undefined): string =>
   el ? Array.from(el.getElementsByTagName("t")).map((t) => t.textContent ?? "").join("") : "";
 
 export async function readFirstSheet(file: ArrayBuffer): Promise<ReadCell[][]> {
+  const bytes0 = new Uint8Array(file);
+  if (bytes0[0] === 0xd0 && bytes0[1] === 0xcf && bytes0[2] === 0x11 && bytes0[3] === 0xe0) return readXlsFirstSheet(bytes0);
   const { unzipSync, strFromU8 } = await import("fflate");
   let entries: Record<string, Uint8Array>;
   try {
-    entries = unzipSync(new Uint8Array(file));
+    entries = unzipSync(bytes0);
   } catch {
-    throw new Error("Это не файл Excel (.xlsx). Выгрузите выписку в формате Excel.");
+    throw new Error("Это не файл Excel (.xlsx или .xls). Выгрузите выписку в формате Excel.");
   }
   const xml = (path: string): Document | null => {
     const bytes = entries[path];

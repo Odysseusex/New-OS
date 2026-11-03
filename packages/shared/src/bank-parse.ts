@@ -1,7 +1,7 @@
 import type { ParsedBankLineDto } from "./bank";
 
 // Reading a bank statement exported to Excel, once its first sheet is a grid of
-// cells. Written for Kaspi Pay's «Выписка по текущему счёту» (header lines
+// cells. Reads Банк ЦентрКредит's «Обороты по счетам» (.xls) as well. Written for Kaspi Pay's «Выписка по текущему счёту» (header lines
 // «Текущий счет:», «Период:», «Входящий остаток:»…, then a table whose header
 // row has «Дата операции», «Дебет», «Кредит», «Наименование бенефициара /
 // отправителя денег», «ИИК…», «КНП», «Назначение платежа»), and tolerant
@@ -54,38 +54,72 @@ export function splitCounterparty(c: Cell): { name: string | null; bin: string |
   return { name: name || null, bin };
 }
 
-const findLabel = (rows: Cell[][], label: RegExp): Cell[] | undefined => rows.find((r) => label.test(text(r[0])));
-const valueAfterLabel = (row: Cell[] | undefined): Cell => row?.slice(1).find((c) => text(c) !== "");
+// A label and its value: «Входящий остаток:» with the value in a later cell
+// (Kaspi), or «ИИН / БИН:   061107551240» in the same cell after the colon
+// (Банк ЦентрКредит). Labels are looked for in the first cell of a row.
+function labelled(rows: Cell[][], label: RegExp): Cell {
+  for (const r of rows) {
+    const first = text(r[0]);
+    if (!label.test(first)) continue;
+    const colon = first.indexOf(":");
+    const inline = colon >= 0 ? first.slice(colon + 1).trim() : "";
+    if (inline) return inline;
+    return r.slice(1).find((c) => text(c) !== "");
+  }
+  return undefined;
+}
+
+// Header cells are often bilingual and broken over lines: «Күні / Дата»,
+// «Алушының\nИИН / БИН \nполучателя».
+const headerText = (c: Cell) => text(c).toLowerCase().replace(/\s+/g, " ");
+const word = (w: string) => new RegExp(`(^|[\\s/(])${w}`);
+const isHeaderRow = (r: Cell[]) => {
+  const h = r.map(headerText);
+  return h.some((x) => word("дебет").test(x)) && h.some((x) => word("кредит").test(x)) && h.some((x) => word("дата").test(x));
+};
 
 export function parseBankStatementRows(rows: Cell[][]): ParsedBankStatement {
-  const headerIndex = rows.findIndex((r) => r.some((c) => /дата операции/i.test(text(c))));
-  if (headerIndex < 0) throw new Error("Не найдена таблица операций (нет колонки «Дата операции»)");
-  const header = rows[headerIndex].map((c) => text(c).toLowerCase());
-  const col = (re: RegExp) => header.findIndex((h) => re.test(h));
+  const headerIndex = rows.findIndex(isHeaderRow);
+  if (headerIndex < 0) throw new Error("Не найдена таблица операций (нет колонок «Дата», «Дебет», «Кредит»)");
+  const header = rows[headerIndex].map(headerText);
+  const col = (re: RegExp, not?: RegExp) => header.findIndex((h) => re.test(h) && !(not && not.test(h)));
+  const dateOp = col(/дата операции/);
   const cols = {
-    doc: col(/документ/),
-    date: col(/дата операции/),
-    debit: col(/^дебет/),
-    credit: col(/^кредит/),
-    name: col(/наименование/),
-    iban: col(/иик|iban|счет/),
+    doc: col(/документ|№ п\/п/),
+    date: dateOp >= 0 ? dateOp : col(word("дата")),
+    debit: col(word("дебет")),
+    credit: col(word("кредит")),
+    name: col(/наименование|корреспондент/, /банк корреспондент|бик|бск|иик|жск/),
+    iban: col(/иик|iban|сч[её]т/),
     knp: col(/кнп/),
     purpose: col(/назначение/),
+    senderBin: col(/бин отправителя/),
+    recipientBin: col(/бин получателя/),
   };
-  if (cols.date < 0 || cols.debit < 0 || cols.credit < 0) throw new Error("В таблице нет колонок «Дебет» и «Кредит»");
 
   const head = rows.slice(0, headerIndex);
-  const iban = text(valueAfterLabel(findLabel(head, /текущий сч[её]т|номер сч[её]та|iban/i))) || null;
-  const holderBin = text(valueAfterLabel(findLabel(head, /ИИН\/БИН|БИН|ИИН/i))).replace(/\D/g, "") || null;
-  const holderName = text(valueAfterLabel(findLabel(head, /наименование/i))) || null;
-  const period = text(valueAfterLabel(findLabel(head, /период/i))).split(/\s*[-–—]\s*/);
-  const openingBalance = parseMoney(valueAfterLabel(findLabel(head, /входящий остаток/i)));
-  const closingBalance = parseMoney(valueAfterLabel(findLabel(head, /исходящий остаток/i)));
-  const bankName = rows.some((r) => r.some((c) => /kaspi/i.test(text(c)) && /банк|bank/i.test(text(c)))) ? "Kaspi Bank" : "Банк";
+  const iban = text(labelled(head, /текущий сч[её]т|номер сч[её]та|iban|иик/i)) || null;
+  const holderBin = text(labelled(head, /ИИН\/БИН|БИН|ИИН/i)).replace(/\D/g, "") || null;
+  const holderName = text(labelled(head, /наименование|^клиент/i)) || null;
+  // «Период: 01.10.2026 - 31.10.2026» (Kaspi) or «Движения по счету за 01.10.2026 по 31.10.2026».
+  let period = text(labelled(head, /период/i)).split(/\s*[-–—]\s*/);
+  if (!parseBankDateTime(period[0])) {
+    const cell = head.flat().map(text).find((c) => /движени[яе] по сч[её]ту/i.test(c) && /\d{2}\.\d{2}\.\d{4}.*\d{2}\.\d{2}\.\d{4}/.test(c));
+    period = cell?.match(/\d{2}\.\d{2}\.\d{4}/g) ?? [];
+  }
+  // The closing balance may come after the table (Банк ЦентрКредит).
+  const openingBalance = parseMoney(labelled(rows, /входящ(ий|ее)\s+(остаток|сальдо)/i));
+  const closingBalance = parseMoney(labelled(rows, /исходящ(ий|ее)\s+(остаток|сальдо)/i));
+  const headText = head.flat().map(text).join(" ");
+  const bankName = /центркредит/i.test(headText)
+    ? "Банк ЦентрКредит"
+    : rows.some((r) => r.some((c) => /kaspi/i.test(text(c)) && /банк|bank/i.test(text(c))))
+      ? "Kaspi Bank"
+      : "Банк";
 
   const lines: ParsedBankLineDto[] = [];
   for (const r of rows.slice(headerIndex + 1)) {
-    if (r.some((c) => /^итого/i.test(text(c)))) break;
+    if (r.some((c) => /(^|\/\s*)итого/i.test(text(c)))) break; // «Итого», «Жиынтығы / Итого:»
     const occurredAt = parseBankDateTime(r[cols.date]);
     if (!occurredAt) continue; // the numbering row «1 2 3 …», blank rows
     const debit = parseMoney(r[cols.debit]) ?? 0;
@@ -93,6 +127,10 @@ export function parseBankStatementRows(rows: Cell[][]): ParsedBankStatement {
     const amount = Math.round((credit - debit) * 100) / 100;
     if (amount === 0) continue;
     const who = splitCounterparty(cols.name >= 0 ? r[cols.name] : null);
+    // Банк ЦентрКредит puts the БИН in its own columns: the sender's on a credit, the recipient's on a debit.
+    const binCol = amount > 0 ? cols.senderBin : cols.recipientBin;
+    const binCell = binCol >= 0 ? text(r[binCol]).replace(/\D/g, "") : "";
+    if (!who.bin && binCell.length === 12) who.bin = binCell;
     const docNumber = cols.doc >= 0 ? text(r[cols.doc]) : "";
     lines.push({
       docNumber: docNumber || `${occurredAt}|${amount}`,

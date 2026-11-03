@@ -32,10 +32,14 @@ import { round2 } from "../common/money";
 import { businessDateOf, businessDayRange } from "../reconciliation/reconciliation.service";
 import { cashSignOf } from "../common/ledger-effects";
 
-// Kaspi's own ИИН/БИН (the bank and Kaspi Pay): its lines are told apart by
-// their purpose, never by who sent them — the same BIN pays out the day's
-// takings, charges the commission and carries a QR purchase from any shop.
-const AGGREGATOR_BINS = new Set(["971240001315", "200840000951"]);
+// Banks' own ИИН/БИН (Kaspi Bank, Kaspi Pay, Банк ЦентрКредит): their lines are
+// told apart by their purpose, never by who sent them — the same BIN pays out
+// the day's takings, charges the commission and carries a QR purchase from any shop.
+const AGGREGATOR_BINS = new Set(["971240001315", "200840000951", "980640000093"]);
+
+// Банк ЦентрКредит pays a day's card and QR takings the next morning:
+// «Возмещение коммерсанту: у-во …» / «Возмещение НПК QR: у-во …».
+const BCC_SETTLEMENT = /^возмещение (коммерсанту|нпк qr)/i;
 
 export const purposeKey = (purpose: string | null): string | null => {
   if (!purpose) return null;
@@ -50,17 +54,23 @@ export const purposeKey = (purpose: string | null): string | null => {
   return key || null;
 };
 
-// The Almaty day a «Продажи с Kaspi.kz за 31/10/2026» line pays out.
+// The Almaty day a «Продажи с Kaspi.kz за 31/10/2026» line pays out; a
+// Банк ЦентрКредит «Возмещение…» line pays out the day before it arrived.
 export function settlementDateOf(purpose: string | null, occurredAt: Date): string {
   const m = purpose?.match(/за\s+(\d{2})[/.](\d{2})[/.](\d{4})/i);
-  return m ? `${m[3]}-${m[2]}-${m[1]}` : businessDateOf(occurredAt);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  const day = businessDateOf(occurredAt);
+  if (!BCC_SETTLEMENT.test(purpose ?? "")) return day;
+  const prev = new Date(`${day}T00:00:00Z`);
+  prev.setUTCDate(prev.getUTCDate() - 1);
+  return prev.toISOString().slice(0, 10);
 }
 
 // What the bank's own wording says a line is. Learned rules come first.
 export function builtInSuggestion(line: { amount: number; knp: string | null; purpose: string | null }): BankLineSuggestionDto | null {
   const purpose = line.purpose ?? "";
   const base = { categoryId: null, presetCategory: null, targetAccountId: null, supplierId: null, source: "BUILT_IN" as const };
-  if (line.amount > 0 && /^продажи с kaspi\.kz/i.test(purpose)) return { ...base, action: BankLineAction.SALES_SETTLEMENT };
+  if (line.amount > 0 && (/^продажи с kaspi\.kz/i.test(purpose) || BCC_SETTLEMENT.test(purpose))) return { ...base, action: BankLineAction.SALES_SETTLEMENT };
   if (line.amount < 0 && (line.knp === "841" || line.knp === "851" || /оплата за услуги (процессинга|операций по картам)/i.test(purpose))) {
     return { ...base, action: BankLineAction.CATEGORY, presetCategory: BankPresetCategory.BANK_FEE };
   }
