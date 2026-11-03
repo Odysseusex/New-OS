@@ -40,6 +40,7 @@ import { AuditModule } from "./audit/audit.module";
 import { CostingModule } from "./costing/costing.service";
 import { StocktakeModule } from "./stocktake/stocktake.module";
 import { ReconciliationModule } from "./reconciliation/reconciliation.module";
+import { BankModule } from "./bank/bank.module";
 import { BackupModule } from "./backup/backup.module";
 import { DemoCompanyModule } from "./demo/demo-company.module";
 
@@ -85,6 +86,7 @@ import { DemoCompanyModule } from "./demo/demo-company.module";
     CostingModule,
     StocktakeModule,
     ReconciliationModule,
+    BankModule,
     BackupModule,
     DemoCompanyModule,
   ],

@@ -41,6 +41,7 @@ export const AUDIT_ACTION_GROUPS = {
   fixedAssets: ["fixedAsset.register", "fixedAsset.terms", "fixedAsset.dispose", "depreciation.run"],
   periods: ["period.close", "period.reopen"],
   costCorrection: ["costCorrection.record"],
+  bankStatements: ["bankStatement.upload", "bankStatement.delete", "bankStatementLine.post"],
   procurement: ["procurement.cutover", "purchaseOrder.payment", "purchaseOrder.paymentReverse", "purchaseOrder.revise", "purchaseOrder.supplierReturn"],
   master: [
     "supplier.update", "supplier.archive", "supplier.restore", "supplier.delete",

@@ -48,6 +48,8 @@ export interface RecordMovementParams {
   transferGroupId?: string;
   correctsMovementId?: string;
   createdById: string;
+  // When it happened, if not now (a bank statement line is dated by the bank).
+  occurredAt?: Date;
   // When set, an outflow only happens if the account holds at least that much
   // at the moment of the write (one conditional UPDATE); otherwise this message
   // is thrown. Only meaningful inside a transaction, so the movement row
@@ -97,6 +99,7 @@ export class CashMovementsService {
         transferGroupId: params.transferGroupId,
         correctsMovementId: params.correctsMovementId,
         createdById: params.createdById,
+        ...(params.occurredAt ? { occurredAt: params.occurredAt } : {}),
       },
       include: MOVEMENT_INCLUDE,
     });

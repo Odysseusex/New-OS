@@ -153,6 +153,11 @@ import type {
   ProductionBatchDto,
   ProductPnLDetailDto,
   ProfitAndLossDto,
+  BankStatementDto,
+  BankStatementSummaryDto,
+  PostBankLinesRequestDto,
+  PostBankLinesResultDto,
+  UploadBankStatementRequestDto,
   DirectionPnlDto,
   OpenCrmOrderDto,
   CashFlowDto,
@@ -680,6 +685,15 @@ export const api = {
       }),
   },
 
+  bankStatements: {
+    list: () => request<BankStatementSummaryDto[]>("/bank-statements"),
+    get: (id: string) => request<BankStatementDto>(`/bank-statements/${id}`),
+    upload: (dto: UploadBankStatementRequestDto) =>
+      request<BankStatementDto>("/bank-statements", { method: "POST", body: JSON.stringify(dto) }),
+    post: (id: string, dto: PostBankLinesRequestDto) =>
+      request<PostBankLinesResultDto>(`/bank-statements/${id}/post`, { method: "POST", body: JSON.stringify(dto) }),
+    remove: (id: string) => request<{ deleted: true }>(`/bank-statements/${id}`, { method: "DELETE" }),
+  },
   suppliers: {
     list: (includeArchived?: boolean) =>
       request<SupplierDto[]>(withQuery("/suppliers", { includeArchived: includeArchived ? "true" : undefined })),

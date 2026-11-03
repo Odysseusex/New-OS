@@ -1,6 +1,7 @@
 "use client";
 
 import { DirectionPnlCard } from "@/components/direction-pnl-card";
+import { BankStatementsTab } from "@/components/bank-statements-tab";
 import { PnlLadder } from "@/components/pnl-ladder";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -37,6 +38,7 @@ import type {
 } from "@bakery-os/shared";
 import {
   BUSINESS_DIRECTION_LABELS_RU,
+  BANK_IMPORT_ROLES,
   BREAK_EVEN_STATUS_LABELS_RU,
   BreakEvenStatus,
   COMPENSATION_TYPE_LABELS_RU,
@@ -101,11 +103,13 @@ type Tab =
   | "periods"
   | "assets"
   | "balance"
-  | "ledger";
+  | "ledger"
+  | "statements";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "summary", label: "Сводка" },
   { id: "bank", label: "Банк и касса" },
+  { id: "statements", label: "Выписки" },
   { id: "cashflow", label: "ДДС" },
   { id: "receivables", label: "Дебиторская задолженность" },
   { id: "payables", label: "Кредиторская задолженность" },
@@ -560,7 +564,11 @@ export default function FinancePage() {
       )}
 
       <div className="mb-6 flex flex-wrap items-center gap-1 rounded-xl bg-surface-muted p-1">
-        {TABS.filter((t) => t.id !== "ledger" || (user && LEDGER_VIEW_ROLES.includes(user.role))).map((t) => (
+        {TABS.filter(
+          (t) =>
+            (t.id !== "ledger" || (user && LEDGER_VIEW_ROLES.includes(user.role))) &&
+            (t.id !== "statements" || (user && BANK_IMPORT_ROLES.includes(user.role))),
+        ).map((t) => (
           <TabButton key={t.id} active={tab === t.id} onClick={() => setTab(t.id)}>
             {t.label}
           </TabButton>
@@ -856,6 +864,8 @@ export default function FinancePage() {
       {tab === "consignment" && <ConsignmentTab />}
 
       {tab === "balance" && <BalanceTab />}
+
+      {tab === "statements" && <BankStatementsTab />}
 
       {tab === "ledger" && <LedgerTab />}
 

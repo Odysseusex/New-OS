@@ -522,6 +522,7 @@ model User {
   purchaseOrderRevisions    PurchaseOrderRevision[] @relation("PurchaseOrderRevisionCreatedBy")
   costCorrections           CostCorrection[]        @relation("CostCorrectionCreatedBy")
   supplierReturns           SupplierReturn[]        @relation("SupplierReturnCreatedBy")
+  bankStatements            BankStatement[]         @relation("BankStatementCreatedBy")
   purchasePaymentsReversed  PurchaseOrderPayment[] @relation("PurchasePaymentReversedBy")
 
   @@unique([organizationId, email])
@@ -1946,6 +1947,7 @@ model CashAccount {
 
   movements CashMovement[]
   purchaseOrderPayments PurchaseOrderPayment[]
+  bankStatements BankStatement[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -3230,4 +3232,103 @@ model CrmOrderEvent {
 
   @@index([orderId, at])
   @@map("crm_order_events")
+}
+
+// ── Bank statements (загрузка выписки) ─────────────────────────────────────
+// A statement file as it was loaded, for one of our accounts. Its lines are
+// what the bank says happened; each is posted once into the ordinary ledgers
+// (an expense, a transfer, a supplier payment…) or marked as already known
+// (the day's card takings the till recorded itself) or ignored. Nothing here
+// is a ledger of its own: the money lives in CashMovement as always.
+model BankStatement {
+  id             String   @id @default(cuid())
+  organizationId String
+  accountId      String
+  account        CashAccount @relation(fields: [accountId], references: [id])
+  bankName       String
+  iban           String?
+  holderBin      String?
+  periodFrom     DateTime
+  periodTo       DateTime
+  openingBalance Decimal? @db.Decimal(14, 2)
+  closingBalance Decimal? @db.Decimal(14, 2)
+  fileName       String?
+  createdById    String
+  createdBy      User     @relation("BankStatementCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime @default(now())
+
+  lines BankStatementLine[]
+
+  @@index([organizationId, accountId])
+  @@map("bank_statements")
+}
+
+enum BankLineStatus {
+  NEW
+  POSTED
+  IGNORED
+}
+
+enum BankLineAction {
+  // The day's card/Kaspi takings: the till already recorded them — nothing is written.
+  SALES_SETTLEMENT
+  // By a finance category: an expense, an owner/loan flow, other income.
+  CATEGORY
+  // Between two of our own accounts.
+  TRANSFER
+  // Pays a supplier's received orders, oldest first.
+  SUPPLIER_PAYMENT
+  // Already in the books some other way.
+  IGNORE
+}
+
+model BankStatementLine {
+  id               String         @id @default(cuid())
+  organizationId   String
+  statementId      String
+  statement        BankStatement  @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  accountId        String
+  docNumber        String
+  occurredAt       DateTime
+  // Signed: + money in, − money out.
+  amount           Decimal        @db.Decimal(14, 2)
+  counterpartyName String?
+  counterpartyBin  String?
+  counterpartyIban String?
+  knp              String?
+  purpose          String?
+  status           BankLineStatus @default(NEW)
+  action           BankLineAction?
+  categoryId       String?
+  targetAccountId  String?
+  supplierId       String?
+  // What the posting wrote (for the history; the rows themselves link nothing back).
+  resultNote       String?
+  postedAt         DateTime?
+  postedById       String?
+
+  // A line of the same account is loaded once, however many files repeat it.
+  @@unique([organizationId, accountId, docNumber])
+  @@index([statementId])
+  @@map("bank_statement_lines")
+}
+
+// «Запомнить»: how a counterparty's line is posted next time.
+model BankRule {
+  id              String         @id @default(cuid())
+  organizationId  String
+  // Money in (+1) or out (−1): the same counterparty can be both.
+  direction       Int
+  // Matched by the counterparty's ИИН/БИН, else by the payment purpose with digits stripped.
+  counterpartyBin String?
+  purposeKey      String?
+  action          BankLineAction
+  categoryId      String?
+  targetAccountId String?
+  supplierId      String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@unique([organizationId, direction, counterpartyBin, purposeKey])
+  @@map("bank_rules")
 }

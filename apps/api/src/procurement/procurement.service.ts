@@ -479,6 +479,72 @@ export class ProcurementService {
     });
   }
 
+  // A supplier payment the bank reports (загрузка выписки): spread over that
+  // supplier's received orders that still owe something, oldest first, dated
+  // when the bank says. Runs inside the caller's transaction. Refused when it is
+  // more than the supplier is owed — an advance is not built, and money paid
+  // for something else must be posted as what it was.
+  async paySupplierOrders(
+    tx: Prisma.TransactionClient,
+    user: AuthenticatedUser,
+    input: { supplierId: string; accountId: string; amount: number; paidAt: Date; note: string },
+  ): Promise<string> {
+    const cutoverAt = await this.cutoverAt(user.organizationId, tx);
+    if (!cutoverAt) {
+      throw new BadRequestException("Учёт долгов поставщикам не включён — проведите как расход по статье");
+    }
+    const orders = await tx.purchaseOrder.findMany({
+      where: { organizationId: user.organizationId, supplierId: input.supplierId, status: "RECEIVED", receivedAt: { gte: cutoverAt } },
+      include: { payments: true, supplierReturns: true },
+      orderBy: { receivedAt: "asc" },
+    });
+    for (const o of orders) await tx.$queryRaw`SELECT id FROM "purchase_orders" WHERE id = ${o.id} FOR UPDATE`;
+    const open = orders.map((o) => ({ order: o, owed: purchaseOrderOwed(o) })).filter((x) => x.owed > 0.005);
+    const totalOwed = round2(open.reduce((s, x) => s + x.owed, 0));
+    if (input.amount > totalOwed + 0.005) {
+      throw new BadRequestException(`Поставщику должны ${totalOwed} ₸ — оплата ${input.amount} ₸ больше долга`);
+    }
+    let left = round2(input.amount);
+    const paid: string[] = [];
+    for (const { order, owed } of open) {
+      if (left <= 0.005) break;
+      const amount = round2(Math.min(left, owed));
+      const payment = await tx.purchaseOrderPayment.create({
+        data: {
+          organizationId: user.organizationId,
+          purchaseOrderId: order.id,
+          accountId: input.accountId,
+          amount,
+          paidAt: input.paidAt,
+          note: input.note,
+          createdById: user.id,
+        },
+      });
+      await this.cash.recordMovement(tx, {
+        organizationId: user.organizationId,
+        accountId: input.accountId,
+        type: CashMovementType.SUPPLIER_PAYMENT,
+        amount,
+        supplierId: input.supplierId,
+        purchaseOrderPaymentId: payment.id,
+        reason: `Оплата по заказу поставщику: ${input.note}`,
+        createdById: user.id,
+        occurredAt: input.paidAt,
+      });
+      await recordAudit(tx, {
+        organizationId: user.organizationId,
+        actorId: user.id,
+        action: "purchaseOrder.payment",
+        entityType: "PurchaseOrder",
+        entityId: order.id,
+        after: { paymentId: payment.id, amount, accountId: input.accountId, source: "bankStatement" },
+      });
+      paid.push(`${amount} ₸ — заказ от ${order.receivedAt!.toISOString().slice(0, 10)}`);
+      left = round2(left - amount);
+    }
+    return paid.join("; ");
+  }
+
   // Undoes a payment WITHOUT editing it: the payment is marked reversed and
   // the money coming back is its own cash movement, so both directions stay in
   // the ledger and the order owes the amount again.

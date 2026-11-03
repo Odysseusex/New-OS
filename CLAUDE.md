@@ -1020,6 +1020,31 @@ same roles/period/location as the P&L). `finance/direction-pnl.ts`; shared `pack
   «Операционные расходы» (`directExpenses` shown as «в т.ч. прямые»), other/financial ones into its other result —
   and only the REST is shared by revenue. A management dimension only: never in events, the ledger or the P&L total.
 
+## Загрузка банковской выписки (bank statement import) — built
+
+Финансы → «Выписки» (`BankStatementsTab`, `BANK_IMPORT_ROLES` = OWNER/ADMIN/ACCOUNTANT), `apps/api/src/bank/`, shared
+`bank.ts` + `bank-parse.ts`, migration `20261108120000` (`BankStatement`, `BankStatementLine`, `BankRule`). The owner's
+bank is Kaspi Pay (ИП); all money is to land there. The .xlsx is read IN THE BROWSER (`lib/xlsx-read.ts`, fflate +
+DOMParser) and parsed by shared `parseBankStatementRows` (Kaspi «Выписка»: header labels, then a table with «Дата
+операции / Дебет / Кредит / Наименование… / ИИК / КНП / Назначение»; times are Almaty +05:00; «ИИН/БИН 12 digits» split
+out of the name). Verified on the owner's real October file: 181 lines, opening + Σ = closing to the тиын. The real file
+is NOT in the repo (personal data) — specs use invented lines.
+- A line is stored once per account (unique `docNumber`); a re-upload skips known lines. A statement with nothing
+  posted can be deleted.
+- Suggestions: a remembered `BankRule` (by counterparty БИН, or — for Kaspi's own BINs 971240001315/200840000951, which
+  carry takings, fees AND QR purchases from any shop — by the purpose with digits stripped, `purposeKey`) → built-ins
+  («Продажи с Kaspi.kz» = SALES_SETTLEMENT; КНП 841/851 = «Комиссия банка»; КНП 342 «Перевод собственных средств» =
+  «Изъятие собственника») → a supplier by БИН. Preset categories are created classified on first use.
+- Posting (per line, own transaction, dated by the BANK — `recordMovement` got `occurredAt`; refused in a closed
+  month except settlement/ignore, which write nothing): SALES_SETTLEMENT writes NOTHING (the till already recorded
+  the card/Kaspi sale into the default bank account) and is compared per Almaty day with SALE_RECEIPT − SALE_REFUND
+  movements of that account; CATEGORY = an Expense (CONFIRMED, paid) or, for OWNER_WITHDRAWAL/LOAN_REPAYMENT categories,
+  a CASH_WITHDRAWAL with the category, or for income a CASH_DEPOSIT; TRANSFER = a transfer pair with another own
+  account (deposit); SUPPLIER_PAYMENT = `ProcurementService.paySupplierOrders` (received orders oldest first, refused
+  above the debt); IGNORE. The browser posts in chunks of 20. The statement view shows the system balance of the
+  account at the period end against the bank's closing balance.
+- Not built: BCC (another format — needs a sample), customer (wholesale) payments matched to sales, advances to suppliers.
+
 ## Month-end cost correction — owner DECISIONS (not built yet; steps 3–4 of the financiers' ТЗ)
 
 Decided by the owner on 03.11.2026, so not to be re-asked:

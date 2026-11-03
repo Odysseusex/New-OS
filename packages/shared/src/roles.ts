@@ -361,3 +361,7 @@ export const LOYALTY_ADMIN_ROLES: Role[] = HARD_DELETE_ROLES;
 // it puts a whole organization into the database, and the same role is the one
 // that can download all data.
 export const DEMO_COMPANY_ROLES: Role[] = [Role.OWNER];
+
+// Загрузка банковской выписки: it writes money into the books, so the people
+// who answer for them.
+export const BANK_IMPORT_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT];
