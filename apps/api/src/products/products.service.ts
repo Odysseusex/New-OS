@@ -113,14 +113,19 @@ export class ProductsService {
     ]);
 
     const priceByProduct = new Map(overrides.map((o) => [o.productId, o.price.toNumber()]));
-    return products.map((product) => ({
-      productId: product.id,
-      productName: product.name,
-      sku: product.sku,
-      categoryName: categoryLabel(product.categoryRef),
-      basePrice: product.price.toNumber(),
-      locationPrice: priceByProduct.get(product.id) ?? null,
-    }));
+    // Goods «под реализацию» sell at the same price everywhere and are not ours
+    // to price per point — left off this list, unless one already has a price
+    // of its own here (it still applies, so it must stay visible to be cleared).
+    return products
+      .filter((product) => !product.consignmentSupplierId || priceByProduct.has(product.id))
+      .map((product) => ({
+        productId: product.id,
+        productName: product.name,
+        sku: product.sku,
+        categoryName: categoryLabel(product.categoryRef),
+        basePrice: product.price.toNumber(),
+        locationPrice: priceByProduct.get(product.id) ?? null,
+      }));
   }
 
   async setLocationPrice(
