@@ -1025,6 +1025,18 @@ are the stock on that date. Built on the SAME walk as the month-end correction: 
 (`stock-turnover.service.ts`). For the whole network a transfer is neither in nor out; for one point it is. Stock with
 no history behind it enters as «OPENING» per point. Closing quantity = stock level (spec asserts it).
 
+## Finding and correcting a wrong check (built)
+
+The owner's decision stands: a check is never edited. **«Исправить чек»** (sale card, `SALE_RETURN_ROLES`,
+`components/sale-correction-modal.tsx`) is only a shortcut over existing documents: it returns EVERYTHING still on the
+check (restocked, reason «Исправление чека: …») and then rings the corrected check as a new sale (same point, customer,
+loyalty member; one payment method, MIXED → cash) with editable lines. Two requests from the browser: if the new sale
+fails, the return stands and the window offers «Пробить новый чек». Both are dated now (a past day keeps its wrong check
+plus the return in history). Finding the check: Продажи has filters «Товар в чеке» (`productId`), «Кассир»
+(`cashierId`, options from `GET /sales/cashiers`), «Оплата», «Сумма от/до» (`minTotal`/`maxTotal`), a «был возврат»
+marker (`SaleDto.returnsCount`) and reads `?date&locationId&productId` from the URL. «Сверка дня» → a product's
+«Движение за день» opens each check (with «Исправить чек») and links to «Все чеки с этим товаром за день».
+
 ## «Скачать все данные» (backup / disaster recovery) — built
 
 Настройки → «Резервная копия данных» (OWNER only): `GET /api/backup/export` streams the WHOLE database as one JSON

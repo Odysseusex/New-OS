@@ -82,7 +82,14 @@ function isoWeekday(dateKey: string): number {
 // runaway request, it is not a page size.
 const SALES_LIST_MAX = 2000;
 
-const SALE_INCLUDE = { location: true, customer: true, createdBy: true, items: true };
+export interface SaleListSearch {
+  cashierId?: string;
+  paymentMethod?: string;
+  minTotal?: number;
+  maxTotal?: number;
+}
+
+const SALE_INCLUDE = { location: true, customer: true, createdBy: true, items: true, _count: { select: { returns: true } } };
 const SALE_DETAIL_INCLUDE = {
   location: true,
   customer: true,
@@ -163,6 +170,8 @@ export class SalesService {
     // Only checks containing this product, each with how much of it was in
     // the check — so a cashier can show «вот, я пробивала Медовик в 14:20».
     productId?: string,
+    // Finding one check among thousands: who rang it, how it was paid, roughly how much.
+    search: SaleListSearch = {},
   ): Promise<SaleDto[]> {
     const locationId = resolveLocationScope(user, requestedLocationId);
 
@@ -172,6 +181,16 @@ export class SalesService {
         ...(locationId ? { locationId } : {}),
         ...(from || to ? { soldAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
         ...(productId ? { items: { some: { productId } } } : {}),
+        ...(search.cashierId ? { createdById: search.cashierId } : {}),
+        ...(search.paymentMethod ? { paymentMethod: search.paymentMethod as never } : {}),
+        ...(search.minTotal !== undefined || search.maxTotal !== undefined
+          ? {
+              totalAmount: {
+                ...(search.minTotal !== undefined ? { gte: search.minTotal } : {}),
+                ...(search.maxTotal !== undefined ? { lte: search.maxTotal } : {}),
+              },
+            }
+          : {}),
       },
       include: SALE_INCLUDE,
       orderBy: { soldAt: "desc" },
@@ -187,6 +206,18 @@ export class SalesService {
         .reduce((sum, item) => sum + item.quantity.toNumber(), 0);
       return { ...dto, productQuantity: Math.round(productQuantity * 1000) / 1000 };
     });
+  }
+
+  // Who rang checks up in this organization (or at this point): the cashier
+  // filter of the sales list.
+  async cashiers(user: AuthenticatedUser, requestedLocationId?: string): Promise<{ id: string; name: string }[]> {
+    const locationId = resolveLocationScope(user, requestedLocationId);
+    const rows = await this.prisma.sale.groupBy({
+      by: ["createdById"],
+      where: { organizationId: user.organizationId, ...(locationId ? { locationId } : {}) },
+    });
+    const users = await this.prisma.user.findMany({ where: { id: { in: rows.map((r) => r.createdById) } }, select: { id: true, fullName: true } });
+    return users.map((u) => ({ id: u.id, name: u.fullName })).sort((a, b) => a.name.localeCompare(b.name, "ru"));
   }
 
   async summary(user: AuthenticatedUser, requestedLocationId?: string): Promise<SalesSummaryDto> {
@@ -1738,7 +1769,9 @@ export class SalesService {
     paymentDueAt?: Date | null;
     paymentMethod: string;
     createdBy: { fullName: string };
+    createdById?: string;
     items: unknown[];
+    _count?: { returns: number };
   }): SaleDto => {
     const totalAmount = sale.totalAmount.toNumber();
     const amountPaid = sale.amountPaid.toNumber();
@@ -1760,6 +1793,7 @@ export class SalesService {
       paymentMethod: sale.paymentMethod as PaymentMethod,
       itemsCount: sale.items.length,
       createdByName: sale.createdBy.fullName,
+      returnsCount: sale._count?.returns ?? 0,
     };
   };
 

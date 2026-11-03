@@ -6,7 +6,9 @@ import { ClipboardCheck, Coins, Package, Plus, Receipt, TrendingUp, Wallet, X } 
 import type { CustomerDto, LocationDto, ProductDto, SaleDto, SalesReportDto, SalesSummaryDto } from "@bakery-os/shared";
 import {
   ORG_WIDE_ROLES,
+  PAYMENT_METHOD_LABELS_RU,
   PAYMENT_RECORD_ROLES,
+  PaymentMethod,
   ProductType,
   RECONCILIATION_ROLES,
   REVENUE_VIEW_ROLES,
@@ -20,8 +22,11 @@ import { NewSaleModal } from "@/components/new-sale-modal";
 import { SaleDetailModal } from "@/components/sale-detail-modal";
 import { PaymentStatusBadge } from "@/components/payment-status-badge";
 import { RecordSalePaymentModal, type SalePaymentContext } from "@/components/record-sale-payment-modal";
+import { ProductSelect } from "@/components/product-select";
 
 const PAGE_SIZE = 50;
+const filterClass =
+  "rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
 
 export default function SalesPage() {
   const { user } = useAuth();
@@ -48,6 +53,24 @@ export default function SalesPage() {
   const [dateFilter, setDateFilter] = useState("");
   const [fromTime, setFromTime] = useState("");
   const [toTime, setToTime] = useState("");
+  // Finding one check among thousands: what was on it, who rang it, how it was
+  // paid, roughly how much. «Сверка дня» links here with day, point and product.
+  const [productFilter, setProductFilter] = useState("");
+  const [cashierFilter, setCashierFilter] = useState("");
+  const [methodFilter, setMethodFilter] = useState("");
+  const [minTotal, setMinTotal] = useState("");
+  const [maxTotal, setMaxTotal] = useState("");
+  const [cashiers, setCashiers] = useState<{ id: string; name: string }[]>([]);
+  const search = useMemo(
+    () => ({
+      cashierId: cashierFilter || undefined,
+      paymentMethod: methodFilter || undefined,
+      minTotal: minTotal.trim() || undefined,
+      maxTotal: maxTotal.trim() || undefined,
+    }),
+    [cashierFilter, methodFilter, minTotal, maxTotal],
+  );
+  const hasSearch = Boolean(productFilter || cashierFilter || methodFilter || minTotal.trim() || maxTotal.trim());
   const [periodSummary, setPeriodSummary] = useState<SalesReportDto | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
@@ -71,7 +94,7 @@ export default function SalesPage() {
     const toIso = filterRange?.to.toISOString();
     Promise.all([
       canSeeTotals ? api.sales.summary(locationFilter || undefined) : Promise.resolve(null),
-      api.sales.list(locationFilter || undefined, PAGE_SIZE, undefined, fromIso, toIso),
+      api.sales.list(locationFilter || undefined, PAGE_SIZE, undefined, fromIso, toIso, productFilter || undefined, search),
       filterRange && canSeeTotals
         ? api.sales.report(fromIso!, toIso!, locationFilter || undefined)
         : Promise.resolve(null),
@@ -86,12 +109,12 @@ export default function SalesPage() {
         setHasMore(list.length === PAGE_SIZE);
       })
       .catch(() => setError("Не удалось загрузить продажи"));
-  }, [locationFilter, filterRange, canSeeTotals]);
+  }, [locationFilter, filterRange, canSeeTotals, productFilter, search]);
 
   function loadMore() {
     setIsLoadingMore(true);
     api.sales
-      .list(locationFilter || undefined, PAGE_SIZE, sales.length, filterRange?.from.toISOString(), filterRange?.to.toISOString())
+      .list(locationFilter || undefined, PAGE_SIZE, sales.length, filterRange?.from.toISOString(), filterRange?.to.toISOString(), productFilter || undefined, search)
       .then((next) => {
         setSales((prev) => [...prev, ...next]);
         setHasMore(next.length === PAGE_SIZE);
@@ -105,6 +128,30 @@ export default function SalesPage() {
     setFromTime("");
     setToTime("");
   }
+
+  function resetSearch() {
+    setProductFilter("");
+    setCashierFilter("");
+    setMethodFilter("");
+    setMinTotal("");
+    setMaxTotal("");
+  }
+
+  // A link from «Сверка дня» (?date=…&locationId=…&productId=…) opens the
+  // checks of that day, point and product.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const date = params.get("date");
+    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) setDateFilter(date);
+    const location = params.get("locationId");
+    if (location) setLocationFilter(location);
+    const product = params.get("productId");
+    if (product) setProductFilter(product);
+  }, []);
+
+  useEffect(() => {
+    api.sales.cashiers(locationFilter || undefined).then(setCashiers).catch(() => setCashiers([]));
+  }, [locationFilter]);
 
   useEffect(() => {
     api.locations.list().then(setLocations).catch(() => {});
@@ -240,6 +287,52 @@ export default function SalesPage() {
               </>
             )}
           </div>
+          <div className="mt-2 flex flex-wrap items-end gap-2">
+            <div className="w-64">
+              <label className="mb-1 block text-xs font-medium text-muted">Товар в чеке</label>
+              <ProductSelect products={products} value={productFilter} onChange={setProductFilter} placeholder="Любой товар" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted">Кассир</label>
+              <select value={cashierFilter} onChange={(e) => setCashierFilter(e.target.value)} className={filterClass}>
+                <option value="">Все</option>
+                {cashiers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted">Оплата</label>
+              <select value={methodFilter} onChange={(e) => setMethodFilter(e.target.value)} className={filterClass}>
+                <option value="">Любая</option>
+                {Object.values(PaymentMethod).map((m) => (
+                  <option key={m} value={m}>
+                    {PAYMENT_METHOD_LABELS_RU[m]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted">Сумма от</label>
+              <input inputMode="decimal" value={minTotal} onChange={(e) => setMinTotal(e.target.value)} className={`w-28 ${filterClass}`} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted">до</label>
+              <input inputMode="decimal" value={maxTotal} onChange={(e) => setMaxTotal(e.target.value)} className={`w-28 ${filterClass}`} />
+            </div>
+            {hasSearch && (
+              <button
+                type="button"
+                onClick={resetSearch}
+                className="flex items-center gap-1 rounded-xl border border-border px-3 py-2 text-sm font-medium text-muted transition hover:bg-surface-muted hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" strokeWidth={1.75} />
+                Сбросить
+              </button>
+            )}
+          </div>
           {periodSummary && (
             <p className="mt-3 text-sm text-foreground">
               {periodSummary.totalCount === 0
@@ -285,10 +378,16 @@ export default function SalesPage() {
                 <td className="px-5 py-3 text-foreground">{formatDateTime(sale.soldAt)}</td>
                 {isOrgWide && <td className="px-5 py-3 text-muted">{sale.locationName}</td>}
                 <td className="px-5 py-3 text-muted">{sale.customerName ?? "Розница"}</td>
-                <td className="px-5 py-3 text-muted">{sale.itemsCount}</td>
+                <td className="px-5 py-3 text-muted">
+                  {sale.itemsCount}
+                  {productFilter && sale.productQuantity !== undefined && (
+                    <span className="ml-1 text-xs text-foreground">(этого товара: {sale.productQuantity})</span>
+                  )}
+                </td>
                 <td className="px-5 py-3 text-muted">{sale.createdByName}</td>
                 <td className="px-5 py-3 text-right font-medium text-foreground">
                   {formatMoney(sale.totalAmount)}
+                  {(sale.returnsCount ?? 0) > 0 && <div className="text-xs font-normal text-amber-700">был возврат</div>}
                 </td>
                 <td className="px-5 py-3">
                   <PaymentStatusBadge

@@ -54,7 +54,12 @@ export class SalesController {
     @Query("from") from?: string,
     @Query("to") to?: string,
     @Query("productId") productId?: string,
+    @Query("cashierId") cashierId?: string,
+    @Query("paymentMethod") paymentMethod?: string,
+    @Query("minTotal") minTotal?: string,
+    @Query("maxTotal") maxTotal?: string,
   ) {
+    const amount = (v?: string) => (v !== undefined && v !== "" && Number.isFinite(Number(v)) ? Number(v) : undefined);
     return this.salesService.findAll(
       user,
       locationId,
@@ -63,7 +68,13 @@ export class SalesController {
       from ? new Date(from) : undefined,
       to ? new Date(to) : undefined,
       productId || undefined,
+      { cashierId: cashierId || undefined, paymentMethod: paymentMethod || undefined, minTotal: amount(minTotal), maxTotal: amount(maxTotal) },
     );
+  }
+
+  @Get("cashiers")
+  cashiers(@CurrentUser() user: AuthenticatedUser, @Query("locationId") locationId?: string) {
+    return this.salesService.cashiers(user, locationId);
   }
 
   @Get("summary")

@@ -53,6 +53,8 @@ export interface SaleDto {
   createdByName: string;
   // Only when the list was asked for one product: how much of it the check held.
   productQuantity?: number;
+  // Returns made against this check (a corrected check has at least one).
+  returnsCount?: number;
 }
 
 // What the cashier needs to see about the fiscal side of a sale: the number

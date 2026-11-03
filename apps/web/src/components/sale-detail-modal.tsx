@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CreditCard, Printer, Undo2 } from "lucide-react";
+import { CreditCard, PencilLine, Printer, Undo2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import type { SaleDetailDto, SaleFiscalReceiptDto, SaleReturnDto } from "@bakery-os/shared";
 import { FiscalReceiptStatus, PAYMENT_METHOD_LABELS_RU, SALE_RETURN_ROLES } from "@bakery-os/shared";
@@ -11,6 +11,7 @@ import { Modal } from "@/components/modal";
 import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
 import { RecordSalePaymentModal } from "@/components/record-sale-payment-modal";
 import { SaleReturnModal } from "@/components/sale-return-modal";
+import { SaleCorrectionModal } from "@/components/sale-correction-modal";
 
 export function SaleDetailModal({
   saleId,
@@ -29,6 +30,7 @@ export function SaleDetailModal({
   const [isPaying, setIsPaying] = useState(false);
   const [returns, setReturns] = useState<SaleReturnDto[]>([]);
   const [isReturning, setIsReturning] = useState(false);
+  const [isCorrecting, setIsCorrecting] = useState(false);
   const canReturn = user ? SALE_RETURN_ROLES.includes(user.role) : false;
 
   function load() {
@@ -185,6 +187,15 @@ export function SaleDetailModal({
                 Возврат
               </button>
             )}
+            {canReturn && (
+              <button
+                onClick={() => setIsCorrecting(true)}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+              >
+                <PencilLine className="h-4 w-4" strokeWidth={1.75} />
+                Исправить чек
+              </button>
+            )}
             <button
               onClick={() => window.print()}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
@@ -205,6 +216,19 @@ export function SaleDetailModal({
             load();
             onPaid?.();
           }}
+        />
+      )}
+
+      {isCorrecting && sale && (
+        <SaleCorrectionModal
+          sale={sale}
+          previousReturns={returns}
+          onClose={() => {
+            setIsCorrecting(false);
+            load();
+            onPaid?.();
+          }}
+          onDone={() => {}}
         />
       )}
 

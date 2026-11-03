@@ -486,7 +486,15 @@ export const api = {
       create: (saleId: string, dto: CreateSaleReturnRequestDto) =>
         request<SaleReturnDto>(`/sales/${saleId}/returns`, { method: "POST", body: JSON.stringify(dto) }),
     },
-    list: (locationId?: string, limit?: number, offset?: number, from?: string, to?: string, productId?: string) =>
+    list: (
+      locationId?: string,
+      limit?: number,
+      offset?: number,
+      from?: string,
+      to?: string,
+      productId?: string,
+      search: { cashierId?: string; paymentMethod?: string; minTotal?: string; maxTotal?: string } = {},
+    ) =>
       request<SaleDto[]>(
         withQuery("/sales", {
           locationId,
@@ -495,8 +503,10 @@ export const api = {
           from,
           to,
           productId,
+          ...search,
         }),
       ),
+    cashiers: (locationId?: string) => request<{ id: string; name: string }[]>(withQuery("/sales/cashiers", { locationId })),
     summary: (locationId?: string) =>
       request<SalesSummaryDto>(withQuery("/sales/summary", { locationId })),
     report: (from: string, to: string, locationId?: string) =>

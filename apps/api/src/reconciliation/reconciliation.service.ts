@@ -309,7 +309,7 @@ export class ReconciliationService {
           reason: true,
           createdAt: true,
           createdBy: { select: { fullName: true } },
-          sale: { select: { totalAmount: true, paymentMethod: true, _count: { select: { items: true } } } },
+          sale: { select: { id: true, totalAmount: true, paymentMethod: true, _count: { select: { items: true } } } },
         },
       }),
     ]);
@@ -325,7 +325,7 @@ export class ReconciliationService {
         balance,
         byName: m.createdBy.fullName,
         reason: m.reason,
-        sale: m.sale ? { total: m.sale.totalAmount.toNumber(), paymentMethod: m.sale.paymentMethod as PaymentMethod, itemsCount: m.sale._count.items } : null,
+        sale: m.sale ? { id: m.sale.id, total: m.sale.totalAmount.toNumber(), paymentMethod: m.sale.paymentMethod as PaymentMethod, itemsCount: m.sale._count.items } : null,
       };
     });
     return { productId: product.id, productName: product.name, unit: product.unit as Unit, date, opening, closing: balance, rows };

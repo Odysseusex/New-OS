@@ -136,7 +136,7 @@ describe("a day at the till", () => {
       ["SALE", -2, 25],
       ["SALE_RETURN", 1, 26],
     ]);
-    expect(trail.rows[1].sale).toEqual({ total: 1900, paymentMethod: PaymentMethod.CASH, itemsCount: 2 });
+    expect(trail.rows[1].sale).toMatchObject({ total: 1900, paymentMethod: PaymentMethod.CASH, itemsCount: 2 });
     expect(trail.rows[2].sale?.paymentMethod).toBe(PaymentMethod.CARD);
     expect(trail.closing).toBe(26);
     expect(trail.rows[0].byName).toBe(org.user.fullName);

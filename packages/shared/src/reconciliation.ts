@@ -122,7 +122,7 @@ export interface ProductTrailRowDto {
   byName: string;
   reason: string | null;
   // For a sale: the whole check it was part of.
-  sale: { total: number; paymentMethod: PaymentMethod; itemsCount: number } | null;
+  sale: { id: string; total: number; paymentMethod: PaymentMethod; itemsCount: number } | null;
 }
 
 export interface ProductDayTrailDto {

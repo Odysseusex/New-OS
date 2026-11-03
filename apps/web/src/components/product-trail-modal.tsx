@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import clsx from "clsx";
 import type { ProductDayTrailDto } from "@bakery-os/shared";
 import { PAYMENT_METHOD_LABELS_RU, STOCK_MOVEMENT_TYPE_LABELS_RU, UNIT_LABELS_RU } from "@bakery-os/shared";
 import { Modal } from "@/components/modal";
+import { SaleDetailModal } from "@/components/sale-detail-modal";
 import { api, ApiError } from "@/lib/api";
 import { formatMoney, formatQuantity } from "@/lib/format";
 import { REPORTING_TIME_ZONE } from "@/lib/reporting-period";
@@ -27,6 +29,7 @@ export function ProductTrailModal({
 }) {
   const [trail, setTrail] = useState<ProductDayTrailDto | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [openSaleId, setOpenSaleId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,7 +90,11 @@ export function ProductTrailModal({
                 </td>
                 <td className="py-2 pr-3 text-muted">{row.byName}</td>
                 <td className="py-2 text-right text-muted">
-                  {row.sale ? `${formatMoney(row.sale.total)} · ${PAYMENT_METHOD_LABELS_RU[row.sale.paymentMethod]}` : ""}
+                  {row.sale && (
+                    <button type="button" onClick={() => setOpenSaleId(row.sale!.id)} className="underline decoration-dotted underline-offset-4 hover:text-accent">
+                      {formatMoney(row.sale.total)} · {PAYMENT_METHOD_LABELS_RU[row.sale.paymentMethod]}
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -101,6 +108,14 @@ export function ProductTrailModal({
           </tbody>
         </table>
       )}
+      {trail && trail.rows.some((r) => r.sale) && (
+        <div className="mt-4 text-right text-sm">
+          <Link href={`/sales?date=${date}&locationId=${locationId}&productId=${productId}`} className="text-accent hover:underline">
+            Все чеки с этим товаром за день
+          </Link>
+        </div>
+      )}
+      {openSaleId && <SaleDetailModal saleId={openSaleId} canRecordPayment={false} onClose={() => setOpenSaleId(null)} />}
     </Modal>
   );
 }
