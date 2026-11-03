@@ -1744,8 +1744,8 @@ export class SalesService {
     }
     resolveLocationScope(user, sale.locationId);
 
-    const balanceDue = sale.totalAmount.toNumber() - sale.amountPaid.toNumber();
-    if (dto.amount > balanceDue) {
+    const balanceDue = sale.totalAmount.toNumber() - sale.amountPaid.toNumber() - sale.creditedAmount.toNumber();
+    if (dto.amount > balanceDue + 0.004) {
       throw new BadRequestException("Сумма оплаты превышает остаток задолженности");
     }
 
@@ -1805,6 +1805,7 @@ export class SalesService {
     soldAt: Date;
     totalAmount: { toNumber: () => number };
     amountPaid: { toNumber: () => number };
+    creditedAmount?: { toNumber: () => number };
     paymentDueAt?: Date | null;
     paymentMethod: string;
     createdBy: { fullName: string };
@@ -1815,7 +1816,8 @@ export class SalesService {
   }): SaleDto => {
     const totalAmount = sale.totalAmount.toNumber();
     const amountPaid = sale.amountPaid.toNumber();
-    const balanceDue = totalAmount - amountPaid;
+    const creditedAmount = sale.creditedAmount?.toNumber() ?? 0;
+    const balanceDue = Math.round((totalAmount - amountPaid - creditedAmount) * 100) / 100;
 
     return {
       id: sale.id,
@@ -1826,6 +1828,7 @@ export class SalesService {
       soldAt: sale.soldAt.toISOString(),
       totalAmount,
       amountPaid,
+      creditedAmount,
       balanceDue,
       paymentDueDate: sale.paymentDueAt ? dueKeyOf(sale.paymentDueAt) : null,
       paymentStatus:

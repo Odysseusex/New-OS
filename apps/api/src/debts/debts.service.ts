@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { CashMovementType, ExpenseStatus, InvoiceStatus } from "@prisma/client";
+import { CashMovementType, ExpenseStatus, InvoiceStatus, Prisma } from "@prisma/client";
 import {
   addDaysToKey,
   buildDebtReport,
@@ -61,7 +61,7 @@ export class DebtsService {
   async receivables(organizationId: string, asOfRaw?: string): Promise<DebtReportDto> {
     const asOfKey = this.parseKey(asOfRaw, debtDateKey(new Date()));
     const end = this.endOfKey(asOfKey);
-    const [sales, later] = await Promise.all([
+    const [sales, later, laterCredits] = await Promise.all([
       this.prisma.sale.findMany({
         where: { organizationId, customerId: { not: null }, soldAt: { lte: end } },
         select: {
@@ -70,6 +70,7 @@ export class DebtsService {
           soldAt: true,
           totalAmount: true,
           amountPaid: true,
+          creditedAmount: true,
           paymentDueAt: true,
           location: { select: { name: true } },
         },
@@ -80,9 +81,18 @@ export class DebtsService {
         where: { organizationId, saleId: { not: null }, type: { in: SALE_PAYMENT_TYPES }, occurredAt: { gt: end } },
         _sum: { amount: true },
       }),
+      // Nor is a debt cancelled yet by a return made after it.
+      this.prisma.saleReturn.groupBy({
+        by: ["saleId"],
+        where: { organizationId, returnedAt: { gt: end }, creditedAmount: { gt: 0 } },
+        _sum: { creditedAmount: true },
+      }),
     ]);
     const paidLater = new Map(later.map((g) => [g.saleId as string, num(g._sum.amount)]));
-    const open = sales.filter((s) => num(s.totalAmount) - (num(s.amountPaid) - (paidLater.get(s.id) ?? 0)) > 0.004);
+    const creditedLater = new Map(laterCredits.map((g) => [g.saleId, num(g._sum.creditedAmount)]));
+    const outstandingOf = (s: { id: string; totalAmount: Prisma.Decimal; amountPaid: Prisma.Decimal; creditedAmount: Prisma.Decimal }) =>
+      num(s.totalAmount) - (num(s.amountPaid) - (paidLater.get(s.id) ?? 0)) - (num(s.creditedAmount) - (creditedLater.get(s.id) ?? 0));
+    const open = sales.filter((s) => outstandingOf(s) > 0.004);
     const customers = await this.prisma.customer.findMany({
       where: { organizationId, id: { in: [...new Set(open.map((s) => s.customerId as string))] } },
       select: { id: true, name: true, bin: true, paymentTermDays: true },
@@ -105,7 +115,7 @@ export class DebtsService {
         dateKey,
         dueDateKey: debtDueKey(dateKey, group.paymentTermDays, s.paymentDueAt ? debtDateKey(s.paymentDueAt) : null),
         amount: total,
-        outstanding: total - (num(s.amountPaid) - (paidLater.get(s.id) ?? 0)),
+        outstanding: outstandingOf(s),
       });
     }
     return buildDebtReport(asOfKey, [...groups.values()]);
@@ -353,7 +363,7 @@ export class DebtsService {
         amountPaid: true,
         location: { select: { name: true } },
         cashMovements: { where: { type: { in: SALE_PAYMENT_TYPES } }, select: { amount: true, occurredAt: true, type: true } },
-        returns: { where: { returnedAt: { lte: end } }, select: { returnedAt: true, totalAmount: true } },
+        returns: { where: { returnedAt: { lte: end } }, select: { returnedAt: true, totalAmount: true, creditedAmount: true } },
       },
       orderBy: { soldAt: "asc" },
     });
@@ -374,7 +384,11 @@ export class DebtsService {
         const amount = num(r.totalAmount);
         const at = r.returnedAt.toISOString();
         events.push({ at, kind: StatementLineKind.SALE_RETURN, document: `Возврат по реализации от ${keyLabel(debtDateKey(s.soldAt))}`, debit: 0, credit: amount });
-        events.push({ at, kind: StatementLineKind.REFUND_PAID, document: `Возврат денег по реализации от ${keyLabel(debtDateKey(s.soldAt))}`, debit: amount, credit: 0 });
+        // Only the part paid back in money; the rest cancelled the unpaid debt.
+        const refunded = amount - num(r.creditedAmount);
+        if (refunded > 0.004) {
+          events.push({ at, kind: StatementLineKind.REFUND_PAID, document: `Возврат денег по реализации от ${keyLabel(debtDateKey(s.soldAt))}`, debit: refunded, credit: 0 });
+        }
       }
     }
     return events;

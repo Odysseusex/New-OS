@@ -1161,9 +1161,12 @@ export class FinanceService {
   async getAccountsReceivable(organizationId: string): Promise<number> {
     const unpaidSales = await this.prisma.sale.findMany({
       where: { organizationId, customerId: { not: null } },
-      select: { totalAmount: true, amountPaid: true },
+      select: { totalAmount: true, amountPaid: true, creditedAmount: true },
     });
-    return unpaidSales.reduce((sum, s) => sum + Math.max(0, s.totalAmount.toNumber() - s.amountPaid.toNumber()), 0);
+    return unpaidSales.reduce(
+      (sum, s) => sum + Math.max(0, s.totalAmount.toNumber() - s.amountPaid.toNumber() - s.creditedAmount.toNumber()),
+      0,
+    );
   }
 
   // Sum of every unpaid balance on confirmed supplier invoices and

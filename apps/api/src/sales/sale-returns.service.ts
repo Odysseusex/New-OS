@@ -7,6 +7,7 @@ import {
   PaymentMethod,
   SaleReturnDto,
   WriteOffReason,
+  splitSaleReturn,
 } from "@bakery-os/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { isDemoOrganization } from "../common/demo-guard";
@@ -54,7 +55,9 @@ export class SaleReturnsService {
     return returns.map((r) => this.toDto(r));
   }
 
-  // Takes goods back and hands money back. The whole thing is one document
+  // Takes goods back and settles them: what the buyer still owes on the sale is
+  // cancelled first (a sale on credit), only the rest is handed back as money.
+  // The whole thing is one document
   // plus entries in the same ledgers a sale writes to — never an edit of the
   // sale, which stays immutable exactly as every other confirmed document does.
   //
@@ -150,10 +153,17 @@ export class SaleReturnsService {
     });
 
     const totalAmount = Number(lines.reduce((sum, l) => sum + l.subtotal, 0).toFixed(2));
-    if (totalAmount > sale.amountPaid.toNumber()) {
-      // Refunding more than the buyer ever paid would mean handing over money
-      // that never arrived — a partly-unpaid credit sale can only be returned
-      // up to what was actually settled.
+    // A sale on credit: the returned goods first cancel what is still owed on
+    // it; money goes back only for the rest. Never more money back than the
+    // buyer paid (earlier refunds included) — that would hand over money that
+    // never arrived.
+    const { creditedAmount, refundedAmount } = splitSaleReturn(totalAmount, {
+      totalAmount: sale.totalAmount.toNumber(),
+      amountPaid: sale.amountPaid.toNumber(),
+      creditedAmount: sale.creditedAmount.toNumber(),
+    });
+    const refundedBefore = sale.returns.reduce((sum, r) => sum + r.totalAmount.toNumber() - r.creditedAmount.toNumber(), 0);
+    if (refundedBefore + refundedAmount > sale.amountPaid.toNumber() + 0.005) {
       throw new BadRequestException("Сумма возврата больше, чем оплачено по продаже");
     }
 
@@ -161,9 +171,12 @@ export class SaleReturnsService {
     const returnedAt = new Date();
 
     // The sandbox («Песочница») never reaches the real cash register.
-    const receipt = this.fiscalSettings.isEnabled() && !(await isDemoOrganization(this.prisma, user.organizationId))
-      ? await this.fiscalizeBeforeReturn(user, sale, lines, totalAmount, returnedAt)
-      : null;
+    const fiscal = this.fiscalSettings.isEnabled() && !(await isDemoOrganization(this.prisma, user.organizationId));
+    if (fiscal && creditedAmount > 0) {
+      // A return receipt says money went back; against an unpaid debt none does.
+      throw new BadRequestException("Возврат в счёт долга покупателя нельзя провести через кассу");
+    }
+    const receipt = fiscal ? await this.fiscalizeBeforeReturn(user, sale, lines, totalAmount, returnedAt) : null;
 
     let loyaltyMoved: { memberId: string; pointsRefunded: number; pointsReversed: number } | null = null;
     const created = await this.prisma.$transaction(async (tx) => {
@@ -174,6 +187,7 @@ export class SaleReturnsService {
           locationId: sale.locationId,
           returnedAt,
           totalAmount,
+          creditedAmount,
           // The refunded part that belongs to consignment goods (SaleReturn.consignmentAmount).
           consignmentAmount: Number(lines.reduce((sum, l) => sum + (l.consignmentSupplierId ? l.subtotal : 0), 0).toFixed(2)),
           reason: dto.reason,
@@ -199,17 +213,22 @@ export class SaleReturnsService {
       if (receipt) {
         await this.fiscalService.linkSaleReturn(tx, receipt.id, saleReturn.id);
       }
+      if (creditedAmount > 0) {
+        await tx.sale.update({ where: { id: sale.id }, data: { creditedAmount: { increment: creditedAmount } } });
+      }
 
       // Money goes back the way it came (D8): a single-method sale refunds that
       // method; a mixed sale refunds each tender in proportion to what it paid,
       // unless the caller explicitly overrides the split.
       const tenders = sale.payments.map((p) => ({ method: p.method as string, amount: p.amount.toNumber() }));
       const refundParts =
-        sale.paymentMethod !== PaymentMethod.MIXED
-          ? [{ method: sale.paymentMethod as string, amount: totalAmount }]
-          : dto.refundSplit && dto.refundSplit.length > 0
-            ? validateRefundOverride(totalAmount, dto.refundSplit, tenders)
-            : allocateRefund(totalAmount, tenders);
+        refundedAmount <= 0
+          ? []
+          : sale.paymentMethod !== PaymentMethod.MIXED
+            ? [{ method: sale.paymentMethod as string, amount: refundedAmount }]
+            : dto.refundSplit && dto.refundSplit.length > 0
+              ? validateRefundOverride(refundedAmount, dto.refundSplit, tenders)
+              : allocateRefund(refundedAmount, tenders);
       for (const part of refundParts) {
         const accountId = await this.resolveRefundAccountId(tx, user.organizationId, sale.locationId, part.method, sale.id);
         if (!accountId) continue;
@@ -405,6 +424,7 @@ export class SaleReturnsService {
     location: { name: string };
     returnedAt: Date;
     totalAmount: Prisma.Decimal;
+    creditedAmount: Prisma.Decimal;
     reason: string | null;
     restocked: boolean;
     createdBy: { fullName: string };
@@ -431,6 +451,8 @@ export class SaleReturnsService {
       locationName: row.location.name,
       returnedAt: row.returnedAt.toISOString(),
       totalAmount: row.totalAmount.toNumber(),
+      creditedAmount: row.creditedAmount.toNumber(),
+      refundedAmount: Math.round((row.totalAmount.toNumber() - row.creditedAmount.toNumber()) * 100) / 100,
       reason: row.reason,
       restocked: row.restocked,
       createdByName: row.createdBy.fullName,

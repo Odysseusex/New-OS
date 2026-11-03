@@ -44,6 +44,9 @@ export interface SaleDto {
   soldAt: string;
   totalAmount: number;
   amountPaid: number;
+  // Returns that cancelled part of what the buyer owed (no money moved).
+  creditedAmount: number;
+  // totalAmount − amountPaid − creditedAmount.
   balanceDue: number;
   // "YYYY-MM-DD" the unpaid part is due; null when none was stated.
   paymentDueDate?: string | null;
@@ -391,6 +394,10 @@ export interface SaleReturnDto {
   locationName: string;
   returnedAt: string;
   totalAmount: number;
+  // The part of totalAmount that reduced the buyer's debt on the sale…
+  creditedAmount: number;
+  // …and the part paid back in money.
+  refundedAmount: number;
   reason: string | null;
   // False when the goods were written off instead of going back on the shelf.
   restocked: boolean;
@@ -533,4 +540,18 @@ export interface SalesDynamicsDto {
     revenueDeltaPct: number | null;
     salesCountDeltaPct: number | null;
   };
+}
+
+// How a return of `returnTotal` is settled against its sale: what the buyer
+// still owes on the sale is cancelled first (no money moves), only the rest is
+// paid back. The same rule runs in the return form (as a preview) and on the
+// server. Money paid back never exceeds what the buyer paid.
+export function splitSaleReturn(
+  returnTotal: number,
+  sale: { totalAmount: number; amountPaid: number; creditedAmount: number },
+): { creditedAmount: number; refundedAmount: number } {
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const owed = Math.max(0, r2(sale.totalAmount - sale.amountPaid - sale.creditedAmount));
+  const creditedAmount = r2(Math.min(returnTotal, owed));
+  return { creditedAmount, refundedAmount: r2(returnTotal - creditedAmount) };
 }

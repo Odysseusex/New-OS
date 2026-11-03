@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { SaleDetailDto, SaleReturnDto } from "@bakery-os/shared";
+import { splitSaleReturn, type SaleDetailDto, type SaleReturnDto } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
 import { formatMoney, formatQuantity } from "@/lib/format";
@@ -43,7 +43,9 @@ export function SaleReturnModal({
   const lines = returnable
     .map((item) => ({ item, quantity: Number(quantities[item.productId] ?? "") }))
     .filter((l) => l.quantity > 0);
-  const total = lines.reduce((sum, l) => sum + l.quantity * l.item.unitPrice, 0);
+  const total = Math.round(lines.reduce((sum, l) => sum + l.quantity * l.item.unitPrice, 0) * 100) / 100;
+  // A sale on credit: what is still owed is cancelled first, money only for the rest.
+  const split = splitSaleReturn(total, { totalAmount: sale.totalAmount, amountPaid: sale.amountPaid, creditedAmount: sale.creditedAmount ?? 0 });
 
   async function handleSubmit() {
     if (lines.length === 0) return;
@@ -139,9 +141,23 @@ export function SaleReturnModal({
             />
           </div>
 
-          <div className="mb-5 flex items-end justify-between rounded-xl bg-surface-muted px-4 py-3">
-            <span className="text-sm text-muted">К возврату</span>
-            <span className="text-xl font-semibold text-foreground">{formatMoney(total)}</span>
+          <div className="mb-5 rounded-xl bg-surface-muted px-4 py-3">
+            <div className="flex items-end justify-between">
+              <span className="text-sm text-muted">К возврату</span>
+              <span className="text-xl font-semibold text-foreground">{formatMoney(total)}</span>
+            </div>
+            {split.creditedAmount > 0 && (
+              <div className="mt-2 space-y-1 border-t border-border pt-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted">В счёт долга покупателя</span>
+                  <span className="font-medium text-foreground">{formatMoney(split.creditedAmount)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">Вернуть деньгами</span>
+                  <span className="font-medium text-foreground">{formatMoney(split.refundedAmount)}</span>
+                </div>
+              </div>
+            )}
           </div>
 
           {error && <p className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}

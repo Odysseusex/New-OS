@@ -802,6 +802,11 @@ model Sale {
   // are always paid in full at creation; wholesale customer orders may be
   // placed on credit and paid down over time via recordPayment().
   amountPaid     Decimal   @default(0) @db.Decimal(12, 2)
+  // The part of returns on this sale that cancelled what the buyer still owed
+  // instead of handing money back (a return against a sale on credit). What
+  // is owed = totalAmount − amountPaid − creditedAmount. Raised only by
+  // SaleReturnsService, in the same transaction as the return.
+  creditedAmount Decimal   @default(0) @db.Decimal(12, 2)
   // When a sale on credit is due, set when it is made (default: the customer's
   // deferral). Null = not stated; the due date then follows the customer's
   // current terms.
@@ -966,8 +971,12 @@ model SaleReturn {
   locationId     String
   location       Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
   returnedAt     DateTime @default(now())
-  // Money handed back, always positive.
+  // Value of the goods taken back, always positive (at the price they were sold).
   totalAmount    Decimal  @db.Decimal(12, 2)
+  // The part of totalAmount that reduced what the buyer still owed on the sale
+  // (no money moved for it). The rest, totalAmount − creditedAmount, was paid
+  // back as money (SALE_REFUND movements). Unpaid debt is credited first.
+  creditedAmount Decimal  @default(0) @db.Decimal(12, 2)
   // The part of totalAmount refunded for goods sold «под реализацию» — it
   // cancels the debt to their owner instead of reducing our revenue.
   consignmentAmount Decimal @default(0) @db.Decimal(12, 2)

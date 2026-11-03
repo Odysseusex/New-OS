@@ -121,6 +121,9 @@ export function SaleDetailModal({
               <div>
                 <p className="text-muted">Оплачено</p>
                 <p className="text-base font-semibold text-foreground">{formatMoney(sale.amountPaid)}</p>
+                {(sale.creditedAmount ?? 0) > 0 && (
+                  <p className="text-xs text-muted">Возврат в счёт долга: {formatMoney(sale.creditedAmount)}</p>
+                )}
               </div>
               <div>
                 <p className="text-muted">Остаток долга</p>
@@ -324,6 +327,13 @@ function SaleReturns({ returns }: { returns: SaleReturnDto[] }) {
               {formatDateTime(r.returnedAt)} ·{" "}
               {r.items.map((i) => `${i.productName} ${formatQuantity(i.quantity)}`).join(", ")}
               {!r.restocked && <span className="text-amber-700"> · списан</span>}
+              {(r.creditedAmount ?? 0) > 0 && (
+                <span>
+                  {" "}
+                  · в счёт долга {formatMoney(r.creditedAmount)}
+                  {(r.refundedAmount ?? 0) > 0 && `, деньгами ${formatMoney(r.refundedAmount)}`}
+                </span>
+              )}
               {r.fiscalReceipt?.ticketNumber && (
                 <span className="font-mono"> · чек № {r.fiscalReceipt.ticketNumber}</span>
               )}

@@ -931,8 +931,14 @@ From the financiers' ТЗ (iiko-style). `apps/api/src/debts/` (read-only service
   Balance > 0 = they owe us. The act prints from the browser (PDF via «Сохранить как PDF»), Excel alongside (see «Excel exports»). Organization requisites for its header: Настройки → «Реквизиты организации» (OWNER/ADMIN).
 - Overdue receivables: a live notification per customer (`OVERDUE_RECEIVABLE`, critical after 30 days) and two cards on
   the dashboard for `DEBT_VIEW_ROLES`. `/finance?tab=…` opens a tab directly.
-- Not built: advances (авансы), a return of an UNPAID consignment shipment reducing the debt (returns refund only paid
-  money today — changing that touches money/ledger, needs the owner's yes). Supplier returns ARE built (see below).
+- **A return against a sale on credit cancels the debt first** (migration `20261110120000`, `SaleReturn.creditedAmount`
+  + running `Sale.creditedAmount`; shared `splitSaleReturn`): the unpaid part of the sale is credited (no money moves),
+  only the rest is refunded as SALE_REFUND movements. Owed = `totalAmount − amountPaid − creditedAmount` EVERYWHERE
+  (sale DTO, payment guard, customer card/list, `getAccountsReceivable`, debts report incl. «На дату», акт сверки —
+  «Возврат денег» shows only the money part, «Сверка дня» refunds, AI-центр). Events/ledger needed no change: the
+  return event already lowers RECEIVABLES by the goods' value and only a refund raises it back. A fiscal return with a
+  credited part is refused (a return receipt says money went back). Retail (paid in full) behaves exactly as before.
+- Not built: advances (авансы). Supplier returns ARE built (see below).
 
 ## Excel exports, ДДС by month, markup (built, ТЗ stage 2)
 

@@ -438,6 +438,7 @@ export class ReconciliationService {
         select: {
           id: true,
           totalAmount: true,
+          creditedAmount: true,
           sale: { select: { paymentMethod: true, payments: { select: { method: true, amount: true } } } },
           cashMovements: { select: { amount: true, account: { select: { type: true } } } },
         },
@@ -465,7 +466,9 @@ export class ReconciliationService {
     const refunded = new Map<string, number>();
     const addRefund = (method: string, amount: number) => refunded.set(method, (refunded.get(method) ?? 0) + amount);
     for (const ret of returns) {
-      const total = ret.totalAmount.toNumber();
+      // Only money that went back; a return against an unpaid debt moved none.
+      const total = round2(ret.totalAmount.toNumber() - ret.creditedAmount.toNumber());
+      if (total <= 0) continue;
       const sale = ret.sale;
       if (sale.paymentMethod !== PaymentMethod.MIXED) {
         addRefund(sale.paymentMethod, total);

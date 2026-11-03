@@ -77,13 +77,13 @@ export class CustomersService {
       ? await this.prisma.sale.groupBy({
           by: ["customerId"],
           where: { organizationId, customerId: { in: customerIds } },
-          _sum: { totalAmount: true, amountPaid: true },
+          _sum: { totalAmount: true, amountPaid: true, creditedAmount: true },
         })
       : [];
     const debtById = new Map(
       debts.map((d) => [
         d.customerId,
-        (d._sum.totalAmount?.toNumber() ?? 0) - (d._sum.amountPaid?.toNumber() ?? 0),
+        (d._sum.totalAmount?.toNumber() ?? 0) - (d._sum.amountPaid?.toNumber() ?? 0) - (d._sum.creditedAmount?.toNumber() ?? 0),
       ]),
     );
 
@@ -129,14 +129,14 @@ export class CustomersService {
       this.prisma.sale.groupBy({
         by: ["customerId"],
         where: { organizationId, customerId: { not: null } },
-        _sum: { totalAmount: true, amountPaid: true },
+        _sum: { totalAmount: true, amountPaid: true, creditedAmount: true },
       }),
     ]);
 
     const balanceByCustomer = new Map(
       balances.map((b) => [
         b.customerId as string,
-        (b._sum.totalAmount?.toNumber() ?? 0) - (b._sum.amountPaid?.toNumber() ?? 0),
+        (b._sum.totalAmount?.toNumber() ?? 0) - (b._sum.amountPaid?.toNumber() ?? 0) - (b._sum.creditedAmount?.toNumber() ?? 0),
       ]),
     );
 
@@ -217,7 +217,8 @@ export class CustomersService {
     const orders: CustomerOrderDto[] = sales.map((sale) => {
       const totalAmount = sale.totalAmount.toNumber();
       const amountPaid = sale.amountPaid.toNumber();
-      const balanceDue = totalAmount - amountPaid;
+      // A return against the unpaid part cancelled it (Sale.creditedAmount).
+      const balanceDue = Math.round((totalAmount - amountPaid - sale.creditedAmount.toNumber()) * 100) / 100;
 
       return {
         saleId: sale.id,
@@ -242,7 +243,7 @@ export class CustomersService {
 
   private async getOutstandingBalance(organizationId: string, customerId: string): Promise<number> {
     const sales = await this.prisma.sale.findMany({ where: { organizationId, customerId } });
-    return sales.reduce((sum, s) => sum + (s.totalAmount.toNumber() - s.amountPaid.toNumber()), 0);
+    return sales.reduce((sum, s) => sum + (s.totalAmount.toNumber() - s.amountPaid.toNumber() - s.creditedAmount.toNumber()), 0);
   }
 
   private async setActive(organizationId: string, customerId: string, isActive: boolean, actorId: string | null = null): Promise<CustomerDto> {

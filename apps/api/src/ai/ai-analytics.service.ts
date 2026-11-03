@@ -527,10 +527,10 @@ export class AiAnalyticsService {
     const balances = await this.prisma.sale.groupBy({
       by: ["customerId"],
       where: { organizationId: user.organizationId, customerId: { in: customers.map((c) => c.id) } },
-      _sum: { totalAmount: true, amountPaid: true },
+      _sum: { totalAmount: true, amountPaid: true, creditedAmount: true },
     });
     const balanceByCustomer = new Map(
-      balances.map((b) => [b.customerId as string, (b._sum.totalAmount?.toNumber() ?? 0) - (b._sum.amountPaid?.toNumber() ?? 0)]),
+      balances.map((b) => [b.customerId as string, (b._sum.totalAmount?.toNumber() ?? 0) - (b._sum.amountPaid?.toNumber() ?? 0) - (b._sum.creditedAmount?.toNumber() ?? 0)]),
     );
 
     const now = new Date();
