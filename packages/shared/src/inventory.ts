@@ -12,6 +12,8 @@ export enum StockMovementType {
   // the database enum all along; this list simply had not caught up.
   TRANSFER_OUT = "TRANSFER_OUT",
   TRANSFER_IN = "TRANSFER_IN",
+  // Goods handed back to the supplier of a received purchase order.
+  SUPPLIER_RETURN = "SUPPLIER_RETURN",
 }
 
 export const STOCK_MOVEMENT_TYPE_LABELS_RU: Record<StockMovementType, string> = {
@@ -24,6 +26,7 @@ export const STOCK_MOVEMENT_TYPE_LABELS_RU: Record<StockMovementType, string> = 
   [StockMovementType.PRODUCTION_OUTPUT]: "Выпуск продукции",
   [StockMovementType.TRANSFER_OUT]: "Перемещение (отгрузка)",
   [StockMovementType.TRANSFER_IN]: "Перемещение (поступление)",
+  [StockMovementType.SUPPLIER_RETURN]: "Возврат поставщику",
 };
 
 // Categorizes a write-off so losses can be reported by cause rather than as

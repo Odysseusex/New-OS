@@ -22,6 +22,7 @@ const STOCK_SIGN: Record<string, 1 | -1 | "SIGNED"> = {
   PRODUCTION_OUTPUT: 1,
   TRANSFER_OUT: -1,
   TRANSFER_IN: 1,
+  SUPPLIER_RETURN: -1,
 };
 
 export type StockSign = 1 | -1 | 0 | "SIGNED";

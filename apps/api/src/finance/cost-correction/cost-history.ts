@@ -10,6 +10,7 @@ export type HistoryClient = Pick<PrismaService, "product" | "stockMovement" | "s
 export type FlowGroup =
   | "OPENING" // stock on the shelf before any movement was recorded
   | "PURCHASE" // from a supplier (order, invoice, Склад → Приёмка)
+  | "SUPPLIER_RETURN" // handed back to the supplier
   | "RECEIPT_OTHER" // Склад → Приёмка without a price
   | "PRODUCTION_OUTPUT"
   | "PRODUCTION_CONSUMPTION"
@@ -22,7 +23,8 @@ export type FlowGroup =
 export interface FlowMeta {
   locationId: string | null;
   group: FlowGroup;
-  // +1 stock in, −1 stock out (MOVE flows carry the sign in their quantity).
+  // +1 stock in, −1 stock out (MOVE and returned-PURCHASE flows also carry the
+  // sign in their quantity; read the magnitude with Math.abs).
   sign: 1 | -1;
 }
 
@@ -98,6 +100,7 @@ export async function loadCostHistory(client: HistoryClient, organizationId: str
   ]);
 
   const walked = new Set(products.filter((p) => p.trackInventory && !p.consignmentSupplierId).map((p) => p.id));
+  const startingPrice = new Map(products.map((p) => [p.id, p.price.toNumber()]));
   const flows: CostFlow[] = [];
   const meta = new Map<number, FlowMeta>();
   const consumedStamped = new Map<string, number>();
@@ -170,6 +173,13 @@ export async function loadCostHistory(client: HistoryClient, organizationId: str
       case "PRODUCTION_OUTPUT":
         if (m.batchId) push({ kind: "OUTPUT", ...base, quantity, stampedUnitCost: stamped, batchId: m.batchId }, where("PRODUCTION_OUTPUT", 1));
         else push({ kind: "IN", ...base, quantity, stampedUnitCost: stamped, category: "NONE" }, where("PRODUCTION_OUTPUT", 1));
+        break;
+      case "SUPPLIER_RETURN":
+        // Back to the supplier at the price it came in at: a purchase undone.
+        push(
+          { kind: "PURCHASE", ...base, quantity: -quantity, unitCost: stamped ?? startingPrice.get(m.productId) ?? 0 },
+          where("SUPPLIER_RETURN", -1),
+        );
         break;
       case "TRANSFER_IN":
         push({ kind: "MOVE", ...base, quantity }, where("TRANSFER", 1));

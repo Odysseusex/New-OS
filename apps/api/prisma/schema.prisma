@@ -74,6 +74,8 @@ enum StockMovementType {
   PRODUCTION_OUTPUT
   TRANSFER_OUT
   TRANSFER_IN
+  // Goods handed back to the supplier they were bought from (SupplierReturn).
+  SUPPLIER_RETURN
 }
 
 // Categorizes a WRITE_OFF movement so losses can be tracked and reported by
@@ -519,6 +521,7 @@ model User {
   purchasePaymentsCreated   PurchaseOrderPayment[] @relation("PurchasePaymentCreatedBy")
   purchaseOrderRevisions    PurchaseOrderRevision[] @relation("PurchaseOrderRevisionCreatedBy")
   costCorrections           CostCorrection[]        @relation("CostCorrectionCreatedBy")
+  supplierReturns           SupplierReturn[]        @relation("SupplierReturnCreatedBy")
   purchasePaymentsReversed  PurchaseOrderPayment[] @relation("PurchasePaymentReversedBy")
 
   @@unique([organizationId, email])
@@ -746,6 +749,8 @@ model StockMovement {
   batch           ProductionBatch?  @relation(fields: [batchId], references: [id])
   purchaseOrderId String?
   purchaseOrder   PurchaseOrder?    @relation(fields: [purchaseOrderId], references: [id])
+  supplierReturnId String?
+  supplierReturn   SupplierReturn?  @relation(fields: [supplierReturnId], references: [id])
   routeStopId     String?
   routeStop       RouteStop?        @relation(fields: [routeStopId], references: [id])
   invoiceId       String?
@@ -1435,6 +1440,7 @@ model PurchaseOrder {
   stockMovements StockMovement[]
   payments       PurchaseOrderPayment[]
   revisions      PurchaseOrderRevision[]
+  supplierReturns SupplierReturn[]
 
   @@index([organizationId, locationId])
   @@map("purchase_orders")
@@ -1453,8 +1459,53 @@ model PurchaseOrderItem {
   receivedQuantity Decimal?     @db.Decimal(12, 3)
   receivedUnitCost Decimal?     @db.Decimal(12, 2)
   revisionLines   PurchaseOrderRevisionLine[]
+  supplierReturnLines SupplierReturnLine[]
 
   @@map("purchase_order_items")
+}
+
+// Goods of a received purchase order handed back to its supplier (torn bags,
+// the wrong product…). Append-only (UPDATE rejected by a trigger). The goods
+// leave the shelf as SUPPLIER_RETURN movements; the order owes the credited
+// amount less; money the supplier handed back is its own cash movement. The
+// order itself is never edited.
+model SupplierReturn {
+  id              String        @id @default(cuid())
+  organizationId  String
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  supplierId      String
+  locationId      String
+  creditedAmount  Decimal       @db.Decimal(12, 2)
+  // Money the supplier gave back for these goods (0 = it only reduces the debt).
+  refundedAmount  Decimal       @default(0) @db.Decimal(12, 2)
+  reason          String
+  createdById     String
+  createdBy       User          @relation("SupplierReturnCreatedBy", fields: [createdById], references: [id])
+  createdAt       DateTime      @default(now())
+
+  lines          SupplierReturnLine[]
+  stockMovements StockMovement[]
+  cashMovements  CashMovement[]
+
+  @@index([organizationId])
+  @@index([purchaseOrderId])
+  @@map("supplier_returns")
+}
+
+model SupplierReturnLine {
+  id               String            @id @default(cuid())
+  supplierReturnId String
+  supplierReturn   SupplierReturn    @relation(fields: [supplierReturnId], references: [id], onDelete: Cascade)
+  itemId           String
+  item             PurchaseOrderItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  productId        String
+  quantity         Decimal           @db.Decimal(12, 3)
+  unitCost         Decimal           @db.Decimal(12, 2)
+  subtotal         Decimal           @db.Decimal(12, 2)
+
+  @@index([supplierReturnId])
+  @@map("supplier_return_lines")
 }
 
 // The month-end cost correction (method «Б», finance/cost-correction) as it was
@@ -1997,6 +2048,9 @@ model CashMovement {
   // Set on a purchase-order payment AND on the ADJUSTMENT that reverses it.
   purchaseOrderPaymentId String?
   purchaseOrderPayment   PurchaseOrderPayment? @relation(fields: [purchaseOrderPaymentId], references: [id])
+  // Money a supplier handed back for goods returned to them.
+  supplierReturnId       String?
+  supplierReturn         SupplierReturn?       @relation(fields: [supplierReturnId], references: [id])
   // Set on the receipt of a fixed asset's disposal proceeds.
   fixedAssetId           String?
   fixedAsset             FixedAsset?           @relation(fields: [fixedAssetId], references: [id])

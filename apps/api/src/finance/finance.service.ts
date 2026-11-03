@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { purchaseOrderOwed } from "../procurement/purchase-owed";
 import { PrismaService } from "../prisma/prisma.service";
 import { cogsDeltaOf, correctionsInRange, lossDeltaOf } from "./cost-correction/stored";
 import { CostingService } from "../costing/costing.service";
@@ -1193,7 +1194,8 @@ export class FinanceService {
   }
 
   // What is owed on purchase orders that were RECEIVED after the purchasing
-  // cutover: the delivered total minus payments that have not been reversed.
+  // cutover: the delivered total minus goods returned to the supplier minus
+  // payments that have not been reversed (purchaseOrderOwed).
   // A placed order owes nothing, and one received before the cutover is legacy
   // (settled outside the system) — neither is counted. Legacy supplier
   // invoices are counted above, separately, and never through this path, so a
@@ -1203,15 +1205,15 @@ export class FinanceService {
     if (!org?.purchaseCutoverAt) return 0;
     const orders = await this.prisma.purchaseOrder.findMany({
       where: { organizationId, status: "RECEIVED", receivedAt: { gte: org.purchaseCutoverAt } },
-      select: { totalCost: true, receivedTotal: true, payments: { where: { reversedAt: null }, select: { amount: true } } },
+      select: {
+        totalCost: true,
+        receivedTotal: true,
+        payments: { where: { reversedAt: null }, select: { amount: true, reversedAt: true } },
+        supplierReturns: { select: { creditedAmount: true, refundedAmount: true } },
+      },
     });
-    return roundMoney(
-      orders.reduce((sum, o) => {
-        const due = (o.receivedTotal ?? o.totalCost).toNumber();
-        const paid = o.payments.reduce((s, p) => s + p.amount.toNumber(), 0);
-        return sum + Math.max(0, due - paid);
-      }, 0),
-    );
+    // Goods handed back reduce it, money the supplier gave back for them puts it back.
+    return roundMoney(orders.reduce((sum, o) => sum + Math.max(0, purchaseOrderOwed(o)), 0));
   }
 
   // Collected, minus handed back, minus already paid — the same running balance the

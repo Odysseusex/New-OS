@@ -125,6 +125,9 @@ export const PURCHASE_ORDER_MANAGE_ROLES: Role[] = [
 // stock value and the supplier debt after the fact, so it is not day-to-day
 // receiving work: the roles that answer for the books.
 export const PURCHASE_ORDER_REVISE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT];
+// «Возврат поставщику»: goods leave the shelf and the supplier's debt (or money
+// handed back) changes — the same people who may correct a received order.
+export const SUPPLIER_RETURN_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT];
 
 // Recording and confirming supplier delivery notes is the same day-to-day
 // receiving job as purchase orders, so it follows the same roles.

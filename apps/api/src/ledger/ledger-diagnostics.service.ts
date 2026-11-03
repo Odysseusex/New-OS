@@ -265,7 +265,7 @@ export class LedgerDiagnosticsService {
     const families: { key: string; label: string; match: (e: { type: FinancialEventType; unclassified: boolean; sourceType: string }) => boolean; note?: string }[] = [
       { key: "sales", label: "Продажи (выручка и себестоимость)", match: (e) => e.type === T.SALE || e.type === T.SALE_COST },
       { key: "returns", label: "Возвраты от покупателей", match: (e) => e.type === T.SALE_RETURN || e.type === T.SALE_RETURN_COST },
-      { key: "purchases", label: "Закупки (приёмка заказов и накладных)", match: (e) => e.type === T.PURCHASE_RECEIPT || e.type === T.INVOICE_RECEIPT },
+      { key: "purchases", label: "Закупки (приёмка заказов и накладных, возвраты поставщикам)", match: (e) => e.type === T.PURCHASE_RECEIPT || e.type === T.INVOICE_RECEIPT || e.type === T.SUPPLIER_RETURN },
       { key: "supplierPayments", label: "Оплаты поставщикам", match: (e) => e.type === T.SUPPLIER_PAYMENT },
       { key: "customerPayments", label: "Платежи покупателей и возвраты денег", match: (e) => e.type === T.CUSTOMER_RECEIPT || e.type === T.CUSTOMER_REFUND },
       { key: "expenses", label: "Расходы (начисление и оплата)", match: (e) => e.type === T.EXPENSE_ACCRUAL || e.type === T.EXPENSE_PAYMENT },

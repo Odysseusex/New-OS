@@ -159,6 +159,7 @@ export class DebtsService {
         receivedTotal: true,
         location: { select: { name: true } },
         payments: { select: { amount: true, paidAt: true, reversedAt: true } },
+        supplierReturns: { where: { createdAt: { lte: end } }, select: { creditedAmount: true, refundedAmount: true } },
       },
     });
     for (const o of orders) {
@@ -166,6 +167,8 @@ export class DebtsService {
       const paid = o.payments
         .filter((p) => p.paidAt <= end && (p.reversedAt === null || p.reversedAt > end))
         .reduce((sum, p) => sum + num(p.amount), 0);
+      // Goods handed back reduce what is owed; money the supplier gave back for them restores it.
+      const returned = o.supplierReturns.reduce((sum, r) => sum + num(r.creditedAmount) - num(r.refundedAmount), 0);
       const dateKey = debtDateKey(o.receivedAt as Date);
       const list = out.get(o.supplierId) ?? [];
       list.push({
@@ -174,7 +177,7 @@ export class DebtsService {
         label: `Приход по заказу от ${keyLabel(dateKey)}, ${o.location.name}`,
         dateKey,
         amount,
-        outstanding: amount - paid,
+        outstanding: amount - returned - paid,
       });
       out.set(o.supplierId, list);
     }
@@ -392,6 +395,7 @@ export class DebtsService {
               receivedTotal: true,
               location: { select: { name: true } },
               payments: { select: { amount: true, paidAt: true, reversedAt: true } },
+              supplierReturns: { where: { createdAt: { lte: end } }, select: { createdAt: true, creditedAmount: true, refundedAmount: true } },
             },
           })
         : Promise.resolve([]),
@@ -416,6 +420,12 @@ export class DebtsService {
         events.push({ at: p.paidAt.toISOString(), kind: StatementLineKind.PAYMENT_MADE, document: `Оплата: ${doc}`, debit: num(p.amount), credit: 0 });
         if (p.reversedAt && p.reversedAt <= end) {
           events.push({ at: p.reversedAt.toISOString(), kind: StatementLineKind.PAYMENT_REVERSED, document: `Сторно оплаты: ${doc}`, debit: 0, credit: num(p.amount) });
+        }
+      }
+      for (const r of o.supplierReturns) {
+        events.push({ at: r.createdAt.toISOString(), kind: StatementLineKind.SUPPLIER_RETURN, document: `Возврат товара: ${doc}`, debit: num(r.creditedAmount), credit: 0 });
+        if (num(r.refundedAmount) > 0) {
+          events.push({ at: r.createdAt.toISOString(), kind: StatementLineKind.SUPPLIER_REFUND, document: `Возврат денег: ${doc}`, debit: 0, credit: num(r.refundedAmount) });
         }
       }
     }

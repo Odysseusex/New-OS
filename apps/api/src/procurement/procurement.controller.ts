@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
-import { HARD_DELETE_ROLES, PURCHASE_ORDER_MANAGE_ROLES, PURCHASE_ORDER_REVISE_ROLES, SUPPLIER_PAYMENT_ROLES } from "@bakery-os/shared";
+import { HARD_DELETE_ROLES, PURCHASE_ORDER_MANAGE_ROLES, PURCHASE_ORDER_REVISE_ROLES, SUPPLIER_PAYMENT_ROLES, SUPPLIER_RETURN_ROLES } from "@bakery-os/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
 import { Roles } from "../common/decorators/roles.decorator";
@@ -9,6 +9,7 @@ import { ProcurementService } from "./procurement.service";
 import { CreatePurchaseOrderDto } from "./dto/create-purchase-order.dto";
 import { ReceivePurchaseOrderDto } from "./dto/receive-purchase-order.dto";
 import { RevisePurchaseOrderDto } from "./dto/revise-purchase-order.dto";
+import { SupplierReturnDto } from "./dto/supplier-return.dto";
 import { RecordPurchaseOrderPaymentDto, ReversePurchaseOrderPaymentDto } from "./dto/purchase-order-payment.dto";
 
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -55,6 +56,12 @@ export class ProcurementController {
   @Roles(...PURCHASE_ORDER_REVISE_ROLES)
   revise(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: RevisePurchaseOrderDto) {
     return this.procurementService.revise(user, id, dto);
+  }
+
+  @Post(":id/supplier-return")
+  @Roles(...SUPPLIER_RETURN_ROLES)
+  returnToSupplier(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: SupplierReturnDto) {
+    return this.procurementService.returnToSupplier(user, id, dto);
   }
 
   @Get(":id/history")

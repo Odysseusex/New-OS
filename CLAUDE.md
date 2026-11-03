@@ -932,7 +932,7 @@ From the financiers' ТЗ (iiko-style). `apps/api/src/debts/` (read-only service
 - Overdue receivables: a live notification per customer (`OVERDUE_RECEIVABLE`, critical after 30 days) and two cards on
   the dashboard for `DEBT_VIEW_ROLES`. `/finance?tab=…` opens a tab directly.
 - Not built: advances (авансы), a return of an UNPAID consignment shipment reducing the debt (returns refund only paid
-  money today — changing that touches money/ledger, needs the owner's yes), supplier returns.
+  money today — changing that touches money/ledger, needs the owner's yes). Supplier returns ARE built (see below).
 
 ## Excel exports, ДДС by month, markup (built, ТЗ stage 2)
 
@@ -976,6 +976,29 @@ From the financiers' answer: a posted document is corrected INSIDE the document,
 - Refused: receipt month closed (`PeriodGuard`), corrected total below what is paid, taking back goods no longer on
   the shelf, anything not RECEIVED. Till checks/sales are never edited (a return is the correction there).
 - Not built: adding/removing lines, changing supplier/location, correcting manual Склад → Приёмка (use Корректировка).
+
+## «Возврат поставщику» (supplier return) — built
+
+Goods of a RECEIVED purchase order handed back to the supplier (the goods physically go back). Order document →
+«Возврат поставщику» (`SUPPLIER_RETURN_ROLES` = OWNER/ADMIN/ACCOUNTANT), `ProcurementService.returnToSupplier`,
+`POST /procurement/orders/:id/supplier-return`. Migration `20261105120000` (`SupplierReturn` + lines, append-only by
+trigger; `StockMovementType.SUPPLIER_RETURN`, stock sign −1; `supplierReturnId` on stock and cash movements).
+- The order is never edited. Goods leave at the line's RECEIVED price (movement stamped with it, no `purchaseOrderId`),
+  the raw-material average gives that price back (`revisePurchaseAverage` before the stock leaves), at most what is left of
+  the line, only if still on the shelf.
+- Money: ONE formula, `procurement/purchase-owed.ts` `purchaseOrderOwed` = received − credited − paid + refunded, used by
+  the order card, the payment guard, `getPurchaseOrderPayables` and debts. If the return credits more than is still owed,
+  the supplier gives the difference back (`refundedAmount`) to a chosen account: an ADJUSTMENT cash movement with
+  `supplierReturnId`. An order received before the cutover has no debt: goods leave, no money is recorded.
+- Events: `purchaseOrder:{id}:return:{returnId}` (type SUPPLIER_RETURN, sourceType PurchaseOrder, so the order's posting
+  scope posts it): INVENTORY −credited, SUPPLIER_PAYABLES −credited (legacy: inventory only, unclassified). The refund is
+  its own cash event («Возврат денег от поставщика»: cash +, payable +). Descriptions carry «(№n)» — the diagnostics treat
+  two entries with the same reference+description as a duplicate posting.
+- Cost walk (`cost-history.ts`): a PURCHASE flow with NEGATIVE quantity at the stamped price (replay keeps the average if
+  the value would go negative); ОСВ shows it as расход. `product-costs` subtracts returned quantities.
+- Акт сверки: «Возврат товара поставщику» (debit) and «Возврат денег от поставщика» (credit).
+- After a return, «Исправить приёмку» is refused for that order (the two would contradict each other).
+- Not built: a return of goods from a manual Склад → Приёмка or from a supplier invoice (накладная).
 
 ## Month-end cost correction — owner DECISIONS (not built yet; steps 3–4 of the financiers' ТЗ)
 

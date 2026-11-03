@@ -215,6 +215,7 @@ import type {
   StockTurnoverDto,
   ReceivePurchaseOrderRequestDto,
   RevisePurchaseOrderRequestDto,
+  SupplierReturnRequestDto,
   DocumentHistoryEntryDto,
   RecordPurchaseOrderPaymentRequestDto,
   ReversePurchaseOrderPaymentRequestDto,
@@ -839,6 +840,8 @@ export const api = {
     reviseOrder: (id: string, dto: RevisePurchaseOrderRequestDto) =>
       request<PurchaseOrderDto>(`/procurement/orders/${id}/revise`, { method: "POST", body: JSON.stringify(dto) }),
     orderHistory: (id: string) => request<DocumentHistoryEntryDto[]>(`/procurement/orders/${id}/history`),
+    returnToSupplier: (id: string, dto: SupplierReturnRequestDto) =>
+      request<PurchaseOrderDto>(`/procurement/orders/${id}/supplier-return`, { method: "POST", body: JSON.stringify(dto) }),
   },
 
   debts: {

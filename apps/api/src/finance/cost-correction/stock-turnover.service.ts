@@ -54,8 +54,8 @@ export class StockTurnoverService {
         const meta = history.meta.get(flow.order);
         if (!meta) return;
         if (locationId ? meta.locationId !== locationId : meta.group === "TRANSFER") return;
-        // MOVE flows carry their sign in the quantity; every other flow in its meta.
-        const quantity = flow.kind === "MOVE" ? Math.abs(flow.quantity) : flow.quantity;
+        // The direction is in the meta; MOVE and returned-PURCHASE flows also sign their quantity.
+        const quantity = Math.abs(flow.quantity);
         const sign = meta.sign;
         if (unit === null) unvalued += 1;
         const value = unit !== null ? round2(quantity * unit) : 0;

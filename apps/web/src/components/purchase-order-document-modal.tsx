@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { History, Pencil } from "lucide-react";
-import type { DocumentHistoryEntryDto, PurchaseOrderDto, Unit } from "@bakery-os/shared";
+import { History, Pencil, Undo2 } from "lucide-react";
+import type { CashAccountDto, DocumentHistoryEntryDto, PurchaseOrderDto, Unit } from "@bakery-os/shared";
 import {
   DOCUMENT_HISTORY_LABELS_RU,
   DocumentHistoryKind,
@@ -27,7 +27,8 @@ const unitLabel = (unit: string) => UNIT_LABELS_RU[unit as Unit] ?? unit;
 // The purchase order as a document: its lines as ordered and as received, the
 // corrections made to it, and «История изменений». A received order is
 // corrected here, inside the document (OWNER/ADMIN/ACCOUNTANT); the server
-// keeps what it said before.
+// keeps what it said before. «Возврат поставщику» hands goods of a received
+// order back (same roles): a separate document, the order itself unchanged.
 export function PurchaseOrderDocumentModal({
   order,
   canRevise,
@@ -43,6 +44,10 @@ export function PurchaseOrderDocumentModal({
   const [history, setHistory] = useState<DocumentHistoryEntryDto[] | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [returning, setReturning] = useState(false);
+  const [returnRows, setReturnRows] = useState<string[]>([]);
+  const [accounts, setAccounts] = useState<CashAccountDto[]>([]);
+  const [refundAccountId, setRefundAccountId] = useState("");
   const [rows, setRows] = useState<{ quantity: string; unitCost: string }[]>([]);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +72,53 @@ export function PurchaseOrderDocumentModal({
     unitCost: item.receivedUnitCost ?? item.unitCost,
   });
   const total = doc.receivedTotal ?? doc.totalCost;
+
+  // What is left of a line to hand back, and what handing it back is worth.
+  const returnable = (item: PurchaseOrderDto["items"][number]) => Math.max(0, Math.round((actual(item).quantity - item.returnedQuantity) * 1000) / 1000);
+  const returnLines = returning
+    ? doc.items
+        .map((item, idx) => ({ item, quantity: returnRows[idx] === undefined || returnRows[idx].trim() === "" ? 0 : num(returnRows[idx]) }))
+        .filter((l) => l.quantity !== 0)
+    : [];
+  const returnInvalid = returnLines.some((l) => !Number.isFinite(l.quantity) || l.quantity < 0 || l.quantity > returnable(l.item) + 0.0005);
+  const credited = returnInvalid ? 0 : round2(returnLines.reduce((s, l) => s + round2(l.quantity * actual(l.item).unitCost), 0));
+  const refund = doc.payableRecognized ? round2(Math.max(0, credited - doc.balanceDue)) : 0;
+
+  function startReturning() {
+    setReturnRows(doc.items.map(() => ""));
+    setReason("");
+    setError(null);
+    setReturning(true);
+    if (accounts.length === 0) {
+      api.finance.accounts
+        .list()
+        .then((list) => {
+          setAccounts(list);
+          setRefundAccountId((prev) => prev || list.find((a) => a.isDefault)?.id || list[0]?.id || "");
+        })
+        .catch(() => {});
+    }
+  }
+
+  async function saveReturn() {
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await api.procurement.returnToSupplier(doc.id, {
+        items: returnLines.map((l) => ({ itemId: l.item.id, quantity: l.quantity })),
+        reason: reason.trim(),
+        refundAccountId: refund > 0 ? refundAccountId : undefined,
+      });
+      setDoc(updated);
+      setReturning(false);
+      setReloadToken((t) => t + 1);
+      onChanged(updated);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось оформить возврат");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   function startEditing() {
     setRows(doc.items.map((i) => ({ quantity: String(actual(i).quantity), unitCost: String(actual(i).unitCost) })));
@@ -143,7 +195,14 @@ export function PurchaseOrderDocumentModal({
                           onChange={(e) => setRows(rows.map((r, i) => (i === idx ? { ...r, quantity: e.target.value } : r)))}
                         />
                       ) : (
-                        `${formatQuantity(a.quantity)} ${unitLabel(item.unit)}`
+                        <>
+                          {formatQuantity(a.quantity)} {unitLabel(item.unit)}
+                          {item.returnedQuantity > 0 && (
+                            <div className="text-xs text-muted">
+                              возвращено {formatQuantity(item.returnedQuantity)} {unitLabel(item.unit)}
+                            </div>
+                          )}
+                        </>
                       )}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-right text-foreground">
@@ -173,13 +232,22 @@ export function PurchaseOrderDocumentModal({
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 text-right text-foreground">{formatMoneyPrecise(newTotal)}</td>
               </tr>
+              {doc.returnedTotal > 0 && (
+                <tr className="text-muted">
+                  <td className="px-3 py-1.5" colSpan={4}>
+                    Возвращено поставщику{doc.refundedTotal > 0 ? ` (деньги возвращены: ${formatMoneyPrecise(doc.refundedTotal)})` : ""}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-1.5 text-right">−{formatMoneyPrecise(doc.returnedTotal)}</td>
+                </tr>
+              )}
               {doc.payableRecognized && (
                 <tr className="text-muted">
                   <td className="px-3 py-1.5" colSpan={4}>
                     Оплачено / к оплате
                   </td>
                   <td className="whitespace-nowrap px-3 py-1.5 text-right">
-                    {formatMoneyPrecise(doc.amountPaid)} / {formatMoneyPrecise(round2(Math.max(0, newTotal - doc.amountPaid)))}
+                    {formatMoneyPrecise(doc.amountPaid)} /{" "}
+                    {formatMoneyPrecise(editing ? round2(Math.max(0, newTotal - doc.amountPaid)) : doc.balanceDue)}
                   </td>
                 </tr>
               )}
@@ -226,17 +294,124 @@ export function PurchaseOrderDocumentModal({
               </button>
             </div>
           </div>
+        ) : returning ? (
+          <div className="space-y-3 rounded-xl border border-border bg-surface-muted p-4">
+            <p className="text-sm font-semibold text-foreground">Возврат поставщику</p>
+            <div className="space-y-2">
+              {doc.items.map((item, idx) => {
+                const left = returnable(item);
+                const q = returnRows[idx] ? num(returnRows[idx]) : 0;
+                const tooMuch = Number.isFinite(q) && q > left + 0.0005;
+                return (
+                  <div key={item.id} className="flex flex-wrap items-center gap-3 text-sm">
+                    <span className="min-w-0 flex-1 text-foreground">
+                      {item.productName}
+                      <span className="ml-2 text-xs text-muted">
+                        можно вернуть {formatQuantity(left)} {unitLabel(item.unit)} × {formatMoneyPrecise(actual(item).unitCost)}
+                      </span>
+                    </span>
+                    <input
+                      {...enterNext}
+                      inputMode="decimal"
+                      disabled={left <= 0}
+                      placeholder="0"
+                      className={`${inputClass} ${tooMuch ? "border-red-400" : ""}`}
+                      value={returnRows[idx] ?? ""}
+                      onChange={(e) => setReturnRows(returnRows.map((r, i) => (i === idx ? e.target.value : r)))}
+                    />
+                    <span className="w-28 whitespace-nowrap text-right text-foreground">
+                      {q > 0 && !tooMuch ? formatMoneyPrecise(round2(q * actual(item).unitCost)) : "—"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            {credited > 0 && (
+              <p className="text-sm text-foreground">
+                Возврат на сумму <span className="font-semibold">{formatMoneyPrecise(credited)}</span>
+                {doc.payableRecognized && refund === 0 && " — долг поставщику уменьшится на эту сумму"}
+              </p>
+            )}
+            {refund > 0 && (
+              <div className="flex flex-wrap items-center gap-3 text-sm">
+                <span className="text-foreground">
+                  Заказ уже оплачен — поставщик возвращает деньги: <span className="font-semibold">{formatMoneyPrecise(refund)}</span> на счёт
+                </span>
+                <select
+                  value={refundAccountId}
+                  onChange={(e) => setRefundAccountId(e.target.value)}
+                  className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                >
+                  {accounts
+                    .filter((a) => a.isActive)
+                    .map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
+            {!doc.payableRecognized && credited > 0 && (
+              <p className="text-sm text-amber-700">Заказ принят до перехода на новый порядок закупок: товар спишется со склада, деньги здесь не учитываются.</p>
+            )}
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted">Причина возврата</label>
+              <input
+                {...enterNext}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Например: порванные мешки"
+                className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+              />
+            </div>
+            {error && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setReturning(false)}
+                className="rounded-xl border border-border bg-surface px-4 py-2 text-sm text-foreground hover:bg-surface-muted"
+              >
+                Отмена
+              </button>
+              <button
+                data-submit=""
+                onClick={saveReturn}
+                disabled={
+                  saving ||
+                  returnInvalid ||
+                  returnLines.length === 0 ||
+                  (refund > 0 && !refundAccountId) ||
+                  reason.trim().length < PURCHASE_REVISION_REASON_MIN
+                }
+                className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition hover:opacity-90 disabled:opacity-50"
+              >
+                {saving ? "Сохранение…" : "Оформить возврат"}
+                {!saving && <SubmitShortcutHint />}
+              </button>
+            </div>
+          </div>
         ) : (
           canRevise &&
           received && (
-            <div className="flex justify-end">
-              <button
-                onClick={startEditing}
-                className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
-              >
-                <Pencil className="h-4 w-4" strokeWidth={1.75} />
-                Исправить приёмку
-              </button>
+            <div className="flex flex-wrap justify-end gap-2">
+              {doc.items.some((i) => returnable(i) > 0) && (
+                <button
+                  onClick={startReturning}
+                  className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+                >
+                  <Undo2 className="h-4 w-4" strokeWidth={1.75} />
+                  Возврат поставщику
+                </button>
+              )}
+              {doc.returnCount === 0 && (
+                <button
+                  onClick={startEditing}
+                  className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+                >
+                  <Pencil className="h-4 w-4" strokeWidth={1.75} />
+                  Исправить приёмку
+                </button>
+              )}
             </div>
           )
         )}
@@ -270,9 +445,12 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
+const isReturnKind = (entry: DocumentHistoryEntryDto) => entry.kind === DocumentHistoryKind.SUPPLIER_RETURN;
+
 function HistoryRow({ entry }: { entry: DocumentHistoryEntryDto }) {
-  const amountLine =
-    entry.amount !== null
+  const amountLine = isReturnKind(entry)
+    ? `−${formatMoneyPrecise(-(entry.amountAfter ?? 0))}${entry.amount !== null ? ` · деньги возвращены: ${formatMoneyPrecise(entry.amount)}` : ""}`
+    : entry.amount !== null
       ? formatMoneyPrecise(entry.amount)
       : entry.amountAfter !== null
         ? entry.amountBefore !== null && entry.amountBefore !== entry.amountAfter
@@ -294,12 +472,18 @@ function HistoryRow({ entry }: { entry: DocumentHistoryEntryDto }) {
       {entry.lines.length > 0 && (
         <ul className="mt-1 space-y-0.5 text-xs text-muted">
           {lineLabel && <li>{lineLabel}:</li>}
-          {entry.lines.map((l, i) => (
-            <li key={i}>
-              {l.productName}: {formatQuantity(l.quantityBefore)} {unitLabel(l.unit)} × {formatMoneyPrecise(l.unitCostBefore)} →{" "}
-              {formatQuantity(l.quantityAfter)} {unitLabel(l.unit)} × {formatMoneyPrecise(l.unitCostAfter)}
-            </li>
-          ))}
+          {entry.lines.map((l, i) =>
+            isReturnKind(entry) ? (
+              <li key={i}>
+                {l.productName}: {formatQuantity(l.quantityBefore)} {unitLabel(l.unit)} × {formatMoneyPrecise(l.unitCostBefore)}
+              </li>
+            ) : (
+              <li key={i}>
+                {l.productName}: {formatQuantity(l.quantityBefore)} {unitLabel(l.unit)} × {formatMoneyPrecise(l.unitCostBefore)} →{" "}
+                {formatQuantity(l.quantityAfter)} {unitLabel(l.unit)} × {formatMoneyPrecise(l.unitCostAfter)}
+              </li>
+            ),
+          )}
         </ul>
       )}
     </li>

@@ -17,6 +17,8 @@ export type OutCategory = "COGS" | "LOSS" | "PRODUCTION" | "NONE";
 export type CostFlow =
   // A priced receipt (purchase order line as corrected, invoice, Склад → Приёмка
   // with a price): moves the average.
+  // A purchase at its own price; a NEGATIVE quantity is goods handed back to the
+  // supplier at the price they were received at.
   | { kind: "PURCHASE"; at: number; order: number; productId: string; quantity: number; unitCost: number }
   // Stock that arrives at the average and leaves it alone: a restocked return
   // (category COGS — it reverses cost of goods), a count surplus (LOSS — it
@@ -130,7 +132,17 @@ export function replayCosts(input: ReplayInput): ReplayResult {
     }
 
     if (flow.kind === "PURCHASE") {
-      s.average = movingAverageAfterPurchase(s.quantity, knownAverage(flow.productId, s, flow.unitCost)!, flow.quantity, flow.unitCost);
+      const average = knownAverage(flow.productId, s, flow.unitCost)!;
+      if (flow.quantity < 0) {
+        // Goods handed back to the supplier leave at the price they came in at
+        // (revisePurchaseAverage); with nothing left, or a value that would turn
+        // negative, the average stays as it was.
+        const quantity = s.quantity + flow.quantity;
+        const value = Math.max(s.quantity, 0) * average + flow.quantity * flow.unitCost;
+        s.average = quantity > 0 && value >= 0 ? value / quantity : average;
+      } else {
+        s.average = movingAverageAfterPurchase(s.quantity, average, flow.quantity, flow.unitCost);
+      }
       s.quantity += flow.quantity;
       input.onFlow?.(flow, flow.unitCost);
       continue;

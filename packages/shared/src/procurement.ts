@@ -54,6 +54,8 @@ export interface PurchaseOrderItemDto {
   // Delivered quantity/cost when they differ from the order (null = as ordered).
   receivedQuantity: number | null;
   receivedUnitCost: number | null;
+  // Already handed back to the supplier (SupplierReturn), in the line's unit.
+  returnedQuantity: number;
 }
 
 export interface PurchaseOrderPaymentDto {
@@ -93,6 +95,25 @@ export interface PurchaseOrderDto {
   payments: PurchaseOrderPaymentDto[];
   // How many times the received document was corrected (0 = never).
   revisionCount: number;
+  // Goods handed back to the supplier: what they were worth (the debt shrinks
+  // by it) and the money the supplier gave back for them.
+  returnedTotal: number;
+  refundedTotal: number;
+  returnCount: number;
+}
+
+export interface SupplierReturnItemRequestDto {
+  itemId: string;
+  quantity: number;
+}
+
+// «Возврат поставщику» on a received order. The goods leave the shelf at the
+// price they were received at. When the order is already paid for more than it
+// is now worth, the supplier hands the difference back to `refundAccountId`.
+export interface SupplierReturnRequestDto {
+  items: SupplierReturnItemRequestDto[];
+  reason: string;
+  refundAccountId?: string;
 }
 
 // Optional actuals recorded at receipt; anything omitted is received as ordered.
@@ -134,6 +155,7 @@ export enum DocumentHistoryKind {
   CANCELLED = "CANCELLED",
   PAID = "PAID",
   PAYMENT_REVERSED = "PAYMENT_REVERSED",
+  SUPPLIER_RETURN = "SUPPLIER_RETURN",
 }
 
 export const DOCUMENT_HISTORY_LABELS_RU: Record<DocumentHistoryKind, string> = {
@@ -143,6 +165,7 @@ export const DOCUMENT_HISTORY_LABELS_RU: Record<DocumentHistoryKind, string> = {
   [DocumentHistoryKind.CANCELLED]: "Отменён",
   [DocumentHistoryKind.PAID]: "Оплата",
   [DocumentHistoryKind.PAYMENT_REVERSED]: "Оплата отменена",
+  [DocumentHistoryKind.SUPPLIER_RETURN]: "Возврат поставщику",
 };
 
 export interface DocumentHistoryLineDto {
@@ -162,7 +185,7 @@ export interface DocumentHistoryEntryDto {
   // The document's amount before and after the change (receipt, correction).
   amountBefore: number | null;
   amountAfter: number | null;
-  // A payment or its reversal.
+  // A payment or its reversal; for a return, the money the supplier gave back.
   amount: number | null;
   reason: string | null;
   lines: DocumentHistoryLineDto[];

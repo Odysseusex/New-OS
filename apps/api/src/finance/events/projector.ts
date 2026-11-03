@@ -81,6 +81,7 @@ export class FinancialEventProjector {
         invoiceId: row.invoiceId,
         consignmentPaymentId: row.consignmentPaymentId,
         purchaseOrderPaymentId: row.purchaseOrderPaymentId,
+        supplierReturnId: row.supplierReturnId,
         fixedAssetId: row.fixedAssetId,
         saleId: row.saleId,
         transferGroupId: row.transferGroupId,

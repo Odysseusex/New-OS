@@ -18,6 +18,7 @@ import {
   PurchaseWorkflowDto,
   ReceivePurchaseOrderRequestDto,
   RecordPurchaseOrderPaymentRequestDto,
+  SupplierReturnRequestDto,
   Unit,
 } from "@bakery-os/shared";
 import { Prisma, PurchaseOrderStatus as PrismaPurchaseOrderStatus, StockMovementType } from "@prisma/client";
@@ -30,6 +31,7 @@ import { requireLocationScope, resolveLocationScope } from "../common/location-s
 import { CreatePurchaseOrderDto } from "./dto/create-purchase-order.dto";
 import { recordAudit } from "../audit/audit";
 import { postLedgerSources } from "../ledger/event-posting";
+import { purchaseOrderOwed } from "./purchase-owed";
 
 @Injectable()
 export class ProcurementService {
@@ -148,6 +150,7 @@ export class ProcurementService {
     items: { include: { product: true } },
     payments: { include: { account: true, createdBy: true }, orderBy: { createdAt: "asc" as const } },
     _count: { select: { revisions: true } },
+    supplierReturns: { select: { creditedAmount: true, refundedAmount: true, lines: { select: { itemId: true, quantity: true } } } },
   };
 
   private async cutoverAt(organizationId: string, client: Prisma.TransactionClient | PrismaService = this.prisma) {
@@ -416,7 +419,7 @@ export class ProcurementService {
       await tx.$queryRaw`SELECT id FROM "purchase_orders" WHERE id = ${orderId} FOR UPDATE`;
       const order = await tx.purchaseOrder.findFirst({
         where: { id: orderId, organizationId: user.organizationId },
-        include: { payments: true },
+        include: { payments: true, supplierReturns: true },
       });
       if (!order) {
         throw new NotFoundException("Заказ не найден");
@@ -432,9 +435,7 @@ export class ProcurementService {
         );
       }
 
-      const due = (order.receivedTotal ?? order.totalCost).toNumber();
-      const paid = order.payments.filter((p) => !p.reversedAt).reduce((sum, p) => sum + p.amount.toNumber(), 0);
-      const outstanding = round2(due - paid);
+      const outstanding = purchaseOrderOwed(order);
       if (dto.amount > outstanding + 0.005) {
         throw new BadRequestException(`Сумма оплаты превышает остаток задолженности (${outstanding})`);
       }
@@ -559,6 +560,7 @@ export class ProcurementService {
           items: { include: { product: true } },
           payments: true,
           revisions: { select: { number: true }, orderBy: { number: "desc" }, take: 1 },
+          _count: { select: { supplierReturns: true } },
         },
       });
       if (!order) {
@@ -567,6 +569,11 @@ export class ProcurementService {
       resolveLocationScope(user, order.locationId);
       if (order.status !== PrismaPurchaseOrderStatus.RECEIVED || !order.receivedAt) {
         throw new BadRequestException("Исправить можно только принятый заказ");
+      }
+      // A correction rewrites what was received; a return already took part of
+      // it back at the old figures. Mixing the two would make neither true.
+      if (order._count.supplierReturns > 0) {
+        throw new BadRequestException("По заказу уже был возврат поставщику — исправить приёмку нельзя. Оформите ещё один возврат или корректировку остатка.");
       }
       await new PeriodGuard(this.prisma).assertOpen(user.organizationId, order.receivedAt, tx);
 
@@ -714,6 +721,167 @@ export class ProcurementService {
     });
   }
 
+  // «Возврат поставщику»: goods of a received order handed back to its supplier
+  // (torn bags, the wrong product, spoiled on arrival). The order is never
+  // edited; a SupplierReturn document records it:
+  //   · the goods leave the shelf (SUPPLIER_RETURN movements) at the price they
+  //     were received at, and a raw material's average takes that price out;
+  //   · the supplier's debt shrinks by their value (creditedAmount);
+  //   · when the order was already paid for more than it is now worth, the
+  //     supplier hands the difference back — its own cash movement into
+  //     `refundAccountId` (an order received before the purchasing cutover has
+  //     no debt in the system, so nothing about money is recorded for it).
+  // Refused for more than is left of a line, for goods no longer on the shelf,
+  // and for anything but a received order.
+  async returnToSupplier(user: AuthenticatedUser, orderId: string, dto: SupplierReturnRequestDto): Promise<PurchaseOrderDto> {
+    const reason = (dto.reason ?? "").trim();
+    if (reason.length < PURCHASE_REVISION_REASON_MIN) {
+      throw new BadRequestException(`Укажите причину возврата (не короче ${PURCHASE_REVISION_REASON_MIN} символов)`);
+    }
+    const wanted = (dto.items ?? []).filter((i) => i.quantity !== 0);
+    if (wanted.length === 0) {
+      throw new BadRequestException("Укажите, что возвращается");
+    }
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "purchase_orders" WHERE id = ${orderId} FOR UPDATE`;
+      const order = await tx.purchaseOrder.findFirst({
+        where: { id: orderId, organizationId: user.organizationId },
+        include: {
+          items: { include: { product: true } },
+          payments: true,
+          supplierReturns: { include: { lines: true } },
+        },
+      });
+      if (!order) {
+        throw new NotFoundException("Заказ не найден");
+      }
+      resolveLocationScope(user, order.locationId);
+      if (order.status !== PrismaPurchaseOrderStatus.RECEIVED || !order.receivedAt) {
+        throw new BadRequestException("Вернуть поставщику можно только товар принятого заказа");
+      }
+      const returnedAt = new Date();
+      await new PeriodGuard(this.prisma).assertOpen(user.organizationId, returnedAt, tx);
+
+      const alreadyReturned = new Map<string, number>();
+      for (const r of order.supplierReturns) {
+        for (const l of r.lines) alreadyReturned.set(l.itemId, (alreadyReturned.get(l.itemId) ?? 0) + l.quantity.toNumber());
+      }
+      const seen = new Set<string>();
+      const lines = wanted.map((w) => {
+        const item = order.items.find((i) => i.id === w.itemId);
+        if (!item) throw new BadRequestException("В заказе нет такой позиции");
+        if (seen.has(item.id)) throw new BadRequestException(`«${item.product.name}» указан дважды`);
+        seen.add(item.id);
+        const quantity = round3(w.quantity);
+        if (!Number.isFinite(quantity) || quantity <= 0) {
+          throw new BadRequestException(`«${item.product.name}»: количество должно быть больше нуля`);
+        }
+        const received = (item.receivedQuantity ?? item.quantity).toNumber();
+        const left = round3(received - (alreadyReturned.get(item.id) ?? 0));
+        if (quantity > left + 0.0005) {
+          throw new BadRequestException(`«${item.product.name}»: принято ${received}, вернуть можно не больше ${left}`);
+        }
+        const unitCost = (item.receivedUnitCost ?? item.unitCost).toNumber();
+        return { item, quantity, unitCost, subtotal: round2(quantity * unitCost) };
+      });
+      const credited = round2(lines.reduce((s, l) => s + l.subtotal, 0));
+
+      const cutoverAt = await this.cutoverAt(user.organizationId, tx);
+      const recognized = this.payableRecognized(order, cutoverAt);
+      // What the order still owes AFTER this credit; below zero = the supplier
+      // holds our money for goods we no longer have, and gives it back.
+      const refund = recognized ? round2(Math.max(0, credited - purchaseOrderOwed(order))) : 0;
+      let refundAccountId: string | null = null;
+      if (refund > 0) {
+        if (!dto.refundAccountId) {
+          throw new BadRequestException(`Заказ уже оплачен: поставщик возвращает ${refund} — укажите, на какой счёт`);
+        }
+        const account = await tx.cashAccount.findFirst({ where: { id: dto.refundAccountId, organizationId: user.organizationId } });
+        if (!account || !account.isActive) {
+          throw new BadRequestException("Счёт не найден или заархивирован");
+        }
+        refundAccountId = account.id;
+      }
+
+      const document = await tx.supplierReturn.create({
+        data: {
+          organizationId: user.organizationId,
+          purchaseOrderId: order.id,
+          supplierId: order.supplierId,
+          locationId: order.locationId,
+          creditedAmount: credited,
+          refundedAmount: refund,
+          reason,
+          createdById: user.id,
+          createdAt: returnedAt,
+          lines: {
+            create: lines.map((l) => ({ itemId: l.item.id, productId: l.item.productId, quantity: l.quantity, unitCost: l.unitCost, subtotal: l.subtotal })),
+          },
+        },
+      });
+
+      for (const l of lines) {
+        // The average gives back the price these goods came in at, before the stock leaves.
+        await revisePurchaseAverage(tx, l.item.productId, { quantity: l.quantity, unitCost: l.unitCost }, { quantity: 0, unitCost: l.unitCost });
+        await decrementStockOrThrow(
+          tx,
+          { locationId: order.locationId, productId: l.item.productId, quantity: l.quantity },
+          `«${l.item.product.name}»: на складе нет ${l.quantity} — часть уже израсходована или продана`,
+        );
+      }
+      await tx.stockMovement.createMany({
+        data: lines.map((l) => ({
+          organizationId: user.organizationId,
+          locationId: order.locationId,
+          productId: l.item.productId,
+          type: StockMovementType.SUPPLIER_RETURN,
+          quantity: l.quantity,
+          reason: `Возврат поставщику: ${reason}`,
+          supplierReturnId: document.id,
+          createdById: user.id,
+          createdAt: returnedAt,
+          unitCost: l.unitCost,
+          costBasis: CostBasis.PURCHASE_ACTUAL,
+        })),
+      });
+
+      if (refund > 0 && refundAccountId) {
+        await this.cash.recordMovement(tx, {
+          organizationId: user.organizationId,
+          accountId: refundAccountId,
+          // Money coming back from the supplier: a signed correction, like a payment reversal.
+          type: CashMovementType.ADJUSTMENT,
+          amount: refund,
+          supplierId: order.supplierId,
+          supplierReturnId: document.id,
+          reason: `Возврат денег от поставщика за возвращённый товар: ${reason}`,
+          createdById: user.id,
+        });
+      }
+
+      // Inventory and the supplier debt down — journalised with the return.
+      await postLedgerSources(tx, { organizationId: user.organizationId, actorId: user.id, scope: { purchaseOrderIds: [order.id] } });
+
+      await recordAudit(tx, {
+        organizationId: user.organizationId,
+        actorId: user.id,
+        action: "purchaseOrder.supplierReturn",
+        entityType: "PurchaseOrder",
+        entityId: order.id,
+        after: {
+          supplierReturnId: document.id,
+          creditedAmount: credited,
+          refundedAmount: refund,
+          lines: lines.map((l) => ({ product: l.item.product.name, quantity: l.quantity, unitCost: l.unitCost })),
+        },
+        reason,
+      });
+
+      const fresh = await tx.purchaseOrder.findUniqueOrThrow({ where: { id: orderId }, include: ProcurementService.ORDER_INCLUDE });
+      return this.toDto(fresh, cutoverAt);
+    });
+  }
+
   // «История изменений» of one order: who did what to it and when, with the
   // document's figures before and after. Read from the rows the actions left
   // behind (the order, its revisions, payments, the audit trail) — nothing is
@@ -729,6 +897,7 @@ export class ProcurementService {
           include: { createdBy: { select: { fullName: true } }, lines: true },
           orderBy: { number: "asc" },
         },
+        supplierReturns: { include: { createdBy: { select: { fullName: true } }, lines: true } },
       },
     });
     if (!order) {
@@ -831,6 +1000,24 @@ export class ProcurementService {
       });
     }
 
+    for (const r of order.supplierReturns) {
+      const credited = r.creditedAmount.toNumber();
+      entries.push({
+        kind: DocumentHistoryKind.SUPPLIER_RETURN,
+        at: r.createdAt.toISOString(),
+        actorName: r.createdBy.fullName,
+        amountBefore: null,
+        amountAfter: -credited,
+        amount: r.refundedAmount.toNumber() > 0 ? r.refundedAmount.toNumber() : null,
+        reason: r.reason,
+        lines: r.lines.map((l) => {
+          const q = l.quantity.toNumber();
+          const c = l.unitCost.toNumber();
+          return line(l.itemId, q, 0, c, c);
+        }),
+      });
+    }
+
     for (const p of order.payments) {
       entries.push({
         kind: DocumentHistoryKind.PAID,
@@ -903,13 +1090,16 @@ export class ProcurementService {
         reversalReason: string | null;
       }[];
       _count?: { revisions: number };
+      supplierReturns?: { creditedAmount: { toNumber: () => number }; refundedAmount: { toNumber: () => number }; lines: { itemId: string; quantity: { toNumber: () => number } }[] }[];
     },
     cutoverAt: Date | null,
   ): PurchaseOrderDto => {
     const recognized = this.payableRecognized(order, cutoverAt);
-    const due = order.receivedTotal?.toNumber() ?? order.totalCost.toNumber();
+    const returns = order.supplierReturns ?? [];
     const paid = round2(order.payments.filter((p) => !p.reversedAt).reduce((sum, p) => sum + p.amount.toNumber(), 0));
-    const balanceDue = recognized ? round2(due - paid) : 0;
+    const balanceDue = recognized ? purchaseOrderOwed({ ...order, supplierReturns: returns }) : 0;
+    const returnedOf = (itemId: string) =>
+      round3(returns.reduce((s, r) => s + r.lines.filter((l) => l.itemId === itemId).reduce((t, l) => t + l.quantity.toNumber(), 0), 0));
     return {
       id: order.id,
       supplierId: order.supplierId,
@@ -953,8 +1143,13 @@ export class ProcurementService {
         subtotal: item.subtotal.toNumber(),
         receivedQuantity: item.receivedQuantity ? item.receivedQuantity.toNumber() : null,
         receivedUnitCost: item.receivedUnitCost ? item.receivedUnitCost.toNumber() : null,
+        returnedQuantity: returnedOf(item.id),
       })),
       revisionCount: order._count?.revisions ?? 0,
+      returnedTotal: round2(returns.reduce((s, r) => s + r.creditedAmount.toNumber(), 0)),
+      refundedTotal: round2(returns.reduce((s, r) => s + r.refundedAmount.toNumber(), 0)),
+      returnCount: returns.length,
     };
   };
 }
+

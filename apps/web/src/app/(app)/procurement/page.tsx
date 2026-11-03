@@ -301,6 +301,7 @@ export default function ProcurementPage() {
                       {order.supplierName}
                     </button>
                     {order.revisionCount > 0 && <span className="ml-2 text-xs font-normal text-muted">исправлен</span>}
+                    {order.returnCount > 0 && <span className="ml-2 text-xs font-normal text-muted">возврат</span>}
                   </td>
                   {isOrgWide && <td className="px-5 py-3 text-muted">{order.locationName}</td>}
                   <td className="px-5 py-3 text-right text-foreground">

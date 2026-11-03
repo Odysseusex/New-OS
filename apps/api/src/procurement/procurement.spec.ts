@@ -3,7 +3,6 @@ import { createIsolatedOrg, destroyOrg, IsolatedOrg } from "../../test/support/i
 import { buildServices } from "../../test/support/services";
 import { FinancialEventProjector } from "../finance/events/projector";
 import { checkEventInvariants } from "../finance/events/invariants";
-import { supplierReturnEvent } from "../finance/events/purchase-events";
 import { checkLedgerConsistency } from "../finance/integrity/ledger-consistency";
 import { AUDIT_ACTION_GROUPS } from "../audit/audit";
 
@@ -245,6 +244,65 @@ describe("correcting a received order", () => {
   });
 });
 
+describe("returning goods to the supplier", () => {
+  it("an unpaid order: goods leave the shelf at the received price and the debt shrinks by them", async () => {
+    const po = await order([{ productId: sugarId, quantity: 10, unitCost: 300 }]);
+    await services.procurement.receive(org.user, po.id);
+    const before = await ap();
+    const cashBefore = await balance();
+    const levelBefore = (await prisma.stockLevel.findUniqueOrThrow({ where: { locationId_productId: { locationId: org.storeId, productId: sugarId } } })).quantity.toNumber();
+    const dto = await services.procurement.returnToSupplier(org.user, po.id, { items: [{ itemId: po.items[0].id, quantity: 3 }], reason: "Порванные мешки" });
+    expect(dto).toMatchObject({ returnedTotal: 900, refundedTotal: 0, balanceDue: 2100, returnCount: 1 });
+    expect(dto.items[0].returnedQuantity).toBe(3);
+    expect(await ap()).toBeCloseTo(before - 900, 2);
+    expect(await balance()).toBe(cashBefore);
+    const level = (await prisma.stockLevel.findUniqueOrThrow({ where: { locationId_productId: { locationId: org.storeId, productId: sugarId } } })).quantity.toNumber();
+    expect(level).toBeCloseTo(levelBefore - 3, 3);
+    const movement = await prisma.stockMovement.findFirstOrThrow({ where: { type: "SUPPLIER_RETURN", productId: sugarId } });
+    expect(movement).toMatchObject({ purchaseOrderId: null });
+    expect(movement.unitCost?.toNumber()).toBe(300);
+    // No more than what is left of the line; a correction of the receipt is refused after a return.
+    await expect(
+      services.procurement.returnToSupplier(org.user, po.id, { items: [{ itemId: po.items[0].id, quantity: 8 }], reason: "Ещё раз" }),
+    ).rejects.toThrow("вернуть можно не больше 7");
+    await expect(
+      services.procurement.revise(org.user, po.id, { items: [{ itemId: po.items[0].id, quantity: 10, unitCost: 250 }], reason: "Другая цена" }),
+    ).rejects.toThrow("возврат поставщику");
+    const history = await services.procurement.history(org.user, po.id);
+    expect(history.map((h) => h.kind)).toEqual(["CREATED", "RECEIVED", "SUPPLIER_RETURN"]);
+  });
+
+  it("a paid order: the supplier hands the money back to the stated account", async () => {
+    const po = await order([{ productId: flourId, quantity: 10, unitCost: 100 }]);
+    await services.procurement.receive(org.user, po.id);
+    await services.procurement.recordPayment(org.user, po.id, { accountId: org.bankAccountId, amount: 800 });
+    const before = await ap();
+    const cashBefore = await balance();
+    // 4 × 100 = 400 back; 200 was still owed, so 200 comes back as money.
+    await expect(
+      services.procurement.returnToSupplier(org.user, po.id, { items: [{ itemId: po.items[0].id, quantity: 4 }], reason: "Мука с жучком" }),
+    ).rejects.toThrow("укажите, на какой счёт");
+    const dto = await services.procurement.returnToSupplier(org.user, po.id, {
+      items: [{ itemId: po.items[0].id, quantity: 4 }],
+      reason: "Мука с жучком",
+      refundAccountId: org.bankAccountId,
+    });
+    expect(dto).toMatchObject({ returnedTotal: 400, refundedTotal: 200, amountPaid: 800, balanceDue: 0, paymentStatus: "PAID" });
+    expect(await balance()).toBe(cashBefore + 200);
+    expect(await ap()).toBeCloseTo(before - 200, 2);
+    // Nothing more can be paid on it.
+    await expect(services.procurement.recordPayment(org.user, po.id, { accountId: org.bankAccountId, amount: 1 })).rejects.toThrow("превышает");
+    // The rest of it back too: all 600 more comes back as money.
+    const rest = await services.procurement.returnToSupplier(org.user, po.id, {
+      items: [{ itemId: po.items[0].id, quantity: 6 }],
+      reason: "Вся партия с жучком",
+      refundAccountId: org.bankAccountId,
+    });
+    expect(rest).toMatchObject({ returnedTotal: 1000, refundedTotal: 800, balanceDue: 0 });
+    expect(await balance()).toBe(cashBefore + 800);
+  });
+});
+
 describe("accounts payable and events agree", () => {
   it("legacy invoices and received orders are each counted once, and the event-derived payable equals the reported one", async () => {
     // Supplier payable = confirmed invoices (unpaid part) + received-after-cutover orders (unpaid part).
@@ -267,17 +325,15 @@ describe("accounts payable and events agree", () => {
     expect(legacy[0].balance.map((b) => b.line)).toEqual(["INVENTORY"]);
   });
 
-  it("supplier returns have reserved semantics (inventory ↓, payable ↓, cash ↑ if paid) but no workflow", async () => {
-    const event = supplierReturnEvent({ returnId: "r1", occurredAt: new Date(), creditedAmount: 1000, refundedCash: 400, cashAccountId: org.bankAccountId });
-    expect(event.balance).toEqual([
-      { line: "INVENTORY", delta: -1000 },
-      { line: "SUPPLIER_PAYABLES", delta: -600 },
-      { line: "CASH_AND_BANK", delta: 400 },
-    ]);
-    expect(checkEventInvariants([event]).violations).toEqual([]);
-    // The projector never invents one: nothing in the ledgers is a supplier return.
+  it("supplier returns are events of their own that balance; the money back is its own cash event", async () => {
     const events = await projector.project(org.organizationId);
-    expect(events.some((e) => e.type === "SUPPLIER_RETURN")).toBe(false);
+    const returns = events.filter((e) => e.type === "SUPPLIER_RETURN");
+    expect(returns.length).toBe(3);
+    expect(checkEventInvariants(returns).violations).toEqual([]);
+    expect(returns.every((e) => e.balance.map((b) => b.line).join() === "INVENTORY,SUPPLIER_PAYABLES")).toBe(true);
+    const refunds = events.filter((e) => e.description === "Возврат денег от поставщика");
+    expect(refunds.map((e) => e.cash[0].amount).sort()).toEqual([200, 600]);
+    expect(checkEventInvariants(refunds).violations).toEqual([]);
   });
 
   it("the ledgers and caches still agree after all of it", async () => {

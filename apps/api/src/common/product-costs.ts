@@ -36,6 +36,7 @@ export async function resolveProductUnitCosts(
     loadRecipeIndex(prisma, organizationId, productIds),
     prisma.purchaseOrderItem.findMany({
       where: { purchaseOrder: { organizationId, status: "RECEIVED" }, ...(productIds ? { productId: { in: productIds } } : {}) },
+      include: { supplierReturnLines: { select: { quantity: true } } },
     }),
     prisma.invoiceItem.findMany({
       where: { invoice: { organizationId, status: "CONFIRMED" }, ...(productIds ? { productId: { in: productIds } } : {}) },
@@ -61,7 +62,9 @@ export async function resolveProductUnitCosts(
   };
   for (const item of purchaseItems) {
     // What was actually delivered; the ordered figures only when nothing differed.
-    add(item.productId, (item.receivedQuantity ?? item.quantity).toNumber(), (item.receivedUnitCost ?? item.unitCost).toNumber());
+    // less what was handed back to the supplier (at the same price).
+    const returned = item.supplierReturnLines.reduce((s, l) => s + l.quantity.toNumber(), 0);
+    add(item.productId, (item.receivedQuantity ?? item.quantity).toNumber() - returned, (item.receivedUnitCost ?? item.unitCost).toNumber());
   }
   for (const item of invoiceItems) add(item.productId, item.quantity.toNumber(), item.unitCost.toNumber());
   const avgPurchaseCostByProduct = new Map<string, number>();

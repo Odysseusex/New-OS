@@ -27,6 +27,7 @@ export interface CashMovementSource {
   invoiceId: string | null;
   consignmentPaymentId: string | null;
   purchaseOrderPaymentId?: string | null;
+  supplierReturnId?: string | null;
   fixedAssetId?: string | null;
   saleId: string | null;
   transferGroupId: string | null;
@@ -125,6 +126,19 @@ function cashMovementEventCore(m: CashMovementSource, category: CategoryLike | n
           ...base(m),
           type: FinancialEventType.SUPPLIER_PAYMENT,
           description: "Отмена оплаты поставщику",
+          cash: cashLeg(CashSection.OPERATING),
+          balance: [cashBalance, { line: BalanceLine.SUPPLIER_PAYABLES, delta: signed }],
+          pnl: [],
+          unclassified: false,
+        };
+      }
+      // Money a supplier handed back for goods returned to them: the order had
+      // been paid for more than it is now worth, and this settles it.
+      if (m.supplierReturnId) {
+        return {
+          ...base(m),
+          type: FinancialEventType.SUPPLIER_PAYMENT,
+          description: "Возврат денег от поставщика",
           cash: cashLeg(CashSection.OPERATING),
           balance: [cashBalance, { line: BalanceLine.SUPPLIER_PAYABLES, delta: signed }],
           pnl: [],

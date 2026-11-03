@@ -231,6 +231,8 @@ export enum StatementLineKind {
   PAYMENT_REVERSED = "PAYMENT_REVERSED",
   CONSIGNMENT_SOLD = "CONSIGNMENT_SOLD",
   CONSIGNMENT_RETURNED = "CONSIGNMENT_RETURNED",
+  SUPPLIER_RETURN = "SUPPLIER_RETURN",
+  SUPPLIER_REFUND = "SUPPLIER_REFUND",
 }
 
 export const STATEMENT_LINE_KIND_LABELS_RU: Record<StatementLineKind, string> = {
@@ -243,6 +245,8 @@ export const STATEMENT_LINE_KIND_LABELS_RU: Record<StatementLineKind, string> = 
   [StatementLineKind.PAYMENT_REVERSED]: "Сторно оплаты",
   [StatementLineKind.CONSIGNMENT_SOLD]: "Продано под реализацию",
   [StatementLineKind.CONSIGNMENT_RETURNED]: "Возврат товара под реализацию",
+  [StatementLineKind.SUPPLIER_RETURN]: "Возврат товара поставщику",
+  [StatementLineKind.SUPPLIER_REFUND]: "Возврат денег от поставщика",
 };
 
 export interface StatementEventInput {

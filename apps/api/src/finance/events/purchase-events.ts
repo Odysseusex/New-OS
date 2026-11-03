@@ -1,4 +1,4 @@
-import { BalanceLine, CashSection, FinancialEvent, FinancialEventType } from "@bakery-os/shared";
+import { BalanceLine, FinancialEvent, FinancialEventType } from "@bakery-os/shared";
 import { round2 } from "../../common/money";
 import { scoped, type DbClient } from "./scope";
 import type { ProjectionOptions } from "./projector";
@@ -29,6 +29,11 @@ export async function purchaseEvents(
         receivedTotal: true,
         receivedAt: true,
         revisions: { select: { number: true, totalBefore: true, totalAfter: true }, orderBy: { number: "asc" } },
+        supplierReturns: {
+          ...(opts.upTo ? { where: { createdAt: { lte: opts.upTo } } } : {}),
+          select: { id: true, creditedAmount: true, createdAt: true },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        },
       },
     }),
     invoiceIds && invoiceIds.length === 0 ? Promise.resolve([]) : prisma.invoice.findMany({
@@ -91,6 +96,11 @@ export async function purchaseEvents(
       pnl: [],
       unclassified: !recognized,
     });
+    o.supplierReturns.forEach((r, i) => {
+      events.push(
+        supplierReturnEvent({ orderId: o.id, returnId: r.id, number: i + 1, occurredAt: r.createdAt, creditedAmount: r.creditedAmount.toNumber(), recognized }),
+      );
+    });
   }
 
   for (const i of invoices) {
@@ -133,41 +143,42 @@ export async function purchaseEvents(
   return events;
 }
 
-// RESERVED semantics of a supplier return — there is no workflow or screen for
-// it yet, and nothing calls this. It fixes what such a return MEANS so the
-// ledger does not have to be redesigned later:
-//   Inventory ↓ at the cost the goods were received at,
-//   Supplier payable ↓ by the credited amount (the debt shrinks),
-//   Cash ↑ only for the part of that credit already paid and refunded.
-// Faking it with a stock adjustment plus a payment reversal is NOT this model:
-// that loses the link between the goods, the credit and the refund.
+// Goods of a received order handed back to its supplier (SupplierReturn):
+//   Inventory ↓ at the price they were received at,
+//   Supplier payable ↓ by the same amount (the debt shrinks).
+// Money the supplier hands back when the order was already paid is NOT in this
+// event: it is a cash movement of its own (cash-events.ts, «Возврат денег от
+// поставщика»: cash ↑, payable ↑), exactly like a payment is. Together they make
+// inventory ↓, cash ↑ and the debt settled. For an order received before the
+// purchasing cutover there was no debt to reduce, so — like its receipt — the
+// event keeps only what it knows and is reported as incomplete.
+// Keyed under the order (sourceType PurchaseOrder), so posting the order's scope
+// posts its returns too.
 export function supplierReturnEvent(input: {
+  orderId: string;
   returnId: string;
+  // The return's place among the order's returns (append-only, so stable).
+  number: number;
   occurredAt: Date;
   creditedAmount: number;
-  refundedCash: number;
-  cashAccountId?: string;
+  recognized: boolean;
 }): FinancialEvent {
   const credited = round2(input.creditedAmount);
-  const refunded = round2(input.refundedCash);
   return {
-    key: `supplierReturn:${input.returnId}`,
+    key: `purchaseOrder:${input.orderId}:return:${input.returnId}`,
     type: FinancialEventType.SUPPLIER_RETURN,
     occurredAt: input.occurredAt.toISOString(),
-    sourceType: "SupplierReturn",
-    sourceId: input.returnId,
-    description: "Возврат поставщику",
-    cash:
-      refunded > 0 && input.cashAccountId
-        ? [{ accountId: input.cashAccountId, section: CashSection.OPERATING, amount: refunded }]
-        : [],
-    balance: [
-      { line: BalanceLine.INVENTORY, delta: -credited },
-      // The debt shrinks by the credit; what had already been paid comes back as cash.
-      { line: BalanceLine.SUPPLIER_PAYABLES, delta: -(credited - refunded) },
-      ...(refunded > 0 ? [{ line: BalanceLine.CASH_AND_BANK, delta: refunded }] : []),
-    ],
+    sourceType: "PurchaseOrder",
+    sourceId: input.orderId,
+    description: `Возврат товара поставщику (№${input.number})`,
+    cash: [],
+    balance: input.recognized
+      ? [
+          { line: BalanceLine.INVENTORY, delta: -credited },
+          { line: BalanceLine.SUPPLIER_PAYABLES, delta: -credited },
+        ]
+      : [{ line: BalanceLine.INVENTORY, delta: -credited }],
     pnl: [],
-    unclassified: false,
+    unclassified: !input.recognized,
   };
 }
