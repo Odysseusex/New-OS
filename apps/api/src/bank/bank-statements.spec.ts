@@ -62,7 +62,7 @@ afterAll(async () => {
 describe("bank statement import", () => {
   let statementId: string;
   const lines = () => [
-    { docNumber: "1", occurredAt: day(15, 0).toISOString(), amount: 1500, counterpartyName: 'АО "KASPI BANK"', counterpartyBin: "971240001315", counterpartyIban: null, knp: "190", purpose: `Продажи с Kaspi.kz за ${dd(day(15))}` },
+    { docNumber: "1", occurredAt: day(15, 0).toISOString(), amount: 1500, counterpartyName: 'АО "KASPI BANK"', counterpartyBin: "971240001315", counterpartyIban: null, knp: "190", purpose: `Продажи с Kaspi.kz за ${dd(new Date())}` },
     { docNumber: "2", occurredAt: day(15, 1).toISOString(), amount: -10.5, counterpartyName: "ТОО Kaspi Pay", counterpartyBin: "200840000951", counterpartyIban: null, knp: "851", purpose: `Оплата за услуги процессинга Без НДС за ${dd(day(15))}` },
     { docNumber: "3", occurredAt: day(15, 2).toISOString(), amount: -100, counterpartyName: "Махмудов", counterpartyBin: null, counterpartyIban: null, knp: "342", purpose: "Перевод собственных средств на карту Kaspi Gold *5236" },
     { docNumber: "4", occurredAt: day(15, 3).toISOString(), amount: -800, counterpartyName: "Евразиан Фудс", counterpartyBin: "123456789012", counterpartyIban: null, knp: "710", purpose: "Оплата за товар" },

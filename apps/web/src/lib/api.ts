@@ -250,6 +250,8 @@ import type {
   VehicleDto,
   ProductionBatchNormDto,
   ProductionDeviationReportDto,
+  RecordCustomerPaymentRequestDto,
+  CustomerPaymentResultDto,
 } from "@bakery-os/shared";
 
 import { noteServerDate } from "./server-clock";
@@ -492,6 +494,8 @@ export const api = {
   },
 
   sales: {
+    customerPayment: (dto: RecordCustomerPaymentRequestDto) =>
+      request<CustomerPaymentResultDto>("/sales/customer-payments", { method: "POST", body: JSON.stringify(dto) }),
     returns: {
       list: (saleId: string) => request<SaleReturnDto[]>(`/sales/${saleId}/returns`),
       create: (saleId: string, dto: CreateSaleReturnRequestDto) =>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { HARD_DELETE_ROLES, SUPPLIER_PAYMENT_ROLES } from "@bakery-os/shared";
+import { HARD_DELETE_ROLES, PurchaseOrderStatus, SUPPLIER_PAYMENT_ROLES } from "@bakery-os/shared";
 import type { CashAccountDto, PurchaseOrderDto } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -29,7 +29,10 @@ export function OrderPaymentModal({
   const [order, setOrder] = useState(initial);
   const [accounts, setAccounts] = useState<CashAccountDto[]>([]);
   const [accountId, setAccountId] = useState("");
-  const [amount, setAmount] = useState(String(initial.balanceDue));
+  // An order not received yet is paid ahead (аванс) up to what was ordered.
+  const placed = initial.status === PurchaseOrderStatus.PLACED;
+  const payableOf = (o: PurchaseOrderDto) => (o.status === PurchaseOrderStatus.PLACED ? Math.max(0, Math.round((o.totalCost - o.amountPaid) * 100) / 100) : o.balanceDue);
+  const [amount, setAmount] = useState(String(payableOf(initial)));
   const [note, setNote] = useState("");
   const [reversing, setReversing] = useState<string | null>(null);
   const [reason, setReason] = useState("");
@@ -52,7 +55,7 @@ export function OrderPaymentModal({
     try {
       const next = await action();
       setOrder(next);
-      setAmount(String(next.balanceDue));
+      setAmount(String(payableOf(next)));
       setReversing(null);
       setReason("");
       onChanged();
@@ -64,15 +67,24 @@ export function OrderPaymentModal({
   }
 
   const value = Number(amount.replace(",", "."));
+  const payable = payableOf(order);
 
   return (
-    <Modal title={`Оплата — ${order.supplierName}`} onClose={onClose} width="max-w-2xl">
+    <Modal title={`${placed ? "Аванс" : "Оплата"} — ${order.supplierName}`} onClose={onClose} width="max-w-2xl">
       <div className="space-y-5">
-        <div className="grid grid-cols-3 gap-3 text-sm">
-          <Stat label="Получено на сумму" value={formatMoney(order.receivedTotal ?? order.totalCost)} />
-          <Stat label="Оплачено" value={formatMoney(order.amountPaid)} />
-          <Stat label="К оплате" value={formatMoney(order.balanceDue)} />
-        </div>
+        {placed ? (
+          <div className="grid grid-cols-3 gap-3 text-sm">
+            <Stat label="Сумма заказа" value={formatMoney(order.totalCost)} />
+            <Stat label="Аванс внесён" value={formatMoney(order.amountPaid)} />
+            <Stat label="Можно внести" value={formatMoney(payable)} />
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-3 text-sm">
+            <Stat label="Получено на сумму" value={formatMoney(order.receivedTotal ?? order.totalCost)} />
+            <Stat label="Оплачено" value={formatMoney(order.amountPaid)} />
+            <Stat label={order.advance > 0 ? "Переплата" : "К оплате"} value={formatMoney(order.advance > 0 ? order.advance : order.balanceDue)} />
+          </div>
+        )}
 
         {order.payments.length > 0 && (
           <table className="w-full text-sm">
@@ -124,7 +136,7 @@ export function OrderPaymentModal({
           </table>
         )}
 
-        {canPay && order.balanceDue > 0 && (
+        {canPay && payable > 0 && (
           <div className="space-y-3 rounded-2xl border border-border p-4">
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-sm">
@@ -144,11 +156,11 @@ export function OrderPaymentModal({
             </div>
             <input className={fieldClass} placeholder="Комментарий (необязательно)" value={note} onChange={(e) => setNote(e.target.value)} />
             <button
-              disabled={busy || !accountId || !(value > 0) || value > order.balanceDue + 0.005}
+              disabled={busy || !accountId || !(value > 0) || value > payable + 0.005}
               onClick={() => run(() => api.procurement.payOrder(order.id, { accountId, amount: value, note: note.trim() || undefined }))}
               className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground transition hover:opacity-90 disabled:opacity-50"
             >
-              Оплатить
+              {placed ? "Внести аванс" : "Оплатить"}
             </button>
           </div>
         )}

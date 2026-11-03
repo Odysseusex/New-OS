@@ -8,6 +8,7 @@ import { Modal } from "@/components/modal";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { PaymentStatusBadge } from "@/components/payment-status-badge";
 import { RecordSalePaymentModal, type SalePaymentContext } from "@/components/record-sale-payment-modal";
+import { CustomerPaymentForm } from "@/components/customer-payment-form";
 
 export function CustomerDetailModal({
   customerId,
@@ -42,11 +43,23 @@ export function CustomerDetailModal({
         <p className="py-8 text-center text-sm text-muted">Загрузка…</p>
       ) : (
         <>
-          <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-4">
             <InfoCard label="Задолженность" value={formatMoney(customer.outstandingBalance)} highlight={customer.outstandingBalance > 0} />
+            <InfoCard label="Аванс" value={formatMoney(customer.advanceBalance ?? 0)} />
             <InfoCard label="Кредитный лимит" value={customer.creditLimit !== null ? formatMoney(customer.creditLimit) : "—"} />
             <InfoCard label="Контакты" value={customer.phone ?? customer.email ?? "—"} />
           </div>
+
+          {canRecordPayment && (
+            <CustomerPaymentForm
+              customerId={customer.id}
+              owed={customer.outstandingBalance}
+              onDone={() => {
+                load();
+                onChanged();
+              }}
+            />
+          )}
 
           {(customer.address || customer.notes) && (
             <div className="mb-5 space-y-1 rounded-xl bg-surface-muted px-4 py-3 text-sm text-muted">

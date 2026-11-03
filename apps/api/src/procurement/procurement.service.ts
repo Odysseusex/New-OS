@@ -381,6 +381,13 @@ export class ProcurementService {
     resolveLocationScope(user, order.locationId);
 
     const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "purchase_orders" WHERE id = ${orderId} FOR UPDATE`;
+      // Money paid ahead must come back first (cancel the payment): an order
+      // cancelled with its advance still standing would hide money owed to us.
+      const activeAdvance = await tx.purchaseOrderPayment.count({ where: { purchaseOrderId: orderId, reversedAt: null } });
+      if (activeAdvance > 0) {
+        throw new BadRequestException("По заказу внесён аванс — сначала отмените платёж (деньги вернулись), затем заказ");
+      }
       // Conditional, so a cancel racing a receipt cannot undo a delivery.
       const flipped = await tx.purchaseOrder.updateMany({
         where: { id: orderId, status: PrismaPurchaseOrderStatus.PLACED },
@@ -425,19 +432,31 @@ export class ProcurementService {
         throw new NotFoundException("Заказ не найден");
       }
       resolveLocationScope(user, order.locationId);
-      if (order.status !== PrismaPurchaseOrderStatus.RECEIVED) {
-        throw new BadRequestException("Оплатить можно только полученный заказ — до получения задолженности нет");
-      }
       const cutoverAt = await this.cutoverAt(user.organizationId, tx);
-      if (!this.payableRecognized(order, cutoverAt)) {
+      // A PLACED order may be paid ahead (аванс поставщику) up to what was
+      // ordered; the receipt then settles against it by itself (received −
+      // paid). Only with the purchasing cutover on — before it there is no
+      // supplier debt for the advance to settle against.
+      const advance = order.status === PrismaPurchaseOrderStatus.PLACED;
+      if (advance) {
+        if (!cutoverAt) {
+          throw new BadRequestException("Аванс поставщику доступен после перехода на новый порядок закупок");
+        }
+      } else if (order.status !== PrismaPurchaseOrderStatus.RECEIVED) {
+        throw new BadRequestException("Заказ отменён — оплачивать нечего");
+      } else if (!this.payableRecognized(order, cutoverAt)) {
         throw new BadRequestException(
           "По этому заказу нет задолженности: он получен до перехода на новый порядок закупок",
         );
       }
 
-      const outstanding = purchaseOrderOwed(order);
+      const outstanding = advance
+        ? round2(order.totalCost.toNumber() - order.payments.filter((p) => !p.reversedAt).reduce((s, p) => s + p.amount.toNumber(), 0))
+        : purchaseOrderOwed(order);
       if (dto.amount > outstanding + 0.005) {
-        throw new BadRequestException(`Сумма оплаты превышает остаток задолженности (${outstanding})`);
+        throw new BadRequestException(
+          advance ? `Аванс больше суммы заказа (осталось ${outstanding})` : `Сумма оплаты превышает остаток задолженности (${outstanding})`,
+        );
       }
 
       const account = await tx.cashAccount.findFirst({ where: { id: dto.accountId, organizationId: user.organizationId } });
@@ -462,7 +481,7 @@ export class ProcurementService {
         amount: dto.amount,
         supplierId: order.supplierId,
         purchaseOrderPaymentId: payment.id,
-        reason: dto.note ? `Оплата по заказу поставщику: ${dto.note}` : "Оплата по заказу поставщику",
+        reason: `${advance ? "Аванс поставщику" : "Оплата по заказу поставщику"}${dto.note ? `: ${dto.note}` : ""}`,
         createdById: user.id,
       });
       await recordAudit(tx, {
@@ -471,7 +490,7 @@ export class ProcurementService {
         action: "purchaseOrder.payment",
         entityType: "PurchaseOrder",
         entityId: orderId,
-        after: { paymentId: payment.id, amount: dto.amount, accountId: dto.accountId, outstandingAfter: round2(outstanding - dto.amount) },
+        after: { paymentId: payment.id, amount: dto.amount, accountId: dto.accountId, advance, outstandingAfter: round2(outstanding - dto.amount) },
       });
 
       const fresh = await tx.purchaseOrder.findUniqueOrThrow({ where: { id: orderId }, include: ProcurementService.ORDER_INCLUDE });
@@ -1163,7 +1182,10 @@ export class ProcurementService {
     const recognized = this.payableRecognized(order, cutoverAt);
     const returns = order.supplierReturns ?? [];
     const paid = round2(order.payments.filter((p) => !p.reversedAt).reduce((sum, p) => sum + p.amount.toNumber(), 0));
-    const balanceDue = recognized ? purchaseOrderOwed({ ...order, supplierReturns: returns }) : 0;
+    const owed = recognized ? purchaseOrderOwed({ ...order, supplierReturns: returns }) : 0;
+    const balanceDue = Math.max(0, owed);
+    // Paid before the goods came (an advance), or above what they came to.
+    const advance = order.status === PrismaPurchaseOrderStatus.PLACED ? paid : Math.max(0, round2(-owed));
     const returnedOf = (itemId: string) =>
       round3(returns.reduce((s, r) => s + r.lines.filter((l) => l.itemId === itemId).reduce((t, l) => t + l.quantity.toNumber(), 0), 0));
     return {
@@ -1181,6 +1203,7 @@ export class ProcurementService {
       payableRecognized: recognized,
       amountPaid: paid,
       balanceDue,
+      advance,
       paymentStatus: !recognized
         ? null
         : balanceDue <= 0

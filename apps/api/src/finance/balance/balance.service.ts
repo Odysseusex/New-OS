@@ -77,12 +77,15 @@ export class BalanceService implements OnModuleInit {
     const proj = (line: BalanceLine) => round2(projected.get(line) ?? 0);
 
     // What the ledgers, registers and documents actually hold.
-    const [cash, inventory, fixedAssets, payables, receivablesDoc] = await Promise.all([
+    const [cash, inventory, fixedAssets, payables, receivablesDoc, advances] = await Promise.all([
       this.cashAt(organizationId, asOf),
       this.inventoryValueAt(organizationId, asOf),
       this.fixedAssetsAt(organizationId, asOf),
       live ? this.finance.getPayablesBreakdown(organizationId) : Promise.resolve(null),
       live ? this.finance.getAccountsReceivable(organizationId) : Promise.resolve(null),
+      // Shown gross only from today's documents; on a past date the events
+      // hold them net inside receivables / payables.
+      live ? this.finance.getAdvances(organizationId) : Promise.resolve({ paid: 0, received: 0 }),
     ]);
 
     const line = (l: BalanceLine, amount: number, source: BalanceSource): BalanceLineDto => ({
@@ -96,6 +99,7 @@ export class BalanceService implements OnModuleInit {
       line(BalanceLine.INVENTORY, inventory, "LEDGER"),
       line(BalanceLine.RECEIVABLES, receivablesDoc ?? proj(BalanceLine.RECEIVABLES), receivablesDoc === null ? "EVENTS" : "DOCUMENTS"),
       line(BalanceLine.FIXED_ASSETS, fixedAssets, "REGISTER"),
+      ...(advances.paid > 0 ? [line(BalanceLine.ADVANCES_PAID, advances.paid, "DOCUMENTS")] : []),
     ];
     const liabilityLines = [
       line(BalanceLine.SUPPLIER_PAYABLES, payables?.suppliers ?? proj(BalanceLine.SUPPLIER_PAYABLES), payables ? "DOCUMENTS" : "EVENTS"),
@@ -103,6 +107,7 @@ export class BalanceService implements OnModuleInit {
       line(BalanceLine.CONSIGNMENT_PAYABLES, payables?.consignment ?? proj(BalanceLine.CONSIGNMENT_PAYABLES), payables ? "DOCUMENTS" : "EVENTS"),
       // No register of loans exists: the figure IS the events'.
       line(BalanceLine.LOANS, proj(BalanceLine.LOANS), "EVENTS"),
+      ...(advances.received > 0 ? [line(BalanceLine.ADVANCES_RECEIVED, advances.received, "DOCUMENTS")] : []),
     ];
     const equityLines = [
       line(BalanceLine.OPENING_EQUITY, proj(BalanceLine.OPENING_EQUITY), "EVENTS"),
@@ -131,11 +136,12 @@ export class BalanceService implements OnModuleInit {
     if (goLive) {
       compare("Денежные средства: журнал и события", cash, proj(BalanceLine.CASH_AND_BANK), 1);
       compare("Запасы: оценка складских остатков и события", inventory, proj(BalanceLine.INVENTORY), 1);
-      compare("Дебиторская задолженность: документы и события", assetLines[2].amount, proj(BalanceLine.RECEIVABLES), 1);
+      // Advances are inside receivables / payables in the events (net).
+      compare("Дебиторская задолженность: документы и события", assetLines[2].amount - advances.received, proj(BalanceLine.RECEIVABLES), 1);
       compare("Основные средства: реестр и события", fixedAssets, proj(BalanceLine.FIXED_ASSETS), 1);
       compare(
         "Кредиторская задолженность: документы и события",
-        liabilityLines.slice(0, 3).reduce((s, l) => s + l.amount, 0),
+        liabilityLines.slice(0, 3).reduce((s, l) => s + l.amount, 0) - advances.paid,
         proj(BalanceLine.SUPPLIER_PAYABLES) + proj(BalanceLine.EXPENSE_PAYABLES) + proj(BalanceLine.CONSIGNMENT_PAYABLES),
         -1,
       );

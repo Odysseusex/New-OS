@@ -315,6 +315,11 @@ export default function ProcurementPage() {
                         title={order.paymentStatus ? PAYMENT_STATUS_LABELS_RU[order.paymentStatus] : undefined}
                       >
                         {formatMoney(order.balanceDue)}
+                        {order.advance > 0 && <span className="block text-xs text-muted">переплата {formatMoney(order.advance)}</span>}
+                      </button>
+                    ) : order.status === PurchaseOrderStatus.PLACED && workflow?.activated ? (
+                      <button onClick={() => setPaying(order)} className="text-muted hover:text-foreground hover:underline">
+                        {order.advance > 0 ? `аванс ${formatMoney(order.advance)}` : "аванс"}
                       </button>
                     ) : (
                       <span className="text-muted">—</span>

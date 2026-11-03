@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { audited } from "../audit/audit";
 import { PrismaService } from "../prisma/prisma.service";
+import { customerAdvanceBalance } from "../sales/customer-advances";
 import { termsData } from "../debts/counterparty-terms.dto";
 import { ownAmount } from "../common/own-sales";
 import {
@@ -237,8 +238,9 @@ export class CustomersService {
     });
 
     const outstandingBalance = orders.reduce((sum, o) => sum + o.balanceDue, 0);
+    const advanceBalance = await customerAdvanceBalance(this.prisma as never, organizationId, customerId);
 
-    return { ...this.toCustomerDto(customer, outstandingBalance), orders };
+    return { ...this.toCustomerDto(customer, outstandingBalance), orders, advanceBalance };
   }
 
   private async getOutstandingBalance(organizationId: string, customerId: string): Promise<number> {

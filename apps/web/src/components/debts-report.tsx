@@ -278,6 +278,34 @@ export function DebtsReport({
         </div>
       )}
 
+      {report && (report.advances ?? []).length > 0 && (
+        <div className="mt-5 overflow-x-auto rounded-2xl border border-border bg-surface">
+          <div className="flex items-baseline justify-between px-5 pt-4">
+            <span className="text-sm font-semibold text-foreground">
+              {side === "receivables" ? "Авансы выданные (поставщикам)" : "Авансы полученные (от покупателей)"}
+            </span>
+            <span className="text-sm font-semibold text-foreground">{formatMoney(report.advancesTotal)}</span>
+          </div>
+          <table className="mt-2 w-full text-sm">
+            <tbody className="divide-y divide-border">
+              {report.advances.map((a) => (
+                <tr key={a.counterpartyId}>
+                  <td className="px-5 py-2.5 text-foreground">
+                    <button
+                      onClick={() => setStatementFor({ kind: a.kind, counterpartyId: a.counterpartyId, name: a.name } as never)}
+                      className="text-left hover:underline"
+                    >
+                      {a.name}
+                    </button>
+                  </td>
+                  <td className="px-5 py-2.5 text-right text-foreground">{formatMoney(a.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {statementFor && statementFor.counterpartyId && (
         <CounterpartyStatementModal
           kind={statementFor.kind}

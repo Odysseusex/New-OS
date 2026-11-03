@@ -129,6 +129,18 @@ export interface DebtReportDto {
   overdue: number;
   byAge: Record<DebtAgeBucket, number>;
   counterparties: DebtCounterpartyRowDto[];
+  // The other way round, paid ahead: in «Кто нам должен» — advances paid to
+  // suppliers (goods owed to us); in «Кому мы должны» — advances received from
+  // customers (goods we owe). Gross, by counterparty.
+  advances: DebtAdvanceDto[];
+  advancesTotal: number;
+}
+
+export interface DebtAdvanceDto {
+  kind: DebtCounterpartyKind;
+  counterpartyId: string;
+  name: string;
+  amount: number;
 }
 
 export type DebtItemInput = Omit<DebtItemDto, "ageDays" | "overdueDays">;
@@ -148,7 +160,7 @@ const emptyAge = (): Record<DebtAgeBucket, number> => ({ D0_1: 0, D2_7: 0, D8_30
 // Open items as they stood on `asOfKey`: anything with less than a тиын left is
 // settled. Counterparties are listed by what they owe, largest first; each
 // one's documents oldest first (the order they are paid off in).
-export function buildDebtReport(asOfKey: string, groups: DebtGroupInput[]): DebtReportDto {
+export function buildDebtReport(asOfKey: string, groups: DebtGroupInput[], advances: DebtAdvanceDto[] = []): DebtReportDto {
   const total = emptyAge();
   let grand = 0;
   let grandOverdue = 0;
@@ -198,7 +210,19 @@ export function buildDebtReport(asOfKey: string, groups: DebtGroupInput[]): Debt
   }
   for (const b of DEBT_AGE_BUCKETS) total[b] = money(total[b]);
   rows.sort((a, b) => b.outstanding - a.outstanding || a.name.localeCompare(b.name, "ru"));
-  return { asOfKey, total: money(grand), overdue: money(grandOverdue), byAge: total, counterparties: rows };
+  const advanceRows = advances
+    .filter((a) => a.amount > 0.004)
+    .map((a) => ({ ...a, amount: money(a.amount) }))
+    .sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name, "ru"));
+  return {
+    asOfKey,
+    total: money(grand),
+    overdue: money(grandOverdue),
+    byAge: total,
+    counterparties: rows,
+    advances: advanceRows,
+    advancesTotal: money(advanceRows.reduce((s, a) => s + a.amount, 0)),
+  };
 }
 
 // Amounts owed in dated lots, paid off oldest first: what is still open of

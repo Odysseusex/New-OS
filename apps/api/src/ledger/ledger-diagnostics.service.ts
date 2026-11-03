@@ -91,25 +91,27 @@ export class LedgerDiagnosticsService {
     });
 
     // 3–7 the ledger against the operational subledgers
-    const [inventoryValue, payables, receivables, cashRows, fixedAssets] = await Promise.all([
+    const [inventoryValue, payables, receivables, cashRows, fixedAssets, advances] = await Promise.all([
       this.balance.inventoryValueAt(organizationId, now),
       this.finance.getPayablesBreakdown(organizationId),
       this.finance.getAccountsReceivable(organizationId),
       this.prisma.cashAccount.findMany({ where: { organizationId }, select: { type: true, currentBalance: true } }),
       this.balance.fixedAssetsAt(organizationId, now),
+      this.finance.getAdvances(organizationId),
     ]);
     push({ check: "INVENTORY_SUBLEDGER", title: "Запасы: складской учёт × себестоимость = главная книга", expected: inventoryValue, actual: gl(SystemAccountKey.INVENTORY), source: "Остатки склада × CostingService / главная книга", details: openingNote, tolerance: BALANCE_TOLERANCE, severity: "ERROR" });
     push({
       check: "AP_SUBLEDGER",
       title: "Кредиторская задолженность: документы = главная книга",
-      expected: r2(payables.suppliers + payables.expenses + payables.consignment),
+      // Advances paid to suppliers sit inside the same account (net).
+      expected: r2(payables.suppliers + payables.expenses + payables.consignment - advances.paid),
       actual: r2(gl(SystemAccountKey.SUPPLIER_PAYABLES) + gl(SystemAccountKey.EXPENSE_PAYABLES) + gl(SystemAccountKey.CONSIGNMENT_PAYABLES)),
       source: "Документы закупок и расходов / главная книга",
       details: openingNote,
       tolerance: BALANCE_TOLERANCE,
       severity: "ERROR",
     });
-    push({ check: "AR_SUBLEDGER", title: "Дебиторская задолженность: продажи = главная книга", expected: receivables, actual: gl(SystemAccountKey.RECEIVABLES), source: "Продажи и платежи / главная книга", details: openingNote, tolerance: BALANCE_TOLERANCE, severity: "ERROR" });
+    push({ check: "AR_SUBLEDGER", title: "Дебиторская задолженность: продажи = главная книга", expected: r2(receivables - advances.received), actual: gl(SystemAccountKey.RECEIVABLES), source: "Продажи и платежи / главная книга", details: openingNote, tolerance: BALANCE_TOLERANCE, severity: "ERROR" });
     const cashExpected = r2(cashRows.reduce((s, c) => s + c.currentBalance.toNumber(), 0));
     push({ check: "CASH_BANK_SUBLEDGER", title: "Касса и банк: денежный журнал = главная книга", expected: cashExpected, actual: r2(gl(SystemAccountKey.CASH_ON_HAND) + gl(SystemAccountKey.BANK)), source: "Остатки счетов / главная книга", details: openingNote, tolerance: BALANCE_TOLERANCE, severity: "ERROR" });
     push({ check: "FIXED_ASSETS_SUBLEDGER", title: "Основные средства: реестр = главная книга", expected: fixedAssets, actual: gl(SystemAccountKey.FIXED_ASSETS), source: "Реестр основных средств / главная книга", details: openingNote, tolerance: BALANCE_TOLERANCE, severity: "ERROR" });

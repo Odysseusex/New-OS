@@ -65,6 +65,24 @@ export interface CustomerOrderDto {
 
 export interface CustomerDetailDto extends CustomerDto {
   orders: CustomerOrderDto[];
+  // Money received ahead of sales and not yet counted toward any (аванс).
+  advanceBalance: number;
+}
+
+// A payment from a wholesale customer as a whole: it settles their unpaid sales
+// oldest first; whatever is left stays as an advance and is counted toward
+// their next sales automatically.
+export interface RecordCustomerPaymentRequestDto {
+  customerId: string;
+  amount: number;
+  accountId: string;
+  note?: string;
+}
+
+export interface CustomerPaymentResultDto {
+  appliedToSales: { saleId: string; soldAt: string; amount: number }[];
+  advance: number;
+  advanceBalance: number;
 }
 
 export interface RecordPaymentRequestDto {

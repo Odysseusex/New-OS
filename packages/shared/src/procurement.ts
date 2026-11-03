@@ -91,6 +91,9 @@ export interface PurchaseOrderDto {
   payableRecognized: boolean;
   amountPaid: number;
   balanceDue: number;
+  // Paid ahead of the goods: on a PLACED order, everything paid; on a received
+  // one, what was paid above the delivery (the supplier owes it back in goods or money).
+  advance: number;
   paymentStatus: PaymentStatus | null;
   payments: PurchaseOrderPaymentDto[];
   // How many times the received document was corrected (0 = never).

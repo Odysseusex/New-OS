@@ -331,20 +331,15 @@ describe("credit-sale returns are representable", () => {
     const sale = await services.sales.create(org.user, {
       locationId: org.storeId, customerId, amountPaid: 0, items: [{ productId: breadId, quantity: 2, unitPrice: 500 }],
     } as never);
-    // No refundable payment exists, so the service refuses; the document model still represents it.
-    await expect(services.returns.create(org.user, sale.id, { items: [{ productId: breadId, quantity: 1 }] })).rejects.toThrow();
-    const ret = await prisma.saleReturn.create({
-      data: {
-        organizationId: org.organizationId, saleId: sale.id, locationId: org.storeId, totalAmount: 500, restocked: true, createdById: org.user.id,
-        items: { create: [{ productId: breadId, quantity: 1, unitPrice: 500, subtotal: 500 }] },
-      },
-    });
+    // Nothing was paid: the return cancels 500 of the debt and no money moves.
+    const ret = await services.returns.create(org.user, sale.id, { items: [{ productId: breadId, quantity: 1 }] });
+    expect(ret).toMatchObject({ creditedAmount: 500, refundedAmount: 0 });
     const events = await allEvents();
     const forSale = events.filter((e) => e.sourceId === sale.id || e.sourceId === ret.id);
     const receivable = forSale.flatMap((e) => e.balance).filter((b) => b.line === "RECEIVABLES").reduce((s, b) => s + b.delta, 0);
     expect(receivable).toBe(1000 - 500); // sold 1 000, 500 of it taken back, nothing paid
+    expect((await services.sales.findOne(org.user, sale.id)).balanceDue).toBe(500);
     expect(checkEventInvariants(events).violations).toEqual([]);
-    await prisma.saleReturn.delete({ where: { id: ret.id } });
   });
 });
 

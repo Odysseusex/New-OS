@@ -17,10 +17,12 @@ import {
   settleOldestFirst,
   StatementEventInput,
   StatementLineKind,
+  DebtAdvanceDto,
   UpdateOrganizationRequisitesRequestDto,
 } from "@bakery-os/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { audited } from "../audit/audit";
+import { customerAdvanceBalances } from "../sales/customer-advances";
 import { instantOfKey } from "./due-date";
 
 // Who owes us and whom we owe, document by document, on any day — and one
@@ -61,7 +63,7 @@ export class DebtsService {
   async receivables(organizationId: string, asOfRaw?: string): Promise<DebtReportDto> {
     const asOfKey = this.parseKey(asOfRaw, debtDateKey(new Date()));
     const end = this.endOfKey(asOfKey);
-    const [sales, later, laterCredits] = await Promise.all([
+    const [sales, later, laterCredits, laterApplied, supplierAdvances] = await Promise.all([
       this.prisma.sale.findMany({
         where: { organizationId, customerId: { not: null }, soldAt: { lte: end } },
         select: {
@@ -87,11 +89,21 @@ export class DebtsService {
         where: { organizationId, returnedAt: { gt: end }, creditedAmount: { gt: 0 } },
         _sum: { creditedAmount: true },
       }),
+      // Nor paid by an advance counted toward it after that day.
+      this.prisma.customerAdvanceApplication.groupBy({
+        by: ["saleId"],
+        where: { organizationId, appliedAt: { gt: end } },
+        _sum: { amount: true },
+      }),
+      this.supplierAdvancesAt(organizationId, end),
     ]);
     const paidLater = new Map(later.map((g) => [g.saleId as string, num(g._sum.amount)]));
     const creditedLater = new Map(laterCredits.map((g) => [g.saleId, num(g._sum.creditedAmount)]));
+    const appliedLater = new Map(laterApplied.map((g) => [g.saleId, num(g._sum.amount)]));
     const outstandingOf = (s: { id: string; totalAmount: Prisma.Decimal; amountPaid: Prisma.Decimal; creditedAmount: Prisma.Decimal }) =>
-      num(s.totalAmount) - (num(s.amountPaid) - (paidLater.get(s.id) ?? 0)) - (num(s.creditedAmount) - (creditedLater.get(s.id) ?? 0));
+      num(s.totalAmount) -
+      (num(s.amountPaid) - (paidLater.get(s.id) ?? 0) - (appliedLater.get(s.id) ?? 0)) -
+      (num(s.creditedAmount) - (creditedLater.get(s.id) ?? 0));
     const open = sales.filter((s) => outstandingOf(s) > 0.004);
     const customers = await this.prisma.customer.findMany({
       where: { organizationId, id: { in: [...new Set(open.map((s) => s.customerId as string))] } },
@@ -118,7 +130,34 @@ export class DebtsService {
         outstanding: outstandingOf(s),
       });
     }
-    return buildDebtReport(asOfKey, [...groups.values()]);
+    // Paid to suppliers ahead of the goods: they owe us goods (or money).
+    return buildDebtReport(asOfKey, [...groups.values()], supplierAdvances);
+  }
+
+  // Advances paid to suppliers as they stood at `end`: payments on orders not
+  // yet received then, plus what a received order was paid above its delivery.
+  private async supplierAdvancesAt(organizationId: string, end: Date): Promise<DebtAdvanceDto[]> {
+    const [payments, received] = await Promise.all([
+      this.prisma.purchaseOrderPayment.findMany({
+        where: {
+          organizationId,
+          paidAt: { lte: end },
+          OR: [{ reversedAt: null }, { reversedAt: { gt: end } }],
+          purchaseOrder: { OR: [{ receivedAt: null }, { receivedAt: { gt: end } }] },
+        },
+        select: { amount: true, purchaseOrder: { select: { supplierId: true } } },
+      }),
+      this.openPurchaseOrders(organizationId, end),
+    ]);
+    const bySupplier = new Map<string, number>();
+    for (const p of payments) bySupplier.set(p.purchaseOrder.supplierId, (bySupplier.get(p.purchaseOrder.supplierId) ?? 0) + num(p.amount));
+    for (const [supplierId, items] of received) {
+      const over = items.reduce((sum, i) => sum + Math.max(0, -i.outstanding), 0);
+      if (over > 0) bySupplier.set(supplierId, (bySupplier.get(supplierId) ?? 0) + over);
+    }
+    if (bySupplier.size === 0) return [];
+    const suppliers = await this.prisma.supplier.findMany({ where: { id: { in: [...bySupplier.keys()] } }, select: { id: true, name: true } });
+    return suppliers.map((s) => ({ kind: DebtCounterpartyKind.SUPPLIER, counterpartyId: s.id, name: s.name, amount: bySupplier.get(s.id) ?? 0 }));
   }
 
   // ── Кредиторская задолженность ───────────────────────────────────────
@@ -126,11 +165,12 @@ export class DebtsService {
   async payables(organizationId: string, asOfRaw?: string): Promise<DebtReportDto> {
     const asOfKey = this.parseKey(asOfRaw, debtDateKey(new Date()));
     const end = this.endOfKey(asOfKey);
-    const [orders, invoices, expenses, consignment] = await Promise.all([
+    const [orders, invoices, expenses, consignment, customerAdvances] = await Promise.all([
       this.openPurchaseOrders(organizationId, end),
       this.openInvoices(organizationId, end),
       this.openExpenses(organizationId, end),
       this.consignmentLots(organizationId, end),
+      customerAdvanceBalances(this.prisma as never, organizationId, end),
     ]);
 
     const supplierIds = new Set<string>([...orders.keys(), ...invoices.keys(), ...consignment.keys()]);
@@ -150,7 +190,16 @@ export class DebtsService {
     if (expenses.length > 0) {
       groups.push({ kind: DebtCounterpartyKind.NONE, counterpartyId: null, name: NONE_GROUP_NAME, bin: null, paymentTermDays: null, items: expenses });
     }
-    return buildDebtReport(asOfKey, groups);
+    // Received from customers ahead of the goods: we owe them goods (or money).
+    const advanceIds = [...customerAdvances].filter(([, v]) => v > 0.004).map(([id]) => id);
+    const advanceCustomers = advanceIds.length
+      ? await this.prisma.customer.findMany({ where: { id: { in: advanceIds } }, select: { id: true, name: true } })
+      : [];
+    return buildDebtReport(
+      asOfKey,
+      groups,
+      advanceCustomers.map((c) => ({ kind: DebtCounterpartyKind.CUSTOMER, counterpartyId: c.id, name: c.name, amount: customerAdvances.get(c.id) ?? 0 })),
+    );
   }
 
   // Deliveries owed from the purchasing cutover on (earlier ones were settled
@@ -364,15 +413,26 @@ export class DebtsService {
         location: { select: { name: true } },
         cashMovements: { where: { type: { in: SALE_PAYMENT_TYPES } }, select: { amount: true, occurredAt: true, type: true } },
         returns: { where: { returnedAt: { lte: end } }, select: { returnedAt: true, totalAmount: true, creditedAmount: true } },
+        advanceApplications: { select: { amount: true } },
       },
       orderBy: { soldAt: "asc" },
     });
     const events: StatementEventInput[] = [];
+    // Money received ahead of any sale: a payment on the day it came in. Counting
+    // it toward a sale later moves no money, so it is not shown a second time.
+    const advances = await this.prisma.cashMovement.findMany({
+      where: { organizationId, customerId, saleId: null, type: CashMovementType.CUSTOMER_PAYMENT, occurredAt: { lte: end } },
+      select: { amount: true, occurredAt: true },
+    });
+    for (const a of advances) {
+      events.push({ at: a.occurredAt.toISOString(), kind: StatementLineKind.PAYMENT_RECEIVED, document: "Аванс от покупателя", debit: 0, credit: num(a.amount) });
+    }
     for (const s of sales) {
       const doc = `Реализация от ${keyLabel(debtDateKey(s.soldAt))}, ${s.location.name}`;
       events.push({ at: s.soldAt.toISOString(), kind: StatementLineKind.SALE, document: doc, debit: num(s.totalAmount), credit: 0 });
       const recorded = s.cashMovements.reduce((sum, m) => sum + num(m.amount), 0);
-      const unrecorded = num(s.amountPaid) - recorded;
+      const fromAdvance = s.advanceApplications.reduce((sum, a) => sum + num(a.amount), 0);
+      const unrecorded = num(s.amountPaid) - recorded - fromAdvance;
       if (unrecorded > 0.004) {
         events.push({ at: s.soldAt.toISOString(), kind: StatementLineKind.PAYMENT_RECEIVED, document: `Оплата при продаже: ${doc}`, debit: 0, credit: unrecorded });
       }
@@ -426,6 +486,22 @@ export class DebtsService {
       this.consignmentEvents(organizationId, supplierId, end),
     ]);
     const events: StatementEventInput[] = [];
+    // Paid ahead on an order not received by `end` (аванс поставщику).
+    const advances = await this.prisma.purchaseOrderPayment.findMany({
+      where: {
+        organizationId,
+        paidAt: { lte: end },
+        purchaseOrder: { supplierId, OR: [{ receivedAt: null }, { receivedAt: { gt: end } }] },
+      },
+      select: { amount: true, paidAt: true, reversedAt: true, purchaseOrder: { select: { orderedAt: true, location: { select: { name: true } } } } },
+    });
+    for (const p of advances) {
+      const doc = `заказ от ${keyLabel(debtDateKey(p.purchaseOrder.orderedAt))}, ${p.purchaseOrder.location.name}`;
+      events.push({ at: p.paidAt.toISOString(), kind: StatementLineKind.PAYMENT_MADE, document: `Аванс: ${doc}`, debit: num(p.amount), credit: 0 });
+      if (p.reversedAt && p.reversedAt <= end) {
+        events.push({ at: p.reversedAt.toISOString(), kind: StatementLineKind.PAYMENT_REVERSED, document: `Сторно аванса: ${doc}`, debit: 0, credit: num(p.amount) });
+      }
+    }
     for (const o of orders) {
       const doc = `Приход по заказу от ${keyLabel(debtDateKey(o.receivedAt as Date))}, ${o.location.name}`;
       events.push({ at: (o.receivedAt as Date).toISOString(), kind: StatementLineKind.DELIVERY, document: doc, debit: 0, credit: num(o.receivedTotal ?? o.totalCost) });

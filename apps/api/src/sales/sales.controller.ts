@@ -18,6 +18,7 @@ import { GetCustomerTrendQueryDto } from "./dto/get-customer-trend-query.dto";
 import { GetDemandQueryDto } from "./dto/get-demand-query.dto";
 import { CreateSaleReturnDto } from "./dto/create-sale-return.dto";
 import { RecordPaymentDto } from "./dto/record-payment.dto";
+import { RecordCustomerPaymentDto } from "./dto/record-customer-payment.dto";
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("sales")
@@ -160,6 +161,13 @@ export class SalesController {
   @Roles(...SALE_CREATE_ROLES)
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateSaleDto) {
     return this.salesService.create(user, dto);
+  }
+
+  // A wholesale customer's payment as a whole: unpaid sales oldest first, the rest is an advance.
+  @Post("customer-payments")
+  @Roles(...PAYMENT_RECORD_ROLES)
+  recordCustomerPayment(@CurrentUser() user: AuthenticatedUser, @Body() dto: RecordCustomerPaymentDto) {
+    return this.salesService.recordCustomerPayment(user, dto);
   }
 
   @Post(":id/record-payment")

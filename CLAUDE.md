@@ -951,7 +951,20 @@ From the financiers' ТЗ (iiko-style). `apps/api/src/debts/` (read-only service
   «Возврат денег» shows only the money part, «Сверка дня» refunds, AI-центр). Events/ledger needed no change: the
   return event already lowers RECEIVABLES by the goods' value and only a refund raises it back. A fiscal return with a
   credited part is refused (a return receipt says money went back). Retail (paid in full) behaves exactly as before.
-- Not built: advances (авансы). Supplier returns ARE built (see below).
+- **Авансы (advances) — built.** Supplier: a PLACED order can be paid ahead (`recordPayment`, only with the purchasing
+  cutover on, up to the ordered total; Закупки → «аванс» on the row) — the receipt then settles by itself (owed =
+  received − paid; a short delivery leaves `PurchaseOrderDto.advance` = overpaid). A PLACED order with an active payment
+  cannot be cancelled (reverse the payment first). Customer: «Принять оплату» on the customer card
+  (`POST /sales/customer-payments`, PAYMENT_RECORD_ROLES, audited `customer.payment`) pays unpaid sales oldest first;
+  the rest is a CUSTOMER_PAYMENT movement with NO `saleId` = an advance, counted toward the customer's next credit sale
+  automatically in `SalesService.create` (`sales/customer-advances.ts`, customer row `FOR UPDATE`; append-only
+  `CustomerAdvanceApplication`, migration `20261110140000`; raises `Sale.amountPaid`, moves no money). Events/ledger are
+  unchanged: advances live NET inside RECEIVABLES / SUPPLIER_PAYABLES; the balance sheet shows them GROSS from today's
+  documents as presentation-only `BalanceLine.ADVANCES_PAID` / `ADVANCES_RECEIVED` (`FinanceService.getAdvances`), and the
+  CONTROL and AP/AR diagnostics compare net (docs − advances). Debts reports carry `advances` (receivables report:
+  supplier advances; payables report: customer advances, «на дату» too); акт сверки shows «Аванс…» lines once (an
+  application is not a second payment). Not built: refunding a customer's advance in money, advances in the bank import.
+- Supplier returns ARE built (see below).
 
 ## Excel exports, ДДС by month, markup (built, ТЗ stage 2)
 

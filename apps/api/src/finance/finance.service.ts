@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { purchaseOrderOwed } from "../procurement/purchase-owed";
 import { PrismaService } from "../prisma/prisma.service";
+import { customerAdvanceBalances } from "../sales/customer-advances";
 import { cogsDeltaOf, correctionsInRange, lossDeltaOf } from "./cost-correction/stored";
 import { buildDirectionPnl } from "./direction-pnl";
 import type { BusinessDirection } from "@bakery-os/shared";
@@ -1227,6 +1228,38 @@ export class FinanceService {
     });
     // Goods handed back reduce it, money the supplier gave back for them puts it back.
     return roundMoney(orders.reduce((sum, o) => sum + Math.max(0, purchaseOrderOwed(o)), 0));
+  }
+
+  // Money paid or received ahead of the goods, gross (the debts are net of it
+  // inside the events, so the balance sheet and the diagnostics add it back):
+  // paid — advances on orders not yet received plus what a received order was
+  // paid above its delivery; received — customers' advances not yet counted
+  // toward a sale.
+  async getAdvances(organizationId: string): Promise<{ paid: number; received: number }> {
+    const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { purchaseCutoverAt: true } });
+    const [placed, received, customers] = await Promise.all([
+      this.prisma.purchaseOrderPayment.aggregate({
+        where: { organizationId, reversedAt: null, purchaseOrder: { status: "PLACED" } },
+        _sum: { amount: true },
+      }),
+      org?.purchaseCutoverAt
+        ? this.prisma.purchaseOrder.findMany({
+            where: { organizationId, status: "RECEIVED", receivedAt: { gte: org.purchaseCutoverAt } },
+            select: {
+              totalCost: true,
+              receivedTotal: true,
+              payments: { where: { reversedAt: null }, select: { amount: true, reversedAt: true } },
+              supplierReturns: { select: { creditedAmount: true, refundedAmount: true } },
+            },
+          })
+        : Promise.resolve([]),
+      customerAdvanceBalances(this.prisma as never, organizationId),
+    ]);
+    const overpaid = received.reduce((sum, o) => sum + Math.max(0, -purchaseOrderOwed(o)), 0);
+    return {
+      paid: roundMoney((placed._sum.amount?.toNumber() ?? 0) + overpaid),
+      received: roundMoney([...customers.values()].reduce((sum, v) => sum + Math.max(0, v), 0)),
+    };
   }
 
   // Collected, minus handed back, minus already paid — the same running balance the

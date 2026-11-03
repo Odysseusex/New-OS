@@ -34,6 +34,8 @@ import {
   loyaltyRedeemCap,
   markdownPrice,
   Role,
+  CustomerPaymentResultDto,
+  RecordCustomerPaymentRequestDto,
 } from "@bakery-os/shared";
 import {
   FiscalReceipt,
@@ -55,6 +57,8 @@ import { PromotionsService } from "../promotions/promotions.service";
 import { CreateSaleDto } from "./dto/create-sale.dto";
 import { RecordPaymentDto } from "./dto/record-payment.dto";
 import { postLedgerSources } from "../ledger/event-posting";
+import { recordAudit } from "../audit/audit";
+import { applyCustomerAdvance, customerAdvanceBalance, lockCustomer } from "./customer-advances";
 import { LoyaltyPointsService, PreparedSaleLoyalty } from "../loyalty/loyalty-points.service";
 import { CustomerBotService } from "../loyalty/customer-bot.service";
 import { startOfZonedDay } from "../common/zoned-day";
@@ -1571,6 +1575,22 @@ export class SalesService {
         }
       }
 
+      // A wholesale customer's advance (money they paid ahead) counts toward
+      // the unpaid part of this sale by itself. No money moves for it now.
+      let paidTotal = amountPaid;
+      if (dto.customerId) {
+        paidTotal = round2(
+          amountPaid +
+            (await applyCustomerAdvance(tx, {
+              organizationId: user.organizationId,
+              customerId: dto.customerId,
+              saleId: sale.id,
+              unpaid: round2(totalAmount - amountPaid),
+              actorId: user.id,
+            })),
+        );
+      }
+
       for (const item of stockedItems) {
         await decrementStockOrThrow(
           tx,
@@ -1600,7 +1620,12 @@ export class SalesService {
       // The receipt is attached by hand rather than read back: it was linked
       // to this sale a moment ago, after `sale` was loaded, so the included
       // relation on that object is still null.
-      return this.toSaleDetailDto({ ...sale, fiscalReceipt: receipt, loyaltyPointsEntries: loyaltyEntries });
+      return this.toSaleDetailDto({
+        ...sale,
+        amountPaid: new Prisma.Decimal(paidTotal),
+        fiscalReceipt: receipt,
+        loyaltyPointsEntries: loyaltyEntries,
+      });
     });
     // After the commit and never awaited: a Telegram hiccup must not slow or fail the till.
     void this.customerBot?.notifySale(detail);
@@ -1778,6 +1803,70 @@ export class SalesService {
     });
 
     return this.toSaleDetailDto(updated);
+  }
+
+  // A payment from a wholesale customer as a whole (not against one sale): it
+  // settles their unpaid sales oldest first; whatever is left stays as their
+  // advance and is counted toward their next sales automatically.
+  async recordCustomerPayment(user: AuthenticatedUser, dto: RecordCustomerPaymentRequestDto): Promise<CustomerPaymentResultDto> {
+    if (!(dto.amount > 0)) throw new BadRequestException("Сумма оплаты должна быть больше нуля");
+    const amount = round2(dto.amount);
+    return this.prisma.$transaction(async (tx) => {
+      const customer = await tx.customer.findFirst({ where: { id: dto.customerId, organizationId: user.organizationId } });
+      if (!customer) throw new NotFoundException("Клиент не найден");
+      const account = await tx.cashAccount.findFirst({ where: { id: dto.accountId, organizationId: user.organizationId } });
+      if (!account || !account.isActive) throw new BadRequestException("Счёт не найден или заархивирован");
+      await lockCustomer(tx, customer.id);
+
+      const sales = await tx.sale.findMany({
+        where: { organizationId: user.organizationId, customerId: customer.id },
+        select: { id: true, soldAt: true, totalAmount: true, amountPaid: true, creditedAmount: true },
+        orderBy: { soldAt: "asc" },
+      });
+      const note = dto.note?.trim();
+      let left = amount;
+      const appliedToSales: CustomerPaymentResultDto["appliedToSales"] = [];
+      for (const sale of sales) {
+        if (left <= 0.004) break;
+        const owed = round2(sale.totalAmount.toNumber() - sale.amountPaid.toNumber() - sale.creditedAmount.toNumber());
+        if (owed <= 0.004) continue;
+        const part = round2(Math.min(left, owed));
+        await this.cashMovementsService.recordMovement(tx, {
+          organizationId: user.organizationId,
+          accountId: account.id,
+          type: CashMovementType.CUSTOMER_PAYMENT,
+          amount: part,
+          customerId: customer.id,
+          saleId: sale.id,
+          reason: note ? `Погашение долга по продаже: ${note}` : "Погашение долга по продаже",
+          createdById: user.id,
+        });
+        await tx.sale.update({ where: { id: sale.id }, data: { amountPaid: { increment: part } } });
+        appliedToSales.push({ saleId: sale.id, soldAt: sale.soldAt.toISOString(), amount: part });
+        left = round2(left - part);
+      }
+      const advance = left > 0.004 ? left : 0;
+      if (advance > 0) {
+        await this.cashMovementsService.recordMovement(tx, {
+          organizationId: user.organizationId,
+          accountId: account.id,
+          type: CashMovementType.CUSTOMER_PAYMENT,
+          amount: advance,
+          customerId: customer.id,
+          reason: note ? `Аванс от покупателя: ${note}` : "Аванс от покупателя",
+          createdById: user.id,
+        });
+      }
+      await recordAudit(tx, {
+        organizationId: user.organizationId,
+        actorId: user.id,
+        action: "customer.payment",
+        entityType: "Customer",
+        entityId: customer.id,
+        after: { amount, accountId: account.id, appliedToSales, advance },
+      });
+      return { appliedToSales, advance, advanceBalance: await customerAdvanceBalance(tx, user.organizationId, customer.id) };
+    });
   }
 
   // Payment history for one sale — every CashMovement tagged with this

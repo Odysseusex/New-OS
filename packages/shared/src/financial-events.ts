@@ -25,11 +25,17 @@ export enum BalanceLine {
   INVENTORY = "INVENTORY",
   RECEIVABLES = "RECEIVABLES",
   FIXED_ASSETS = "FIXED_ASSETS",
+  // Paid to suppliers ahead of the goods. Presentation only: no event carries
+  // it — the events keep advances inside SUPPLIER_PAYABLES (net), and the
+  // balance sheet shows them gross from the documents.
+  ADVANCES_PAID = "ADVANCES_PAID",
   // Liabilities
   SUPPLIER_PAYABLES = "SUPPLIER_PAYABLES",
   EXPENSE_PAYABLES = "EXPENSE_PAYABLES",
   CONSIGNMENT_PAYABLES = "CONSIGNMENT_PAYABLES",
   LOANS = "LOANS",
+  // Received from customers ahead of a sale (presentation only, see ADVANCES_PAID).
+  ADVANCES_RECEIVED = "ADVANCES_RECEIVED",
   // Equity (direct movements only — the result of operations arrives through
   // the P&L legs, never as an equity line of its own)
   OPENING_EQUITY = "OPENING_EQUITY",
@@ -44,10 +50,12 @@ export const BALANCE_LINE_SIDE: Record<BalanceLine, BalanceSide> = {
   [BalanceLine.INVENTORY]: "ASSET",
   [BalanceLine.RECEIVABLES]: "ASSET",
   [BalanceLine.FIXED_ASSETS]: "ASSET",
+  [BalanceLine.ADVANCES_PAID]: "ASSET",
   [BalanceLine.SUPPLIER_PAYABLES]: "LIABILITY",
   [BalanceLine.EXPENSE_PAYABLES]: "LIABILITY",
   [BalanceLine.CONSIGNMENT_PAYABLES]: "LIABILITY",
   [BalanceLine.LOANS]: "LIABILITY",
+  [BalanceLine.ADVANCES_RECEIVED]: "LIABILITY",
   [BalanceLine.OPENING_EQUITY]: "EQUITY",
   [BalanceLine.OWNER_CONTRIBUTIONS]: "EQUITY",
   [BalanceLine.OWNER_WITHDRAWALS]: "EQUITY",
@@ -58,10 +66,12 @@ export const BALANCE_LINE_LABELS_RU: Record<BalanceLine, string> = {
   [BalanceLine.INVENTORY]: "Запасы",
   [BalanceLine.RECEIVABLES]: "Дебиторская задолженность",
   [BalanceLine.FIXED_ASSETS]: "Основные средства",
+  [BalanceLine.ADVANCES_PAID]: "Авансы выданные",
   [BalanceLine.SUPPLIER_PAYABLES]: "Кредиторская задолженность — поставщики",
   [BalanceLine.EXPENSE_PAYABLES]: "Кредиторская задолженность — расходы",
   [BalanceLine.CONSIGNMENT_PAYABLES]: "Кредиторская задолженность — консигнация",
   [BalanceLine.LOANS]: "Займы и кредиты",
+  [BalanceLine.ADVANCES_RECEIVED]: "Авансы полученные",
   [BalanceLine.OPENING_EQUITY]: "Начальный капитал",
   [BalanceLine.OWNER_CONTRIBUTIONS]: "Взносы собственника",
   [BalanceLine.OWNER_WITHDRAWALS]: "Изъятия собственника",
