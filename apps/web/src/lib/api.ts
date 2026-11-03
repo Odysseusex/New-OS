@@ -248,6 +248,8 @@ import type {
   UpdateVehicleRequestDto,
   UserAccountDto,
   VehicleDto,
+  ProductionBatchNormDto,
+  ProductionDeviationReportDto,
 } from "@bakery-os/shared";
 
 import { noteServerDate } from "./server-clock";
@@ -684,6 +686,9 @@ export const api = {
         method: "POST",
         body: JSON.stringify(dto),
       }),
+    batchNorm: (id: string) => request<ProductionBatchNormDto>(`/production/batches/${id}/norm`),
+    deviations: (params: { from: string; to: string; locationId?: string }) =>
+      request<ProductionDeviationReportDto>(withQuery("/production/batches/deviations", params)),
   },
 
   bankStatements: {

@@ -22,12 +22,13 @@ import { NewBatchModal } from "@/components/new-batch-modal";
 import { EditBatchModal } from "@/components/edit-batch-modal";
 import { AbortBatchModal } from "@/components/abort-batch-modal";
 import { CompleteBatchModal } from "@/components/complete-batch-modal";
+import { ProductionDeviationsTab } from "@/components/production-deviations-tab";
 import { NewRecipeModal } from "@/components/new-recipe-modal";
 import { ExportRecipesPdfModal } from "@/components/export-recipes-pdf-modal";
 import { RecipeScaleModal } from "@/components/recipe-scale-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 
-type Tab = "batches" | "recipes";
+type Tab = "batches" | "recipes" | "deviations";
 type BatchFilter = "ACTIVE" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "ALL";
 
 const BATCH_FILTER_LABELS_RU: Record<BatchFilter, string> = {
@@ -208,6 +209,9 @@ export default function ProductionPage() {
           <TabButton active={tab === "recipes"} onClick={() => setTab("recipes")}>
             Рецептуры
           </TabButton>
+          <TabButton active={tab === "deviations"} onClick={() => setTab("deviations")}>
+            Отклонения
+          </TabButton>
         </div>
 
         <div className="flex items-center gap-3">
@@ -293,6 +297,8 @@ export default function ProductionPage() {
           )}
         </div>
       </div>
+
+      {tab === "deviations" && <ProductionDeviationsTab locations={locations} isOrgWide={isOrgWide} />}
 
       {tab === "batches" && (
         <div className="rounded-2xl border border-border bg-surface shadow-card">

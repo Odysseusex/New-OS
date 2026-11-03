@@ -26,6 +26,7 @@ import {
   SALE_CREATE_ROLES,
   WriteOffReason,
   WRITE_OFF_REASON_LABELS_RU,
+  MANUAL_WRITE_OFF_REASONS,
 } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { InventoryService } from "../inventory/inventory.service";
@@ -662,7 +663,7 @@ export class TelegramBotService implements OnModuleInit {
         );
       } else {
         await this.chatState.set(chatId, user.id, "writeoff_reason", { ...data, quantity });
-        const rows = Object.values(WriteOffReason).map((reason) => [
+        const rows = MANUAL_WRITE_OFF_REASONS.map((reason) => [
           Markup.button.callback(WRITE_OFF_REASON_LABELS_RU[reason], `s:w:wr:${reason}`),
         ]);
         await this.reply(ctx, "Причина списания:", Markup.inlineKeyboard(rows));

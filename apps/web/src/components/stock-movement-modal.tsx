@@ -11,6 +11,7 @@ import {
   UNIT_LABELS_RU,
   WRITE_OFF_REASON_LABELS_RU,
   WriteOffReason,
+  MANUAL_WRITE_OFF_REASONS,
 } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
@@ -313,7 +314,7 @@ export function StockMovementModal({
               onChange={(e) => setWriteOffReason(e.target.value as WriteOffReason)}
               className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
             >
-              {Object.values(WriteOffReason).map((r) => (
+              {MANUAL_WRITE_OFF_REASONS.map((r) => (
                 <option key={r} value={r}>
                   {WRITE_OFF_REASON_LABELS_RU[r]}
                 </option>

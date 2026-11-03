@@ -37,7 +37,18 @@ export enum WriteOffReason {
   PRODUCTION_DEFECT = "PRODUCTION_DEFECT",
   QUALITY_ISSUE = "QUALITY_ISSUE",
   OTHER = "OTHER",
+  // Written by production only: raw material used above the recipe norm.
+  PRODUCTION_OVERUSE = "PRODUCTION_OVERUSE",
 }
+
+// What a person may pick on a manual write-off (the rest are written by the system).
+export const MANUAL_WRITE_OFF_REASONS: WriteOffReason[] = [
+  WriteOffReason.EXPIRED,
+  WriteOffReason.DAMAGED,
+  WriteOffReason.PRODUCTION_DEFECT,
+  WriteOffReason.QUALITY_ISSUE,
+  WriteOffReason.OTHER,
+];
 
 export const WRITE_OFF_REASON_LABELS_RU: Record<WriteOffReason, string> = {
   [WriteOffReason.EXPIRED]: "Истёк срок годности",
@@ -45,6 +56,7 @@ export const WRITE_OFF_REASON_LABELS_RU: Record<WriteOffReason, string> = {
   [WriteOffReason.PRODUCTION_DEFECT]: "Брак производства",
   [WriteOffReason.QUALITY_ISSUE]: "Не соответствует стандартам качества",
   [WriteOffReason.OTHER]: "Другое",
+  [WriteOffReason.PRODUCTION_OVERUSE]: "Перерасход в производстве",
 };
 
 export interface StockLevelDto {

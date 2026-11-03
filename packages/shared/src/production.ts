@@ -253,6 +253,61 @@ export interface UpdateProductionBatchRequestDto {
 
 export interface CompleteProductionBatchRequestDto {
   actualQuantity: number;
+  // Raw material really used, only for the ingredients that differ from the
+  // norm (left out = exactly the norm). Above the norm = «Перерасход» (a
+  // write-off), below = «Экономия» (stock comes back); the product's cost
+  // stays the norm.
+  consumption?: { productId: string; quantity: number }[];
+}
+
+// What a batch takes off the shelf per ONE unit of the quantity it consumes
+// for (the actual output, or the plan for a stocked semi-finished product):
+// the recipe expanded to stocked items, one line per product.
+export interface ProductionBatchNormDto {
+  batchId: string;
+  consumesByPlan: boolean;
+  plannedQuantity: number;
+  lines: { productId: string; name: string; unit: Unit; perUnit: number; fromStock: boolean }[];
+}
+
+// «Отклонения от техкарты»: raw material used vs the recipe norm.
+export interface ProductionDeviationLineDto {
+  batchId: string;
+  completedAt: string;
+  locationName: string;
+  productName: string;
+  outputQuantity: number;
+  outputUnit: Unit;
+  ingredientId: string;
+  ingredientName: string;
+  unit: Unit;
+  norm: number;
+  actual: number;
+  // actual − norm: > 0 перерасход, < 0 экономия.
+  deviation: number;
+  unitCost: number | null;
+  deviationValue: number | null;
+}
+
+export interface ProductionDeviationByIngredientDto {
+  ingredientId: string;
+  ingredientName: string;
+  unit: Unit;
+  norm: number;
+  actual: number;
+  deviation: number;
+  deviationValue: number;
+}
+
+export interface ProductionDeviationReportDto {
+  from: string;
+  to: string;
+  batchesCount: number;
+  overuseValue: number;
+  savingValue: number;
+  byIngredient: ProductionDeviationByIngredientDto[];
+  // Only lines whose actual differs from the norm.
+  lines: ProductionDeviationLineDto[];
 }
 
 // note is a free-text detail, mirroring WriteOffStockDto's optional reason

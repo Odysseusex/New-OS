@@ -5,17 +5,22 @@ import {
   BusinessContextProductionDto,
   BusinessContextProductionRowDto,
   ProductionBatchDto,
+  ProductionBatchNormDto,
   ProductionBatchStatus,
+  ProductionDeviationByIngredientDto,
+  ProductionDeviationLineDto,
+  ProductionDeviationReportDto,
   ProductionCancelReason,
   ProductionCostComponent,
   ProductType,
   CostBasis,
   Unit,
+  WriteOffReason,
 } from "@bakery-os/shared";
 import { round2, round3, round4 } from "../common/money";
 import { expandRecipe, isStockedSemiFinished, loadRecipeIndex, recipeUnitCost, TreeRecipe } from "../recipes/recipe-tree";
 import { CostingService } from "../costing/costing.service";
-import { ProductionBatchStatus as PrismaProductionBatchStatus, StockMovementType } from "@prisma/client";
+import { Prisma, ProductionBatchStatus as PrismaProductionBatchStatus, StockMovementType } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
 import { CreateBatchDto } from "./dto/create-batch.dto";
@@ -24,7 +29,7 @@ import { CancelBatchDto } from "./dto/cancel-batch.dto";
 import { CompleteBatchDto } from "./dto/complete-batch.dto";
 import { decrementStockOrThrow } from "../common/stock-guard";
 import { recordAudit } from "../audit/audit";
-import { recordProductionEvent } from "../ledger/event-posting";
+import { postLedgerSources, recordProductionEvent } from "../ledger/event-posting";
 
 @Injectable()
 export class ProductionService {
@@ -292,23 +297,7 @@ export class ProductionService {
       // ingredient (cream, crumbs) is replaced by the raw materials of its own
       // recipe, scaled to the amount this batch needs. For a flat recipe this is
       // exactly its own lines.
-      const index = await loadRecipeIndex(tx, user.organizationId, [batch.recipe.productId]);
-      // An archived recipe can still finish a batch that was already running.
-      const recipeNode: TreeRecipe = index.get(batch.recipe.productId) ?? {
-        productId: batch.recipe.productId,
-        yieldQuantity: batch.recipe.yieldQuantity.toNumber(),
-        items: batch.recipe.items.map((item) => ({
-          quantity: item.quantity.toNumber(),
-          ingredient: {
-            productId: item.ingredientProductId,
-            name: item.ingredientProduct.name,
-            type: item.ingredientProduct.type as ProductType,
-            price: item.ingredientProduct.price.toNumber(),
-            trackInventory: item.ingredientProduct.trackInventory,
-            averageUnitCost: item.ingredientProduct.averageUnitCost?.toNumber() ?? null,
-          },
-        })),
-      };
+      const { index, recipeNode } = await this.recipeTreeOf(tx, user.organizationId, batch.recipe);
       const expanded = expandRecipe(recipeNode, scale, index);
       if (expanded.missing.length > 0) {
         throw new BadRequestException(`У полуфабриката нет активной техкарты: ${expanded.missing.join(", ")}`);
@@ -338,22 +327,36 @@ export class ProductionService {
       ];
       await lockProductRows(tx, lockIds);
 
-      for (const item of trackedItems) {
+      // The norm per product (an ingredient can appear in the dough and in a
+      // filling), and what was really used where the baker said otherwise.
+      const norms = normByProduct(trackedItems);
+      const actual = new Map([...norms].map(([productId, n]) => [productId, n.quantity]));
+      for (const line of dto.consumption ?? []) {
+        if (!norms.has(line.productId)) {
+          throw new BadRequestException("В техкарте этого задания нет такого сырья");
+        }
+        if (!(line.quantity >= 0)) throw new BadRequestException("Фактический расход не может быть отрицательным");
+        actual.set(line.productId, round3(line.quantity));
+      }
+
+      for (const [productId, n] of norms) {
+        const used = actual.get(productId) ?? 0;
+        if (used <= 0) continue;
         const stockLevel = await tx.stockLevel.findUnique({
-          where: { locationId_productId: { locationId: batch.locationId, productId: item.ingredient.productId } },
+          where: { locationId_productId: { locationId: batch.locationId, productId } },
         });
-        if (!stockLevel || stockLevel.quantity.toNumber() < item.quantity) {
-          throw new BadRequestException(
-            `Недостаточно ингредиента «${item.ingredient.name}» на точке для этого объёма`,
-          );
+        if (!stockLevel || stockLevel.quantity.toNumber() < used) {
+          throw new BadRequestException(`Недостаточно ингредиента «${n.name}» на точке для этого объёма`);
         }
       }
 
-      for (const item of trackedItems) {
+      for (const [productId, n] of norms) {
+        const used = actual.get(productId) ?? 0;
+        if (used <= 0) continue;
         await decrementStockOrThrow(
           tx,
-          { locationId: batch.locationId, productId: item.ingredient.productId, quantity: item.quantity },
-          `Недостаточно ингредиента «${item.ingredient.name}» на точке для этого объёма`,
+          { locationId: batch.locationId, productId, quantity: used },
+          `Недостаточно ингредиента «${n.name}» на точке для этого объёма`,
         );
       }
 
@@ -379,13 +382,40 @@ export class ProductionService {
             batchId: batch.id,
             createdById: user.id,
             unitCost: round4(item.unitCost as number),
-            costBasis: isStockedSemiFinished(item.ingredient)
-              ? CostBasis.PRODUCTION_AVERAGE
-              : item.ingredient.averageUnitCost !== null
-                ? CostBasis.RAW_MATERIAL_AVERAGE
-                : CostBasis.RAW_MATERIAL_PRICE,
+            costBasis: consumptionBasis(item.ingredient),
           })),
         });
+      }
+
+      // The difference from the norm is not the product's cost (D1: abnormal
+      // loss is a write-off): more used = «Перерасход» written off at the same
+      // stamped cost, less used = «Экономия», the stock comes back. Together
+      // with the norm rows they add up to what left the shelf.
+      const deviationIds: string[] = [];
+      for (const [productId, n] of norms) {
+        const diff = round3((actual.get(productId) ?? 0) - n.quantity);
+        if (diff === 0) continue;
+        const row = await tx.stockMovement.create({
+          data: {
+            organizationId: user.organizationId,
+            locationId: batch.locationId,
+            productId,
+            type: diff > 0 ? StockMovementType.WRITE_OFF : StockMovementType.ADJUSTMENT,
+            writeOffReason: diff > 0 ? WriteOffReason.PRODUCTION_OVERUSE : undefined,
+            // WRITE_OFF holds what left; ADJUSTMENT the signed change (+ back on the shelf).
+            quantity: Math.abs(diff),
+            reason: `${diff > 0 ? "Перерасход сырья" : "Экономия сырья"}: ${batch.recipe.product.name}`,
+            batchId: batch.id,
+            createdById: user.id,
+            unitCost: round4(n.unitCost),
+            costBasis: n.costBasis,
+          },
+          select: { id: true },
+        });
+        deviationIds.push(row.id);
+      }
+      if (deviationIds.length > 0) {
+        await postLedgerSources(tx, { organizationId: user.organizationId, actorId: user.id, scope: { stockMovementIds: deviationIds } });
       }
 
       if (stockedOutput && dto.actualQuantity > 0) {
@@ -470,6 +500,172 @@ export class ProductionService {
 
       return this.toDto(updated);
     });
+  }
+
+  private async recipeTreeOf(
+    db: Prisma.TransactionClient | PrismaService,
+    organizationId: string,
+    recipe: {
+      productId: string;
+      yieldQuantity: Prisma.Decimal;
+      items: {
+        quantity: Prisma.Decimal;
+        ingredientProductId: string;
+        ingredientProduct: { name: string; type: string; price: Prisma.Decimal; trackInventory: boolean; averageUnitCost: Prisma.Decimal | null };
+      }[];
+    },
+  ) {
+    const index = await loadRecipeIndex(db, organizationId, [recipe.productId]);
+    // An archived recipe can still finish a batch that was already running.
+    const recipeNode: TreeRecipe = index.get(recipe.productId) ?? {
+      productId: recipe.productId,
+      yieldQuantity: recipe.yieldQuantity.toNumber(),
+      items: recipe.items.map((item) => ({
+        quantity: item.quantity.toNumber(),
+        ingredient: {
+          productId: item.ingredientProductId,
+          name: item.ingredientProduct.name,
+          type: item.ingredientProduct.type as ProductType,
+          price: item.ingredientProduct.price.toNumber(),
+          trackInventory: item.ingredientProduct.trackInventory,
+          averageUnitCost: item.ingredientProduct.averageUnitCost?.toNumber() ?? null,
+        },
+      })),
+    };
+    return { index, recipeNode };
+  }
+
+  // What a running batch takes off the shelf per unit it consumes for — the
+  // completion form multiplies it by the output (or the plan) to show the norm
+  // next to the field where the baker types what was really used.
+  async norm(user: AuthenticatedUser, batchId: string): Promise<ProductionBatchNormDto> {
+    const batch = await this.prisma.productionBatch.findFirst({
+      where: { id: batchId, organizationId: user.organizationId },
+      include: { recipe: { include: { items: { include: { ingredientProduct: true } }, product: true } } },
+    });
+    if (!batch) throw new NotFoundException("Задание не найдено");
+    this.assertLocationAccess(user, batch.locationId);
+    const { index, recipeNode } = await this.recipeTreeOf(this.prisma, user.organizationId, batch.recipe);
+    const expanded = expandRecipe(recipeNode, 1 / batch.recipe.yieldQuantity.toNumber(), index);
+    const perUnit = new Map<string, { name: string; quantity: number; fromStock: boolean }>();
+    for (const line of expanded.lines) {
+      if (!line.ingredient.trackInventory) continue;
+      const prev = perUnit.get(line.ingredient.productId);
+      perUnit.set(line.ingredient.productId, {
+        name: line.ingredient.name,
+        quantity: (prev?.quantity ?? 0) + line.quantity,
+        fromStock: isStockedSemiFinished(line.ingredient),
+      });
+    }
+    const units = new Map(
+      (await this.prisma.product.findMany({ where: { id: { in: [...perUnit.keys()] } }, select: { id: true, unit: true } })).map((p) => [p.id, p.unit as Unit]),
+    );
+    return {
+      batchId: batch.id,
+      consumesByPlan: batch.recipe.product.type === ProductType.SEMI_FINISHED && batch.recipe.product.trackInventory,
+      plannedQuantity: batch.plannedQuantity.toNumber(),
+      lines: [...perUnit].map(([productId, l]) => ({
+        productId,
+        name: l.name,
+        unit: units.get(productId) ?? Unit.KG,
+        perUnit: Math.round(l.quantity * 1e7) / 1e7,
+        fromStock: l.fromStock,
+      })),
+    };
+  }
+
+  // «Отклонения от техкарты»: per completed batch in the period, raw material
+  // used against the norm, read back from the batch's own stock movements —
+  // the norm rows, «Перерасход» write-offs and «Экономия» adjustments.
+  async deviations(user: AuthenticatedUser, from: Date, to: Date, requestedLocationId?: string): Promise<ProductionDeviationReportDto> {
+    const locationId = resolveLocationScope(user, requestedLocationId);
+    const batches = await this.prisma.productionBatch.findMany({
+      where: {
+        organizationId: user.organizationId,
+        status: PrismaProductionBatchStatus.COMPLETED,
+        completedAt: { gte: from, lte: to },
+        ...(locationId ? { locationId } : {}),
+      },
+      orderBy: { completedAt: "desc" },
+      select: {
+        id: true,
+        completedAt: true,
+        actualQuantity: true,
+        location: { select: { name: true } },
+        recipe: { select: { product: { select: { name: true, unit: true } } } },
+        stockMovements: {
+          where: {
+            OR: [
+              { type: StockMovementType.PRODUCTION_CONSUMPTION },
+              { type: StockMovementType.WRITE_OFF, writeOffReason: WriteOffReason.PRODUCTION_OVERUSE },
+              { type: StockMovementType.ADJUSTMENT },
+            ],
+          },
+          select: { type: true, productId: true, quantity: true, unitCost: true, product: { select: { name: true, unit: true } } },
+        },
+      },
+    });
+
+    const lines: ProductionDeviationLineDto[] = [];
+    const byIngredient = new Map<string, ProductionDeviationByIngredientDto>();
+    let overuseValue = 0;
+    let savingValue = 0;
+    for (const batch of batches) {
+      const perProduct = new Map<string, { name: string; unit: Unit; norm: number; actual: number; unitCost: number | null }>();
+      for (const m of batch.stockMovements) {
+        const q = m.quantity.toNumber();
+        const row = perProduct.get(m.productId) ?? { name: m.product.name, unit: m.product.unit as Unit, norm: 0, actual: 0, unitCost: null };
+        if (m.type === StockMovementType.PRODUCTION_CONSUMPTION) {
+          row.norm += q;
+          row.actual += q;
+        } else if (m.type === StockMovementType.WRITE_OFF) row.actual += q;
+        else row.actual -= q; // «Экономия»: back on the shelf
+        row.unitCost = row.unitCost ?? m.unitCost?.toNumber() ?? null;
+        perProduct.set(m.productId, row);
+      }
+      for (const [ingredientId, r] of perProduct) {
+        const norm = round3(r.norm);
+        const actual = round3(r.actual);
+        const deviation = round3(actual - norm);
+        const value = r.unitCost === null ? null : round2(deviation * r.unitCost);
+        const agg = byIngredient.get(ingredientId) ?? { ingredientId, ingredientName: r.name, unit: r.unit, norm: 0, actual: 0, deviation: 0, deviationValue: 0 };
+        agg.norm = round3(agg.norm + norm);
+        agg.actual = round3(agg.actual + actual);
+        agg.deviation = round3(agg.deviation + deviation);
+        agg.deviationValue = round2(agg.deviationValue + (value ?? 0));
+        byIngredient.set(ingredientId, agg);
+        if (deviation === 0) continue;
+        if (value !== null) {
+          if (value > 0) overuseValue += value;
+          else savingValue -= value;
+        }
+        lines.push({
+          batchId: batch.id,
+          completedAt: (batch.completedAt as Date).toISOString(),
+          locationName: batch.location.name,
+          productName: batch.recipe.product.name,
+          outputQuantity: batch.actualQuantity?.toNumber() ?? 0,
+          outputUnit: batch.recipe.product.unit as Unit,
+          ingredientId,
+          ingredientName: r.name,
+          unit: r.unit,
+          norm,
+          actual,
+          deviation,
+          unitCost: r.unitCost,
+          deviationValue: value,
+        });
+      }
+    }
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      batchesCount: batches.length,
+      overuseValue: round2(overuseValue),
+      savingValue: round2(savingValue),
+      byIngredient: [...byIngredient.values()].sort((a, b) => b.deviationValue - a.deviationValue || a.ingredientName.localeCompare(b.ingredientName, "ru")),
+      lines,
+    };
   }
 
   // Covers both "cancel a batch that never started" and "abort one that
@@ -566,4 +762,33 @@ export class ProductionService {
           )
         : null,
   });
+}
+
+type ConsumedLine = {
+  quantity: number;
+  unitCost: number | null;
+  ingredient: { productId: string; name: string; type: ProductType; trackInventory: boolean; averageUnitCost: number | null };
+};
+
+function consumptionBasis(ingredient: ConsumedLine["ingredient"]): CostBasis {
+  return isStockedSemiFinished(ingredient)
+    ? CostBasis.PRODUCTION_AVERAGE
+    : ingredient.averageUnitCost !== null
+      ? CostBasis.RAW_MATERIAL_AVERAGE
+      : CostBasis.RAW_MATERIAL_PRICE;
+}
+
+// The recipe norm per product of a batch's tracked lines (already rounded per line).
+export function normByProduct(lines: ConsumedLine[]): Map<string, { name: string; quantity: number; unitCost: number; costBasis: CostBasis }> {
+  const out = new Map<string, { name: string; quantity: number; unitCost: number; costBasis: CostBasis }>();
+  for (const line of lines) {
+    const prev = out.get(line.ingredient.productId);
+    out.set(line.ingredient.productId, {
+      name: line.ingredient.name,
+      quantity: round3((prev?.quantity ?? 0) + line.quantity),
+      unitCost: line.unitCost ?? 0,
+      costBasis: consumptionBasis(line.ingredient),
+    });
+  }
+  return out;
 }

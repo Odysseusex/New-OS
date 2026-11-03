@@ -855,6 +855,19 @@ Full write-up: `docs/SEMI-FINISHED-DESIGN.md`. A recipe ingredient may now be `R
 - Packaging is still NOT a recipe ingredient (pending the owner's decision); no «Полуфабрикаты» category
   was created without his approval.
 
+## Actual raw material in production + «Отклонения» (built)
+
+«Завершить» shows the norm per ingredient (`GET /production/batches/:id/norm`: the recipe expanded to stocked items,
+per ONE unit of what the batch consumes for — the output, or the plan for a stocked semi-finished product) with a «Факт»
+field; only lines that differ are sent (`CompleteBatchDto.consumption`, absent = norm, so the Telegram bot and old
+clients are unchanged). The product's cost stays the NORM (D1): consumption rows are the norm as before; above it a
+`WRITE_OFF` with `WriteOffReason.PRODUCTION_OVERUSE` (migration `20261110130000`, system-only — `MANUAL_WRITE_OFF_REASONS`
+is what pickers offer), below it an `ADJUSTMENT` (+) «Экономия сырья», both with `batchId` and the same cost stamp, posted
+via `postLedgerSources` (inventory loss / gain; the PRODUCTION event stays raw → finished at the norm). The shelf loses
+exactly the actual. Производство → «Отклонения» (`GET /production/batches/deviations`) reads it back from the batch's
+movements: per ingredient and per batch, norm / fact / deviation / ₸, Excel. Not built: требование-накладная
+(warehouse → workshop request), per-ingredient brutto/netto losses, recipe versions by date.
+
 ## Baker's calculator (расчёт техкарты на количество) — built
 
 Производство → a calculator icon on every active recipe card and on every task row (task opens at its

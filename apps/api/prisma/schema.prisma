@@ -87,6 +87,10 @@ enum WriteOffReason {
   PRODUCTION_DEFECT
   QUALITY_ISSUE
   OTHER
+  // Raw material used in a production batch above its recipe norm (written by
+  // ProductionService.complete only, never picked by hand). An abnormal loss:
+  // a write-off, never part of the product's cost (D1).
+  PRODUCTION_OVERUSE
 }
 
 // A coupon's whole lifecycle: printed, redeemed once, or manually voided
