@@ -101,6 +101,29 @@ describe("P&L by business direction", () => {
     expect(d.total.operatingProfit).toBe(pnl.operatingProfit);
   });
 
+  it("an expense booked to one direction stays wholly with it; the rest is still shared by revenue", async () => {
+    const categoryId = (await prisma.financeCategory.findFirstOrThrow({ where: { organizationId: org.organizationId, name: "Аренда" } })).id;
+    const boxes = await services.finance.createExpense(org.user, {
+      amount: 400,
+      categoryId,
+      paidImmediately: true,
+      accountId: org.cashAccountId,
+      direction: BusinessDirection.ORDERS,
+      description: "Коробки для тортов",
+    });
+    expect(boxes.direction).toBe(BusinessDirection.ORDERS);
+
+    const to = new Date();
+    const pnl = await services.finance.getProfitAndLoss(org.organizationId, start, to);
+    const d = await services.finance.getPnlByDirection(org.organizationId, start, to);
+    const row = (dir: BusinessDirection) => d.rows.find((r) => r.direction === dir)!;
+    // Common rent 1 200 still 600 / 300 / 300; the boxes 400 only on orders.
+    expect(row(BusinessDirection.WHOLESALE)).toMatchObject({ expenses: 600, directExpenses: 0 });
+    expect(row(BusinessDirection.ORDERS)).toMatchObject({ expenses: 700, directExpenses: 400, operatingProfit: 100 });
+    expect(d.total).toMatchObject({ expenses: pnl.expensesTotal, directExpenses: 400 });
+    expect(d.rows.reduce((s, r) => s + r.operatingProfit, 0)).toBeCloseTo(pnl.operatingProfit, 2);
+  });
+
   it("allocation always adds up to the тиын", () => {
     const parts = allocate(100, new Map([[BusinessDirection.WHOLESALE, 1], [BusinessDirection.RETAIL, 1], [BusinessDirection.ORDERS, 1]]));
     expect([...parts.values()].reduce((s, v) => s + v, 0)).toBe(100);

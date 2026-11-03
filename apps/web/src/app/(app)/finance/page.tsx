@@ -36,6 +36,7 @@ import type {
   ProfitAndLossDto,
 } from "@bakery-os/shared";
 import {
+  BUSINESS_DIRECTION_LABELS_RU,
   BREAK_EVEN_STATUS_LABELS_RU,
   BreakEvenStatus,
   COMPENSATION_TYPE_LABELS_RU,
@@ -781,7 +782,10 @@ export default function FinancePage() {
               {expenses.map((e) => (
                 <tr key={e.id}>
                   <td className="px-5 py-3 text-muted">{formatDateTime(e.incurredOn)}</td>
-                  <td className="px-5 py-3 text-foreground">{e.categoryName ?? "—"}</td>
+                  <td className="px-5 py-3 text-foreground">
+                    {e.categoryName ?? "—"}
+                    {e.direction && <div className="text-xs text-muted">{BUSINESS_DIRECTION_LABELS_RU[e.direction]}</div>}
+                  </td>
                   <td className="px-5 py-3 text-muted">{e.locationName ?? "Вся сеть"}</td>
                   <td className="px-5 py-3 text-muted">{e.description ?? "—"}</td>
                   <td className="px-5 py-3">

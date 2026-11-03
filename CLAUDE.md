@@ -1015,7 +1015,10 @@ same roles/period/location as the P&L). `finance/direction-pnl.ts`; shared `pack
   sold. **Common costs (inventory losses, operating expenses, depreciation, other result, recorded tax) are allocated
   by share of net revenue — the owner's decision (03.11.2026).** Totals ARE the period's P&L; parts are made to add up
   to the тиын (`allocate`, remainder on the largest). Net revenue ≤ 0 → nothing allocated (`allocated: false`).
-- Not built: direct (non-shared) expenses per direction — an expense has no direction field; ask before adding one.
+- **Direct expenses** (migration `20261107120000`, enum `BusinessDirection`, `Expense.direction` nullable): «Направление»
+  in «Новый расход» (empty = common). A confirmed expense with a direction goes wholly to it — operating ones into its
+  «Операционные расходы» (`directExpenses` shown as «в т.ч. прямые»), other/financial ones into its other result —
+  and only the REST is shared by revenue. A management dimension only: never in events, the ledger or the P&L total.
 
 ## Month-end cost correction — owner DECISIONS (not built yet; steps 3–4 of the financiers' ТЗ)
 

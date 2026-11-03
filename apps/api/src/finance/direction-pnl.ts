@@ -1,4 +1,6 @@
 import {
+  ExpenseStatus,
+  PnlLine,
   BUSINESS_DIRECTION_ORDER,
   BusinessDirection,
   businessDirectionOf,
@@ -10,6 +12,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { round2 } from "../common/money";
 import { CostingService } from "../costing/costing.service";
 import { cogsDeltaOf, correctionsInRange } from "./cost-correction/stored";
+import { expenseAccrualEffect } from "./events/rules";
 
 type Weights = Map<BusinessDirection, number>;
 
@@ -35,7 +38,7 @@ export function allocate(total: number, weights: Weights): Map<BusinessDirection
 
 // P&L by business direction (опт / розница / заказы). Revenue and cost of goods
 // are each direction's own, read from its sales and returns exactly the way the
-// P&L reads them (own goods only, the cost stamped on the line, today's cost
+// P&L reads them, and so is an expense booked to a direction (Expense.direction) (own goods only, the cost stamped on the line, today's cost
 // only for a line without one). A month-end cost correction moves a product's
 // cost of goods in proportion to how much of it each direction sold. Everything
 // the business spends in common — inventory losses, operating expenses,
@@ -52,7 +55,7 @@ export async function buildDirectionPnl(
   locationId?: string,
 ): Promise<DirectionPnlDto> {
   const where = { organizationId, ...(locationId ? { locationId } : {}) };
-  const [sales, returns, currentCosts, corrections] = await Promise.all([
+  const [sales, returns, currentCosts, corrections, directExpenses] = await Promise.all([
     prisma.sale.findMany({
       where: { ...where, soldAt: { gte: from, lte: to } },
       select: {
@@ -75,6 +78,17 @@ export async function buildDirectionPnl(
     }),
     costing.currentUnitCosts(organizationId),
     locationId ? Promise.resolve([]) : correctionsInRange(prisma, organizationId, from, to),
+    // Expenses booked wholly to one direction — chosen exactly like the P&L's own.
+    prisma.expense.findMany({
+      where: {
+        organizationId,
+        status: ExpenseStatus.CONFIRMED,
+        incurredOn: { gte: from, lte: to },
+        direction: { not: null },
+        ...(locationId ? { OR: [{ locationId }, { locationId: null }] } : {}),
+      },
+      select: { amount: true, direction: true, categoryRef: true },
+    }),
   ]);
 
   const costOf = (snapshot: { toNumber: () => number } | null, consignment: { toNumber: () => number } | null, productId: string) =>
@@ -136,13 +150,26 @@ export async function buildDirectionPnl(
   const revenueParts = exactParts(pnl.netRevenue, new Map(BUSINESS_DIRECTION_ORDER.map((d) => [d, acc.get(d)!.revenue])));
   const cogsParts = exactParts(pnl.cogs, new Map(BUSINESS_DIRECTION_ORDER.map((d) => [d, acc.get(d)!.cogs])));
 
+  // Direct costs: an operating expense goes to operating expenses, an other or
+  // financial expense to the other result — the same place the P&L puts it.
+  const directOp = new Map<BusinessDirection, number>(BUSINESS_DIRECTION_ORDER.map((d) => [d, 0]));
+  const directOther = new Map<BusinessDirection, number>(BUSINESS_DIRECTION_ORDER.map((d) => [d, 0]));
+  for (const e of directExpenses) {
+    const d = e.direction as BusinessDirection;
+    const amount = e.amount.toNumber();
+    const line = expenseAccrualEffect(e.categoryRef).pnlLine;
+    if (line === PnlLine.OPERATING_EXPENSE) directOp.set(d, round2(directOp.get(d)! + amount));
+    else if (line === PnlLine.OTHER_EXPENSE || line === PnlLine.FINANCIAL_EXPENSE) directOther.set(d, round2(directOther.get(d)! - amount));
+  }
+  const sumOf = (m: Map<BusinessDirection, number>) => round2(BUSINESS_DIRECTION_ORDER.reduce((s, d) => s + m.get(d)!, 0));
+
   const share: Weights = new Map(BUSINESS_DIRECTION_ORDER.map((d) => [d, Math.max(revenueParts.get(d)!, 0)]));
   const shareBase = BUSINESS_DIRECTION_ORDER.reduce((s, d) => s + share.get(d)!, 0);
   const allocated = shareBase > 0;
   const losses = allocate(pnl.inventoryLosses, share);
-  const expenses = allocate(pnl.expensesTotal, share);
+  const expenses = allocate(round2(pnl.expensesTotal - sumOf(directOp)), share);
   const depreciation = allocate(pnl.depreciation, share);
-  const other = allocate(pnl.otherResult, share);
+  const other = allocate(round2(pnl.otherResult - sumOf(directOther)), share);
   const tax = pnl.incomeTax === null ? null : allocate(pnl.incomeTax, share);
 
   const rows: DirectionPnlRowDto[] = BUSINESS_DIRECTION_ORDER.map((d) => {
@@ -150,10 +177,10 @@ export async function buildDirectionPnl(
     const cogs = cogsParts.get(d)!;
     const grossProfit = round2(netRevenue - cogs);
     const inventoryLosses = losses.get(d)!;
-    const exp = expenses.get(d)!;
+    const exp = round2(expenses.get(d)! + directOp.get(d)!);
     const dep = depreciation.get(d)!;
     const operatingProfit = round2(grossProfit - inventoryLosses - exp - dep);
-    const otherResult = other.get(d)!;
+    const otherResult = round2(other.get(d)! + directOther.get(d)!);
     const incomeTax = tax ? tax.get(d)! : null;
     return {
       direction: d,
@@ -165,6 +192,7 @@ export async function buildDirectionPnl(
       revenueSharePercent: allocated ? (share.get(d)! / shareBase) * 100 : null,
       inventoryLosses,
       expenses: exp,
+      directExpenses: directOp.get(d)!,
       depreciation: dep,
       operatingProfit,
       otherResult,
@@ -185,6 +213,7 @@ export async function buildDirectionPnl(
       grossMarginPercent: pnl.grossMarginPercent,
       inventoryLosses: pnl.inventoryLosses,
       expenses: pnl.expensesTotal,
+      directExpenses: sumOf(directOp),
       depreciation: pnl.depreciation,
       operatingProfit: pnl.operatingProfit,
       otherResult: pnl.otherResult,

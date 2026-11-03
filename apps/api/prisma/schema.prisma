@@ -1735,6 +1735,13 @@ model RouteStopItem {
 // Confirming does NOT itself move money — only recordPayment() does, which
 // writes a CashMovement. Cancelling is only possible before any money has
 // actually moved (amountPaid = 0), mirroring Invoice/PurchaseOrder cancel.
+// Опт / розница / заказы (see packages/shared/src/directions.ts).
+enum BusinessDirection {
+  WHOLESALE
+  RETAIL
+  ORDERS
+}
+
 model Expense {
   id             String          @id @default(cuid())
   organizationId String
@@ -1747,6 +1754,9 @@ model Expense {
   amountPaid     Decimal         @default(0) @db.Decimal(12, 2)
   description    String?
   incurredOn     DateTime        @default(now())
+  // The business direction this cost belongs to wholly (management dimension
+  // only — never in the ledger). Null = common, shared by revenue.
+  direction      BusinessDirection?
   createdById    String
   createdBy      User            @relation(fields: [createdById], references: [id])
   createdAt      DateTime        @default(now())

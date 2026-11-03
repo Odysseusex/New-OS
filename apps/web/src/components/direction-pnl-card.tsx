@@ -49,6 +49,7 @@ export function DirectionPnlCard({ period, locationId, reloadKey }: { period: Pe
     { label: "Маржинальность", value: (f) => pct(f.grossMarginPercent), muted: true },
     { label: "Потери по запасам", value: (f) => minus(f.inventoryLosses) },
     { label: "Операционные расходы", value: (f) => minus(f.expenses) },
+    { label: "в т.ч. прямые расходы направления", value: (f) => minus(f.directExpenses), muted: true },
     { label: "Амортизация", value: (f) => minus(f.depreciation) },
     { label: "Операционная прибыль", value: (f) => formatMoney(f.operatingProfit), strong: true },
     { label: "Прочие доходы и расходы", value: (f) => formatMoney(f.otherResult) },

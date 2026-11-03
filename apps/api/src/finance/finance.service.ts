@@ -3,6 +3,7 @@ import { purchaseOrderOwed } from "../procurement/purchase-owed";
 import { PrismaService } from "../prisma/prisma.service";
 import { cogsDeltaOf, correctionsInRange, lossDeltaOf } from "./cost-correction/stored";
 import { buildDirectionPnl } from "./direction-pnl";
+import type { BusinessDirection } from "@bakery-os/shared";
 import { CostingService } from "../costing/costing.service";
 import { FinancialEventProjector } from "./events/projector";
 import { PeriodGuard } from "./periods/period-guard";
@@ -153,6 +154,7 @@ export class FinanceService {
           amountPaid: paidImmediately ? dto.amount : 0,
           description: dto.description,
           incurredOn: dto.incurredOn ? new Date(dto.incurredOn) : undefined,
+          direction: dto.direction ?? null,
           createdById: user.id,
         },
         include: EXPENSE_INCLUDE,
@@ -1475,6 +1477,7 @@ export class FinanceService {
     amountPaid: { toNumber: () => number };
     description: string | null;
     incurredOn: Date;
+    direction?: string | null;
     createdBy: { fullName: string };
   }): ExpenseDto => {
     const amount = expense.amount.toNumber();
@@ -1495,6 +1498,7 @@ export class FinanceService {
       description: expense.description,
       incurredOn: expense.incurredOn.toISOString(),
       createdByName: expense.createdBy.fullName,
+      direction: (expense.direction as BusinessDirection | null | undefined) ?? null,
     };
   };
 }

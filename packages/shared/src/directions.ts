@@ -1,4 +1,4 @@
-import { NetProfitStatus } from "./finance";
+import type { NetProfitStatus } from "./finance";
 
 // Business directions (направления бизнеса), told apart by the sale itself:
 // paid for a cake order (CRM) → «Заказы»; to a wholesale customer → «Опт»;
@@ -27,10 +27,10 @@ export function businessDirectionOf(sale: { crmOrderId?: string | null; customer
   return BusinessDirection.RETAIL;
 }
 
-// One direction's P&L. Выручка and себестоимость are its own; everything the
-// business spends in common (inventory losses, operating expenses,
-// depreciation, the other result and the recorded income tax) is allocated by
-// its share of net revenue.
+// One direction's P&L. Выручка and себестоимость are its own, and so is an
+// expense booked to it (Expense.direction); everything the business spends in
+// common (inventory losses, other operating expenses, depreciation, the other
+// result and the recorded income tax) is allocated by its share of net revenue.
 export interface DirectionPnlRowDto {
   direction: BusinessDirection;
   checks: number;
@@ -42,6 +42,8 @@ export interface DirectionPnlRowDto {
   revenueSharePercent: number | null;
   inventoryLosses: number;
   expenses: number;
+  // Part of `expenses` booked to this direction wholly (the rest is its share of common ones).
+  directExpenses: number;
   depreciation: number;
   operatingProfit: number;
   otherResult: number;
