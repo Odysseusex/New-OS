@@ -130,3 +130,33 @@ export interface CostCorrectionDto {
   unstampedLines: number;
   lines: CostCorrectionLineDto[];
 }
+
+// ── Оборотно-сальдовая ведомость по товарам (stock turnover statement) ──
+// Quantities per point or for the network; values at the network's moving
+// average walked by method «Б» (the same walk as the month-end correction).
+
+export interface StockTurnoverLineDto {
+  productId: string;
+  productName: string;
+  unit: string;
+  productType: string;
+  categoryName: string | null;
+  openingQuantity: number;
+  openingValue: number;
+  inQuantity: number;
+  inValue: number;
+  outQuantity: number;
+  outValue: number;
+  closingQuantity: number;
+  closingValue: number;
+}
+
+export interface StockTurnoverDto {
+  from: string;
+  to: string;
+  locationId: string | null;
+  lines: StockTurnoverLineDto[];
+  totals: { openingValue: number; inValue: number; outValue: number; closingValue: number };
+  // Movements walked with no value known (counted in quantities only).
+  unvaluedFlows: number;
+}

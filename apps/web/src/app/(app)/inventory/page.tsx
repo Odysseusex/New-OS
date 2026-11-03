@@ -34,8 +34,9 @@ import { LocationPricesTab } from "@/components/location-prices-tab";
 import { StocktakeTab } from "@/components/stocktake-tab";
 import { StockVoidModal } from "@/components/stock-void-modal";
 import { MovementProductFilter, StockMovementsTab } from "@/components/stock-movements-tab";
+import { StockTurnoverTab } from "@/components/stock-turnover-tab";
 
-type Tab = "stock" | "movements" | "catalog" | "categories" | "prices" | "stocktake";
+type Tab = "stock" | "movements" | "turnover" | "catalog" | "categories" | "prices" | "stocktake";
 
 export default function InventoryPage() {
   const { user } = useAuth();
@@ -303,6 +304,9 @@ export default function InventoryPage() {
           >
             Движения
           </TabButton>
+          <TabButton active={tab === "turnover"} onClick={() => openTab("turnover")}>
+            ОСВ
+          </TabButton>
           <TabButton active={tab === "catalog"} onClick={() => openTab("catalog")}>
             Номенклатура
           </TabButton>
@@ -523,6 +527,8 @@ export default function InventoryPage() {
           onProductChange={setMovementProduct}
         />
       )}
+
+      {tab === "turnover" && <StockTurnoverTab locations={locations} isOrgWide={isOrgWide} />}
 
       {tab === "prices" && <LocationPricesTab locations={locations} canManage={canManageProducts} />}
 

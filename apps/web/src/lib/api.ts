@@ -212,6 +212,7 @@ import type {
   PeriodPreflightDto,
   PeriodSnapshotDto,
   CostCorrectionDto,
+  StockTurnoverDto,
   ReceivePurchaseOrderRequestDto,
   RevisePurchaseOrderRequestDto,
   DocumentHistoryEntryDto,
@@ -405,6 +406,8 @@ export const api = {
       request<StockLevelDto[]>(withQuery("/inventory/stock-levels", { locationId })),
     movements: (filter: { locationId?: string; productId?: string; type?: string; from?: string; to?: string } = {}) =>
       request<StockMovementDto[]>(withQuery("/inventory/movements", filter)),
+    turnover: (filter: { from: string; to: string; locationId?: string }) =>
+      request<StockTurnoverDto>(withQuery("/inventory/turnover", filter)),
     receive: (dto: CreateStockMovementRequestDto) =>
       request<StockMovementDto>("/inventory/receipts", {
         method: "POST",

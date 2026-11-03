@@ -1015,6 +1015,16 @@ Decided by the owner on 03.11.2026, so not to be re-asked:
   leaves the correction in place; the next close supersedes it. The CONTROL «Запасы» check still values finished
   goods at today's recipe (a known difference; the correction makes the BOOK equal the walk's valuation).
 
+## Оборотно-сальдовая ведомость по товарам + остатки на дату (built)
+
+Склад → «ОСВ» (`StockTurnoverTab`, `GET /inventory/turnover?from&to&locationId`, open like the stock; a user tied to a
+point sees that point). Per product: начало / приход / расход / конец in quantity and money; the closing columns at `to`
+are the stock on that date. Built on the SAME walk as the month-end correction: `finance/cost-correction/cost-history.ts`
+(`loadCostHistory` — shared by both; transfers come as `MOVE` flows that never move the network average) +
+`replay.ts` with its `onFlow` callback giving every flow's value at the average of its moment
+(`stock-turnover.service.ts`). For the whole network a transfer is neither in nor out; for one point it is. Stock with
+no history behind it enters as «OPENING» per point. Closing quantity = stock level (spec asserts it).
+
 ## «Скачать все данные» (backup / disaster recovery) — built
 
 Настройки → «Резервная копия данных» (OWNER only): `GET /api/backup/export` streams the WHOLE database as one JSON

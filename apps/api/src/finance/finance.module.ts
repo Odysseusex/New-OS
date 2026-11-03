@@ -16,6 +16,7 @@ import { AccountingPolicyController } from "./accounting-policy.controller";
 import { FinancialEventProjector } from "./events/projector";
 import { FinancialPeriodsService } from "./periods/periods.service";
 import { CostCorrectionService } from "./cost-correction/cost-correction.service";
+import { StockTurnoverController, StockTurnoverService } from "./cost-correction/stock-turnover.service";
 import { PeriodGuard } from "./periods/period-guard";
 import { BalanceService } from "./balance/balance.service";
 import { BalanceController } from "./balance/balance.controller";
@@ -33,10 +34,12 @@ import { FinancialPeriodsController } from "./periods/periods.controller";
     FinancialEventProjector,
     FinancialPeriodsService,
     CostCorrectionService,
+    StockTurnoverService,
     PeriodGuard,
     BalanceService,
   ],
   controllers: [
+    StockTurnoverController,
     FinanceController,
     CashAccountsController,
     FinanceCategoriesController,

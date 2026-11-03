@@ -27,7 +27,10 @@ export type CostFlow =
   | { kind: "OUT"; at: number; order: number; productId: string; quantity: number; stampedUnitCost: number | null; category: OutCategory; batchId?: string }
   // What a batch produced: worth what its consumption is worth NOW, plus the
   // part of its cost that never was stock (an untracked ingredient like water).
-  | { kind: "OUTPUT"; at: number; order: number; productId: string; quantity: number; stampedUnitCost: number | null; batchId: string };
+  | { kind: "OUTPUT"; at: number; order: number; productId: string; quantity: number; stampedUnitCost: number | null; batchId: string }
+  // A transfer leg between points (signed quantity): the network average does
+  // not move — walked only so it can be valued at the average of its moment.
+  | { kind: "MOVE"; at: number; order: number; productId: string; quantity: number };
 
 export interface ReplayInput {
   flows: CostFlow[];
@@ -39,6 +42,9 @@ export interface ReplayInput {
   startingAverage?: Map<string, number>;
   from: number;
   to: number;
+  // Told about every flow up to `to`, with the value per unit it was walked at
+  // (null = no value known) — what the stock turnover statement is built from.
+  onFlow?: (flow: CostFlow, unit: number | null) => void;
 }
 
 export interface CategoryFigures {
@@ -68,7 +74,7 @@ export interface ReplayResult {
 }
 
 // Within one moment, a batch's consumption is valued before its output.
-const KIND_ORDER: Record<CostFlow["kind"], number> = { PURCHASE: 1, IN: 2, OUT: 3, OUTPUT: 4 };
+const KIND_ORDER: Record<CostFlow["kind"], number> = { PURCHASE: 1, IN: 2, OUT: 3, OUTPUT: 4, MOVE: 5 };
 const productionFirst = (f: CostFlow) => (f.kind === "OUT" && f.category === "PRODUCTION" ? 0 : KIND_ORDER[f.kind]);
 
 export function sortFlows(flows: CostFlow[]): CostFlow[] {
@@ -118,9 +124,15 @@ export function replayCosts(input: ReplayInput): ReplayResult {
     const s = stateOf(flow.productId);
     if (inMonth) rowOf(flow.productId);
 
+    if (flow.kind === "MOVE") {
+      input.onFlow?.(flow, knownAverage(flow.productId, s, null));
+      continue;
+    }
+
     if (flow.kind === "PURCHASE") {
       s.average = movingAverageAfterPurchase(s.quantity, knownAverage(flow.productId, s, flow.unitCost)!, flow.quantity, flow.unitCost);
       s.quantity += flow.quantity;
+      input.onFlow?.(flow, flow.unitCost);
       continue;
     }
 
@@ -133,6 +145,7 @@ export function replayCosts(input: ReplayInput): ReplayResult {
         s.average = movingAverageAfterPurchase(s.quantity, knownAverage(flow.productId, s, unit)!, flow.quantity, unit);
       }
       s.quantity += flow.quantity;
+      input.onFlow?.(flow, unit);
       continue;
     }
 
@@ -142,6 +155,7 @@ export function replayCosts(input: ReplayInput): ReplayResult {
     const unit = s.average ?? flow.stampedUnitCost;
     const recomputed = unit !== null ? round2(flow.quantity * unit) : null;
     const stamped = flow.stampedUnitCost !== null ? round2(flow.quantity * flow.stampedUnitCost) : null;
+    input.onFlow?.(flow, unit);
 
     if (flow.kind === "OUT") {
       s.quantity -= flow.quantity;
