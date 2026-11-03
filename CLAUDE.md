@@ -1043,6 +1043,12 @@ is NOT in the repo (personal data) — specs use invented lines.
   account (deposit); SUPPLIER_PAYMENT = `ProcurementService.paySupplierOrders` (received orders oldest first, refused
   above the debt); IGNORE. The browser posts in chunks of 20. The statement view shows the system balance of the
   account at the period end against the bank's closing balance.
+- **A point's own account for card money** (migration `20261109120000`, `Location.nonCashAccountId`, Финансы → Банк и
+  касса → «Безналичная оплата на точках», `PUT /finance/accounts/non-cash/:locationId`, CASH_ACCOUNT_MANAGE_ROLES,
+  audited `cashAccount.locationNonCash`): `common/non-cash-account.ts` `nonCashAccountFor` — the point's active BANK
+  account, else the default bank. Used by sales; a refund goes back out of the account the sale's money came into (its
+  SALE_RECEIPT movement), else the point's current one. One shop's card money goes to BCC (an ИП account), the rest to
+  Kaspi Pay. Settlement comparison is per account, so it only matches once each point is bound right.
 - Not built: BCC (another format — needs a sample), customer (wholesale) payments matched to sales, advances to suppliers.
 
 ## Month-end cost correction — owner DECISIONS (not built yet; steps 3–4 of the financiers' ТЗ)

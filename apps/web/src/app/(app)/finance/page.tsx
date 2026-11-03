@@ -2,6 +2,7 @@
 
 import { DirectionPnlCard } from "@/components/direction-pnl-card";
 import { BankStatementsTab } from "@/components/bank-statements-tab";
+import { NonCashAccountsCard } from "@/components/non-cash-accounts-card";
 import { PnlLadder } from "@/components/pnl-ladder";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -724,6 +725,7 @@ export default function FinancePage() {
               </tbody>
             </table>
           </div>
+          <NonCashAccountsCard accounts={accounts} canManage={canManageAccounts} />
         </>
       )}
 

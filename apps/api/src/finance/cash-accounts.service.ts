@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { CashAccountDto, CashAccountType, CashMovementType } from "@bakery-os/shared";
+import { CashAccountDto, CashAccountType, CashMovementType, LocationNonCashAccountDto } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { CreateCashAccountDto } from "./dto/create-cash-account.dto";
 import { UpdateCashAccountDto } from "./dto/update-cash-account.dto";
@@ -170,6 +170,40 @@ export class CashAccountsService {
     });
 
     return this.toDto(updated);
+  }
+
+  async nonCashByLocation(organizationId: string): Promise<LocationNonCashAccountDto[]> {
+    const locations = await this.prisma.location.findMany({
+      where: { organizationId, isActive: true },
+      select: { id: true, name: true, nonCashAccountId: true },
+      orderBy: { name: "asc" },
+    });
+    return locations.map((l) => ({ locationId: l.id, locationName: l.name, accountId: l.nonCashAccountId }));
+  }
+
+  // Where a point's card / Kaspi / transfer takings land from now on. Sales
+  // already recorded keep the account they landed in.
+  async setNonCashAccount(user: AuthenticatedUser, locationId: string, accountId: string | null): Promise<LocationNonCashAccountDto[]> {
+    const location = await this.prisma.location.findFirst({ where: { id: locationId, organizationId: user.organizationId } });
+    if (!location) throw new NotFoundException("Точка не найдена");
+    if (accountId) {
+      const account = await this.prisma.cashAccount.findFirst({ where: { id: accountId, organizationId: user.organizationId } });
+      if (!account || !account.isActive) throw new BadRequestException("Счёт не найден или заархивирован");
+      if (account.type !== CashAccountType.BANK) throw new BadRequestException("Для оплат картой выберите банковский счёт");
+    }
+    await this.prisma.$transaction(async (tx) => {
+      await tx.location.update({ where: { id: locationId }, data: { nonCashAccountId: accountId } });
+      await recordAudit(tx, {
+        organizationId: user.organizationId,
+        actorId: user.id,
+        action: "cashAccount.locationNonCash",
+        entityType: "Location",
+        entityId: locationId,
+        before: { nonCashAccountId: location.nonCashAccountId },
+        after: { nonCashAccountId: accountId },
+      });
+    });
+    return this.nonCashByLocation(user.organizationId);
   }
 
   async archive(organizationId: string, accountId: string, actorId: string | null): Promise<CashAccountDto> {

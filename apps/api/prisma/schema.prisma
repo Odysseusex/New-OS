@@ -426,6 +426,9 @@ model Location {
   shifts            Shift[]
   timeEntries       TimeEntry[]
   cashAccounts      CashAccount[]
+  // Where this point's card / Kaspi / transfer takings land (null = the default bank account).
+  nonCashAccountId  String?
+  nonCashAccount    CashAccount?  @relation("LocationNonCashAccount", fields: [nonCashAccountId], references: [id], onDelete: SetNull)
   employees         Employee[]
   plannedFixedCosts PlannedFixedCost[]
   productPrices     ProductLocationPrice[]
@@ -1937,6 +1940,7 @@ model CashAccount {
   type           CashAccountType
   locationId     String?
   location       Location?       @relation(fields: [locationId], references: [id])
+  nonCashLocations Location[]    @relation("LocationNonCashAccount")
   // At most one BANK account per organization may be default — the target
   // for non-cash sale receipts when no account is otherwise implied.
   isDefault      Boolean         @default(false)

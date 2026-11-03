@@ -871,3 +871,15 @@ export interface CashFlowDto {
   // for the whole picture.
   uncategorizedOutflow: number;
 }
+
+// Финансы → Банк и касса → «Безналичная оплата на точках»: where each point's
+// card / Kaspi / transfer takings land. Null = the default bank account.
+export interface LocationNonCashAccountDto {
+  locationId: string;
+  locationName: string;
+  accountId: string | null;
+}
+
+export interface SetLocationNonCashAccountRequestDto {
+  accountId: string | null;
+}

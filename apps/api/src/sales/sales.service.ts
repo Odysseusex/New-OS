@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from "@nes
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { isDemoOrganization } from "../common/demo-guard";
+import { nonCashAccountFor } from "../common/non-cash-account";
 import {
   OpenCrmOrderDto,
   CashAccountType,
@@ -131,8 +132,9 @@ export class SalesService {
 
   // CASH sales land in the selling location's own till, auto-created the
   // first time it's needed so a cashier never has to set up accounting
-  // before ringing up a sale. CARD/TRANSFER land in the organization's
-  // default bank account; if none is configured yet, the sale still
+  // before ringing up a sale. CARD/TRANSFER land in the point's own non-cash
+  // account (Финансы → Банк и касса), else the organization's default bank
+  // account; if none is configured yet, the sale still
   // succeeds — the cash ledger is additive, never a gate on selling — it
   // just doesn't gain a CashMovement for that receipt.
   private async resolveSaleAccountId(
@@ -159,10 +161,7 @@ export class SalesService {
       return created.id;
     }
 
-    const bank = await tx.cashAccount.findFirst({
-      where: { organizationId, type: CashAccountType.BANK, isDefault: true, isActive: true },
-    });
-    return bank?.id ?? null;
+    return nonCashAccountFor(tx, organizationId, locationId);
   }
 
   // `from`/`to` cover both "which dates" and "which hours" in one pair of

@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { nonCashAccountFor } from "../common/non-cash-account";
 import { FiscalReceiptStatus, Prisma, StockMovementType } from "@prisma/client";
 import {
   CashAccountType,
@@ -210,7 +211,7 @@ export class SaleReturnsService {
             ? validateRefundOverride(totalAmount, dto.refundSplit, tenders)
             : allocateRefund(totalAmount, tenders);
       for (const part of refundParts) {
-        const accountId = await this.resolveRefundAccountId(tx, user.organizationId, sale.locationId, part.method);
+        const accountId = await this.resolveRefundAccountId(tx, user.organizationId, sale.locationId, part.method, sale.id);
         if (!accountId) continue;
         await this.cashMovementsService.recordMovement(tx, {
           organizationId: user.organizationId,
@@ -369,13 +370,16 @@ export class SaleReturnsService {
     );
   }
 
-  // The refund leaves the same kind of account the payment arrived in: cash
-  // back out of the till, card/transfer back out of the bank account.
+  // The refund leaves the account the payment arrived in: cash back out of the
+  // till; card/transfer back out of the account the sale's money landed in
+  // (a point's own bank account may have changed since), else the point's
+  // current non-cash account.
   private async resolveRefundAccountId(
     tx: Prisma.TransactionClient,
     organizationId: string,
     locationId: string,
     paymentMethod: string,
+    saleId?: string,
   ): Promise<string | null> {
     if (paymentMethod === PaymentMethod.CASH) {
       const till = await tx.cashAccount.findFirst({
@@ -383,10 +387,15 @@ export class SaleReturnsService {
       });
       return till?.id ?? null;
     }
-    const bank = await tx.cashAccount.findFirst({
-      where: { organizationId, type: CashAccountType.BANK, isDefault: true, isActive: true },
-    });
-    return bank?.id ?? null;
+    if (saleId) {
+      const received = await tx.cashMovement.findFirst({
+        where: { saleId, type: "SALE_RECEIPT", account: { type: { not: CashAccountType.CASH }, isActive: true } },
+        select: { accountId: true },
+        orderBy: { occurredAt: "asc" },
+      });
+      if (received) return received.accountId;
+    }
+    return nonCashAccountFor(tx, organizationId, locationId);
   }
 
   private toDto(row: {

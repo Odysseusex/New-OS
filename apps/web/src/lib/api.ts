@@ -153,6 +153,7 @@ import type {
   ProductionBatchDto,
   ProductPnLDetailDto,
   ProfitAndLossDto,
+  LocationNonCashAccountDto,
   BankStatementDto,
   BankStatementSummaryDto,
   PostBankLinesRequestDto,
@@ -974,6 +975,9 @@ export const api = {
       update: (id: string, dto: UpdateCashAccountRequestDto) =>
         request<CashAccountDto>(`/finance/accounts/${id}`, { method: "PATCH", body: JSON.stringify(dto) }),
       setDefault: (id: string) => request<CashAccountDto>(`/finance/accounts/${id}/set-default`, { method: "POST" }),
+      nonCash: () => request<LocationNonCashAccountDto[]>("/finance/accounts/non-cash"),
+      setNonCash: (locationId: string, accountId: string | null) =>
+        request<LocationNonCashAccountDto[]>(`/finance/accounts/non-cash/${locationId}`, { method: "PUT", body: JSON.stringify({ accountId }) }),
       archive: (id: string) => request<CashAccountDto>(`/finance/accounts/${id}/archive`, { method: "POST" }),
       restore: (id: string) => request<CashAccountDto>(`/finance/accounts/${id}/restore`, { method: "POST" }),
     },

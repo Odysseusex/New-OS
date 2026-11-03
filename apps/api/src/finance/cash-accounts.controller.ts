@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Put, Query, UseGuards } from "@nestjs/common";
+import { IsOptional, IsString } from "class-validator";
 import { CASH_ACCOUNT_MANAGE_ROLES, FINANCE_VIEW_ROLES } from "@bakery-os/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
@@ -9,6 +10,12 @@ import { CashAccountsService } from "./cash-accounts.service";
 import { CreateCashAccountDto } from "./dto/create-cash-account.dto";
 import { UpdateCashAccountDto } from "./dto/update-cash-account.dto";
 
+class SetNonCashAccountDto {
+  @IsOptional()
+  @IsString()
+  accountId!: string | null;
+}
+
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(...FINANCE_VIEW_ROLES)
 @Controller("finance/accounts")
@@ -18,6 +25,17 @@ export class CashAccountsController {
   @Get()
   findAll(@CurrentUser() user: AuthenticatedUser, @Query("includeArchived") includeArchived?: string) {
     return this.cashAccountsService.findAll(user.organizationId, includeArchived === "true");
+  }
+
+  @Get("non-cash")
+  nonCash(@CurrentUser() user: AuthenticatedUser) {
+    return this.cashAccountsService.nonCashByLocation(user.organizationId);
+  }
+
+  @Put("non-cash/:locationId")
+  @Roles(...CASH_ACCOUNT_MANAGE_ROLES)
+  setNonCash(@CurrentUser() user: AuthenticatedUser, @Param("locationId") locationId: string, @Body() dto: SetNonCashAccountDto) {
+    return this.cashAccountsService.setNonCashAccount(user, locationId, dto.accountId ?? null);
   }
 
   @Post()
