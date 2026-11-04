@@ -19,7 +19,7 @@ import { recordAudit } from "../audit/audit";
 import { requireLocationScope, resolveLocationScope } from "../common/location-scope";
 import { BUSINESS_TIME_ZONE, startOfZonedDay } from "../common/zoned-day";
 import { cashEffectOf, stockEffectOf } from "../common/ledger-effects";
-import { allocateRefund } from "../sales/refund-allocation";
+import { tillTakings } from "./till-takings";
 import { CATEGORY_WITH_PARENT, categoryLabel } from "../common/category-label";
 import { decrementStockOrThrow } from "../common/stock-guard";
 import { CostingService } from "../costing/costing.service";
@@ -428,60 +428,10 @@ export class ReconciliationService {
   }
 
   private async money(organizationId: string, locationId: string, start: Date, end: Date): Promise<ReconciliationMoneyDto> {
-    const [sales, returns, tills] = await Promise.all([
-      this.prisma.sale.findMany({
-        where: { organizationId, locationId, soldAt: { gte: start, lt: end } },
-        select: { totalAmount: true, amountPaid: true, paymentMethod: true, payments: { select: { method: true, amount: true } } },
-      }),
-      this.prisma.saleReturn.findMany({
-        where: { organizationId, locationId, returnedAt: { gte: start, lt: end } },
-        select: {
-          id: true,
-          totalAmount: true,
-          creditedAmount: true,
-          sale: { select: { paymentMethod: true, payments: { select: { method: true, amount: true } } } },
-          cashMovements: { select: { amount: true, account: { select: { type: true } } } },
-        },
-      }),
+    const [{ taken, refunded, onCredit }, tills] = await Promise.all([
+      tillTakings(this.prisma, organizationId, locationId, start, end),
       this.prisma.cashAccount.findMany({ where: { organizationId, locationId, type: "CASH" }, select: { id: true } }),
     ]);
-
-    const taken = new Map<string, number>();
-    let onCredit = 0;
-    // Same rule as the Sales summary: a split sale is its payment rows, anything
-    // else is its single method for what was actually paid.
-    for (const sale of sales) {
-      const paid = sale.amountPaid.toNumber();
-      onCredit += sale.totalAmount.toNumber() - paid;
-      const tenders = sale.payments.length > 0 ? sale.payments.map((p) => ({ method: p.method, amount: p.amount.toNumber() })) : [{ method: sale.paymentMethod, amount: paid }];
-      for (const t of tenders) {
-        if (t.amount <= 0 || t.method === PaymentMethod.MIXED) continue;
-        taken.set(t.method, (taken.get(t.method) ?? 0) + t.amount);
-      }
-    }
-
-    // Refunds by tender. Cash is exact: what actually left the till for that
-    // return. The rest goes back the way the sale was paid (D8), in proportion for a
-    // split sale.
-    const refunded = new Map<string, number>();
-    const addRefund = (method: string, amount: number) => refunded.set(method, (refunded.get(method) ?? 0) + amount);
-    for (const ret of returns) {
-      // Only money that went back; a return against an unpaid debt moved none.
-      const total = round2(ret.totalAmount.toNumber() - ret.creditedAmount.toNumber());
-      if (total <= 0) continue;
-      const sale = ret.sale;
-      if (sale.paymentMethod !== PaymentMethod.MIXED) {
-        addRefund(sale.paymentMethod, total);
-        continue;
-      }
-      const cashOut = ret.cashMovements.filter((m) => m.account.type === "CASH").reduce((s, m) => s + m.amount.toNumber(), 0);
-      if (cashOut > 0) addRefund(PaymentMethod.CASH, cashOut);
-      const rest = round2(total - cashOut);
-      const nonCash = sale.payments.filter((p) => p.method !== PaymentMethod.CASH).map((p) => ({ method: p.method, amount: p.amount.toNumber() }));
-      if (rest > 0 && nonCash.some((t) => t.amount > 0)) {
-        for (const part of allocateRefund(rest, nonCash)) addRefund(part.method, part.amount);
-      }
-    }
 
     const tillIds = tills.map((t) => t.id);
     const movements =

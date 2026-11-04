@@ -324,6 +324,9 @@ model Organization {
   directionAllocationBase   String?
   directionAllocationShares Json?
 
+  // When true, a cashier can sell at a point only while a till shift is open there.
+  tillShiftsRequired Boolean @default(false)
+
   // The purchasing cutover. Null = the old behaviour (a received purchase
   // order creates no payable; supplier invoices may still be created). Once
   // set — by an explicit owner action, never moved back — purchases follow
@@ -448,6 +451,8 @@ model Location {
   stocktakes            Stocktake[]
   dailyReconciliations  DailyReconciliation[]
   fixedAssets           FixedAsset[]
+
+  tillShifts TillShift[]
 
   @@index([organizationId])
   @@index([regionId])
@@ -3378,4 +3383,39 @@ model CustomerAdvanceApplication {
   @@index([organizationId, customerId])
   @@index([saleId])
   @@map("customer_advance_applications")
+}
+
+// A cashier's shift at one point's till (кассовая смена, as in iiko Front):
+// opened with the cash counted in the drawer, closed with the cash counted
+// again against what the books expect (Z-отчёт). The shift owns no money and
+// no sale: its figures are read from the sales, returns and till movements of
+// its point inside [openedAt, closedAt). Closing stores the report as it stood
+// and the difference — it moves nothing (an adjustment is «Сверка дня»'s job).
+model TillShift {
+  id             String    @id @default(cuid())
+  organizationId String
+  locationId     String
+  location       Location  @relation(fields: [locationId], references: [id])
+  // 1, 2, 3… per point.
+  number         Int
+  openedById     String
+  openedByName   String
+  openedAt       DateTime  @default(now())
+  // Counted in the drawer at the opening, and what the till accounts held in the books then.
+  openingCash    Decimal   @db.Decimal(12, 2)
+  bookCashAtOpen Decimal   @db.Decimal(12, 2)
+  closedById     String?
+  closedByName   String?
+  closedAt       DateTime?
+  countedCash    Decimal?  @db.Decimal(12, 2)
+  expectedCash   Decimal?  @db.Decimal(12, 2)
+  // countedCash − expectedCash: negative = shortage.
+  difference     Decimal?  @db.Decimal(12, 2)
+  // The Z-report as it stood at the close (TillShiftReportDto).
+  report         Json?
+  note           String?
+
+  @@unique([locationId, number])
+  @@index([organizationId, openedAt])
+  @@map("till_shifts")
 }

@@ -368,3 +368,9 @@ export const BANK_IMPORT_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTAN
 
 // Choosing how common costs are shared between directions («Прибыль по направлениям»).
 export const DIRECTION_ALLOCATION_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT];
+
+// Кассовая смена: whoever sells at the till opens, moves cash in/out, prints X and closes with Z.
+export const TILL_SHIFT_ROLES: Role[] = SALE_CREATE_ROLES;
+// The shifts' history (differences per cashier) and the «смена обязательна» switch.
+export const TILL_SHIFT_HISTORY_ROLES: Role[] = RECONCILIATION_ROLES;
+export const TILL_SHIFT_SETTINGS_ROLES: Role[] = HARD_DELETE_ROLES;

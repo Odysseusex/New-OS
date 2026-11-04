@@ -11,6 +11,7 @@ import { ProductsModule } from "./products/products.module";
 import { CategoriesModule } from "./categories/categories.module";
 import { ClassificationModule } from "./classification/classification.module";
 import { ReferenceDataModule } from "./reference-data/reference-data.module";
+import { TillShiftsModule } from "./till-shifts/till-shifts.module";
 import { InventoryModule } from "./inventory/inventory.module";
 import { SalesModule } from "./sales/sales.module";
 import { RecipesModule } from "./recipes/recipes.module";
@@ -58,6 +59,7 @@ import { DemoCompanyModule } from "./demo/demo-company.module";
     CategoriesModule,
     ClassificationModule,
     ReferenceDataModule,
+    TillShiftsModule,
     InventoryModule,
     SalesModule,
     RecipesModule,

@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { assertTillShiftOpen } from "../till-shifts/till-shift-guard";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { isDemoOrganization } from "../common/demo-guard";
@@ -1162,6 +1163,7 @@ export class SalesService {
     const productIds = dto.items.map((i) => i.productId);
 
     if (user.role === Role.CASHIER) {
+      await assertTillShiftOpen(this.prisma, user, locationId);
       await this.assertTillPrices(user.organizationId, locationId, dto.items);
     }
 
