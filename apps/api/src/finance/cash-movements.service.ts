@@ -6,8 +6,11 @@ import {
   CashMovementDto,
   CashMovementType,
   CategoryClassification,
+  BalanceTreatment,
+  CashActivity,
   FinanceCategoryKind,
   isFullyClassified,
+  PnlTreatment,
 } from "@bakery-os/shared";
 import { recordAudit } from "../audit/audit";
 import { AuthenticatedUser } from "../auth/auth.types";
@@ -245,9 +248,17 @@ export class CashMovementsService {
       }
       // A shortage is an expense-kind event, an overage an income-kind one, and
       // either must belong to a category that says what it means.
+      let categoryId = dto.categoryId;
+      if (!categoryId) {
+        // A shortage nobody can trace (cash the owner took, years of unrecorded
+        // выемки): «Изъятие собственника» — equity, not an expense, so it does not
+        // turn into a loss in the P&L.
+        if (!dto.ownerWithdrawal || delta > 0) throw new BadRequestException("Укажите статью, к которой отнести разницу");
+        categoryId = (await ownerWithdrawalCategory(tx, user.organizationId)).id;
+      }
       const category = await this.assertCategory(
         user.organizationId,
-        dto.categoryId,
+        categoryId,
         delta > 0 ? FinanceCategoryKind.INCOME : FinanceCategoryKind.EXPENSE,
         tx,
       );
@@ -262,7 +273,7 @@ export class CashMovementsService {
         type: CashMovementType.ADJUSTMENT,
         amount: delta,
         reason: dto.reason,
-        categoryId: dto.categoryId,
+        categoryId,
         createdById: user.id,
       });
       await recordAudit(tx, {
@@ -271,7 +282,7 @@ export class CashMovementsService {
         action: "cashAccount.adjust",
         entityType: "CashAccount",
         entityId: dto.accountId,
-        after: { delta, categoryId: dto.categoryId, movementId: created.id },
+        after: { delta, categoryId, movementId: created.id },
         reason: dto.reason,
       });
       return created;
@@ -329,5 +340,23 @@ export class CashMovementsService {
     invoiceId: movement.invoiceId,
     correctsMovementId: movement.correctsMovementId,
     createdByName: movement.createdBy.fullName,
+  });
+}
+
+// The organization's «Изъятие собственника» article: found by name and kind, or
+// created with the same classification the bank import gives it.
+async function ownerWithdrawalCategory(tx: Prisma.TransactionClient, organizationId: string) {
+  const name = "Изъятие собственника";
+  const existing = await tx.financeCategory.findFirst({ where: { organizationId, name, kind: FinanceCategoryKind.EXPENSE } });
+  if (existing) return existing;
+  return tx.financeCategory.create({
+    data: {
+      organizationId,
+      name,
+      kind: FinanceCategoryKind.EXPENSE,
+      pnlTreatment: PnlTreatment.NOT_IN_PNL,
+      cashActivity: CashActivity.FINANCING,
+      balanceTreatment: BalanceTreatment.OWNER_WITHDRAWAL,
+    },
   });
 }

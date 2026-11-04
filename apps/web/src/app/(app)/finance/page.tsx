@@ -49,6 +49,7 @@ import {
   PLANNED_FIXED_COST_MANAGE_ROLES,
   PayrollExclusionReason,
   CASH_ACCOUNT_MANAGE_ROLES,
+  CASH_ADJUSTMENT_ROLES,
   CASH_ACCOUNT_TYPE_LABELS_RU,
   CASH_MOVEMENT_INFLOW_TYPES,
   CASH_MOVEMENT_TYPE_LABELS_RU,
@@ -87,6 +88,7 @@ import { BalanceTab } from "@/components/balance-tab";
 import { LedgerTab } from "@/components/ledger-tab";
 import { NewCashAccountModal } from "@/components/new-cash-account-modal";
 import { CashMovementModal } from "@/components/cash-movement-modal";
+import { CashAdjustmentModal } from "@/components/cash-adjustment-modal";
 import { CashTransferModal } from "@/components/cash-transfer-modal";
 import { FinanceCategoryModal } from "@/components/finance-category-modal";
 import { PlannedFixedCostModal } from "@/components/planned-fixed-cost-modal";
@@ -175,6 +177,9 @@ export default function FinancePage() {
   const { user } = useAuth();
   const canView = user ? FINANCE_VIEW_ROLES.includes(user.role) : false;
   const canManageAccounts = user ? CASH_ACCOUNT_MANAGE_ROLES.includes(user.role) : false;
+  const canAdjustAccounts = user ? CASH_ADJUSTMENT_ROLES.includes(user.role) : false;
+  // «Корректировка остатка» opened on this account.
+  const [adjustAccount, setAdjustAccount] = useState<CashAccountDto | null>(null);
   const canManageCategories = user ? FINANCE_CATEGORY_MANAGE_ROLES.includes(user.role) : false;
   const canManagePlannedCosts = user ? PLANNED_FIXED_COST_MANAGE_ROLES.includes(user.role) : false;
   const canOperateCash = user ? CASH_REGISTER_MANAGE_ROLES.includes(user.role) : false;
@@ -721,6 +726,11 @@ export default function FinancePage() {
                     <td className="px-5 py-3 text-right font-medium text-foreground">{formatMoney(a.currentBalance)}</td>
                     <td className="px-5 py-3">
                       <div className="flex items-center justify-end gap-2">
+                        {canAdjustAccounts && a.isActive && (
+                          <button onClick={() => setAdjustAccount(a)} className="text-xs font-medium text-accent hover:opacity-80">
+                            Корректировка остатка
+                          </button>
+                        )}
                         {canManageAccounts && a.type === CashAccountType.BANK && !a.isDefault && a.isActive && (
                           <button
                             onClick={() => handleSetDefaultAccount(a)}
@@ -1332,6 +1342,20 @@ export default function FinancePage() {
           onCreated={() => {
             setAccountModalOpen(false);
             loadAccounts();
+          }}
+        />
+      )}
+
+      {adjustAccount && (
+        <CashAdjustmentModal
+          account={adjustAccount}
+          categories={categories}
+          onClose={() => setAdjustAccount(null)}
+          onSaved={() => {
+            setAdjustAccount(null);
+            loadAccounts();
+            loadMovements();
+            loadDashboard();
           }}
         />
       )}

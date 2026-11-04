@@ -939,6 +939,15 @@ unit cost by Almaty month (12, zero-filled, recharts line). The financiers' acce
   return → the order, production → «Акт выпуска», requisition/transfer №, stocktake, «Сверка дня»); sale, order and batch
   open in place.
 
+## «Корректировка остатка» of a cash/bank account (built)
+
+Финансы → Банк и касса → «Корректировка остатка» on each active account (`CASH_ADJUSTMENT_ROLES` = OWNER/ADMIN/ACCOUNTANT,
+`components/cash-adjustment-modal.tsx`): type the counted balance → ONE `ADJUSTMENT` movement dated now for the difference
+(`CashMovementsService.adjust`, row locked, nothing earlier changed, audited `cashAccount.adjust`). The difference needs a
+fully classified article of the right kind; for a SHORTAGE `ownerWithdrawal: true` books it to «Изъятие собственника»
+(found by name, else created EXPENSE / NOT_IN_PNL / FINANCING / OWNER_WITHDRAWAL — the bank import's preset), so years of
+unrecorded выемки do not become a loss in the P&L. Built after a till's books showed 4.3 M ₸ that was not in the drawer.
+
 ## Phone layout + product photos (built)
 
 - **Below `lg` (1024 px) the menu is a drawer**: `Sidebar({open, onClose})` slides over the page, opened by the topbar's

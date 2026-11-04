@@ -225,8 +225,10 @@ export interface CashAdjustmentRequestDto {
   // REQUIRED: what the difference is. A shortage or overage is a business
   // event with a meaning, so it needs a fully classified category (income
   // kind for an overage, expense kind for a shortage) — it is never
-  // silently booked as "other result".
-  categoryId: string;
+  // silently booked as "other result". Optional only with `ownerWithdrawal`.
+  categoryId?: string;
+  // A shortage booked as «Изъятие собственника» (equity, not a loss).
+  ownerWithdrawal?: boolean;
 }
 
 // ── Expenses — a document with a real lifecycle, same shape as the
