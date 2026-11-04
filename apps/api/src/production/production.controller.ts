@@ -21,6 +21,12 @@ export class ProductionController {
     return this.productionService.findAll(user, locationId);
   }
 
+  // «Акт выпуска» of a completed batch.
+  @Get(":id/document")
+  document(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
+    return this.productionService.document(user, id);
+  }
+
   // «Отклонения от техкарты» for completed batches in [from, to].
   @Get("deviations")
   deviations(

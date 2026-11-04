@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { ProductionBatchDto, ProductionBatchNormDto } from "@bakery-os/shared";
+import type { LocationDto, ProductionBatchDto, ProductionBatchNormDto } from "@bakery-os/shared";
 import { UNIT_LABELS_RU } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
@@ -11,10 +11,12 @@ const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 export function CompleteBatchModal({
   batch,
+  locations = [],
   onClose,
   onCompleted,
 }: {
   batch: ProductionBatchDto;
+  locations?: LocationDto[];
   onClose: () => void;
   onCompleted: () => void;
 }) {
@@ -25,6 +27,8 @@ export function CompleteBatchModal({
   const [used, setUsed] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Where the output goes: the batch's own point, or straight to a shop.
+  const [outputLocationId, setOutputLocationId] = useState(batch.locationId);
 
   useEffect(() => {
     api.production
@@ -57,6 +61,7 @@ export function CompleteBatchModal({
     try {
       await api.production.completeBatch(batch.id, {
         actualQuantity: Number(actualQuantity),
+        outputLocationId: outputLocationId !== batch.locationId ? outputLocationId : undefined,
         // Only what differs from the norm is sent; the rest is consumed at the norm.
         consumption: rows
           .filter((r) => r.typed !== "" && Math.abs(r.fact - r.normQty) >= 0.0005)
@@ -97,6 +102,26 @@ export function CompleteBatchModal({
             className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
           />
         </div>
+
+        {locations.length > 1 && (
+          <div className="mb-5">
+            <label className="mb-1.5 block text-sm font-medium text-foreground">Куда оприходовать</label>
+            <select
+              value={outputLocationId}
+              onChange={(e) => setOutputLocationId(e.target.value)}
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            >
+              {locations
+                .filter((l) => l.isActive !== false || l.id === batch.locationId)
+                .map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                    {l.id === batch.locationId ? " (цех задания)" : ""}
+                  </option>
+                ))}
+            </select>
+          </div>
+        )}
 
         {normError && <p className="mb-4 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">{normError}. Сырьё спишется по норме.</p>}
         {rows.length > 0 && (

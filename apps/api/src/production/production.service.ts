@@ -6,6 +6,7 @@ import {
   BusinessContextProductionRowDto,
   ProductionBatchDto,
   ProductionBatchNormDto,
+  ProductionBatchDocumentDto,
   ProductionBatchStatus,
   ProductionDeviationByIngredientDto,
   ProductionDeviationLineDto,
@@ -450,12 +451,22 @@ export class ProductionService {
         await tx.product.update({ where: { id: batch.recipe.productId }, data: { averageUnitCost: newAverage } });
       }
 
+      // The output goes to the batch's own point, or straight to another one (ТЗ §4.2:
+      // «готовая продукция приходуется на склад цеха или сразу в кондитерскую»).
+      let outputLocationId = batch.locationId;
+      let outputNote = "";
+      if (dto.outputLocationId && dto.outputLocationId !== batch.locationId) {
+        const target = await tx.location.findFirst({ where: { id: dto.outputLocationId, organizationId: user.organizationId, isActive: true } });
+        if (!target) throw new BadRequestException("Точка для выпуска не найдена");
+        outputLocationId = target.id;
+        outputNote = ` → ${target.name}`;
+      }
       await tx.stockLevel.upsert({
-        where: { locationId_productId: { locationId: batch.locationId, productId: batch.recipe.productId } },
+        where: { locationId_productId: { locationId: outputLocationId, productId: batch.recipe.productId } },
         update: { quantity: { increment: dto.actualQuantity } },
         create: {
           organizationId: user.organizationId,
-          locationId: batch.locationId,
+          locationId: outputLocationId,
           productId: batch.recipe.productId,
           quantity: dto.actualQuantity,
           minQuantity: batch.recipe.product.minQuantity,
@@ -465,11 +476,11 @@ export class ProductionService {
       await tx.stockMovement.create({
         data: {
           organizationId: user.organizationId,
-          locationId: batch.locationId,
+          locationId: outputLocationId,
           productId: batch.recipe.productId,
           type: StockMovementType.PRODUCTION_OUTPUT,
           quantity: dto.actualQuantity,
-          reason: "Выпуск по производственному заданию",
+          reason: `Выпуск по производственному заданию${outputNote}`,
           batchId: batch.id,
           createdById: user.id,
           unitCost: dto.actualQuantity > 0 ? round4(ingredientTotal / dto.actualQuantity) : null,
@@ -679,6 +690,95 @@ export class ProductionService {
   // «Отклонения от техкарты»: per completed batch in the period, raw material
   // used against the norm, read back from the batch's own stock movements —
   // the norm rows, «Перерасход» write-offs and «Экономия» adjustments.
+  // «Акт выпуска» of a completed batch (ТЗ §4.3): what was written off per
+  // ingredient (norm / fact / price / sum), the batch cost and the cost of one
+  // unit, and the deviation from the recipe — read back from the batch's own
+  // movements, exactly like «Отклонения».
+  async document(user: AuthenticatedUser, batchId: string): Promise<ProductionBatchDocumentDto> {
+    const batch = await this.prisma.productionBatch.findFirst({
+      where: { id: batchId, organizationId: user.organizationId },
+      include: {
+        location: { select: { name: true } },
+        createdBy: { select: { fullName: true } },
+        recipe: { select: { product: { select: { name: true, unit: true } } } },
+        recipeVersion: { select: { number: true } },
+        costs: true,
+        stockMovements: {
+          where: {
+            OR: [
+              { type: StockMovementType.PRODUCTION_CONSUMPTION },
+              { type: StockMovementType.WRITE_OFF, writeOffReason: WriteOffReason.PRODUCTION_OVERUSE },
+              { type: StockMovementType.ADJUSTMENT },
+              { type: StockMovementType.PRODUCTION_OUTPUT },
+            ],
+          },
+          select: { type: true, productId: true, quantity: true, unitCost: true, location: { select: { name: true } }, product: { select: { name: true, unit: true } } },
+        },
+      },
+    });
+    if (!batch) throw new NotFoundException("Задание не найдено");
+    this.assertLocationAccess(user, batch.locationId);
+    if (batch.status !== PrismaProductionBatchStatus.COMPLETED) throw new BadRequestException("Акт выпуска есть только у завершённого задания");
+
+    const perProduct = new Map<string, { name: string; unit: Unit; norm: number; actual: number; unitCost: number | null }>();
+    let outputLocationName = batch.location.name;
+    for (const m of batch.stockMovements) {
+      if (m.type === StockMovementType.PRODUCTION_OUTPUT) {
+        outputLocationName = m.location.name;
+        continue;
+      }
+      const q = m.quantity.toNumber();
+      const row = perProduct.get(m.productId) ?? { name: m.product.name, unit: m.product.unit as Unit, norm: 0, actual: 0, unitCost: null };
+      if (m.type === StockMovementType.PRODUCTION_CONSUMPTION) {
+        row.norm += q;
+        row.actual += q;
+      } else if (m.type === StockMovementType.WRITE_OFF) row.actual += q;
+      else row.actual -= q;
+      row.unitCost = row.unitCost ?? m.unitCost?.toNumber() ?? null;
+      perProduct.set(m.productId, row);
+    }
+    const lines = [...perProduct]
+      .map(([ingredientId, r]) => {
+        const norm = round3(r.norm);
+        const actual = round3(r.actual);
+        const deviation = round3(actual - norm);
+        return {
+          ingredientId,
+          ingredientName: r.name,
+          unit: r.unit,
+          norm,
+          actual,
+          deviation,
+          unitCost: r.unitCost,
+          normAmount: r.unitCost === null ? null : round2(norm * r.unitCost),
+          actualAmount: r.unitCost === null ? null : round2(actual * r.unitCost),
+          deviationValue: r.unitCost === null ? null : round2(deviation * r.unitCost),
+        };
+      })
+      .sort((a, b) => a.ingredientName.localeCompare(b.ingredientName, "ru"));
+    const batchCost = batch.costs.find((c) => c.component === ProductionCostComponent.INGREDIENT)?.amount.toNumber() ?? null;
+    const actualQuantity = batch.actualQuantity?.toNumber() ?? 0;
+    const normTracked = round2(lines.reduce((s, l) => s + (l.normAmount ?? 0), 0));
+    return {
+      batchId: batch.id,
+      productName: batch.recipe.product.name,
+      unit: batch.recipe.product.unit as Unit,
+      locationName: batch.location.name,
+      outputLocationName,
+      plannedQuantity: batch.plannedQuantity.toNumber(),
+      actualQuantity,
+      completedAt: (batch.completedAt ?? batch.createdAt).toISOString(),
+      createdByName: batch.createdBy.fullName,
+      recipeVersionNumber: batch.recipeVersion?.number ?? null,
+      lines,
+      // Ingredients not held as stock (water…) are in the cost but have no movement.
+      untrackedCost: batchCost === null ? 0 : Math.max(0, round2(batchCost - normTracked)),
+      batchCost,
+      unitCost: batchCost !== null && actualQuantity > 0 ? round2(batchCost / actualQuantity) : null,
+      deviationValue: round2(lines.reduce((s, l) => s + (l.deviationValue ?? 0), 0)),
+    };
+  }
+
   async deviations(user: AuthenticatedUser, from: Date, to: Date, requestedLocationId?: string): Promise<ProductionDeviationReportDto> {
     const locationId = resolveLocationScope(user, requestedLocationId);
     const batches = await this.prisma.productionBatch.findMany({

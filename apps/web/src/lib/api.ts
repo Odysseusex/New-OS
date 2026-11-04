@@ -253,6 +253,7 @@ import type {
   ProductionBatchNormDto,
   ProductionDeviationReportDto,
   MaterialRequisitionDto,
+  ProductionBatchDocumentDto,
   CreateStockTransferRequestDto,
   RequisitionNeedDto,
   CreateMaterialRequisitionRequestDto,
@@ -754,6 +755,7 @@ export const api = {
         body: JSON.stringify(dto),
       }),
     batchNorm: (id: string) => request<ProductionBatchNormDto>(`/production/batches/${id}/norm`),
+    batchDocument: (id: string) => request<ProductionBatchDocumentDto>(`/production/batches/${id}/document`),
     deviations: (params: { from: string; to: string; locationId?: string }) =>
       request<ProductionDeviationReportDto>(withQuery("/production/batches/deviations", params)),
     output: (params: { from: string; to: string; locationId?: string }) =>

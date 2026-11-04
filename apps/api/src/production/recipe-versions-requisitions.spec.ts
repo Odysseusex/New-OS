@@ -192,3 +192,23 @@ describe("перемещение", () => {
     expect(AUDIT_ACTION_GROUPS.stockTransfers.filter((a) => !logged.has(a))).toEqual([]);
   });
 });
+
+describe("акт выпуска", () => {
+  it("sends the output straight to another point and shows the write-off per ingredient", async () => {
+    await services.inventory.receive(org.user, { locationId: org.storeId, productId: flourId, quantity: 10 } as never);
+    await services.inventory.receive(org.user, { locationId: org.storeId, productId: sugarId, quantity: 5 } as never);
+    const batch = await services.production.create(org.user, { locationId: org.storeId, recipeId, plannedQuantity: 10 });
+    await services.production.start(org.user, batch.id);
+    const before = await level(org.warehouseId, cakeId);
+    // 10 cakes by the recipe: 6 kg flour, 2 kg sugar; 7 kg flour really used.
+    await services.production.complete(org.user, batch.id, { actualQuantity: 10, outputLocationId: org.warehouseId, consumption: [{ productId: flourId, quantity: 7 }] } as never);
+    expect(await level(org.warehouseId, cakeId)).toBe(before + 10);
+    const doc = await services.production.document(org.user, batch.id);
+    expect(doc.outputLocationName).not.toBe(doc.locationName);
+    const flour = doc.lines.find((l) => l.ingredientId === flourId)!;
+    expect(flour).toMatchObject({ norm: 6, actual: 7, deviation: 1, unitCost: 400, actualAmount: 2800, deviationValue: 400 });
+    expect(doc.lines.find((l) => l.ingredientId === sugarId)).toMatchObject({ norm: 2, actual: 2, deviation: 0 });
+    // Cost of the batch stays the norm: 6 × 400 + 2 × 600 = 3 600, 360 a cake.
+    expect(doc).toMatchObject({ batchCost: 3600, unitCost: 360, deviationValue: 400, recipeVersionNumber: 3 });
+  });
+});

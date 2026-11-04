@@ -25,6 +25,7 @@ import { CompleteBatchModal } from "@/components/complete-batch-modal";
 import { ProductionDeviationsTab } from "@/components/production-deviations-tab";
 import { ProductionOutputTab } from "@/components/production-output-tab";
 import { RequisitionsTab } from "@/components/requisitions-tab";
+import { ProductionDocumentModal } from "@/components/production-document-modal";
 import { NewRecipeModal } from "@/components/new-recipe-modal";
 import { ExportRecipesPdfModal } from "@/components/export-recipes-pdf-modal";
 import { RecipeScaleModal } from "@/components/recipe-scale-modal";
@@ -63,6 +64,7 @@ export default function ProductionPage() {
   const [editingBatch, setEditingBatch] = useState<ProductionBatchDto | null>(null);
   const [completingBatch, setCompletingBatch] = useState<ProductionBatchDto | null>(null);
   const [abortingBatch, setAbortingBatch] = useState<ProductionBatchDto | null>(null);
+  const [documentBatchId, setDocumentBatchId] = useState<string | null>(null);
   const [selectedRecipeIds, setSelectedRecipeIds] = useState<Set<string>>(new Set());
   const [exportingRecipes, setExportingRecipes] = useState<RecipeDto[] | null>(null);
   const [scaling, setScaling] = useState<{ recipe: RecipeDto; quantity?: number } | null>(null);
@@ -358,6 +360,11 @@ export default function ProductionPage() {
                     {batch.recipeVersionNumber !== null && (
                       <p className="mt-1 text-xs text-muted">по версии техкарты {batch.recipeVersionNumber}</p>
                     )}
+                    {batch.status === ProductionBatchStatus.COMPLETED && (
+                      <button onClick={() => setDocumentBatchId(batch.id)} className="mt-1 block text-xs font-medium text-accent hover:underline">
+                        Акт выпуска
+                      </button>
+                    )}
                     {batch.status === ProductionBatchStatus.CANCELLED && batch.cancelReason && (
                       <p className="mt-1 text-xs text-muted">
                         {PRODUCTION_CANCEL_REASON_LABELS_RU[batch.cancelReason]}
@@ -610,6 +617,7 @@ export default function ProductionPage() {
       {completingBatch && (
         <CompleteBatchModal
           batch={completingBatch}
+          locations={locations}
           onClose={() => setCompletingBatch(null)}
           onCompleted={() => {
             setCompletingBatch(null);
@@ -617,6 +625,8 @@ export default function ProductionPage() {
           }}
         />
       )}
+
+      {documentBatchId && <ProductionDocumentModal batchId={documentBatchId} onClose={() => setDocumentBatchId(null)} />}
 
       {abortingBatch && (
         <AbortBatchModal

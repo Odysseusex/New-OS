@@ -22,4 +22,10 @@ export class CompleteBatchDto {
   @ValidateNested({ each: true })
   @Type(() => BatchConsumptionLineDto)
   consumption?: BatchConsumptionLineDto[];
+
+  // Where the finished goods go: another own point (e.g. straight to a shop).
+  // Left out = the batch's own point, as before.
+  @IsOptional()
+  @IsString()
+  outputLocationId?: string;
 }

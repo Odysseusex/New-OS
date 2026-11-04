@@ -295,6 +295,8 @@ export interface CompleteProductionBatchRequestDto {
   // write-off), below = «Экономия» (stock comes back); the product's cost
   // stays the norm.
   consumption?: { productId: string; quantity: number }[];
+  // Another own point to put the output in (e.g. straight to a shop); absent = the batch's point.
+  outputLocationId?: string;
 }
 
 // What a batch takes off the shelf per ONE unit of the quantity it consumes
@@ -390,4 +392,39 @@ export interface ProductionUnitCostTrendDto {
   productName: string;
   unit: Unit;
   months: ProductionUnitCostMonthDto[];
+}
+
+// «Акт выпуска» (ТЗ §4.3) of a completed batch.
+export interface ProductionBatchDocumentLineDto {
+  ingredientId: string;
+  ingredientName: string;
+  unit: Unit;
+  norm: number;
+  actual: number;
+  deviation: number;
+  // The cost the consumption was stamped with (average at the time).
+  unitCost: number | null;
+  normAmount: number | null;
+  actualAmount: number | null;
+  deviationValue: number | null;
+}
+
+export interface ProductionBatchDocumentDto {
+  batchId: string;
+  productName: string;
+  unit: Unit;
+  locationName: string;
+  // Where the output went (the batch's point, or a shop it went straight to).
+  outputLocationName: string;
+  plannedQuantity: number;
+  actualQuantity: number;
+  completedAt: string;
+  createdByName: string;
+  recipeVersionNumber: number | null;
+  lines: ProductionBatchDocumentLineDto[];
+  untrackedCost: number;
+  // By the norm (D1); null for a batch completed before costs were recorded.
+  batchCost: number | null;
+  unitCost: number | null;
+  deviationValue: number;
 }
