@@ -44,6 +44,7 @@ import { StocktakeModule } from "./stocktake/stocktake.module";
 import { ReconciliationModule } from "./reconciliation/reconciliation.module";
 import { BankModule } from "./bank/bank.module";
 import { BackupModule } from "./backup/backup.module";
+import { CleanStartModule } from "./clean-start/clean-start.module";
 import { DemoCompanyModule } from "./demo/demo-company.module";
 
 @Module({
@@ -92,6 +93,7 @@ import { DemoCompanyModule } from "./demo/demo-company.module";
     ReconciliationModule,
     BankModule,
     BackupModule,
+    CleanStartModule,
     DemoCompanyModule,
   ],
   controllers: [AppController],

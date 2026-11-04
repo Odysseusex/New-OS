@@ -1,3 +1,4 @@
+import type { CleanStartPreviewDto, CleanStartResultDto } from "@bakery-os/shared";
 import type {
   CashFlowMonthlyDto,
   CashFlowOperationsDto,
@@ -350,6 +351,10 @@ export const api = {
     remove: () => request<{ deleted: true }>("/demo-company", { method: "DELETE" }),
   },
 
+  cleanStart: {
+    preview: () => request<CleanStartPreviewDto>("/clean-start/preview"),
+    execute: (confirmation: string) => request<CleanStartResultDto>("/clean-start", { method: "POST", body: JSON.stringify({ confirmation }) }),
+  },
   backup: {
     status: () => request<{ lastExportAt: string | null; lastExportBy: string | null }>("/backup/status"),
     // The file is built by the server while it streams; the browser keeps it as a download.

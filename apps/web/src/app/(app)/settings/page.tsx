@@ -28,6 +28,7 @@ import { OrganizationRequisitesCard } from "@/components/organization-requisites
 import { AccountingPolicyCard } from "@/components/accounting-policy-card";
 import { AuditLogCard } from "@/components/audit-log-card";
 import { BackupCard } from "@/components/backup-card";
+import { CleanStartCard } from "@/components/clean-start-card";
 import { DemoCompanyCard } from "@/components/demo-company-card";
 import { UserAccountModal } from "@/components/user-account-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
@@ -106,6 +107,7 @@ export default function SettingsPage() {
         {canSeeFiscal && <AccountingPolicyCard />}
         {canSeeFiscal && <AuditLogCard />}
         {isOwner && !isDemo && <BackupCard />}
+        {isOwner && !isDemo && <CleanStartCard />}
         {isOwner && !isDemo && <DemoCompanyCard />}
       </div>
 

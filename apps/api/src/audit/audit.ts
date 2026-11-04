@@ -69,6 +69,7 @@ export const AUDIT_ACTION_GROUPS = {
   stockVoid: ["stockVoid.create"],
   dailyReconciliation: ["dailyReconciliation.save", "dailyReconciliation.apply"],
   dataExport: ["dataExport.download"],
+  cleanStart: ["organization.cleanStart"],
   loyalty: ["loyaltyMember.create", "loyaltyMember.update", "loyaltyMember.consent", "loyaltyMember.merge", "loyaltyMember.import"],
   loyaltyPoints: ["loyaltySettings.update", "loyaltyPoints.adjust"],
   loyaltyFamily: ["loyaltyFamily.add", "loyaltyFamily.update", "loyaltyFamily.remove"],

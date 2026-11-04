@@ -939,6 +939,24 @@ unit cost by Almaty month (12, zero-filled, recharts line). The financiers' acce
   return → the order, production → «Акт выпуска», requisition/transfer №, stocktake, «Сверка дня»); sale, order and batch
   open in place.
 
+## «Начать учёт с чистого листа» (clean start) — built, the owner presses it himself
+
+Owner's decision (04.11.2026): the first two months were invented (stock received from nothing, sales rung up without
+production, no expenses/payroll), so every figure was a lie. Настройки → «Начать учёт с чистого листа» (OWNER only,
+`NotDemoGuard`, `apps/api/src/clean-start/`, `components/clean-start-card.tsx`): preview (`GET /clean-start/preview`,
+writes nothing) → `POST /clean-start {confirmation: "ОЧИСТИТЬ"}`, refused without a backup download
+(`dataExport.download` audit row) in the last 24 h. ONE transaction (timeout 5 min): `clean-start-plan.ts` deletes every
+transactional table of the organization children-first (sales, returns, stock movements/levels, stocktakes, production,
+requisitions, purchases, invoices, cash movements, expenses, bank statements, till shifts, reconciliations, fixed assets,
+periods/snapshots/cost corrections, journal, loyalty points entries, routes, HR shifts/time) and resets cached figures
+(cash account balances → 0, `Product.averageUnitCost` → null, `financeInitializedAt`/opening values/`ledgerStartsAt`/
+`journalEntrySequence`); then checks every removed table is empty or rolls back; audited `organization.cleanStart`.
+KEPT: products, prices, photos, categories, recipes + versions + stages, locations, users/PINs, customers, suppliers,
+loyalty members/consents/birthdays, finance categories, accounts, bank rules, promotions, CRM, planning, audit log.
+**Every table with `organizationId` must be listed as removed or kept** — `clean-start.spec.ts` fails otherwise; a new
+table needs a decision. Afterwards: stocktake per point, then Финансы → «Запустить» (accounts, debts) = the opening position.
+Verified on a full clone of the local database (cleared in ~130 ms, every page loads on the empty books).
+
 ## «Корректировка остатка» of a cash/bank account (built)
 
 Финансы → Банк и касса → «Корректировка остатка» on each active account (`CASH_ADJUSTMENT_ROLES` = OWNER/ADMIN/ACCOUNTANT,
