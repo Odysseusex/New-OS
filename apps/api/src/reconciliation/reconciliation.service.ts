@@ -96,6 +96,10 @@ export class ReconciliationService {
       lines.sort(byShelfOrder);
     }
     for (const line of lines) line.countedQuantity = counted.get(line.productId) ?? null;
+    // Today's cost beside the price (own goods only), so a shortage can be read at cost too.
+    const own = lines.filter((l) => !l.consignment).map((l) => l.productId);
+    const costs = own.length > 0 ? await this.costing.currentUnitCosts(user.organizationId, this.prisma, own) : new Map();
+    for (const line of lines) line.unitCost = line.consignment ? null : (costs.get(line.productId)?.unitCost ?? null);
 
     const num = (d: Prisma.Decimal | null | undefined) => (d === null || d === undefined ? null : d.toNumber());
     return {

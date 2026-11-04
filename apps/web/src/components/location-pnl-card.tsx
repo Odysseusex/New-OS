@@ -8,6 +8,7 @@ import { api, ApiError } from "@/lib/api";
 import { periodLabel, periodRange, type PeriodValue } from "@/lib/period";
 import { formatMoney } from "@/lib/format";
 import { downloadTable, withExportTarget } from "@/lib/export-table";
+import type { XlsxSheet } from "@/lib/xlsx";
 
 const neg = (v: number) => (v === 0 ? 0 : -v);
 const ebitda = (f: PnlFiguresDto) => f.operatingProfit + f.depreciation;
@@ -36,7 +37,8 @@ const LINES: Line[] = [
 ];
 
 // Финансы → P&L → «ОПиУ по точкам»: every point's own P&L side by side with «Итого».
-export function LocationPnlCard({ period, reloadKey }: { period: PeriodValue; reloadKey: unknown }) {
+// `onSheet` hands the table to the page, so the P&L workbook carries it as a sheet of its own.
+export function LocationPnlCard({ period, reloadKey, onSheet }: { period: PeriodValue; reloadKey: unknown; onSheet?: (sheet: XlsxSheet | null) => void }) {
   const range = useMemo(() => periodRange(period), [period]);
   const [data, setData] = useState<PnlByLocationDto | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -57,21 +59,29 @@ export function LocationPnlCard({ period, reloadKey }: { period: PeriodValue; re
   // A percent without revenue is just empty; only the income tax can be «не настроен».
   const show = (line: Line, v: number | null) => (v === null ? (line.percent ? "—" : "не настроен") : line.percent ? `${v.toFixed(1)}%` : formatMoney(v));
 
-  function exportExcel() {
-    if (!data) return;
-    void downloadTable(
-      `opiu-po-tochkam-${period}`,
-      ["Показатель", ...columns.map((c) => c.label)],
-      LINES.map((line) => [
+  const sheet = useMemo<XlsxSheet | null>(() => {
+    if (!data) return null;
+    const cols = [...data.columns.map((c) => ({ label: c.locationName, f: c.figures })), { label: "Итого", f: data.total }];
+    return {
+      name: "По точкам",
+      titleLines: [`ОПиУ по точкам · ${periodLabel(period)}`],
+      headers: ["Показатель", ...cols.map((c) => c.label)],
+      rows: LINES.map((line) => [
         line.label,
-        ...columns.map((c) => {
+        ...cols.map((c) => {
           const v = line.value(c.f);
           if (v === null) return "—";
           return line.percent ? { v, fmt: "percent" as const } : { v, fmt: "money" as const, bold: line.strong };
         }),
       ]),
-      { sheetName: "По точкам", titleLines: [`ОПиУ по точкам · ${periodLabel(period)}`] },
-    );
+    };
+  }, [data, period]);
+  useEffect(() => onSheet?.(sheet), [sheet, onSheet]);
+  useEffect(() => () => onSheet?.(null), [onSheet]);
+
+  function exportExcel() {
+    if (!sheet) return;
+    void downloadTable(`opiu-po-tochkam-${period}`, sheet.headers, sheet.rows, { sheetName: sheet.name, titleLines: sheet.titleLines });
   }
 
   return (

@@ -14,7 +14,7 @@ import { CreateFinanceCategoryDto } from "./dto/create-finance-category.dto";
 import { UpdateFinanceCategoryDto } from "./dto/update-finance-category.dto";
 import { auditFields, recordAudit } from "../audit/audit";
 
-const CATEGORY_AUDIT_FIELDS = ["name", "kind", "costBehavior", "pnlTreatment", "cashActivity", "balanceTreatment", "isActive"] as const;
+const CATEGORY_AUDIT_FIELDS = ["name", "code", "kind", "costBehavior", "pnlTreatment", "cashActivity", "balanceTreatment", "isActive"] as const;
 
 @Injectable()
 export class FinanceCategoriesService {
@@ -44,7 +44,7 @@ export class FinanceCategoriesService {
       throw new ConflictException("Такая категория уже существует");
     }
     const category = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.financeCategory.create({ data: { ...dto, organizationId } });
+      const created = await tx.financeCategory.create({ data: { ...dto, code: dto.code?.trim() || null, organizationId } });
       await recordAudit(tx, {
         organizationId,
         actorId,
@@ -77,7 +77,10 @@ export class FinanceCategoriesService {
       }
     }
     const updated = await this.prisma.$transaction(async (tx) => {
-      const saved = await tx.financeCategory.update({ where: { id: categoryId }, data: { name: dto.name } });
+      const saved = await tx.financeCategory.update({
+        where: { id: categoryId },
+        data: { name: dto.name, ...(dto.code !== undefined ? { code: dto.code.trim() || null } : {}) },
+      });
       await recordAudit(tx, {
         organizationId,
         actorId,
@@ -224,6 +227,7 @@ export class FinanceCategoriesService {
   private toDto = (category: {
     id: string;
     name: string;
+    code?: string | null;
     kind: string;
     isActive: boolean;
     costBehavior: string;
@@ -233,6 +237,7 @@ export class FinanceCategoriesService {
   }): FinanceCategoryDto => ({
     id: category.id,
     name: category.name,
+    code: category.code ?? null,
     kind: category.kind as FinanceCategoryKind,
     isActive: category.isActive,
     costBehavior: category.costBehavior as CostBehavior,

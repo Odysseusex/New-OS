@@ -75,6 +75,7 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
 import { downloadWorkbook, withExportTarget } from "@/lib/export-table";
+import type { XlsxSheet } from "@/lib/xlsx";
 import { NewExpenseModal } from "@/components/new-expense-modal";
 import { PeriodPicker } from "@/components/period-picker";
 import { periodLabel, periodRange, type PeriodValue } from "@/lib/period";
@@ -195,6 +196,9 @@ export default function FinancePage() {
 
   const [dashboard, setDashboard] = useState<FinanceDashboardDto | null>(null);
   const [pnl, setPnl] = useState<ProfitAndLossDto | null>(null);
+  // Tables of the «по точкам» / «по направлениям» cards, added to the P&L workbook.
+  const [locationSheet, setLocationSheet] = useState<XlsxSheet | null>(null);
+  const [directionSheet, setDirectionSheet] = useState<XlsxSheet | null>(null);
   const [openProduct, setOpenProduct] = useState<{ id: string; name: string } | null>(null);
   const [breakEven, setBreakEven] = useState<BreakEvenDto | null>(null);
   // Плановая («что мы запланировали») vs фактическая («что реально
@@ -424,6 +428,9 @@ export default function FinancePage() {
           p.markupPercent !== null ? { v: p.markupPercent, fmt: "percent" as const } : "—",
         ]),
       },
+      // The cards below the ladder hand their tables over, so one file has every view.
+      ...(locationSheet && !locationFilter ? [locationSheet] : []),
+      ...(directionSheet ? [directionSheet] : []),
     ]);
   }
 
@@ -984,9 +991,9 @@ export default function FinancePage() {
 
           {pnl && <PnlLadder pnl={pnl} />}
 
-          {pnl && !locationFilter && <LocationPnlCard period={period} reloadKey={pnl} />}
+          {pnl && !locationFilter && <LocationPnlCard period={period} reloadKey={pnl} onSheet={setLocationSheet} />}
 
-          {pnl && <DirectionPnlCard period={period} locationId={locationFilter} reloadKey={pnl} />}
+          {pnl && <DirectionPnlCard period={period} locationId={locationFilter} reloadKey={pnl} onSheet={setDirectionSheet} />}
 
           {pnl && pnl.unknownCostLineItems > 0 && (
             <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -1441,7 +1448,8 @@ function CategoryList({
       <ul className="divide-y divide-border">
         {categories.map((c) => (
           <li key={c.id} className={clsx("flex items-center justify-between gap-3 px-5 py-3 text-sm", !c.isActive && "opacity-50")}>
-            <button onClick={() => canManage && onEdit(c)} className={clsx("text-foreground", canManage && "hover:underline")}>
+            <button onClick={() => canManage && onEdit(c)} className={clsx("text-left text-foreground", canManage && "hover:underline")}>
+              {c.code && <span className="mr-2 font-mono text-xs text-muted">{c.code}</span>}
               {c.name}
             </button>
             <div className="flex items-center gap-2">

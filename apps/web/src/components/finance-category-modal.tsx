@@ -21,6 +21,7 @@ export function FinanceCategoryModal({
   onSaved: () => void;
 }) {
   const [name, setName] = useState(category?.name ?? "");
+  const [code, setCode] = useState(category?.code ?? "");
   const kind = category?.kind ?? defaultKind;
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -31,9 +32,9 @@ export function FinanceCategoryModal({
     setIsSubmitting(true);
     try {
       if (category) {
-        await api.finance.categories.update(category.id, { name });
+        await api.finance.categories.update(category.id, { name, code: code.trim() });
       } else {
-        await api.finance.categories.create({ name, kind });
+        await api.finance.categories.create({ name, kind, code: code.trim() || undefined });
       }
       onSaved();
     } catch (err) {
@@ -54,6 +55,18 @@ export function FinanceCategoryModal({
             autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
+            className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+          />
+        </div>
+
+        <div className="mb-5">
+          <label className="mb-1.5 block text-sm font-medium text-foreground">Код статьи</label>
+          <input
+            type="text"
+            maxLength={20}
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="например, 2.1.3"
             className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
           />
         </div>

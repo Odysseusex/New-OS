@@ -36,6 +36,7 @@ export enum WriteOffReason {
   DAMAGED = "DAMAGED",
   PRODUCTION_DEFECT = "PRODUCTION_DEFECT",
   QUALITY_ISSUE = "QUALITY_ISSUE",
+  TASTING = "TASTING",
   OTHER = "OTHER",
   // Written by production only: raw material used above the recipe norm.
   PRODUCTION_OVERUSE = "PRODUCTION_OVERUSE",
@@ -47,6 +48,7 @@ export const MANUAL_WRITE_OFF_REASONS: WriteOffReason[] = [
   WriteOffReason.DAMAGED,
   WriteOffReason.PRODUCTION_DEFECT,
   WriteOffReason.QUALITY_ISSUE,
+  WriteOffReason.TASTING,
   WriteOffReason.OTHER,
 ];
 
@@ -55,6 +57,7 @@ export const WRITE_OFF_REASON_LABELS_RU: Record<WriteOffReason, string> = {
   [WriteOffReason.DAMAGED]: "Повреждено при хранении/транспортировке",
   [WriteOffReason.PRODUCTION_DEFECT]: "Брак производства",
   [WriteOffReason.QUALITY_ISSUE]: "Не соответствует стандартам качества",
+  [WriteOffReason.TASTING]: "Дегустация",
   [WriteOffReason.OTHER]: "Другое",
   [WriteOffReason.PRODUCTION_OVERUSE]: "Перерасход в производстве",
 };
@@ -110,6 +113,18 @@ export interface StockMovementDto {
   costAmount?: number | null;
   // Sale and return rows: what the buyer paid per unit.
   salePrice?: number | null;
+  // The document behind the row, to open it from the history (null = a manual entry).
+  document?: StockMovementDocumentDto | null;
+}
+
+export type StockMovementDocumentKind = "SALE" | "PURCHASE_ORDER" | "BATCH" | "REQUISITION" | "STOCKTAKE" | "RECONCILIATION";
+
+export interface StockMovementDocumentDto {
+  kind: StockMovementDocumentKind;
+  // Sale (a return opens its sale), purchase order (a supplier return opens its order),
+  // production batch, requisition/transfer, stocktake, «Сверка дня» worksheet.
+  id: string;
+  label: string;
 }
 
 // Most rows the history returns at once (a period or a product narrows it).

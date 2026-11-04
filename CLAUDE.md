@@ -916,6 +916,29 @@ unit cost by Almaty month (12, zero-filled, recharts line). The financiers' acce
   `receive({ payNow: { accountId } })` = «Оплачено сразу»: checked first (SUPPLIER_PAYMENT_ROLES, cutover on, account),
   then the receipt, then `recordPayment` of the balance due (note «Оплачено при приёмке»).
 
+## ТЗ audit follow-ups (04.11.2026) — small items closed after the strict audit
+
+- **ОПиУ by article**: `ProfitAndLossDto.operatingExpenseLines` / `otherResultLines` (`{label, amount}` per finance article,
+  «Без статьи» for none; disposals of fixed assets as their own line) shown as sub rows in `pnl-ladder.tsx`. The P&L
+  «Excel» is ONE workbook: ОПиУ + По товарам + По точкам + По направлениям (the two cards hand their sheet up via `onSheet`).
+- **Closing a month** = `PERIOD_CLOSE_ROLES` (OWNER/ADMIN/ACCOUNTANT); reopening stays OWNER only.
+- **Balance**: «Денежные средства» broken down by account (`cashByAccountAt`), expense payables by article.
+- Отчёты → Рентабельность «По группам товаров» (top-level category of the sale-time snapshot); Склад → ОСВ group filter.
+- Sale card shows cost / gross profit / margin / markup for FINANCE_VIEW_ROLES (`SaleItemDto.unitCost`, the line stamp).
+- X/Z reports and «Смены»: card takings «в т.ч. Kaspi QR» (`Sale.terminalMethod === "qr"`, `till-takings.ts`).
+- `WriteOffReason.TASTING` «Дегустация» (manual reason; migration `20261118120000`).
+- «Сверка дня»: lines carry today's `unitCost` (own goods); the summary adds `shortageCost`/`surplusCost` beside the price
+  figures — information only, the result stays at the price.
+- Инвентаризация: «Excel»/«PDF» = инвентаризационная опись (by book / fact / difference / cost / sum), not in a blind count.
+- **Purchase orders have our own number** (`PurchaseOrder.number`, unique per org, nullable only for rows written straight
+  to the DB by specs; `ProcurementService.withNextNumber`; migration `20261118130000` numbered existing orders by
+  `orderedAt`). `GET /procurement/orders/:id`. «Новый заказ поставщику» has a «Сумма» per line: typing it sets the price
+  = sum ÷ quantity to the тиын (prices are stored to 2 decimals).
+- `FinanceCategory.code` (optional, ≤ 20 chars, «Статьи ДДС» shows it before the name; empty string clears it).
+- Склад → «Движения»: `StockMovementDto.document` names the source (check, return → its check, purchase order / supplier
+  return → the order, production → «Акт выпуска», requisition/transfer №, stocktake, «Сверка дня»); sale, order and batch
+  open in place.
+
 ## Baker's calculator (расчёт техкарты на количество) — built
 
 Производство → a calculator icon on every active recipe card and on every task row (task opens at its

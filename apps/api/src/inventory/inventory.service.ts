@@ -9,6 +9,7 @@ import {
   StockBatchResultDto,
   StockLevelDto,
   StockMovementDto,
+  StockMovementDocumentDto,
   StockMovementType,
   Unit,
   WriteOffReason,
@@ -128,7 +129,16 @@ export class InventoryService {
         ...(filter.type ? { type: filter.type as PrismaStockMovementType } : {}),
         ...(filter.from || filter.to ? { createdAt: { ...(filter.from ? { gte: filter.from } : {}), ...(filter.to ? { lte: filter.to } : {}) } } : {}),
       },
-      include: { location: true, product: true, createdBy: true, voidLine: { select: { voidId: true } } },
+      include: {
+        location: true,
+        product: true,
+        createdBy: true,
+        voidLine: { select: { voidId: true } },
+        saleReturn: { select: { saleId: true } },
+        purchaseOrder: { select: { number: true } },
+        supplierReturn: { select: { purchaseOrderId: true, purchaseOrder: { select: { number: true } } } },
+        materialRequisition: { select: { kind: true, number: true } },
+      },
       orderBy: { createdAt: "desc" },
       take: limit,
     });
@@ -183,6 +193,7 @@ export class InventoryService {
         unitCost: unitCost === null ? null : round2(unitCost),
         costAmount: unitCost === null ? null : round2(Math.abs(quantity) * unitCost),
         salePrice: m.saleId ? salePriceOf(`s:${m.saleId}:${m.productId}`) : m.saleReturnId ? salePriceOf(`r:${m.saleReturnId}:${m.productId}`) : null,
+        document: movementDocument(m),
       };
     });
   }
@@ -479,4 +490,33 @@ export class InventoryService {
       createdAt: movement.createdAt.toISOString(),
     };
   }
+}
+
+// The document a stock row came from, so the history can open it.
+function movementDocument(m: {
+  saleId: string | null;
+  saleReturn: { saleId: string } | null;
+  purchaseOrderId: string | null;
+  purchaseOrder: { number: number | null } | null;
+  supplierReturn: { purchaseOrderId: string; purchaseOrder: { number: number | null } } | null;
+  batchId: string | null;
+  materialRequisitionId: string | null;
+  materialRequisition: { kind: string; number: number } | null;
+  stocktakeId: string | null;
+  dailyReconciliationId: string | null;
+}): StockMovementDocumentDto | null {
+  if (m.saleId) return { kind: "SALE", id: m.saleId, label: "Чек" };
+  if (m.saleReturn) return { kind: "SALE", id: m.saleReturn.saleId, label: "Возврат по чеку" };
+  const no = (n: number | null | undefined) => (n ? ` №${n}` : "");
+  if (m.purchaseOrderId) return { kind: "PURCHASE_ORDER", id: m.purchaseOrderId, label: `Заказ поставщику${no(m.purchaseOrder?.number)}` };
+  if (m.supplierReturn)
+    return { kind: "PURCHASE_ORDER", id: m.supplierReturn.purchaseOrderId, label: `Возврат по заказу${no(m.supplierReturn.purchaseOrder.number)}` };
+  if (m.batchId) return { kind: "BATCH", id: m.batchId, label: "Акт выпуска" };
+  if (m.materialRequisitionId && m.materialRequisition) {
+    const name = m.materialRequisition.kind === "TRANSFER" ? "Перемещение" : "Требование-накладная";
+    return { kind: "REQUISITION", id: m.materialRequisitionId, label: `${name} №${m.materialRequisition.number}` };
+  }
+  if (m.stocktakeId) return { kind: "STOCKTAKE", id: m.stocktakeId, label: "Инвентаризация" };
+  if (m.dailyReconciliationId) return { kind: "RECONCILIATION", id: m.dailyReconciliationId, label: "Сверка дня" };
+  return null;
 }

@@ -28,6 +28,9 @@ export interface ReconciliationStockLineDto {
   consignment: boolean;
   // The product's price — what a missing unit would have brought at the till.
   price: number;
+  // Today's cost of one unit (our own goods only; null = unknown or consignment).
+  // Information beside the price: the result stays at the price.
+  unitCost?: number | null;
   opening: number;
   // Receipts, transfers in, production output.
   received: number;
@@ -149,6 +152,9 @@ export interface ReconciliationSummary {
   // Value of what is missing / extra on the shelf, both ≥ 0.
   shortageValue: number;
   surplusValue: number;
+  // The same differences at cost (lines with a known cost only).
+  shortageCost?: number;
+  surplusCost?: number;
   // surplus − shortage; null when nothing was counted.
   goodsDifference: number | null;
   // money + goods; null when neither side was counted.
@@ -166,7 +172,7 @@ export function summarizeReconciliation(input: {
   countedCash: number | null;
   countedCard: number | null;
   countedTransfer: number | null;
-  lines: Pick<ReconciliationStockLineDto, "closing" | "countedQuantity" | "price">[];
+  lines: Pick<ReconciliationStockLineDto, "closing" | "countedQuantity" | "price" | "unitCost">[];
 }): ReconciliationSummary {
   const { money } = input;
   const till = money.tillMovements.reduce((sum, m) => sum + m.amount, 0);
@@ -182,6 +188,8 @@ export function summarizeReconciliation(input: {
 
   let shortageValue = 0;
   let surplusValue = 0;
+  let shortageCost = 0;
+  let surplusCost = 0;
   let countedLines = 0;
   for (const line of input.lines) {
     const d = lineDifference(line);
@@ -190,6 +198,11 @@ export function summarizeReconciliation(input: {
     const value = d * line.price;
     if (value < 0) shortageValue -= value;
     else surplusValue += value;
+    if (line.unitCost !== undefined && line.unitCost !== null) {
+      const cost = d * line.unitCost;
+      if (cost < 0) shortageCost -= cost;
+      else surplusCost += cost;
+    }
   }
   shortageValue = round2(shortageValue);
   surplusValue = round2(surplusValue);
@@ -208,6 +221,8 @@ export function summarizeReconciliation(input: {
     totalLines: input.lines.length,
     shortageValue,
     surplusValue,
+    shortageCost: round2(shortageCost),
+    surplusCost: round2(surplusCost),
     goodsDifference,
     result,
   };

@@ -331,7 +331,10 @@ export default function ProcurementPage() {
                   <td className="px-5 py-3">
                     <StatusBadge status={order.status} />
                   </td>
-                  <td className="px-5 py-3 text-muted">{formatDateTime(order.orderedAt)}</td>
+                  <td className="px-5 py-3 text-muted">
+                    {order.number && <div className="font-medium text-foreground">№{order.number}</div>}
+                    {formatDateTime(order.orderedAt)}
+                  </td>
                   {canManageOrders && (
                     <td className="px-5 py-3">
                       {order.status === PurchaseOrderStatus.PLACED && (

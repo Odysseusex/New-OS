@@ -3,8 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { Search, X } from "lucide-react";
-import type { LocationDto, ProductDto, StockMovementDto } from "@bakery-os/shared";
-import { STOCK_MOVEMENT_TYPE_LABELS_RU, STOCK_MOVEMENTS_MAX, StockMovementType, UNIT_LABELS_RU } from "@bakery-os/shared";
+import type { LocationDto, ProductDto, PurchaseOrderDto, StockMovementDocumentDto, StockMovementDto } from "@bakery-os/shared";
+import { PURCHASE_ORDER_REVISE_ROLES, STOCK_MOVEMENT_TYPE_LABELS_RU, STOCK_MOVEMENTS_MAX, StockMovementType, UNIT_LABELS_RU } from "@bakery-os/shared";
+import { useAuth } from "@/lib/auth-context";
+import { SaleDetailModal } from "@/components/sale-detail-modal";
+import { ProductionDocumentModal } from "@/components/production-document-modal";
+import { PurchaseOrderDocumentModal } from "@/components/purchase-order-document-modal";
 import { api, ApiError } from "@/lib/api";
 import { formatDateTime, formatMoney, formatMoneyPrecise, formatQuantity } from "@/lib/format";
 import { addDaysKey, firstOfMonthKey, startOfZonedDay, zonedDateKey } from "@/lib/reporting-period";
@@ -42,6 +46,8 @@ function signedQuantity(m: StockMovementDto): number {
 
 export type MovementProductFilter = { id: string; name: string };
 
+const OPENABLE = new Set<StockMovementDocumentDto["kind"]>(["SALE", "PURCHASE_ORDER", "BATCH"]);
+
 export function StockMovementsTab({
   locations,
   isOrgWide,
@@ -58,6 +64,23 @@ export function StockMovementsTab({
   onProductChange: (product: MovementProductFilter | null) => void;
 }) {
   const [period, setPeriod] = useState<Period>("7d");
+  const { user } = useAuth();
+  // The document a row was opened from (sale, purchase order, production batch).
+  const [openSaleId, setOpenSaleId] = useState<string | null>(null);
+  const [openBatchId, setOpenBatchId] = useState<string | null>(null);
+  const [openOrder, setOpenOrder] = useState<PurchaseOrderDto | null>(null);
+  const [docError, setDocError] = useState<string | null>(null);
+
+  function openDocument(doc: StockMovementDocumentDto) {
+    setDocError(null);
+    if (doc.kind === "SALE") setOpenSaleId(doc.id);
+    else if (doc.kind === "BATCH") setOpenBatchId(doc.id);
+    else if (doc.kind === "PURCHASE_ORDER")
+      api.procurement
+        .order(doc.id)
+        .then(setOpenOrder)
+        .catch((err) => setDocError(err instanceof ApiError ? err.message : "Не удалось открыть заказ"));
+  }
   const [locationId, setLocationId] = useState(initialLocationId);
   const [type, setType] = useState<StockMovementType | "">("");
   const [search, setSearch] = useState("");
@@ -177,6 +200,17 @@ export function StockMovementsTab({
         </div>
       )}
 
+      {docError && <div className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{docError}</div>}
+      {openSaleId && <SaleDetailModal saleId={openSaleId} canRecordPayment={false} onClose={() => setOpenSaleId(null)} />}
+      {openBatchId && <ProductionDocumentModal batchId={openBatchId} onClose={() => setOpenBatchId(null)} />}
+      {openOrder && (
+        <PurchaseOrderDocumentModal
+          order={openOrder}
+          canRevise={user ? PURCHASE_ORDER_REVISE_ROLES.includes(user.role) : false}
+          onClose={() => setOpenOrder(null)}
+          onChanged={setOpenOrder}
+        />
+      )}
       <div className="overflow-x-auto rounded-2xl border border-border bg-surface shadow-card">
         <table className="w-full text-sm">
           <thead>
@@ -216,6 +250,15 @@ export function StockMovementsTab({
                       {m.voided && <span className="ml-2 rounded-full bg-surface-muted px-2 py-0.5 text-xs text-muted">аннулировано</span>}
                     </div>
                     {m.reason && m.reason !== STOCK_MOVEMENT_TYPE_LABELS_RU[m.type] && <div className="text-xs">{m.reason}</div>}
+                    {m.document &&
+                      m.document.label !== m.reason &&
+                      (OPENABLE.has(m.document.kind) ? (
+                        <button onClick={() => openDocument(m.document!)} className="text-xs font-medium text-accent hover:underline">
+                          {m.document.label} →
+                        </button>
+                      ) : (
+                        <div className="text-xs">{m.document.label}</div>
+                      ))}
                   </td>
                   <td
                     className={clsx(

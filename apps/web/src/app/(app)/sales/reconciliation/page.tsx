@@ -318,7 +318,14 @@ function ReconciliationScreen() {
             <SummaryCard
               label="Товар"
               value={summary.goodsDifference}
-              detail={summary.countedLines > 0 ? `Недостача ${formatMoney(summary.shortageValue)} · излишек ${formatMoney(summary.surplusValue)}` : undefined}
+              detail={
+                summary.countedLines > 0
+                  ? `Недостача ${formatMoney(summary.shortageValue)} · излишек ${formatMoney(summary.surplusValue)}` +
+                    (summary.shortageCost !== undefined && (summary.shortageCost > 0 || (summary.surplusCost ?? 0) > 0)
+                      ? ` · по себестоимости: недостача ${formatMoney(summary.shortageCost)} · излишек ${formatMoney(summary.surplusCost ?? 0)}`
+                      : "")
+                  : undefined
+              }
             />
             <SummaryCard label="Итог" value={summary.result} emphasis />
           </div>

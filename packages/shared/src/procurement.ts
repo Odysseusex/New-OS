@@ -82,6 +82,8 @@ export interface PurchaseOrderDto {
   orderedAt: string;
   receivedAt: string | null;
   // The supplier's own document number and a comment (null = not stated).
+  // Our own number, per organization (null only on rows made outside the service).
+  number: number | null;
   supplierDocNumber: string | null;
   note: string | null;
   createdByName: string;

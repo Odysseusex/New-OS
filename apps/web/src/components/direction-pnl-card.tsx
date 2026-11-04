@@ -18,6 +18,7 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { periodLabel, periodRange, type PeriodValue } from "@/lib/period";
 import { formatMoney } from "@/lib/format";
+import type { XlsxSheet } from "@/lib/xlsx";
 import { downloadTable, withExportTarget } from "@/lib/export-table";
 
 type Figures = Omit<DirectionPnlRowDto, "direction" | "revenueSharePercent" | "allocationSharePercent"> & {
@@ -34,7 +35,17 @@ type Line = { label: string; value: (f: Figures) => number | null; kind?: "money
 // Финансы → P&L → «Прибыль по направлениям»: опт / розница / заказы side by side
 // with the total. Выручка and себестоимость are each direction's own; common
 // costs are shared by the organization's chosen base (the server does all of it).
-export function DirectionPnlCard({ period, locationId, reloadKey }: { period: PeriodValue; locationId: string; reloadKey: unknown }) {
+export function DirectionPnlCard({
+  period,
+  locationId,
+  reloadKey,
+  onSheet,
+}: {
+  period: PeriodValue;
+  locationId: string;
+  reloadKey: unknown;
+  onSheet?: (sheet: XlsxSheet | null) => void;
+}) {
   const { user } = useAuth();
   const canChoose = user ? DIRECTION_ALLOCATION_ROLES.includes(user.role) : false;
   const range = useMemo(() => periodRange(period), [period]);
@@ -95,26 +106,29 @@ export function DirectionPnlCard({ period, locationId, reloadKey }: { period: Pe
     return formatMoney(v);
   };
 
-  function exportExcel() {
-    if (!data) return;
-    void downloadTable(
-      `pribyl-po-napravleniyam-${period}`,
-      ["Показатель", ...columns.map((c) => (c.key === "total" ? "Итого" : `${c.label}`))],
-      lines.map((line) => [
-        line.label,
-        ...columns.map((c) => {
-          const v = line.value(c.f);
-          if (v === null) return line.nullText ?? "—";
-          if (line.kind === "percent") return { v, fmt: "percent" as const };
-          if (line.kind === "count") return v;
-          return { v, fmt: "money" as const, bold: line.strong };
-        }),
-      ]),
-      {
-        sheetName: "По направлениям",
+  const sheet: XlsxSheet | null = data
+    ? {
+        name: "По направлениям",
         titleLines: [`Прибыль по направлениям · ${periodLabel(period)}`, `База распределения общих расходов: ${DIRECTION_ALLOCATION_BASE_LABELS_RU[data.allocation.base]}`],
-      },
-    );
+        headers: ["Показатель", ...columns.map((c) => (c.key === "total" ? "Итого" : `${c.label}`))],
+        rows: lines.map((line) => [
+          line.label,
+          ...columns.map((c) => {
+            const v = line.value(c.f);
+            if (v === null) return line.nullText ?? "—";
+            if (line.kind === "percent") return { v, fmt: "percent" as const };
+            if (line.kind === "count") return v;
+            return { v, fmt: "money" as const, bold: line.strong };
+          }),
+        ]),
+      }
+    : null;
+  useEffect(() => onSheet?.(sheet), [data, period]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => onSheet?.(null), [onSheet]);
+
+  function exportExcel() {
+    if (!sheet) return;
+    void downloadTable(`pribyl-po-napravleniyam-${period}`, sheet.headers, sheet.rows, { sheetName: sheet.name, titleLines: sheet.titleLines });
   }
 
   return (

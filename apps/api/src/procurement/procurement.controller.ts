@@ -64,6 +64,11 @@ export class ProcurementController {
     return this.procurementService.returnToSupplier(user, id, dto);
   }
 
+  @Get(":id")
+  findOne(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
+    return this.procurementService.findOne(user, id);
+  }
+
   @Get(":id/history")
   history(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
     return this.procurementService.history(user, id);

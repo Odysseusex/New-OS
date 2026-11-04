@@ -939,6 +939,7 @@ export const api = {
   procurement: {
     orders: (locationId?: string) =>
       request<PurchaseOrderDto[]>(withQuery("/procurement/orders", { locationId })),
+    order: (id: string) => request<PurchaseOrderDto>(`/procurement/orders/${id}`),
     createOrder: (dto: CreatePurchaseOrderRequestDto) =>
       request<PurchaseOrderDto>("/procurement/orders", {
         method: "POST",

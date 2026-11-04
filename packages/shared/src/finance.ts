@@ -95,6 +95,7 @@ export const COST_BEHAVIOR_LABELS_RU: Record<CostBehavior, string> = {
 export interface FinanceCategoryDto {
   id: string;
   name: string;
+  code?: string | null;
   kind: FinanceCategoryKind;
   isActive: boolean;
   costBehavior: CostBehavior;
@@ -107,10 +108,14 @@ export interface CreateFinanceCategoryRequestDto {
   name: string;
   kind: FinanceCategoryKind;
   costBehavior?: CostBehavior;
+  // The article's code («2.1.3»); empty = none.
+  code?: string;
 }
 
 export interface UpdateFinanceCategoryRequestDto {
   name: string;
+  // Absent = unchanged; empty string = remove the code.
+  code?: string;
 }
 
 export interface SetFinanceCategoryCostBehaviorRequestDto {

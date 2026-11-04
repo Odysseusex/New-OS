@@ -154,7 +154,7 @@ export function PurchaseOrderDocumentModal({
   }
 
   return (
-    <Modal title={`Заказ поставщику — ${doc.supplierName}`} onClose={onClose} width="max-w-3xl">
+    <Modal title={`Заказ поставщику${doc.number ? ` №${doc.number}` : ""} — ${doc.supplierName}`} onClose={onClose} width="max-w-3xl">
       <div className="space-y-5">
         <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
           <Field label="Статус" value={PURCHASE_ORDER_STATUS_LABELS_RU[doc.status]} />

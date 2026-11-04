@@ -206,6 +206,35 @@ export class ProcurementService {
     return orders.map((o) => this.toDto(o, cutoverAt));
   }
 
+  // One order, e.g. opened from a row of the stock history.
+  async findOne(user: AuthenticatedUser, id: string): Promise<PurchaseOrderDto> {
+    const locationId = resolveLocationScope(user, undefined);
+    const order = await this.prisma.purchaseOrder.findFirst({
+      where: { id, organizationId: user.organizationId, ...(locationId ? { locationId } : {}) },
+      include: ProcurementService.ORDER_INCLUDE,
+    });
+    if (!order) throw new NotFoundException("Заказ не найден");
+    return this.toDto(order, await this.cutoverAt(user.organizationId));
+  }
+
+  // The next order number in the organization; a concurrent order taking it first
+  // makes the unique index refuse, and we take the next one.
+  private async withNextNumber<T>(organizationId: string, create: (number: number) => Promise<T>): Promise<T> {
+    for (let attempt = 0; ; attempt += 1) {
+      const last = await this.prisma.purchaseOrder.findFirst({
+        where: { organizationId, number: { not: null } },
+        orderBy: { number: "desc" },
+        select: { number: true },
+      });
+      try {
+        return await create((last?.number ?? 0) + 1);
+      } catch (err) {
+        if (attempt < 4 && err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") continue;
+        throw err;
+      }
+    }
+  }
+
   async create(user: AuthenticatedUser, dto: CreatePurchaseOrderDto): Promise<PurchaseOrderDto> {
     const locationId = requireLocationScope(user, dto.locationId);
 
@@ -237,19 +266,22 @@ export class ProcurementService {
     const totalCost = round2(items.reduce((sum, i) => sum + i.subtotal, 0));
 
     // Placing an order creates NO payable: nothing has been delivered yet.
-    const order = await this.prisma.purchaseOrder.create({
-      data: {
-        organizationId: user.organizationId,
-        supplierId: dto.supplierId,
-        locationId,
-        totalCost,
-        supplierDocNumber: dto.supplierDocNumber?.trim() || null,
-        note: dto.note?.trim() || null,
-        createdById: user.id,
-        items: { create: items },
-      },
-      include: ProcurementService.ORDER_INCLUDE,
-    });
+    const order = await this.withNextNumber(user.organizationId, (number) =>
+      this.prisma.purchaseOrder.create({
+        data: {
+          organizationId: user.organizationId,
+          number,
+          supplierId: dto.supplierId,
+          locationId,
+          totalCost,
+          supplierDocNumber: dto.supplierDocNumber?.trim() || null,
+          note: dto.note?.trim() || null,
+          createdById: user.id,
+          items: { create: items },
+        },
+        include: ProcurementService.ORDER_INCLUDE,
+      }),
+    );
 
     return this.toDto(order, await this.cutoverAt(user.organizationId));
   }
@@ -1173,6 +1205,7 @@ export class ProcurementService {
       receivedTotal: { toNumber: () => number } | null;
       orderedAt: Date;
       receivedAt: Date | null;
+      number?: number | null;
       supplierDocNumber?: string | null;
       note?: string | null;
       createdBy: { fullName: string };
@@ -1221,6 +1254,7 @@ export class ProcurementService {
       totalCost: order.totalCost.toNumber(),
       orderedAt: order.orderedAt.toISOString(),
       receivedAt: order.receivedAt ? order.receivedAt.toISOString() : null,
+      number: order.number ?? null,
       supplierDocNumber: order.supplierDocNumber ?? null,
       note: order.note ?? null,
       createdByName: order.createdBy.fullName,

@@ -24,6 +24,7 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
 import { focusNextCount, printCountSheet } from "@/lib/count-sheet";
+import { downloadTable, withExportTarget } from "@/lib/export-table";
 
 // Per-viewer convenience: the unit a product is usually counted in (yeast in grams).
 const COUNT_UNIT_KEY = (productId: string) => `stocktake-unit:${productId}`;
@@ -364,6 +365,19 @@ function StocktakeDetail({
           <Printer className="h-4 w-4" strokeWidth={1.75} />
           Печать бланка
         </button>
+        {!st.blind && (
+          <>
+            <button onClick={() => exportInventoryList(st)} className="rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted">
+              Excel
+            </button>
+            <button
+              onClick={() => withExportTarget("pdf", () => exportInventoryList(st))}
+              className="rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+            >
+              PDF
+            </button>
+          </>
+        )}
       </div>
       {counting && canManage && (
         <p className="mb-3 text-xs text-muted">Количество можно вводить так: 3*25+12 (мешки и россыпь), 350г — для товара в кг; кнопка «кг/г» у поля переключает единицу. Enter — к следующему.</p>
@@ -601,5 +615,33 @@ function CountRow({
         </td>
       )}
     </tr>
+  );
+}
+
+// Инвентаризационная опись: by book, counted, difference and its value per line.
+function exportInventoryList(st: StocktakeDto) {
+  const rows = st.lines.map((l) => [
+    l.productName,
+    l.sku,
+    l.categoryName ?? "",
+    UNIT_LABELS_RU[l.unit],
+    l.systemQuantity,
+    l.countedQuantity,
+    l.difference,
+    l.unitCost === null ? null : { v: l.unitCost, fmt: "money" as const },
+    l.differenceValue === null ? null : { v: l.differenceValue, fmt: "money" as const },
+  ]);
+  void downloadTable(
+    `inventarizaciya-${st.snapshotAt.slice(0, 10)}`,
+    ["Товар", "Артикул", "Категория", "Ед.", "По учёту", "Факт", "Расхождение", "Себестоимость ед.", "Сумма расхождения"],
+    [
+      ...rows,
+      ["Итого: недостача", "", "", "", null, null, null, null, { v: -st.shortageValue, fmt: "money" as const, bold: true }],
+      ["Итого: излишек", "", "", "", null, null, null, null, { v: st.surplusValue, fmt: "money" as const, bold: true }],
+    ],
+    {
+      sheetName: "Опись",
+      titleLines: [`Инвентаризационная опись · ${st.locationName}`, `Остатки на ${formatDateTime(st.snapshotAt)}`],
+    },
   );
 }

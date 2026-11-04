@@ -15,9 +15,19 @@ interface Row {
   productId: string;
   quantity: string;
   unitCost: string;
+  // A line total typed by hand (from the supplier's invoice); the price follows from it.
+  sum?: string;
 }
 
 let nextKey = 1;
+// Price from a typed line total: sum ÷ quantity, to the тиын (the order stores prices to 2 decimals).
+function priceFromSum(sum: string | undefined, quantity: string): Partial<Row> {
+  if (sum === undefined || sum.trim() === "") return {};
+  const q = Number(quantity);
+  if (!(q > 0)) return {};
+  return { unitCost: String(Math.round((Number(sum) / q) * 100) / 100) };
+}
+
 const emptyRow = (): Row => ({ key: nextKey++, productId: "", quantity: "", unitCost: "" });
 
 export function NewPurchaseOrderModal({
@@ -70,7 +80,7 @@ export function NewPurchaseOrderModal({
   function pickProduct(index: number, productId: string) {
     // The last purchase price on the card, to change when it costs more or less now.
     const product = products.find((p) => p.id === productId);
-    updateRow(index, { productId, unitCost: product ? String(product.price) : "" });
+    updateRow(index, { productId, unitCost: product ? String(product.price) : "", sum: undefined });
   }
 
   function removeRow(index: number) {
@@ -174,7 +184,7 @@ export function NewPurchaseOrderModal({
                 min="0"
                 step="any"
                 value={row.quantity}
-                onChange={(e) => updateRow(index, { quantity: e.target.value })}
+                onChange={(e) => updateRow(index, { quantity: e.target.value, ...priceFromSum(row.sum, e.target.value) })}
                 className="w-20 rounded-xl border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
                 placeholder="Кол-во"
               />
@@ -184,9 +194,19 @@ export function NewPurchaseOrderModal({
                 min="0"
                 step="any"
                 value={row.unitCost}
-                onChange={(e) => updateRow(index, { unitCost: e.target.value })}
+                onChange={(e) => updateRow(index, { unitCost: e.target.value, sum: undefined })}
                 className="w-28 rounded-xl border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
                 placeholder="Цена"
+              />
+              <input
+                type="number"
+                min="0"
+                step="any"
+                title="Сумма строки: цена посчитается сама"
+                value={row.sum ?? (Number(row.quantity) > 0 && row.unitCost !== "" ? String(Math.round(Number(row.quantity) * Number(row.unitCost) * 100) / 100) : "")}
+                onChange={(e) => updateRow(index, { sum: e.target.value, ...priceFromSum(e.target.value, row.quantity) })}
+                className="w-28 rounded-xl border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                placeholder="Сумма"
               />
               <button
                 type="button"
