@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { FileText, Plus, Trash2 } from "lucide-react";
-import type { LocationDto, MaterialRequisitionDto, ProductDto, RequisitionPlanBatchDto } from "@bakery-os/shared";
+import type { LocationDto, MaterialRequisitionDto, ProductDto, RequisitionIssueReportDto, RequisitionPlanBatchDto } from "@bakery-os/shared";
 import {
   LocationType,
   MATERIAL_REQUISITION_CREATE_ROLES,
@@ -17,7 +17,7 @@ import {
 } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { formatDate, formatDateTime, formatQuantity } from "@/lib/format";
+import { formatDate, formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
 import { zonedDateKey } from "@/lib/reporting-period";
 import { downloadTable, withExportTarget } from "@/lib/export-table";
 import { Modal } from "@/components/modal";
@@ -154,6 +154,7 @@ export function RequisitionsTab({ locations, products }: { locations: LocationDt
           }}
         />
       )}
+      <IssueReconciliationCard locations={locations} />
     </div>
   );
 }
@@ -511,5 +512,133 @@ function RequisitionModal({
         )}
       </div>
     </Modal>
+  );
+}
+
+// Сверка выдачи (ТЗ §4): what the warehouse issued to a workshop by requisitions over a
+// period against the norm of what its completed batches produced. Above zero = issued
+// beyond the norm (the difference sits in the workshop or went into overuse).
+function IssueReconciliationCard({ locations }: { locations: LocationDto[] }) {
+  const workshops = useMemo(() => locations.filter((l) => l.isActive !== false), [locations]);
+  const today = zonedDateKey();
+  const [locationId, setLocationId] = useState("");
+  const [from, setFrom] = useState(`${today.slice(0, 8)}01`);
+  const [to, setTo] = useState(today);
+  const [report, setReport] = useState<RequisitionIssueReportDto | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!locationId && workshops.length > 0) {
+      setLocationId((workshops.find((l) => l.type === "BAKERY_PRODUCTION") ?? workshops[0]).id);
+    }
+  }, [workshops, locationId]);
+
+  useEffect(() => {
+    if (!locationId || !from || !to) return;
+    setError(null);
+    api.requisitions
+      .issueReport(locationId, from, to)
+      .then(setReport)
+      .catch((err) => {
+        setReport(null);
+        setError(err instanceof ApiError ? err.message : "Не удалось загрузить сверку");
+      });
+  }, [locationId, from, to]);
+
+  function exportTable() {
+    if (!report) return;
+    const point = workshops.find((l) => l.id === report.locationId)?.name ?? "";
+    void downloadTable(
+      `sverka-vydachi-${report.from}-${report.to}`,
+      ["Сырьё", "Ед.", "Выдано", "Выдано, ₸", "Норма на выпуск", "Норма, ₸", "Факт расхода", "Выдано сверх нормы", "Сверх нормы, ₸"],
+      report.lines.map((l) => [
+        l.productName,
+        UNIT_LABELS_RU[l.unit],
+        l.issued,
+        { v: l.issuedValue, fmt: "money" as const },
+        l.norm,
+        { v: l.normValue, fmt: "money" as const },
+        l.actual,
+        l.overIssued,
+        { v: l.overIssuedValue, fmt: "money" as const },
+      ]),
+      { sheetName: "Сверка выдачи", titleLines: [`Сверка выдачи · ${point}`, `${formatDate(report.from)} — ${formatDate(report.to)}`] },
+    );
+  }
+
+  const field = "rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
+  return (
+    <div className="mt-6 rounded-2xl border border-border bg-surface shadow-card">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
+        <h2 className="text-sm font-semibold text-foreground">Сверка выдачи с нормой выпуска</h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={locationId} onChange={(e) => setLocationId(e.target.value)} className={field}>
+            {workshops.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={field} />
+          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={field} />
+          <button onClick={exportTable} disabled={!report} className="rounded-xl border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-surface-muted disabled:opacity-50">
+            Excel
+          </button>
+          <button
+            onClick={() => withExportTarget("pdf", exportTable)}
+            disabled={!report}
+            className="rounded-xl border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-surface-muted disabled:opacity-50"
+          >
+            PDF
+          </button>
+        </div>
+      </div>
+      {error && <p className="px-5 py-4 text-sm text-red-700">{error}</p>}
+      {report && report.lines.length === 0 && <p className="px-5 py-6 text-center text-sm text-muted">За период нет выдачи и выпуска</p>}
+      {report && report.lines.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+              <tr>
+                <th className="px-5 py-3 font-medium">Сырьё</th>
+                <th className="px-5 py-3 text-right font-medium">Выдано</th>
+                <th className="px-5 py-3 text-right font-medium">Норма на выпуск</th>
+                <th className="px-5 py-3 text-right font-medium">Факт расхода</th>
+                <th className="px-5 py-3 text-right font-medium">Сверх нормы</th>
+                <th className="px-5 py-3 text-right font-medium">Сверх нормы, ₸</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {report.lines.map((l) => {
+                const u = UNIT_LABELS_RU[l.unit];
+                return (
+                  <tr key={l.productId}>
+                    <td className="px-5 py-3 text-foreground">{l.productName}</td>
+                    <td className="px-5 py-3 text-right text-foreground">{formatQuantity(l.issued)} {u}</td>
+                    <td className="px-5 py-3 text-right text-foreground">{formatQuantity(l.norm)} {u}</td>
+                    <td className="px-5 py-3 text-right text-muted">{formatQuantity(l.actual)} {u}</td>
+                    <td className={clsx("px-5 py-3 text-right font-medium", l.overIssued > 0 ? "text-red-700" : l.overIssued < 0 ? "text-emerald-700" : "text-foreground")}>
+                      {l.overIssued > 0 ? "+" : ""}
+                      {formatQuantity(l.overIssued)} {u}
+                    </td>
+                    <td className={clsx("px-5 py-3 text-right", l.overIssuedValue > 0 ? "text-red-700" : "text-foreground")}>{formatMoney(l.overIssuedValue)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot className="border-t border-border bg-surface-muted text-sm font-semibold">
+              <tr>
+                <td className="px-5 py-3 text-foreground">Итого</td>
+                <td className="px-5 py-3 text-right text-foreground">{formatMoney(report.totals.issuedValue)}</td>
+                <td className="px-5 py-3 text-right text-foreground">{formatMoney(report.totals.normValue)}</td>
+                <td />
+                <td />
+                <td className="px-5 py-3 text-right text-foreground">{formatMoney(report.totals.overIssuedValue)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }

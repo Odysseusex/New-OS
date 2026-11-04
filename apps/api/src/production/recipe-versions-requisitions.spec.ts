@@ -152,6 +152,21 @@ describe("требование-накладная", () => {
     await expect(requisitions.remove(org.user, req.id)).rejects.toThrow(/удалить нельзя/);
   });
 
+  it("сверка выдачи: issued by requisitions against the norm of the completed output", async () => {
+    const planned = (await prisma.productionBatch.findMany({ where: { organizationId: org.organizationId, status: "PLANNED", plannedQuantity: 20 } }))[0];
+    await services.production.start(org.user, planned.id);
+    await services.production.complete(org.user, planned.id, { actualQuantity: 20 } as never);
+    const report = await requisitions.issueReport(org.user, org.storeId, today, today);
+    const flour = report.lines.find((l) => l.productId === flourId)!;
+    const sugar = report.lines.find((l) => l.productId === sugarId)!;
+    expect(flour.issued).toBe(12.5);
+    expect(sugar.issued).toBe(4);
+    expect(flour.norm).toBeGreaterThanOrEqual(12);
+    for (const l of [flour, sugar]) expect(l.overIssued).toBeCloseTo(l.issued - l.norm, 3);
+    expect(report.totals.overIssuedValue).toBeCloseTo(report.totals.issuedValue - report.totals.normValue, 2);
+    await expect(requisitions.issueReport(org.user, org.storeId, today, "2020-01-01")).rejects.toThrow("период");
+  });
+
   it("refuses to issue more than the warehouse holds, and an untracked item", async () => {
     await expect(
       requisitions.create(org.user, { fromLocationId: org.warehouseId, toLocationId: org.storeId, planDate: today, lines: [{ productId: waterId, quantity: 1 }] }),

@@ -92,3 +92,28 @@ export interface CreateStockTransferRequestDto {
   note?: string;
   lines: { productId: string; quantity: number }[];
 }
+
+// Сверка выдачи (ТЗ §4): what the warehouse issued to a workshop by requisitions over a
+// period against what the batches completed there consumed — at the norm and in fact.
+// «Выдано сверх нормы» = issued − norm (positive: more was issued than the output needed).
+export interface RequisitionIssueLineDto {
+  productId: string;
+  productName: string;
+  unit: Unit;
+  issued: number;
+  issuedValue: number;
+  norm: number;
+  normValue: number;
+  // Norm + overuse written off at completion − savings.
+  actual: number;
+  overIssued: number;
+  overIssuedValue: number;
+}
+
+export interface RequisitionIssueReportDto {
+  locationId: string;
+  from: string;
+  to: string;
+  lines: RequisitionIssueLineDto[];
+  totals: { issuedValue: number; normValue: number; overIssuedValue: number };
+}

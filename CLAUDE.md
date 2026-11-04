@@ -885,6 +885,10 @@ unit cost by Almaty month (12, zero-filled, recharts line). The financiers' acce
   be unticked, lines edited/added. DRAFT (editable, deletable) → POSTED (trigger: never changed again): a TRANSFER_OUT /
   TRANSFER_IN pair per line with `StockMovement.materialRequisitionId`, same cost stamp on both legs (like a route
   delivery) — no money, events or ledger. Numbered per organization; audited `materialRequisition.*`. Printable.
+- «Сверка выдачи с нормой выпуска» (card under Производство → «Требования», `GET /production/requisitions/issue-report
+  ?locationId&from&to`, Almaty days): per raw material at one workshop — issued by requisitions (TRANSFER_IN of kind
+  REQUISITION), the norm of completed batches (PRODUCTION_CONSUMPTION), the actual (norm + PRODUCTION_OVERUSE − savings),
+  and «сверх нормы» = issued − norm in quantity and ₸ (stamped costs). Read-only; Excel/PDF.
 
 ## ТЗ remainder (04.11.2026) — dashboard, ДДС filters, ОПиУ by points, balance inventory split, transfers, act of output, PO fields
 

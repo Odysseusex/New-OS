@@ -18,6 +18,12 @@ export class MaterialRequisitionsController {
     return this.requisitions.list(user, from, to);
   }
 
+  // Сверка выдачи: issued by requisitions vs consumed by completed batches, per raw material.
+  @Get("issue-report")
+  issueReport(@CurrentUser() user: AuthenticatedUser, @Query("locationId") locationId: string, @Query("from") from: string, @Query("to") to: string) {
+    return this.requisitions.issueReport(user, locationId, from, to);
+  }
+
   // The day's tasks at the workshop and their need by the recipes.
   @Get("need")
   @Roles(...MATERIAL_REQUISITION_CREATE_ROLES)

@@ -1,3 +1,4 @@
+import type { RequisitionIssueReportDto } from "@bakery-os/shared";
 import type { CleanStartPreviewDto, CleanStartResultDto } from "@bakery-os/shared";
 import type {
   CashFlowMonthlyDto,
@@ -775,6 +776,8 @@ export const api = {
   requisitions: {
     list: (params: { from?: string; to?: string } = {}) => request<MaterialRequisitionDto[]>(withQuery("/production/requisitions", params)),
     get: (id: string) => request<MaterialRequisitionDto>(`/production/requisitions/${id}`),
+    issueReport: (locationId: string, from: string, to: string) =>
+      request<RequisitionIssueReportDto>(withQuery("/production/requisitions/issue-report", { locationId, from, to })),
     need: (params: { fromLocationId: string; toLocationId: string; date: string; batchIds?: string[] }) =>
       request<RequisitionNeedDto>(
         withQuery("/production/requisitions/need", {

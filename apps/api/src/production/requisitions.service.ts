@@ -9,6 +9,7 @@ import {
   MaterialRequisitionStatus,
   ORG_WIDE_ROLES,
   ProductType,
+  RequisitionIssueReportDto,
   RequisitionNeedDto,
   Unit,
 } from "@bakery-os/shared";
@@ -138,6 +139,79 @@ export class MaterialRequisitionsService {
       })),
       lines,
       missing: [...missing],
+    };
+  }
+
+  // Сверка выдачи: issued to the workshop by requisitions vs consumed by its completed batches.
+  async issueReport(user: AuthenticatedUser, locationId: string, from: string, to: string): Promise<RequisitionIssueReportDto> {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from ?? "") || !/^\d{4}-\d{2}-\d{2}$/.test(to ?? "") || from > to) {
+      throw new BadRequestException("Укажите период");
+    }
+    const location = await this.prisma.location.findFirst({ where: { id: locationId, organizationId: user.organizationId }, select: { id: true } });
+    if (!location) throw new NotFoundException("Точка не найдена");
+    if (user.locationId && !ORG_WIDE_ROLES.includes(user.role) && user.locationId !== locationId) {
+      throw new ForbiddenException("Нет доступа к этой точке");
+    }
+    const createdAt = { gte: startOfZonedDate(from), lt: startOfZonedDate(addDays(to, 1)) };
+    const base = { organizationId: user.organizationId, locationId, createdAt };
+    const select = { productId: true, quantity: true, unitCost: true };
+    const [issued, consumed, overuse, savings] = await Promise.all([
+      this.prisma.stockMovement.findMany({
+        where: { ...base, type: StockMovementType.TRANSFER_IN, materialRequisition: { kind: MaterialRequisitionKind.REQUISITION } },
+        select,
+      }),
+      this.prisma.stockMovement.findMany({ where: { ...base, type: StockMovementType.PRODUCTION_CONSUMPTION, batchId: { not: null } }, select }),
+      this.prisma.stockMovement.findMany({ where: { ...base, type: StockMovementType.WRITE_OFF, writeOffReason: "PRODUCTION_OVERUSE", batchId: { not: null } }, select }),
+      this.prisma.stockMovement.findMany({ where: { ...base, type: StockMovementType.ADJUSTMENT, batchId: { not: null }, quantity: { gt: 0 } }, select }),
+    ]);
+    type Acc = { issued: number; issuedValue: number; norm: number; normValue: number; extra: number };
+    const acc = new Map<string, Acc>();
+    const of = (id: string) => {
+      let a = acc.get(id);
+      if (!a) acc.set(id, (a = { issued: 0, issuedValue: 0, norm: 0, normValue: 0, extra: 0 }));
+      return a;
+    };
+    const value = (m: { quantity: Prisma.Decimal; unitCost: Prisma.Decimal | null }) => Math.abs(m.quantity.toNumber()) * (m.unitCost?.toNumber() ?? 0);
+    for (const m of issued) {
+      of(m.productId).issued += m.quantity.toNumber();
+      of(m.productId).issuedValue += value(m);
+    }
+    for (const m of consumed) {
+      of(m.productId).norm += Math.abs(m.quantity.toNumber());
+      of(m.productId).normValue += value(m);
+    }
+    for (const m of overuse) of(m.productId).extra += Math.abs(m.quantity.toNumber());
+    for (const m of savings) of(m.productId).extra -= m.quantity.toNumber();
+
+    const products = await this.prisma.product.findMany({ where: { organizationId: user.organizationId, id: { in: [...acc.keys()] } }, select: { id: true, name: true, unit: true } });
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const lines = products
+      .map((p) => {
+        const a = acc.get(p.id)!;
+        return {
+          productId: p.id,
+          productName: p.name,
+          unit: p.unit as Unit,
+          issued: round3(a.issued),
+          issuedValue: round2(a.issuedValue),
+          norm: round3(a.norm),
+          normValue: round2(a.normValue),
+          actual: round3(a.norm + a.extra),
+          overIssued: round3(a.issued - a.norm),
+          overIssuedValue: round2(a.issuedValue - a.normValue),
+        };
+      })
+      .sort((x, y) => Math.abs(y.overIssuedValue) - Math.abs(x.overIssuedValue) || x.productName.localeCompare(y.productName, "ru"));
+    return {
+      locationId,
+      from,
+      to,
+      lines,
+      totals: {
+        issuedValue: round2(lines.reduce((s, l) => s + l.issuedValue, 0)),
+        normValue: round2(lines.reduce((s, l) => s + l.normValue, 0)),
+        overIssuedValue: round2(lines.reduce((s, l) => s + l.overIssuedValue, 0)),
+      },
     };
   }
 
