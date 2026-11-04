@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import clsx from "clsx";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Download, FileText } from "lucide-react";
 import { BALANCE_STATUS_LABELS_RU, BalanceStatus } from "@bakery-os/shared";
 import type { BalanceSectionDto, BalanceSheetDto, InventoryRollForwardDto } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { formatMoney, formatQuantity } from "@/lib/format";
+import { downloadTable, withExportTarget } from "@/lib/export-table";
 
 const STATUS_STYLES: Record<BalanceStatus, string> = {
   [BalanceStatus.BALANCED]: "bg-green-50 text-green-700",
@@ -41,6 +42,27 @@ export function BalanceTab() {
 
   if (error) return <p className="text-sm text-red-700">{error}</p>;
   if (!sheet) return <p className="text-sm text-muted">Загрузка…</p>;
+  const shown = sheet;
+
+  // The statement as one table: a section heading, its lines, its total.
+  function exportBalance() {
+    const money = (v: number, bold = false) => ({ v, fmt: "money" as const, bold });
+    const rows: (string | { v: string | number | null; fmt?: "money"; bold?: boolean })[][] = [];
+    const section = (title: string, sec: BalanceSectionDto, extra: { label: string; amount: number }[] = []) => {
+      rows.push([{ v: title, bold: true }]);
+      for (const l of [...sec.lines, ...extra]) rows.push([l.label, money(l.amount)]);
+      rows.push([{ v: `Итого: ${title.toLowerCase()}`, bold: true }, money(sec.total, true)]);
+    };
+    section("Активы", shown.assets);
+    section("Обязательства", shown.liabilities);
+    section("Капитал", shown.equity, [{ label: "Накопленный финансовый результат", amount: shown.equity.accumulatedResult }]);
+    rows.push([{ v: "Обязательства + капитал", bold: true }, money(shown.liabilities.total + shown.equity.total, true)]);
+    const [y, m, d] = asOf.split("-");
+    void downloadTable(`balans-${asOf}`, ["Статья", "Сумма, ₸"], rows, {
+      sheetName: "Баланс",
+      titleLines: [`Управленческий баланс на ${d}.${m}.${y}`, BALANCE_STATUS_LABELS_RU[shown.status]],
+    });
+  }
 
   return (
     <div className="space-y-5">
@@ -55,6 +77,22 @@ export function BalanceTab() {
         <span className={clsx("rounded-full px-3 py-1 text-sm font-medium", STATUS_STYLES[sheet.status])}>
           {BALANCE_STATUS_LABELS_RU[sheet.status]}
         </span>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={exportBalance}
+            className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground transition hover:bg-surface-muted"
+          >
+            <Download className="h-4 w-4" strokeWidth={1.75} />
+            Excel
+          </button>
+          <button
+            onClick={() => withExportTarget("pdf", exportBalance)}
+            className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground transition hover:bg-surface-muted"
+          >
+            <FileText className="h-4 w-4" strokeWidth={1.75} />
+            PDF
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">

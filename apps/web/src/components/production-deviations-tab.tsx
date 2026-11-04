@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { FileDown } from "lucide-react";
+import { FileDown, FileText} from "lucide-react";
 import type { LocationDto, ProductionDeviationReportDto } from "@bakery-os/shared";
 import { UNIT_LABELS_RU } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { PeriodPicker } from "@/components/period-picker";
 import { periodLabel, periodRange, type PeriodValue } from "@/lib/period";
 import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
-import { downloadTable } from "@/lib/export-table";
+import { downloadTable, withExportTarget } from "@/lib/export-table";
 
 // Производство → «Отклонения»: raw material really used against the recipe norm.
 export function ProductionDeviationsTab({ locations, isOrgWide }: { locations: LocationDto[]; isOrgWide: boolean }) {
@@ -79,6 +79,14 @@ export function ProductionDeviationsTab({ locations, isOrgWide }: { locations: L
           >
             <FileDown className="h-4 w-4" strokeWidth={1.75} />
             Excel
+          </button>
+          <button
+            onClick={() => withExportTarget("pdf", () => exportExcel())}
+            disabled={!report || report.lines.length === 0}
+            className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground transition hover:bg-surface-muted disabled:opacity-40"
+          >
+            <FileText className="h-4 w-4" strokeWidth={1.75} />
+            PDF
           </button>
         </div>
       </div>

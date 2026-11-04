@@ -842,6 +842,11 @@ export interface CashFlowOperationsDto {
 }
 
 export const CASH_FLOW_MONTHS_MAX = 24;
+export const CASH_FLOW_DAYS_MAX = 62;
+export const CASH_FLOW_WEEKS_MAX = 53;
+
+// The columns of the ДДС grid: calendar months, weeks (Mon–Sun) or days, in Almaty.
+export type CashFlowGranularity = "month" | "week" | "day";
 export const CASH_FLOW_OPERATIONS_MAX = 500;
 
 export interface CashFlowDto {

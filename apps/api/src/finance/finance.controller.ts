@@ -11,7 +11,7 @@ import { FinancialPeriodsService } from "./periods/periods.service";
 import { CreateExpenseDto } from "./dto/create-expense.dto";
 import { RecordExpensePaymentDto } from "./dto/record-expense-payment.dto";
 import { GetPnlQueryDto } from "./dto/get-pnl-query.dto";
-import { CashFlowMonthlyQueryDto, CashFlowOperationsQueryDto } from "./dto/cash-flow-monthly-query.dto";
+import { CashFlowByDateQueryDto, CashFlowDateOperationsQueryDto, CashFlowMonthlyQueryDto, CashFlowOperationsQueryDto } from "./dto/cash-flow-monthly-query.dto";
 import { GetProductPnlQueryDto } from "./dto/get-product-pnl-query.dto";
 
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -94,6 +94,17 @@ export class FinanceController {
   @Get("cash-flow/monthly")
   getCashFlowMonthly(@CurrentUser() user: AuthenticatedUser, @Query() query: CashFlowMonthlyQueryDto) {
     return this.financeService.getCashFlowMonthly(user.organizationId, query.fromMonth, query.toMonth);
+  }
+
+  // ДДС with a column per week or per day: from/to are dates, "YYYY-MM-DD".
+  @Get("cash-flow/by-date")
+  getCashFlowByDate(@CurrentUser() user: AuthenticatedUser, @Query() query: CashFlowByDateQueryDto) {
+    return this.financeService.getCashFlowByDate(user.organizationId, query.granularity, query.fromDate, query.toDate);
+  }
+
+  @Get("cash-flow/operations-by-date")
+  getCashFlowOperationsByDate(@CurrentUser() user: AuthenticatedUser, @Query() query: CashFlowDateOperationsQueryDto) {
+    return this.financeService.getCashFlowOperationsByDate(user.organizationId, query.section, query.label, query.fromDate, query.toDate);
   }
 
   // The movements behind one cell of that report.

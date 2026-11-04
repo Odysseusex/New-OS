@@ -973,6 +973,10 @@ export const api = {
       request<CashFlowMonthlyDto>(withQuery("/finance/cash-flow/monthly", { fromMonth, toMonth })),
     cashFlowOperations: (q: { section: string; label: string; fromMonth: string; toMonth: string }) =>
       request<CashFlowOperationsDto>(withQuery("/finance/cash-flow/operations", q)),
+    cashFlowByDate: (granularity: "week" | "day", fromDate: string, toDate: string) =>
+      request<CashFlowMonthlyDto>(withQuery("/finance/cash-flow/by-date", { granularity, fromDate, toDate })),
+    cashFlowOperationsByDate: (q: { section: string; label: string; fromDate: string; toDate: string }) =>
+      request<CashFlowOperationsDto>(withQuery("/finance/cash-flow/operations-by-date", q)),
     breakEven: (from: string, to: string, locationId?: string) =>
       request<BreakEvenDto>(withQuery("/finance/break-even", { from, to, locationId })),
     plannedBreakEven: (from: string, to: string, locationId?: string) =>

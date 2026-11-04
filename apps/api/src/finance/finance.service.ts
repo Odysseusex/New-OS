@@ -17,6 +17,7 @@ import { expenseAccrualEffect, isCategoryFullyClassified, pnlLineOfTreatment } f
 import { buildCashFlowFromEvents } from "./events/cash-flow-statement";
 import { buildCashFlowMonthly, cashFlowOperations } from "./events/cash-flow-monthly";
 import { monthRanges } from "../common/month-ranges";
+import { dayRanges, weekRanges } from "../common/day-ranges";
 import { round2, round3 } from "../common/money";
 import {
   BreakEvenDto,
@@ -1468,6 +1469,21 @@ export class FinanceService {
     const ranges = monthRanges(fromMonth, toMonth);
     const events = await this.events.project(organizationId, { upTo: ranges[ranges.length - 1].to });
     return buildCashFlowMonthly(events, ranges);
+  }
+
+  // The same grid with a column per week (Mon–Sun) or per day.
+  async getCashFlowByDate(organizationId: string, granularity: "week" | "day", fromDate: string, toDate: string): Promise<CashFlowMonthlyDto> {
+    const ranges = granularity === "day" ? dayRanges(fromDate, toDate) : weekRanges(fromDate, toDate);
+    const events = await this.events.project(organizationId, { upTo: ranges[ranges.length - 1].to });
+    return buildCashFlowMonthly(events, ranges);
+  }
+
+  // The movements behind a cell of the weekly/daily grid: whole days from/to.
+  async getCashFlowOperationsByDate(organizationId: string, section: CashSection, label: string, fromDate: string, toDate: string): Promise<CashFlowOperationsDto> {
+    const ranges = dayRanges(fromDate, toDate, new Date(), 400);
+    const to = ranges[ranges.length - 1].to;
+    const events = await this.events.project(organizationId, { upTo: to });
+    return cashFlowOperations(events, section, label, ranges[0].from, to);
   }
 
   // The movements behind one cell of the monthly ДДС (or a row's total: pass the

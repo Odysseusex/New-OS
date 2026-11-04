@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Download, Search } from "lucide-react";
+import { Download, Search, FileText} from "lucide-react";
 import type { LocationDto, StockTurnoverDto, Unit } from "@bakery-os/shared";
 import { PRODUCT_TYPE_LABELS_RU, ProductType, UNIT_LABELS_RU } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { PeriodPicker } from "@/components/period-picker";
 import { periodRange, type PeriodValue } from "@/lib/period";
-import { downloadTable } from "@/lib/export-table";
+import { downloadTable, withExportTarget } from "@/lib/export-table";
 import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
 
 const selectClass =
@@ -113,6 +113,15 @@ export function StockTurnoverTab({ locations, isOrgWide }: { locations: Location
         >
           <Download className="h-4 w-4" strokeWidth={1.75} />
           Excel
+        </button>
+        <button
+          type="button"
+          disabled={!data}
+          onClick={() => withExportTarget("pdf", () => exportExcel())}
+          className="ml-auto flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted disabled:opacity-50"
+        >
+          <FileText className="h-4 w-4" strokeWidth={1.75} />
+          PDF
         </button>
       </div>
 

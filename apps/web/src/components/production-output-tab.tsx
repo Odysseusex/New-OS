@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { FileDown } from "lucide-react";
+import { FileDown, FileText} from "lucide-react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { LocationDto, ProductionOutputReportDto, ProductionUnitCostMonthDto, ProductionUnitCostTrendDto } from "@bakery-os/shared";
 import { UNIT_LABELS_RU } from "@bakery-os/shared";
@@ -9,7 +9,7 @@ import { api, ApiError } from "@/lib/api";
 import { PeriodPicker } from "@/components/period-picker";
 import { periodLabel, periodRange, type PeriodValue } from "@/lib/period";
 import { formatMoney, formatQuantity } from "@/lib/format";
-import { downloadTable } from "@/lib/export-table";
+import { downloadTable, withExportTarget } from "@/lib/export-table";
 
 const MONTHS_RU = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
 const monthLabel = (key: string) => `${MONTHS_RU[Number(key.slice(5, 7)) - 1]} ${key.slice(2, 4)}`;
@@ -71,6 +71,14 @@ export function ProductionOutputTab({ locations, isOrgWide }: { locations: Locat
           >
             <FileDown className="h-4 w-4" strokeWidth={1.75} />
             Excel
+          </button>
+          <button
+            onClick={() => withExportTarget("pdf", () => exportExcel())}
+            disabled={!report || report.rows.length === 0}
+            className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground transition hover:bg-surface-muted disabled:opacity-40"
+          >
+            <FileText className="h-4 w-4" strokeWidth={1.75} />
+            PDF
           </button>
         </div>
       </div>

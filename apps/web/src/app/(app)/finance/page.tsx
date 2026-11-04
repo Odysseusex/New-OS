@@ -23,6 +23,7 @@ import {
   TrendingDown,
   TrendingUp,
   Wallet,
+  FileText,
 } from "lucide-react";
 import type {
   BreakEvenDto,
@@ -72,7 +73,7 @@ import {
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
-import { downloadWorkbook } from "@/lib/export-table";
+import { downloadWorkbook, withExportTarget } from "@/lib/export-table";
 import { NewExpenseModal } from "@/components/new-expense-modal";
 import { PeriodPicker } from "@/components/period-picker";
 import { periodLabel, periodRange, type PeriodValue } from "@/lib/period";
@@ -961,6 +962,14 @@ export default function FinancePage() {
               >
                 <Download className="h-4 w-4" strokeWidth={1.75} />
                 Excel
+              </button>
+              <button
+                onClick={() => withExportTarget("pdf", () => exportPnlCsv())}
+                disabled={!pnl}
+                className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3.5 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted disabled:opacity-50"
+              >
+                <FileText className="h-4 w-4" strokeWidth={1.75} />
+                PDF
               </button>
             </div>
           </div>

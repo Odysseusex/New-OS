@@ -1,5 +1,6 @@
 import { CashSection, FinancialEvent, FinancialEventType } from "@bakery-os/shared";
 import { monthRanges, startOfZonedMonth } from "../../common/month-ranges";
+import { dayRanges, weekRanges } from "../../common/day-ranges";
 import { buildCashFlowMonthly, cashFlowOperations } from "./cash-flow-monthly";
 import { buildCashFlowFromEvents } from "./cash-flow-statement";
 
@@ -105,5 +106,37 @@ describe("ДДС by month", () => {
     const all = monthRanges("2026-09", "2026-11", now);
     const whole = cashFlowOperations(events, CashSection.OPERATING, "Выручка", all[0].from, all[all.length - 1].to);
     expect(whole.total).toBe(14140);
+  });
+});
+
+describe("ДДС by weeks and days", () => {
+  const now = new Date("2026-11-02T08:00:00Z"); // Monday 02.11 13:00 in Almaty
+  const events: FinancialEvent[] = [
+    event("open", "2026-10-01T05:00:00.000Z", 1000, CashSection.OPENING, "Остаток", FinancialEventType.OPENING_BALANCE),
+    event("a", "2026-10-26T05:00:00.000Z", 500, CashSection.OPERATING, "Выручка", FinancialEventType.CUSTOMER_RECEIPT), // Mon
+    event("b", "2026-10-31T18:30:00.000Z", 100, CashSection.OPERATING, "Выручка", FinancialEventType.CUSTOMER_RECEIPT), // Sat 23:30
+    event("c", "2026-10-31T19:30:00.000Z", 40, CashSection.OPERATING, "Выручка", FinancialEventType.CUSTOMER_RECEIPT), // Sun 00:30
+    event("d", "2026-11-02T06:00:00.000Z", -200, CashSection.OPERATING, "Аренда"), // Mon
+  ];
+
+  it("cuts weeks Monday to Sunday inside the asked range, the current one at now", () => {
+    const weeks = weekRanges("2026-10-28", "2026-11-02", now);
+    expect(weeks.map((w) => w.key)).toEqual(["2026-10-28", "2026-11-02"]);
+    expect(weeks[0].from.toISOString()).toBe("2026-10-27T19:00:00.000Z");
+    expect(weeks[0].to.toISOString()).toBe("2026-11-01T18:59:59.999Z");
+    expect(weeks[1].to).toBe(now);
+    expect(() => weekRanges("2026-11-02", "2026-11-03", now)).toThrow("будущие");
+  });
+
+  it("days chain closing to opening, and days add up to the period statement", () => {
+    const days = dayRanges("2026-10-26", "2026-11-02", now);
+    expect(days).toHaveLength(8);
+    const report = buildCashFlowMonthly(events, days);
+    for (let i = 1; i < report.months.length; i += 1) expect(report.months[i].openingBalance).toBe(report.months[i - 1].closingBalance);
+    const byKey = Object.fromEntries(report.months.map((m) => [m.key, m.netFlow]));
+    expect(byKey).toMatchObject({ "2026-10-26": 500, "2026-10-31": 100, "2026-11-01": 40, "2026-11-02": -200 });
+    const whole = buildCashFlowFromEvents(events, days[0].from, now);
+    expect(report.closingBalance).toBe(whole.closingBalance);
+    expect(() => dayRanges("2026-01-01", "2026-11-02", now)).toThrow("Не больше 62");
   });
 });

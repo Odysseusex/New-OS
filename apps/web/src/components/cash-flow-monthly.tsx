@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
-import { Download } from "lucide-react";
-import type { CashFlowMonthlyDto, CashFlowOperationsDto, CashFlowMonthCellDto } from "@bakery-os/shared";
+import { Download, FileText} from "lucide-react";
+import type { CashFlowGranularity, CashFlowMonthlyDto, CashFlowOperationsDto, CashFlowMonthCellDto } from "@bakery-os/shared";
 import { CASH_SECTION_LABELS_RU, CashSection } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
-import { downloadTable } from "@/lib/export-table";
+import { downloadTable, withExportTarget } from "@/lib/export-table";
 import { addDaysKey, firstOfMonthKey, zonedDateKey } from "@/lib/reporting-period";
 import { Modal } from "@/components/modal";
 
@@ -39,51 +39,95 @@ const formatMoney = (value: number) => tengeFormat.format(Math.round(value));
 const net = (c: CashFlowMonthCellDto) => Math.round((c.inflow - c.outflow) * 100) / 100;
 const signed = (n: number) => (Math.abs(n) < 0.005 ? "—" : formatMoney(n));
 
-// Five months back to the current one: a quarter or two on one screen.
-function defaultRange(): { from: string; to: string } {
-  const current = zonedDateKey().slice(0, 7);
-  let from = firstOfMonthKey(zonedDateKey());
+const dm = (key: string) => `${key.slice(8, 10)}.${key.slice(5, 7)}`;
+
+// Defaults: six months, eight weeks or two weeks of days back to today.
+function defaultRange(g: CashFlowGranularity): { from: string; to: string } {
+  const today = zonedDateKey();
+  if (g === "day") return { from: addDaysKey(today, -13), to: today };
+  if (g === "week") {
+    const weekday = (new Date(`${today}T12:00:00Z`).getUTCDay() + 6) % 7;
+    return { from: addDaysKey(today, -weekday - 7 * 7), to: today };
+  }
+  let from = firstOfMonthKey(today);
   for (let i = 0; i < 5; i += 1) from = addDaysKey(from, -1).slice(0, 7) + "-01";
-  return { from: from.slice(0, 7), to: current };
+  return { from: from.slice(0, 7), to: today.slice(0, 7) };
+}
+
+const GRANULARITY_LABELS: [CashFlowGranularity, string][] = [
+  ["month", "Месяцы"],
+  ["week", "Недели"],
+  ["day", "Дни"],
+];
+
+// A column's caption: «нояб. 2026», «26.10–01.11» or «04.11».
+function columnLabel(g: CashFlowGranularity, m: { key: string; to: string }): string {
+  if (g === "month") return monthLabel(m.key);
+  if (g === "day") return dm(m.key);
+  const last = zonedDateKey(new Date(m.to));
+  return last === m.key ? dm(m.key) : `${dm(m.key)}–${dm(last)}`;
+}
+
+// The first and last calendar day (or month) a column covers, for its operations.
+function columnSpan(g: CashFlowGranularity, m: { key: string; to: string }): { from: string; to: string } {
+  if (g === "month") return { from: m.key, to: m.key };
+  return { from: m.key, to: g === "day" ? m.key : zonedDateKey(new Date(m.to)) };
 }
 
 interface Drill {
   title: string;
   section: CashSection;
   label: string;
-  fromMonth: string;
-  toMonth: string;
+  granularity: CashFlowGranularity;
+  from: string;
+  to: string;
 }
 
 export function CashFlowMonthly() {
-  const initial = useMemo(defaultRange, []);
-  const [fromMonth, setFromMonth] = useState(initial.from);
-  const [toMonth, setToMonth] = useState(initial.to);
+  const [granularity, setGranularity] = useState<CashFlowGranularity>("month");
+  const initial = useMemo(() => defaultRange("month"), []);
+  const [fromKey, setFromKey] = useState(initial.from);
+  const [toKey, setToKey] = useState(initial.to);
   const [report, setReport] = useState<CashFlowMonthlyDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [drill, setDrill] = useState<Drill | null>(null);
+  // The granularity the shown report was built for (the switch may already have moved on).
+  const [shown, setShown] = useState<CashFlowGranularity>("month");
+
+  function switchTo(g: CashFlowGranularity) {
+    const r = defaultRange(g);
+    setGranularity(g);
+    setFromKey(r.from);
+    setToKey(r.to);
+  }
 
   useEffect(() => {
-    if (!fromMonth || !toMonth) return;
+    if (!fromKey || !toKey) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
-    api.finance
-      .cashFlowMonthly(fromMonth, toMonth)
-      .then((r) => !cancelled && setReport(r))
-      .catch((err) => !cancelled && setError(err instanceof ApiError ? err.message : "Не удалось загрузить ДДС по месяцам"))
+    const g = granularity;
+    (g === "month" ? api.finance.cashFlowMonthly(fromKey, toKey) : api.finance.cashFlowByDate(g, fromKey, toKey))
+      .then((r) => {
+        if (cancelled) return;
+        setReport(r);
+        setShown(g);
+      })
+      .catch((err) => !cancelled && setError(err instanceof ApiError ? err.message : "Не удалось загрузить ДДС"))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [fromMonth, toMonth]);
+  }, [granularity, fromKey, toKey]);
 
-  const current = zonedDateKey().slice(0, 7);
+  const today = zonedDateKey();
+  const isMonth = granularity === "month";
+  const label = (m: { key: string; to: string }) => columnLabel(shown, m);
 
   function exportExcel() {
     if (!report) return;
-    const heads = ["Статья", ...report.months.map((m) => monthLabel(m.key)), "Итого"];
+    const heads = ["Статья", ...report.months.map(label), "Итого"];
     const rows: (string | number | { v: string | number | null; bold?: boolean })[][] = [];
     const bold = (label: string, values: number[]) => [{ v: label, bold: true }, ...values.map((v) => ({ v, bold: true }))];
     rows.push(bold("Остаток на начало", [...report.months.map((m) => m.openingBalance), report.openingBalance]));
@@ -98,25 +142,54 @@ export function CashFlowMonthly() {
       rows.push(["Переводы между счетами", ...report.months.map((m) => m.internalNet), report.months.reduce((s, m) => s + m.internalNet, 0)]);
     }
     rows.push(bold("Остаток на конец", [...report.months.map((m) => m.closingBalance), report.closingBalance]));
-    void downloadTable(`dds-po-mesyacam-${fromMonth}-${toMonth}.xlsx`, heads, rows, {
-      sheetName: "ДДС по месяцам",
-      titleLines: ["Движение денежных средств по месяцам", `${monthLabel(fromMonth)} — ${monthLabel(toMonth)}`],
+    const by = { month: "месяцам", week: "неделям", day: "дням" }[shown];
+    const span = shown === "month" ? `${monthLabel(fromKey)} — ${monthLabel(toKey)}` : `${dm(fromKey)}.${fromKey.slice(0, 4)} — ${dm(toKey)}.${toKey.slice(0, 4)}`;
+    void downloadTable(`dds-po-${{ month: "mesyacam", week: "nedelyam", day: "dnyam" }[shown]}-${fromKey}-${toKey}.xlsx`, heads, rows, {
+      sheetName: `ДДС по ${by}`,
+      titleLines: [`Движение денежных средств по ${by}`, span],
     });
   }
 
   return (
     <div className="rounded-2xl border border-border bg-surface shadow-card">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
-        <h2 className="text-sm font-semibold text-foreground">ДДС по месяцам, ₸</h2>
+        <h2 className="text-sm font-semibold text-foreground">ДДС по периодам, ₸</h2>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-xl bg-surface-muted p-0.5">
+            {GRANULARITY_LABELS.map(([g, text]) => (
+              <button
+                key={g}
+                type="button"
+                onClick={() => switchTo(g)}
+                className={clsx("rounded-lg px-3 py-1 text-sm transition", granularity === g ? "bg-surface font-medium text-foreground shadow-sm" : "text-muted hover:text-foreground")}
+              >
+                {text}
+              </button>
+            ))}
+          </div>
           <label className="text-xs text-muted" htmlFor="cf-from">
             С
           </label>
-          <input id="cf-from" type="month" value={fromMonth} max={toMonth} onChange={(e) => e.target.value && setFromMonth(e.target.value)} className={monthInput} />
+          <input
+            id="cf-from"
+            type={isMonth ? "month" : "date"}
+            value={fromKey}
+            max={toKey}
+            onChange={(e) => e.target.value && setFromKey(e.target.value)}
+            className={monthInput}
+          />
           <label className="text-xs text-muted" htmlFor="cf-to">
             По
           </label>
-          <input id="cf-to" type="month" value={toMonth} min={fromMonth} max={current} onChange={(e) => e.target.value && setToMonth(e.target.value)} className={monthInput} />
+          <input
+            id="cf-to"
+            type={isMonth ? "month" : "date"}
+            value={toKey}
+            min={fromKey}
+            max={isMonth ? today.slice(0, 7) : today}
+            onChange={(e) => e.target.value && setToKey(e.target.value)}
+            className={monthInput}
+          />
           <button
             type="button"
             onClick={exportExcel}
@@ -125,6 +198,15 @@ export function CashFlowMonthly() {
           >
             <Download className="h-4 w-4" strokeWidth={1.75} />
             Excel
+          </button>
+          <button
+            type="button"
+            onClick={() => withExportTarget("pdf", () => exportExcel())}
+            disabled={!report}
+            className="flex items-center gap-1.5 rounded-xl border border-border px-3 py-1.5 text-sm font-medium text-foreground transition hover:bg-surface-muted disabled:opacity-50"
+          >
+            <FileText className="h-4 w-4" strokeWidth={1.75} />
+            PDF
           </button>
         </div>
       </div>
@@ -140,7 +222,7 @@ export function CashFlowMonthly() {
                 <th className="sticky left-0 z-10 min-w-[210px] bg-surface px-5 py-3 font-medium">Статья</th>
                 {report.months.map((m) => (
                   <th key={m.key} className="whitespace-nowrap px-3 py-3 text-right font-medium">
-                    {monthLabel(m.key)}
+                    {label(m)}
                   </th>
                 ))}
                 <th className="whitespace-nowrap px-5 py-3 text-right font-medium">Итого</th>
@@ -158,7 +240,7 @@ export function CashFlowMonthly() {
               </tr>
               {report.months.some((m) => m.openingDeclared !== 0) && (
                 <tr>
-                  <td className="sticky left-0 z-10 bg-surface px-5 py-2 pl-8 text-xs text-muted">в т.ч. начальные остатки счетов, внесённые в месяце</td>
+                  <td className="sticky left-0 z-10 bg-surface px-5 py-2 pl-8 text-xs text-muted">в т.ч. начальные остатки счетов, внесённые в периоде</td>
                   {report.months.map((m) => (
                     <td key={m.key} className="whitespace-nowrap px-3 py-2 text-right text-xs text-muted">
                       {signed(m.openingDeclared)}
@@ -171,7 +253,7 @@ export function CashFlowMonthly() {
               {report.sections
                 .filter((s) => s.lines.length > 0)
                 .map((section) => (
-                  <SectionRows key={section.section} section={section} months={report.months} onDrill={setDrill} />
+                  <SectionRows key={section.section} section={section} months={report.months} granularity={shown} onDrill={setDrill} />
                 ))}
 
               <tr className="bg-surface-muted font-semibold">
@@ -230,16 +312,18 @@ function DrillCell({ value, drill, onDrill }: { value: number; drill: Drill | nu
 function SectionRows({
   section,
   months,
+  granularity,
   onDrill,
 }: {
   section: CashFlowMonthlyDto["sections"][number];
   months: CashFlowMonthlyDto["months"];
+  granularity: CashFlowGranularity;
   onDrill: (d: Drill) => void;
 }) {
-  const first = months[0].key;
-  const last = months[months.length - 1].key;
+  const first = columnSpan(granularity, months[0]).from;
+  const last = columnSpan(granularity, months[months.length - 1]).to;
   const unclassified = section.section === CashSection.UNCLASSIFIED;
-  const range = first === last ? monthLabel(first) : `${monthLabel(first)} — ${monthLabel(last)}`;
+  const range = `${columnLabel(granularity, months[0])} — ${columnLabel(granularity, months[months.length - 1])}`;
   return (
     <>
       <tr>
@@ -259,7 +343,11 @@ function SectionRows({
               <DrillCell
                 value={net(c)}
                 onDrill={onDrill}
-                drill={c.count ? { title: `${l.label} — ${monthLabel(months[i].key)}`, section: section.section, label: l.label, fromMonth: months[i].key, toMonth: months[i].key } : null}
+                drill={
+                  c.count
+                    ? { title: `${l.label} — ${columnLabel(granularity, months[i])}`, section: section.section, label: l.label, granularity, ...columnSpan(granularity, months[i]) }
+                    : null
+                }
               />
             </td>
           ))}
@@ -267,7 +355,7 @@ function SectionRows({
             <DrillCell
               value={net(l.total)}
               onDrill={onDrill}
-              drill={{ title: `${l.label} — ${range}`, section: section.section, label: l.label, fromMonth: first, toMonth: last }}
+              drill={{ title: `${l.label} — ${range}`, section: section.section, label: l.label, granularity, from: first, to: last }}
             />
           </td>
         </tr>
@@ -291,8 +379,9 @@ function OperationsModal({ drill, onClose }: { drill: Drill; onClose: () => void
 
   useEffect(() => {
     let cancelled = false;
-    api.finance
-      .cashFlowOperations({ section: drill.section, label: drill.label, fromMonth: drill.fromMonth, toMonth: drill.toMonth })
+    (drill.granularity === "month"
+      ? api.finance.cashFlowOperations({ section: drill.section, label: drill.label, fromMonth: drill.from, toMonth: drill.to })
+      : api.finance.cashFlowOperationsByDate({ section: drill.section, label: drill.label, fromDate: drill.from, toDate: drill.to }))
       .then((r) => !cancelled && setData(r))
       .catch((err) => !cancelled && setError(err instanceof ApiError ? err.message : "Не удалось загрузить операции"));
     return () => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { FileDown } from "lucide-react";
+import { FileDown, FileText} from "lucide-react";
 import type { DirectionAllocationDto, DirectionPnlDto, DirectionPnlRowDto } from "@bakery-os/shared";
 import {
   BUSINESS_DIRECTION_LABELS_RU,
@@ -18,7 +18,7 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { periodLabel, periodRange, type PeriodValue } from "@/lib/period";
 import { formatMoney } from "@/lib/format";
-import { downloadTable } from "@/lib/export-table";
+import { downloadTable, withExportTarget } from "@/lib/export-table";
 
 type Figures = Omit<DirectionPnlRowDto, "direction" | "revenueSharePercent" | "allocationSharePercent"> & {
   revenueSharePercent?: number | null;
@@ -130,6 +130,14 @@ export function DirectionPnlCard({ period, locationId, reloadKey }: { period: Pe
           >
             <FileDown className="h-4 w-4" strokeWidth={1.75} />
             Excel
+          </button>
+          <button
+            onClick={() => withExportTarget("pdf", () => exportExcel())}
+            disabled={!data}
+            className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3 py-1.5 text-sm text-foreground transition hover:bg-surface-muted disabled:opacity-40"
+          >
+            <FileText className="h-4 w-4" strokeWidth={1.75} />
+            PDF
           </button>
         </div>
       </div>

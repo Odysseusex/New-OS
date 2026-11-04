@@ -1,5 +1,22 @@
 import { downloadCsv } from "@/lib/csv";
+// Small and loaded with the page: the print window has to open inside the click.
+import { printSheets } from "@/lib/print-table";
 import type { XlsxCell, XlsxSheet } from "@/lib/xlsx";
+
+// Where the next table goes: the «PDF» button runs the same export function as
+// «Excel» inside `withExportTarget("pdf", …)`, so every report prints exactly
+// the table it would save. Read synchronously at the start of each call.
+let target: "xlsx" | "pdf" = "xlsx";
+
+export function withExportTarget(next: "xlsx" | "pdf", run: () => unknown): void {
+  target = next;
+  try {
+    void run();
+  } finally {
+    target = "xlsx";
+  }
+}
+
 
 // One call for every «Excel» button: a table of headers and rows becomes a real
 // .xlsx workbook (numbers stay numbers). The writer is loaded only now, so the
@@ -11,6 +28,11 @@ export async function downloadTable(
   rows: XlsxCell[][],
   options: { sheetName?: string; titleLines?: string[] } = {},
 ): Promise<void> {
+  if (target === "pdf") {
+    const base = filename.replace(/\.(csv|xlsx)$/i, "");
+    printSheets([{ name: options.sheetName ?? base, titleLines: options.titleLines, headers, rows }]);
+    return;
+  }
   try {
     const { downloadXlsx } = await import("@/lib/xlsx");
     const base = filename.replace(/\.(csv|xlsx)$/i, "");
@@ -26,6 +48,10 @@ export async function downloadTable(
 
 // Several tables in one workbook, a sheet each (the CSV fallback keeps the first).
 export async function downloadWorkbook(filename: string, sheets: XlsxSheet[]): Promise<void> {
+  if (target === "pdf") {
+    printSheets(sheets);
+    return;
+  }
   try {
     const { downloadXlsx } = await import("@/lib/xlsx");
     downloadXlsx(`${filename.replace(/\.(csv|xlsx)$/i, "")}.xlsx`, sheets);

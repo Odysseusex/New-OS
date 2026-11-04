@@ -1005,7 +1005,17 @@ the form applies; a refused row is reported, the others go in; audited `referenc
   closed month are refused, so they cannot differ.
 - **Наценка %** = gross profit / cost (`markupPercent`, null when cost is zero or unknown), next to Маржа/Маржинальность in
   Финансы → P&L by product, Отчёты (P&L, Рентабельность), the product P&L card and the техкарта card.
-- Not built: PDF export of reports other than the акт сверки (print → «Сохранить как PDF» works on Отчёты), ДДС by week/day.
+- **ДДС by weeks / days** (same grid, switch «Месяцы / Недели / Дни», Отчёты → ДДС → «По периодам»):
+  `GET /finance/cash-flow/by-date?granularity=week|day&fromDate&toDate` (YYYY-MM-DD; ≤ 62 days / 53 weeks) and
+  `…/operations-by-date`; `common/day-ranges.ts` (Almaty days; weeks Mon–Sun cut to the asked range, key = first day
+  inside it). Same `buildCashFlowMonthly`, so days chain closing → opening and add up to the period statement (spec).
+- **PDF of every report**: a «PDF» button beside each «Excel» runs the SAME export function inside
+  `withExportTarget("pdf", …)` (`lib/export-table.ts`); `downloadTable`/`downloadWorkbook` then hand the table to
+  `lib/print-table.ts` (a clean A4 page, landscape when > 6 columns, printed date) and the browser's print dialog
+  («Сохранить как PDF»). The window must open inside the click, so print-table is loaded statically and stays small
+  (`lib/coerce-number.ts` split out of xlsx.ts so fflate is not pulled in). The export function must call
+  `downloadTable` synchronously (no await before it). A new report with «Excel» gets PDF by adding the second button.
+  Баланс has Excel/PDF too.
 
 ## Correcting a received purchase order + document history (built)
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
-import { Download, Printer } from "lucide-react";
+import { Download, FileText, Printer } from "lucide-react";
 import type {
   CategoryDto,
   CustomerDto,
@@ -42,7 +42,7 @@ import { useAuth } from "@/lib/auth-context";
 import { periodRange, type PeriodValue } from "@/lib/period";
 import { PeriodPicker } from "@/components/period-picker";
 import { CashFlowMonthly } from "@/components/cash-flow-monthly";
-import { downloadTable } from "@/lib/export-table";
+import { downloadTable, withExportTarget } from "@/lib/export-table";
 import { addDaysKey } from "@/lib/reporting-period";
 import { formatAverage, formatDayKey, formatMoney, formatQuantity } from "@/lib/format";
 import { SalesTrendChart, type TrendMetric } from "@/components/sales-trend-chart";
@@ -136,7 +136,7 @@ export default function ReportsPage() {
               would just contradict it. */}
           {activeReport === "cashflow" && (
             <div className="flex gap-1 rounded-xl bg-surface-muted p-1">
-              {([["period", "За период"], ["months", "По месяцам"]] as const).map(([mode, label]) => (
+              {([["period", "За период"], ["months", "По периодам"]] as const).map(([mode, label]) => (
                 <button
                   key={mode}
                   type="button"
@@ -232,13 +232,22 @@ function ReportCard({
       <div className="flex items-center justify-between border-b border-border px-5 py-4">
         <h2 className="text-sm font-semibold text-foreground">{title}</h2>
         {onExport && (
-          <button
-            onClick={onExport}
-            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted transition hover:bg-surface-muted hover:text-foreground print:hidden"
-          >
-            <Download className="h-3.5 w-3.5" strokeWidth={1.75} />
-            Excel
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={onExport}
+              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted transition hover:bg-surface-muted hover:text-foreground print:hidden"
+            >
+              <Download className="h-3.5 w-3.5" strokeWidth={1.75} />
+              Excel
+            </button>
+            <button
+              onClick={() => withExportTarget("pdf", () => onExport())}
+              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted transition hover:bg-surface-muted hover:text-foreground print:hidden"
+            >
+              <FileText className="h-3.5 w-3.5" strokeWidth={1.75} />
+              PDF
+            </button>
+          </div>
         )}
       </div>
       {children}

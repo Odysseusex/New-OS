@@ -6,7 +6,7 @@ import { ChevronDown, ChevronRight, Download, FileText } from "lucide-react";
 import type { CashAccountDto, DebtCounterpartyRowDto, DebtItemDto, DebtReportDto } from "@bakery-os/shared";
 import { DEBT_AGE_BUCKET_LABELS_RU, DEBT_AGE_BUCKETS, DebtCounterpartyKind, DebtDocumentKind } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
-import { downloadTable } from "@/lib/export-table";
+import { downloadTable, withExportTarget } from "@/lib/export-table";
 import { formatMoney } from "@/lib/format";
 import { zonedDateKey } from "@/lib/reporting-period";
 import { RecordDebtPaymentModal } from "@/components/record-debt-payment-modal";
@@ -124,6 +124,15 @@ export function DebtsReport({
           >
             <Download className="h-4 w-4" strokeWidth={1.75} />
             Excel
+          </button>
+          <button
+            type="button"
+            onClick={() => withExportTarget("pdf", () => exportCsv())}
+            disabled={!report}
+            className="flex items-center gap-1.5 rounded-xl border border-border px-3 py-1.5 text-sm font-medium text-foreground transition hover:bg-surface-muted disabled:opacity-50"
+          >
+            <FileText className="h-4 w-4" strokeWidth={1.75} />
+            PDF
           </button>
         </div>
       </div>

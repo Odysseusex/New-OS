@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download } from "lucide-react";
+import { Download, FileText } from "lucide-react";
 import type { CostCorrectionDto, Unit } from "@bakery-os/shared";
 import { UNIT_LABELS_RU } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
-import { downloadTable } from "@/lib/export-table";
+import { downloadTable, withExportTarget } from "@/lib/export-table";
 import { formatDateTime, formatMoneyPrecise, formatQuantity } from "@/lib/format";
 
 const MONTHS_RU = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
@@ -88,6 +88,14 @@ export function CostCorrectionModal({ year, month, onClose }: { year: number; mo
             >
               <Download className="h-4 w-4" strokeWidth={1.75} />
               Excel
+            </button>
+            <button
+              type="button"
+              onClick={() => withExportTarget("pdf", () => exportExcel(data))}
+              className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+            >
+              <FileText className="h-4 w-4" strokeWidth={1.75} />
+              PDF
             </button>
           </div>
 
