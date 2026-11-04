@@ -1,7 +1,8 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { audited, recordAudit } from "../audit/audit";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
-import { ProductType, rawMaterialUnitCost, RecipeBreakdownDto, RecipeDto, RecipeParameterKind, Unit } from "@bakery-os/shared";
+import { ProductType, rawMaterialUnitCost, RecipeBreakdownDto, RecipeDto, RecipeParameterKind, recipeNetQuantity, Unit } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { expandRecipe, findRecipeProblem, isStockedSemiFinished, loadRecipeIndex, semiFinishedUnitCosts } from "./recipe-tree";
 import { CreateRecipeDto } from "./dto/create-recipe.dto";
@@ -15,7 +16,41 @@ const RECIPE_INCLUDE = {
     include: { stageType: true, parameters: true },
   },
   revisions: { orderBy: { changedAt: "desc" as const }, include: { changedBy: true } },
+  versions: { orderBy: { number: "desc" as const } },
 };
+
+type VersionItemJson = { ingredientProductId: string; name: string; unit: string; quantity: number; lossPercent: number | null };
+
+// Writes the recipe's composition as it now stands as its next version (ТЗ §4).
+async function writeRecipeVersion(tx: Prisma.TransactionClient, recipeId: string, actor: AuthenticatedUser): Promise<void> {
+  const recipe = await tx.recipe.findUniqueOrThrow({
+    where: { id: recipeId },
+    include: { items: { include: { ingredientProduct: { select: { name: true, unit: true } } } } },
+  });
+  const last = await tx.recipeVersion.findFirst({ where: { recipeId }, orderBy: { number: "desc" }, select: { number: true } });
+  const items: VersionItemJson[] = recipe.items
+    .map((i) => ({
+      ingredientProductId: i.ingredientProductId,
+      name: i.ingredientProduct.name,
+      unit: i.ingredientProduct.unit,
+      quantity: i.quantity.toNumber(),
+      lossPercent: i.lossPercent?.toNumber() ?? null,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, "ru"));
+  await tx.recipeVersion.create({
+    data: {
+      organizationId: recipe.organizationId,
+      recipeId,
+      number: (last?.number ?? 0) + 1,
+      validFrom: new Date(),
+      createdById: actor.id,
+      createdByName: actor.fullName,
+      yieldQuantity: recipe.yieldQuantity,
+      lossPercent: recipe.lossPercent,
+      items,
+    },
+  });
+}
 
 // Ingredient units that can be summed into a dough weight. PCS can't be
 // converted without knowing an average piece weight, so items in PCS are
@@ -201,6 +236,7 @@ export class RecipesService {
           create: dto.items.map((item) => ({
             ingredientProductId: item.ingredientProductId,
             quantity: item.quantity,
+            lossPercent: item.lossPercent ?? null,
           })),
         },
         stages: dto.stages ? { create: dto.stages.map((stage) => this.stageCreateInput(stage)) } : undefined,
@@ -210,6 +246,7 @@ export class RecipesService {
       },
       include: RECIPE_INCLUDE,
     });
+      await writeRecipeVersion(tx, created.id, actor);
       await recordAudit(tx, {
         organizationId,
         actorId: actor.id,
@@ -218,7 +255,7 @@ export class RecipesService {
         entityId: created.id,
         after: { productId: created.productId, yieldQuantity: created.yieldQuantity, lossPercent: created.lossPercent },
       });
-      return created;
+      return tx.recipe.findUniqueOrThrow({ where: { id: created.id }, include: RECIPE_INCLUDE });
     });
 
     return this.toDto(recipe, await this.semiCostsFor(organizationId, [recipe]));
@@ -270,7 +307,13 @@ export class RecipesService {
           mixCapacityKg: dto.mixCapacityKg,
           ...(dto.uncountedNote !== undefined ? { uncountedNote: dto.uncountedNote.trim() || null } : {}),
           items: dto.items
-            ? { create: dto.items.map((item) => ({ ingredientProductId: item.ingredientProductId, quantity: item.quantity })) }
+            ? {
+                create: dto.items.map((item) => ({
+                  ingredientProductId: item.ingredientProductId,
+                  quantity: item.quantity,
+                  lossPercent: item.lossPercent ?? null,
+                })),
+              }
             : undefined,
           stages: dto.stages ? { create: dto.stages.map((stage) => this.stageCreateInput(stage)) } : undefined,
           revisions: changeSummary
@@ -278,6 +321,13 @@ export class RecipesService {
             : undefined,
         },
       });
+
+      // A new version when what the recipe consumes or yields changed.
+      const compositionChanged =
+        (dto.yieldQuantity !== undefined && dto.yieldQuantity !== recipe.yieldQuantity.toNumber()) ||
+        (dto.lossPercent !== undefined && (dto.lossPercent ?? null) !== (recipe.lossPercent?.toNumber() ?? null)) ||
+        (dto.items !== undefined && !this.itemsEqual(dto.items, recipe.items));
+      if (compositionChanged) await writeRecipeVersion(tx, recipeId, actor);
 
       const result = await tx.recipe.findUniqueOrThrow({ where: { id: recipeId }, include: RECIPE_INCLUDE });
       await recordAudit(tx, {
@@ -326,7 +376,7 @@ export class RecipesService {
       shelfLifeDays: number | null;
       mixCapacityKg?: { toNumber: () => number } | null;
       uncountedNote?: string | null;
-      items: { ingredientProductId: string; quantity: { toNumber: () => number } }[];
+      items: { ingredientProductId: string; quantity: { toNumber: () => number }; lossPercent?: { toNumber: () => number } | null }[];
       stages: {
         stageTypeId: string;
         sequence: number;
@@ -371,19 +421,25 @@ export class RecipesService {
   }
 
   private itemsEqual(
-    a: { ingredientProductId: string; quantity: number }[],
-    b: { ingredientProductId: string; quantity: { toNumber: () => number } }[],
+    a: { ingredientProductId: string; quantity: number; lossPercent?: number | null }[],
+    b: { ingredientProductId: string; quantity: { toNumber: () => number }; lossPercent?: { toNumber: () => number } | null }[],
   ): boolean {
     if (a.length !== b.length) return false;
     const sortByIngredient = (x: { ingredientProductId: string }, y: { ingredientProductId: string }) =>
       x.ingredientProductId.localeCompare(y.ingredientProductId);
-    const sortedA = [...a].sort(sortByIngredient);
+    const sortedA = [...a].map((item) => ({ ...item, lossPercent: item.lossPercent ?? null })).sort(sortByIngredient);
     const sortedB = [...b]
-      .map((item) => ({ ingredientProductId: item.ingredientProductId, quantity: item.quantity.toNumber() }))
+      .map((item) => ({
+        ingredientProductId: item.ingredientProductId,
+        quantity: item.quantity.toNumber(),
+        lossPercent: item.lossPercent?.toNumber() ?? null,
+      }))
       .sort(sortByIngredient);
     return sortedA.every(
       (item, index) =>
-        item.ingredientProductId === sortedB[index].ingredientProductId && item.quantity === sortedB[index].quantity,
+        item.ingredientProductId === sortedB[index].ingredientProductId &&
+        item.quantity === sortedB[index].quantity &&
+        item.lossPercent === sortedB[index].lossPercent,
     );
   }
 
@@ -497,6 +553,7 @@ export class RecipesService {
       ingredientProductId: string;
       ingredientProduct: { name: string; unit: string; type: string; price: { toNumber: () => number }; averageUnitCost: { toNumber: () => number } | null };
       quantity: { toNumber: () => number };
+      lossPercent: { toNumber: () => number } | null;
     }[];
     stages: {
       id: string;
@@ -516,6 +573,15 @@ export class RecipesService {
       changedAt: Date;
       summary: string;
       changedBy: { fullName: string };
+    }[];
+    versions: {
+      id: string;
+      number: number;
+      validFrom: Date;
+      createdByName: string;
+      yieldQuantity: { toNumber: () => number };
+      lossPercent: { toNumber: () => number } | null;
+      items: Prisma.JsonValue;
     }[];
   }, semiCosts: Map<string, number | null> = new Map()): RecipeDto => {
     const yieldQuantity = recipe.yieldQuantity.toNumber();
@@ -590,6 +656,8 @@ export class RecipesService {
         ingredientProductName: item.ingredientProduct.name,
         unit: item.ingredientProduct.unit as Unit,
         quantity: item.quantity.toNumber(),
+        lossPercent: item.lossPercent?.toNumber() ?? null,
+        netQuantity: recipeNetQuantity(item.quantity.toNumber(), item.lossPercent?.toNumber() ?? null),
         ingredientType: item.ingredientProduct.type as ProductType,
         ingredientUnitCost: unitCostOf(item),
         percentOfDoughWeight:
@@ -615,6 +683,22 @@ export class RecipesService {
         changedAt: rev.changedAt.toISOString(),
         changedByName: rev.changedBy.fullName,
         summary: rev.summary,
+      })),
+      versions: recipe.versions.map((v) => ({
+        id: v.id,
+        number: v.number,
+        validFrom: v.validFrom.toISOString(),
+        createdByName: v.createdByName,
+        yieldQuantity: v.yieldQuantity.toNumber(),
+        lossPercent: v.lossPercent?.toNumber() ?? null,
+        items: ((v.items ?? []) as unknown as VersionItemJson[]).map((i) => ({
+          ingredientProductId: i.ingredientProductId,
+          name: i.name,
+          unit: i.unit as Unit,
+          quantity: Number(i.quantity),
+          lossPercent: i.lossPercent === null || i.lossPercent === undefined ? null : Number(i.lossPercent),
+          netQuantity: recipeNetQuantity(Number(i.quantity), i.lossPercent === null || i.lossPercent === undefined ? null : Number(i.lossPercent)),
+        })),
       })),
       generalNotes: recipe.generalNotes,
       pieceWeightG,

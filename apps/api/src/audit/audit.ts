@@ -49,6 +49,7 @@ export const AUDIT_ACTION_GROUPS = {
   tillApprovals: ["user.pin", "till.lineRemoval", "sale.manualDiscount", "tillShift.setLineRemovalApproval"],
   bankStatements: ["bankStatement.upload", "bankStatement.delete", "bankStatementLine.post"],
   bankRules: ["bankRule.keyword", "bankRule.keywordDelete"],
+  materialRequisitions: ["materialRequisition.create", "materialRequisition.update", "materialRequisition.post", "materialRequisition.delete"],
   procurement: ["procurement.cutover", "purchaseOrder.payment", "purchaseOrder.paymentReverse", "purchaseOrder.revise", "purchaseOrder.supplierReturn"],
   master: [
     "supplier.update", "supplier.archive", "supplier.restore", "supplier.delete",

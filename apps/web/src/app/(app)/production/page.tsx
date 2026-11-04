@@ -17,19 +17,20 @@ import {
 } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
+import { formatDate, formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
 import { NewBatchModal } from "@/components/new-batch-modal";
 import { EditBatchModal } from "@/components/edit-batch-modal";
 import { AbortBatchModal } from "@/components/abort-batch-modal";
 import { CompleteBatchModal } from "@/components/complete-batch-modal";
 import { ProductionDeviationsTab } from "@/components/production-deviations-tab";
 import { ProductionOutputTab } from "@/components/production-output-tab";
+import { RequisitionsTab } from "@/components/requisitions-tab";
 import { NewRecipeModal } from "@/components/new-recipe-modal";
 import { ExportRecipesPdfModal } from "@/components/export-recipes-pdf-modal";
 import { RecipeScaleModal } from "@/components/recipe-scale-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 
-type Tab = "batches" | "recipes" | "output" | "deviations";
+type Tab = "batches" | "recipes" | "requisitions" | "output" | "deviations";
 type BatchFilter = "ACTIVE" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "ALL";
 
 const BATCH_FILTER_LABELS_RU: Record<BatchFilter, string> = {
@@ -210,6 +211,9 @@ export default function ProductionPage() {
           <TabButton active={tab === "recipes"} onClick={() => setTab("recipes")}>
             Рецептуры
           </TabButton>
+          <TabButton active={tab === "requisitions"} onClick={() => setTab("requisitions")}>
+            Требования
+          </TabButton>
           <TabButton active={tab === "output"} onClick={() => setTab("output")}>
             Выпуск
           </TabButton>
@@ -302,6 +306,7 @@ export default function ProductionPage() {
         </div>
       </div>
 
+      {tab === "requisitions" && <RequisitionsTab locations={locations} products={products} />}
       {tab === "output" && <ProductionOutputTab locations={locations} isOrgWide={isOrgWide} />}
       {tab === "deviations" && <ProductionDeviationsTab locations={locations} isOrgWide={isOrgWide} />}
 
@@ -350,6 +355,9 @@ export default function ProductionPage() {
                   </td>
                   <td className="px-5 py-3">
                     <StatusBadge status={batch.status} />
+                    {batch.recipeVersionNumber !== null && (
+                      <p className="mt-1 text-xs text-muted">по версии техкарты {batch.recipeVersionNumber}</p>
+                    )}
                     {batch.status === ProductionBatchStatus.CANCELLED && batch.cancelReason && (
                       <p className="mt-1 text-xs text-muted">
                         {PRODUCTION_CANCEL_REASON_LABELS_RU[batch.cancelReason]}
@@ -445,6 +453,7 @@ export default function ProductionPage() {
                     </p>
                     <p className="text-xs text-muted">
                       Выход: {recipe.yieldQuantity} {UNIT_LABELS_RU[recipe.productUnit]}
+                      {recipe.versions[0] && ` · версия ${recipe.versions[0].number} с ${formatDate(recipe.versions[0].validFrom)}`}
                     </p>
                   </div>
                 </div>
@@ -517,6 +526,11 @@ export default function ProductionPage() {
                     </span>
                     <span className="text-foreground">
                       {formatQuantity(item.quantity)} {UNIT_LABELS_RU[item.unit]}
+                      {item.lossPercent !== null && item.lossPercent > 0 && (
+                        <span className="ml-1.5 text-xs text-muted">
+                          −{formatQuantity(item.lossPercent)}% → нетто {formatQuantity(item.netQuantity)} {UNIT_LABELS_RU[item.unit]}
+                        </span>
+                      )}
                     </span>
                   </li>
                 ))}

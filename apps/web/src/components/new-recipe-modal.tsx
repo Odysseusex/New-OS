@@ -13,11 +13,12 @@ import {
   convertUnitQuantity,
   getCompatibleUnits,
   rawMaterialUnitCost,
+  recipeNetQuantity,
 } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
 import { ProductSelect } from "@/components/product-select";
-import { formatDateTime, formatMoney, formatMoneyPrecise } from "@/lib/format";
+import { formatDateTime, formatMoney, formatMoneyPrecise, formatQuantity } from "@/lib/format";
 
 interface IngredientRow {
   ingredientProductId: string;
@@ -25,6 +26,8 @@ interface IngredientRow {
   // The unit this row's quantity is currently typed in — not necessarily
   // the ingredient's base/storage unit. Converted to base unit on submit.
   unit: Unit;
+  // Потери, % (empty = not stated).
+  lossPercent: string;
 }
 
 interface ParameterRow {
@@ -112,12 +115,18 @@ export function NewRecipeModal({
   const [generalNotes, setGeneralNotes] = useState(source?.generalNotes ?? "");
   const [rows, setRows] = useState<IngredientRow[]>(
     source && source.items.length > 0
-      ? source.items.map((i) => ({ ingredientProductId: i.ingredientProductId, quantity: String(i.quantity), unit: i.unit }))
+      ? source.items.map((i) => ({
+          ingredientProductId: i.ingredientProductId,
+          quantity: String(i.quantity),
+          unit: i.unit,
+          lossPercent: i.lossPercent !== null && i.lossPercent !== undefined ? String(i.lossPercent) : "",
+        }))
       : [
           {
             ingredientProductId: ingredientOptions[0]?.id ?? "",
             quantity: "",
             unit: ingredientOptions[0]?.unit ?? Unit.KG,
+            lossPercent: "",
           },
         ],
   );
@@ -174,7 +183,7 @@ export function NewRecipeModal({
 
   function addRow() {
     const first = ingredientOptions[0];
-    setRows((prev) => [...prev, { ingredientProductId: first?.id ?? "", quantity: "", unit: first?.unit ?? Unit.KG }]);
+    setRows((prev) => [...prev, { ingredientProductId: first?.id ?? "", quantity: "", unit: first?.unit ?? Unit.KG, lossPercent: "" }]);
   }
 
   function removeRow(index: number) {
@@ -295,9 +304,14 @@ export function NewRecipeModal({
     try {
       const items = rows.map((r) => {
         const baseUnit = ingredientOptions.find((p) => p.id === r.ingredientProductId)?.unit ?? r.unit;
+        const loss = r.lossPercent.trim() === "" ? null : Number(r.lossPercent.replace(",", "."));
+        if (loss !== null && (!Number.isFinite(loss) || loss < 0 || loss >= 100)) {
+          throw new Error("Потери — от 0 до 99,99 %");
+        }
         return {
           ingredientProductId: r.ingredientProductId,
           quantity: convertUnitQuantity(Number(r.quantity), r.unit, baseUnit),
+          lossPercent: loss,
         };
       });
 
@@ -338,7 +352,7 @@ export function NewRecipeModal({
       }
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Не удалось сохранить техкарту");
+      setError(err instanceof ApiError || err instanceof Error ? err.message : "Не удалось сохранить техкарту");
     } finally {
       setIsSubmitting(false);
     }
@@ -457,7 +471,8 @@ export function NewRecipeModal({
             const weightKg = rowWeightsKg[index];
             const percent = liveDoughWeightKg && weightKg !== null ? (weightKg / liveDoughWeightKg) * 100 : null;
             return (
-              <div key={index} className="flex items-center gap-2">
+              <div key={index}>
+              <div className="flex items-center gap-2">
                 {/* Searchable rather than a plain <select>: a real technical
                     card is picked from the whole raw-materials catalogue, and
                     scrolling a hundred names to find «Спред растительно-
@@ -477,7 +492,8 @@ export function NewRecipeModal({
                   value={row.quantity}
                   onChange={(e) => updateRow(index, { quantity: e.target.value })}
                   className="w-24 shrink-0 rounded-xl border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-                  placeholder="Кол-во"
+                  placeholder="Брутто"
+                  title="Брутто"
                 />
                 {compatibleUnits.length > 1 ? (
                   <select
@@ -496,6 +512,14 @@ export function NewRecipeModal({
                     <span className="w-20 shrink-0 text-center text-xs text-muted">{UNIT_LABELS_RU[ingredientUnit]}</span>
                   )
                 )}
+                <input
+                  inputMode="decimal"
+                  value={row.lossPercent}
+                  onChange={(e) => updateRow(index, { lossPercent: e.target.value })}
+                  className="w-16 shrink-0 rounded-xl border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                  placeholder="% пот."
+                  title="% потерь"
+                />
                 <span className="w-12 shrink-0 text-right text-xs text-muted">
                   {percent !== null ? `${percent.toFixed(0)}%` : ""}
                 </span>
@@ -506,6 +530,17 @@ export function NewRecipeModal({
                 >
                   <Trash2 className="h-4 w-4" strokeWidth={1.75} />
                 </button>
+              </div>
+              {(() => {
+                const qty = Number(row.quantity);
+                const loss = Number(row.lossPercent.replace(",", "."));
+                if (!row.quantity || !row.lossPercent.trim() || !Number.isFinite(qty) || !Number.isFinite(loss) || loss <= 0 || loss >= 100) return null;
+                return (
+                  <p className="mt-0.5 pl-1 text-xs text-muted">
+                    Нетто: {formatQuantity(recipeNetQuantity(qty, loss))} {UNIT_LABELS_RU[row.unit]}
+                  </p>
+                );
+              })()}
               </div>
             );
           })}
@@ -736,6 +771,44 @@ export function NewRecipeModal({
             </div>
           )}
         </div>
+
+        {recipe && recipe.versions.length > 0 && (
+          <>
+            <SectionTitle>Версии техкарты</SectionTitle>
+            <div className="mb-5 space-y-1.5">
+              {recipe.versions.map((v) => (
+                <details key={v.id} className="rounded-xl bg-surface-muted px-3 py-2 text-sm">
+                  <summary className="cursor-pointer">
+                    <span className="font-medium text-foreground">Версия {v.number}</span>{" "}
+                    <span className="text-muted">
+                      · действует с {formatDateTime(v.validFrom)} · выход {formatQuantity(v.yieldQuantity)} · {v.createdByName}
+                    </span>
+                  </summary>
+                  <table className="mt-2 w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-muted">
+                        <th className="py-1 font-medium">Ингредиент</th>
+                        <th className="py-1 text-right font-medium">Брутто</th>
+                        <th className="py-1 text-right font-medium">% потерь</th>
+                        <th className="py-1 text-right font-medium">Нетто</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {v.items.map((i) => (
+                        <tr key={i.ingredientProductId} className="border-t border-border">
+                          <td className="py-1 text-foreground">{i.name}</td>
+                          <td className="py-1 text-right">{formatQuantity(i.quantity)} {UNIT_LABELS_RU[i.unit]}</td>
+                          <td className="py-1 text-right">{i.lossPercent !== null ? formatQuantity(i.lossPercent) : "—"}</td>
+                          <td className="py-1 text-right">{formatQuantity(i.netQuantity)} {UNIT_LABELS_RU[i.unit]}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </details>
+              ))}
+            </div>
+          </>
+        )}
 
         {recipe && recipe.revisions.length > 0 && (
           <>

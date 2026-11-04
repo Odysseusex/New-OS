@@ -37,7 +37,12 @@ export interface RecipeItemDto {
   ingredientProductId: string;
   ingredientProductName: string;
   unit: Unit;
+  // Брутто: what is taken from stock and costed.
   quantity: number;
+  // Технологические потери of this ingredient, %; null = not stated.
+  lossPercent: number | null;
+  // Нетто = брутто × (1 − потери/100); equals брутто when no loss is stated.
+  netQuantity: number;
   // RAW_MATERIAL, or SEMI_FINISHED (a component with its own recipe).
   ingredientType: ProductType;
   // Cost of ONE unit of this ingredient: its price for raw material, the unit
@@ -127,6 +132,32 @@ export interface RecipeRevisionDto {
   summary: string;
 }
 
+export interface RecipeVersionItemDto {
+  ingredientProductId: string;
+  name: string;
+  unit: Unit;
+  quantity: number;
+  lossPercent: number | null;
+  netQuantity: number;
+}
+
+// The composition of a recipe in force from `validFrom` (newest first on the card).
+export interface RecipeVersionDto {
+  id: string;
+  number: number;
+  validFrom: string;
+  createdByName: string;
+  yieldQuantity: number;
+  lossPercent: number | null;
+  items: RecipeVersionItemDto[];
+}
+
+// Нетто of an ingredient line, to 0.001 of its unit.
+export function recipeNetQuantity(quantity: number, lossPercent: number | null | undefined): number {
+  const loss = lossPercent && lossPercent > 0 ? Math.min(lossPercent, 100) : 0;
+  return Math.round(quantity * (1 - loss / 100) * 1000) / 1000;
+}
+
 export interface RecipeDto {
   id: string;
   productId: string;
@@ -140,6 +171,7 @@ export interface RecipeDto {
   items: RecipeItemDto[];
   stages: RecipeStageDto[];
   revisions: RecipeRevisionDto[];
+  versions: RecipeVersionDto[];
   generalNotes: string | null;
   pieceWeightG: number | null;
   lossPercent: number | null;
@@ -185,7 +217,10 @@ export interface RecipeDto {
 
 export interface CreateRecipeItemRequestDto {
   ingredientProductId: string;
+  // Брутто.
   quantity: number;
+  // Потери, % (0–99.99); null/absent = not stated.
+  lossPercent?: number | null;
 }
 
 export interface RecipeTechCardFieldsDto {
@@ -232,6 +267,8 @@ export interface ProductionBatchDto {
   cancelReason: ProductionCancelReason | null;
   cancelNote: string | null;
   createdByName: string;
+  // The recipe version a completed batch was produced by (null before completion / before versions existed).
+  recipeVersionNumber: number | null;
   // Cost components of a completed batch (null while not completed). Only
   // INGREDIENT is computed; the rest are NOT_CONFIGURED until policy D6.
   costComponents: ProductionCostComponentStatusDto[] | null;

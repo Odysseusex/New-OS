@@ -156,7 +156,7 @@ export class ProductionService {
         organizationId: user.organizationId,
         ...(locationId ? { locationId } : {}),
       },
-      include: { location: true, recipe: { include: { product: true } }, createdBy: true, costs: true },
+      include: { location: true, recipe: { include: { product: true } }, createdBy: true, costs: true, recipeVersion: { select: { number: true } } },
       orderBy: { scheduledFor: "desc" },
       take: 100,
     });
@@ -189,7 +189,7 @@ export class ProductionService {
         scheduledFor: dto.scheduledFor ? new Date(dto.scheduledFor) : undefined,
         createdById: user.id,
       },
-      include: { location: true, recipe: { include: { product: true } }, createdBy: true, costs: true },
+      include: { location: true, recipe: { include: { product: true } }, createdBy: true, costs: true, recipeVersion: { select: { number: true } } },
     });
 
     return this.toDto(batch);
@@ -216,7 +216,7 @@ export class ProductionService {
         ...(dto.scheduledFor !== undefined ? { scheduledFor: new Date(dto.scheduledFor) } : {}),
         ...(dto.plannedQuantity !== undefined ? { plannedQuantity: dto.plannedQuantity } : {}),
       },
-      include: { location: true, recipe: { include: { product: true } }, createdBy: true, costs: true },
+      include: { location: true, recipe: { include: { product: true } }, createdBy: true, costs: true, recipeVersion: { select: { number: true } } },
     });
 
     return this.toDto(updated);
@@ -272,7 +272,7 @@ export class ProductionService {
     const updated = await this.prisma.productionBatch.update({
       where: { id: batchId },
       data: { status: PrismaProductionBatchStatus.IN_PROGRESS, startedAt: new Date() },
-      include: { location: true, recipe: { include: { product: true } }, createdBy: true, costs: true },
+      include: { location: true, recipe: { include: { product: true } }, createdBy: true, costs: true, recipeVersion: { select: { number: true } } },
     });
 
     return this.toDto(updated);
@@ -492,8 +492,11 @@ export class ProductionService {
           status: PrismaProductionBatchStatus.COMPLETED,
           actualQuantity: dto.actualQuantity,
           completedAt: new Date(),
+          // The recipe version in force now — what this batch was produced by.
+          recipeVersionId:
+            (await tx.recipeVersion.findFirst({ where: { recipeId: batch.recipeId }, orderBy: { number: "desc" }, select: { id: true } }))?.id ?? null,
         },
-        include: { location: true, recipe: { include: { product: true } }, createdBy: true, costs: true },
+        include: { location: true, recipe: { include: { product: true } }, createdBy: true, costs: true, recipeVersion: { select: { number: true } } },
       });
 
       // Raw materials became finished goods at cost: a real event with no
@@ -796,7 +799,7 @@ export class ProductionService {
           cancelReason: dto.reason,
           cancelNote: dto.note,
         },
-        include: { location: true, recipe: { include: { product: true } }, createdBy: true, costs: true },
+        include: { location: true, recipe: { include: { product: true } }, createdBy: true, costs: true, recipeVersion: { select: { number: true } } },
       });
       await recordAudit(tx, {
         organizationId: user.organizationId,
@@ -834,6 +837,7 @@ export class ProductionService {
     cancelNote: string | null;
     createdBy: { fullName: string };
     costs?: { component: string; amount: { toNumber: () => number } }[];
+    recipeVersion?: { number: number } | null;
   }): ProductionBatchDto => ({
     id: batch.id,
     locationId: batch.locationId,
@@ -852,6 +856,7 @@ export class ProductionService {
     cancelReason: batch.cancelReason as ProductionCancelReason | null,
     cancelNote: batch.cancelNote,
     createdByName: batch.createdBy.fullName,
+    recipeVersionNumber: batch.recipeVersion?.number ?? null,
     // Only a completed batch has a cost; every other component is listed as
     // NOT_CONFIGURED rather than left out or shown as zero.
     costComponents:

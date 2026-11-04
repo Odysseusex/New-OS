@@ -220,6 +220,7 @@ interface RecipePageProps {
 
 function RecipePage({ recipe, showPrice, printDate }: RecipePageProps) {
   const showPercentColumn = recipe.items.some((item) => item.percentOfDoughWeight !== null);
+  const showLossColumns = recipe.items.some((item) => item.lossPercent !== null && item.lossPercent > 0);
 
   return (
     <Page size="A4" style={styles.page} wrap>
@@ -245,6 +246,14 @@ function RecipePage({ recipe, showPrice, printDate }: RecipePageProps) {
             <Text style={styles.metaValue}>{formatQuantity(recipe.shelfLifeDays)} дн.</Text>
           </View>
         )}
+        {recipe.versions?.[0] && (
+          <View style={styles.metaBlock}>
+            <Text style={styles.metaLabel}>Версия</Text>
+            <Text style={styles.metaValue}>
+              {recipe.versions[0].number} с {new Date(recipe.versions[0].validFrom).toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty" })}
+            </Text>
+          </View>
+        )}
         {recipe.lossPercent !== null && (
           <View style={styles.metaBlock}>
             <Text style={styles.metaLabel}>Производственные потери</Text>
@@ -262,7 +271,9 @@ function RecipePage({ recipe, showPrice, printDate }: RecipePageProps) {
       <View style={styles.table}>
         <View style={styles.tableHeaderRow}>
           <Text style={[styles.tableCellHeader, styles.colIngredient]}>Ингредиент</Text>
-          <Text style={[styles.tableCellHeader, styles.colQty]}>Количество</Text>
+          <Text style={[styles.tableCellHeader, styles.colQty]}>{showLossColumns ? "Брутто" : "Количество"}</Text>
+          {showLossColumns && <Text style={[styles.tableCellHeader, styles.colQty]}>% потерь</Text>}
+          {showLossColumns && <Text style={[styles.tableCellHeader, styles.colQty]}>Нетто</Text>}
           <Text style={[styles.tableCellHeader, styles.colUnit]}>Ед.</Text>
           {showPercentColumn && <Text style={[styles.tableCellHeader, styles.colPercent]}>% от теста</Text>}
         </View>
@@ -270,6 +281,10 @@ function RecipePage({ recipe, showPrice, printDate }: RecipePageProps) {
           <View style={styles.tableRow} key={item.id}>
             <Text style={[styles.tableCell, styles.colIngredient]}>{item.ingredientProductName}</Text>
             <Text style={[styles.tableCell, styles.colQty]}>{formatQuantity(item.quantity)}</Text>
+            {showLossColumns && (
+              <Text style={[styles.tableCell, styles.colQty]}>{item.lossPercent ? `${formatQuantity(item.lossPercent)}%` : "—"}</Text>
+            )}
+            {showLossColumns && <Text style={[styles.tableCell, styles.colQty]}>{formatQuantity(item.netQuantity ?? item.quantity)}</Text>}
             <Text style={[styles.tableCell, styles.colUnit]}>{UNIT_LABELS_RU[item.unit]}</Text>
             {showPercentColumn && (
               <Text style={[styles.tableCell, styles.colPercent]}>

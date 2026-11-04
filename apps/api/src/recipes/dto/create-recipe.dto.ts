@@ -20,6 +20,13 @@ export class CreateRecipeItemDto {
   @IsNumber()
   @IsPositive()
   quantity!: number;
+
+  // Потери, %; null = not stated.
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(99.99)
+  lossPercent?: number | null;
 }
 
 export class CreateRecipeDto {

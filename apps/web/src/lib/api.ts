@@ -250,6 +250,10 @@ import type {
   VehicleDto,
   ProductionBatchNormDto,
   ProductionDeviationReportDto,
+  MaterialRequisitionDto,
+  RequisitionNeedDto,
+  CreateMaterialRequisitionRequestDto,
+  UpdateMaterialRequisitionRequestDto,
   RecordCustomerPaymentRequestDto,
   CustomerPaymentResultDto,
   ProductionOutputReportDto,
@@ -744,6 +748,26 @@ export const api = {
       request<ProductionOutputReportDto>(withQuery("/production/batches/output", params)),
     unitCostTrend: (params: { productId: string; months?: number; locationId?: string }) =>
       request<ProductionUnitCostTrendDto>(withQuery("/production/batches/unit-cost-trend", { ...params, months: params.months ? String(params.months) : undefined })),
+  },
+
+  requisitions: {
+    list: (params: { from?: string; to?: string } = {}) => request<MaterialRequisitionDto[]>(withQuery("/production/requisitions", params)),
+    get: (id: string) => request<MaterialRequisitionDto>(`/production/requisitions/${id}`),
+    need: (params: { fromLocationId: string; toLocationId: string; date: string; batchIds?: string[] }) =>
+      request<RequisitionNeedDto>(
+        withQuery("/production/requisitions/need", {
+          fromLocationId: params.fromLocationId,
+          toLocationId: params.toLocationId,
+          date: params.date,
+          batchIds: params.batchIds?.join(","),
+        }),
+      ),
+    create: (dto: CreateMaterialRequisitionRequestDto) =>
+      request<MaterialRequisitionDto>("/production/requisitions", { method: "POST", body: JSON.stringify(dto) }),
+    update: (id: string, dto: UpdateMaterialRequisitionRequestDto) =>
+      request<MaterialRequisitionDto>(`/production/requisitions/${id}`, { method: "PUT", body: JSON.stringify(dto) }),
+    post: (id: string) => request<MaterialRequisitionDto>(`/production/requisitions/${id}/post`, { method: "POST" }),
+    remove: (id: string) => request<{ deleted: true }>(`/production/requisitions/${id}`, { method: "DELETE" }),
   },
 
   bankStatements: {

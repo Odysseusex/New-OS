@@ -122,6 +122,27 @@ export const PRODUCTION_MANAGE_ROLES: Role[] = [
   Role.OPERATOR,
 ];
 
+// «Требование-накладная»: whoever plans production or keeps the store may draw one up;
+// posting it moves stock between points, so it is the store side plus OPERATOR (a
+// documented flow, like receiving a purchase order).
+export const MATERIAL_REQUISITION_CREATE_ROLES: Role[] = [
+  Role.OWNER,
+  Role.ADMIN,
+  Role.STORE_MANAGER,
+  Role.WAREHOUSE_STAFF,
+  Role.PRODUCTION_MANAGER,
+  Role.PRODUCTION_STAFF,
+  Role.OPERATOR,
+];
+export const MATERIAL_REQUISITION_POST_ROLES: Role[] = [
+  Role.OWNER,
+  Role.ADMIN,
+  Role.STORE_MANAGER,
+  Role.WAREHOUSE_STAFF,
+  Role.PRODUCTION_MANAGER,
+  Role.OPERATOR,
+];
+
 export const SUPPLIER_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.WAREHOUSE_STAFF];
 
 // OPERATOR is included here (and on invoices below) but deliberately left

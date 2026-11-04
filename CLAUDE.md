@@ -869,8 +869,22 @@ movements: per ingredient and per batch, norm / fact / deviation / ₸, Excel. �
 quantity, ingredient cost (`ProductionBatchCost` INGREDIENT, i.e. the norm) and unit cost; a row opens that product's
 unit cost by Almaty month (12, zero-filled, recharts line). The financiers' acceptance example (ТЗ §9.3) runs as
 `finance/acceptance-example.spec.ts` (450 average → 225 a unit → receivable → paid → ОПиУ/ДДС/баланс agree, GL clean).
-Not built: требование-накладная
-(warehouse → workshop request), per-ingredient brutto/netto losses, recipe versions by date.
+
+**Брутто / потери / нетто, версии техкарты, требование-накладная (ТЗ §4) — built** (migration
+`20261115120000_recipe_versions_requisitions`, additive):
+- `RecipeItem.quantity` is БРУТТО (stock and cost stay on it — no money change); `RecipeItem.lossPercent` (nullable)
+  gives НЕТТО = брутто × (1 − %/100) (shared `recipeNetQuantity`), shown on the card, the form and the PDF only.
+- `RecipeVersion` (append-only by trigger): the composition (yield, recipe loss, lines as JSON with names) written on
+  create and on every save that changes yield / recipe loss / lines (a note edit is not a version). `validFrom` = the
+  save moment — never a chosen past date (history is never recomputed); the migration wrote v1 of every recipe with
+  `validFrom = updatedAt`. A completed batch gets `recipeVersionId` (the latest version at completion), shown as «по
+  версии техкарты N». Batches keep their own cost stamps, so «old documents by their version» needed nothing else.
+- «Требование-накладная» (Производство → «Требования», `production/requisitions.service.ts`,
+  `/production/requisitions`, MATERIAL_REQUISITION_CREATE/POST_ROLES): склад → цех, план на дату; the need = each
+  PLANNED/IN_PROGRESS task of that day at the workshop × the norm through `expandRecipe` (tracked items only), tasks can
+  be unticked, lines edited/added. DRAFT (editable, deletable) → POSTED (trigger: never changed again): a TRANSFER_OUT /
+  TRANSFER_IN pair per line with `StockMovement.materialRequisitionId`, same cost stamp on both legs (like a route
+  delivery) — no money, events or ledger. Numbered per organization; audited `materialRequisition.*`. Printable.
 
 ## Baker's calculator (расчёт техкарты на количество) — built
 
@@ -1166,7 +1180,16 @@ is NOT in the repo (personal data) — specs use invented lines.
   card/QR takings the NEXT morning («Возмещение коммерсанту / НПК QR: у-во …», BCC's BIN 980640000093 is an aggregator)
   → SALES_SETTLEMENT compared with the PREVIOUS Almaty day. Verified on the owner's October file: 25 lines,
   opening + Σ = closing. Spec fixture `apps/api/test/fixtures/bcc-statement-invented.xls` is invented (xlwt).
-- Not built: customer (wholesale) payments matched to sales, advances to suppliers.
+- **Any bank by a column mapping** (migration `20261114120000`): .xlsx/.xls/.csv (UTF-8, else windows-1251; `;`/`,`/tab);
+  Kaspi/BCC are recognised as before, any other file goes through shared `bank-mapping.ts` (`guessColumnMapping` →
+  the person checks it → `parseMappedStatement`), saved per bank name as `BankImportProfile`. A line with no document
+  number gets `auto:<fnv(date|amount|bin|purpose)>[:n]`, so a re-upload skips it.
+- **Keyword rules** (`BankRule.keyword`, Выписки → «Правила по словам»): a purpose containing the word → an article;
+  checked after БИН/purpose rules, longest keyword wins (suggestion source KEYWORD). Audited `bankRule.keyword[Delete]`.
+- **Wholesale payments** (`BankLineAction.CUSTOMER_PAYMENT`): an inflow from a customer's БИН is suggested as that
+  customer's payment; posting runs the same `sales/customer-payment.ts` `applyCustomerPayment` as «Принять оплату»
+  (unpaid sales oldest first, the rest is an advance), dated by the bank.
+- Not built: advances to suppliers from the bank import.
 
 ## Month-end cost correction — owner DECISIONS (not built yet; steps 3–4 of the financiers' ТЗ)
 

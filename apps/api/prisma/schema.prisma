@@ -440,6 +440,8 @@ model Location {
   invoices          Invoice[]
   originRoutes      DeliveryRoute[]   @relation("RouteOrigin")
   destinationStops  RouteStop[]       @relation("RouteDestination")
+  requisitionsFrom  MaterialRequisition[] @relation("RequisitionFrom")
+  requisitionsTo    MaterialRequisition[] @relation("RequisitionTo")
   expenses          Expense[]
   shifts            Shift[]
   timeEntries       TimeEntry[]
@@ -697,6 +699,7 @@ model Product {
   invoiceItems       InvoiceItem[]
   routeStopItems     RouteStopItem[]
   stocktakeLines     StocktakeLine[]
+  requisitionLines   MaterialRequisitionLine[]
 
   @@unique([organizationId, sku])
   @@index([organizationId])
@@ -790,6 +793,9 @@ model StockMovement {
   // Set on the ADJUSTMENT rows «Сверка дня» wrote when applied to stock.
   dailyReconciliationId String?
   dailyReconciliation   DailyReconciliation? @relation(fields: [dailyReconciliationId], references: [id])
+  // Set on the TRANSFER_OUT / TRANSFER_IN pair a posted «требование-накладная» wrote.
+  materialRequisitionId String?
+  materialRequisition   MaterialRequisition? @relation(fields: [materialRequisitionId], references: [id])
   // Unit cost the movement was valued at WHEN IT HAPPENED (see CostingService).
   // Null = no cost was known then (never zero) or the row predates snapshots.
   // Historical valuation reads this, so a later ingredient price change can
@@ -1265,6 +1271,7 @@ model Recipe {
   items     RecipeItem[]
   stages    RecipeStage[]
   revisions RecipeRevision[]
+  versions  RecipeVersion[]
   batches   ProductionBatch[]
 
   @@index([organizationId])
@@ -1277,7 +1284,12 @@ model RecipeItem {
   recipe              Recipe  @relation(fields: [recipeId], references: [id], onDelete: Cascade)
   ingredientProductId String
   ingredientProduct   Product @relation("RecipeIngredient", fields: [ingredientProductId], references: [id])
+  // Брутто: what is taken from stock and costed.
   quantity            Decimal @db.Decimal(12, 3)
+  // Технологические потери of this ingredient (cleaning, sifting…), %. Нетто =
+  // брутто × (1 − loss/100) is shown on the card only; stock and cost stay on
+  // брутто. Null = not stated.
+  lossPercent         Decimal? @db.Decimal(5, 2)
 
   @@map("recipe_items")
 }
@@ -1363,6 +1375,87 @@ model RecipeRevision {
   @@map("recipe_revisions")
 }
 
+// The composition of a recipe as it stood from `validFrom` (ТЗ §4: «при
+// изменении рецептуры создаётся новая версия с датой»). Written on creation and
+// on every save that changes the yield, the recipe-level loss or the lines;
+// append-only (UPDATE rejected by trigger). A completed batch names the version
+// it was produced by, so an old document always reads against its own version.
+model RecipeVersion {
+  id             String   @id @default(cuid())
+  organizationId String
+  recipeId       String
+  recipe         Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  number         Int
+  validFrom      DateTime
+  createdById    String?
+  createdByName  String
+  yieldQuantity  Decimal  @db.Decimal(12, 3)
+  lossPercent    Decimal? @db.Decimal(5, 2)
+  // [{ ingredientProductId, name, unit, quantity (брутто), lossPercent }]
+  items          Json
+  createdAt      DateTime @default(now())
+
+  batches ProductionBatch[]
+
+  @@unique([recipeId, number])
+  @@index([organizationId])
+  @@map("recipe_versions")
+}
+
+enum MaterialRequisitionStatus {
+  DRAFT
+  POSTED
+}
+
+// «Требование-накладная»: the workshop asks the warehouse for raw materials for
+// its production plan. The need is the plan × the recipe norm; the issued
+// quantity is typed. Posting moves the goods (TRANSFER_OUT at the warehouse,
+// TRANSFER_IN at the workshop, `materialRequisitionId` on both) — goods between
+// own points keep their value, so nothing reaches money or the ledger.
+model MaterialRequisition {
+  id              String                    @id @default(cuid())
+  organizationId  String
+  number          Int
+  status          MaterialRequisitionStatus @default(DRAFT)
+  fromLocationId  String
+  fromLocation    Location                  @relation("RequisitionFrom", fields: [fromLocationId], references: [id])
+  toLocationId    String
+  toLocation      Location                  @relation("RequisitionTo", fields: [toLocationId], references: [id])
+  // The production day it is for (Almaty date at midnight).
+  planDate        DateTime
+  // Production tasks the need was computed from (ids, informational).
+  batchIds        String[]                  @default([])
+  note            String?
+  createdById     String
+  createdByName   String
+  postedById      String?
+  postedByName    String?
+  postedAt        DateTime?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  lines          MaterialRequisitionLine[]
+  stockMovements StockMovement[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, planDate])
+  @@map("material_requisitions")
+}
+
+model MaterialRequisitionLine {
+  id               String              @id @default(cuid())
+  requisitionId    String
+  requisition      MaterialRequisition @relation(fields: [requisitionId], references: [id], onDelete: Cascade)
+  productId        String
+  product          Product             @relation(fields: [productId], references: [id])
+  // By the recipes for the plan; null = a line added by hand.
+  requiredQuantity Decimal?            @db.Decimal(12, 3)
+  quantity         Decimal             @db.Decimal(12, 3)
+
+  @@unique([requisitionId, productId])
+  @@map("material_requisition_lines")
+}
+
 // A planned/completed run of a recipe at a production location. Completing a
 // batch is the event that turns raw ingredients into finished-goods stock.
 model ProductionBatch {
@@ -1372,6 +1465,9 @@ model ProductionBatch {
   location        Location                @relation(fields: [locationId], references: [id], onDelete: Cascade)
   recipeId        String
   recipe          Recipe                  @relation(fields: [recipeId], references: [id])
+  // The recipe version in force when the batch was completed.
+  recipeVersionId String?
+  recipeVersion   RecipeVersion?          @relation(fields: [recipeVersionId], references: [id], onDelete: SetNull)
   status          ProductionBatchStatus   @default(PLANNED)
   plannedQuantity Decimal                 @db.Decimal(12, 3)
   actualQuantity  Decimal?                @db.Decimal(12, 3)
