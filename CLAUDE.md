@@ -1121,6 +1121,8 @@ trigger; `StockMovementType.SUPPLIER_RETURN`, stock sign −1; `supplierReturnId
 same roles/period/location as the P&L). `finance/direction-pnl.ts`; shared `packages/shared/src/directions.ts`.
 - A sale's direction is read from the sale itself (`businessDirectionOf`): `Sale.crmOrderId` set → «Заказы»;
   `customerId` → «Опт»; else «Розница». A return follows its sale. Nothing about directions is stored.
+- **No directions directory** (owner's decision, 04.11.2026): the business has exactly these three; product lines
+  (хлеб / кондитерка) are categories, not directions. Add a user-editable directory only if a fourth one appears.
 - `Sale.crmOrderId` (migration `20261106120000`, nullable, SET NULL): the till's «Оплата заказа» (`PosOrderBlock`,
   `GET /sales/open-orders`, SALE_CREATE_ROLES — a cashier cannot reach `/crm`) attaches a prepayment or the rest to an
   open cake order; a CANCELLED order is refused. «Исправить чек» carries it over. Sales before this have no order, so
