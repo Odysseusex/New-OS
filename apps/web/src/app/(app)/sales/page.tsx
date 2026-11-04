@@ -173,7 +173,7 @@ export default function SalesPage() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <div className="mb-8 flex items-start justify-between">
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-foreground">Продажи</h1>
           <p className="mt-1 text-sm text-muted">Выручка и транзакции по сети</p>

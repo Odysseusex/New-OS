@@ -939,6 +939,23 @@ unit cost by Almaty month (12, zero-filled, recharts line). The financiers' acce
   return → the order, production → «Акт выпуска», requisition/transfer №, stocktake, «Сверка дня»); sale, order and batch
   open in place.
 
+## Phone layout + product photos (built)
+
+- **Below `lg` (1024 px) the menu is a drawer**: `Sidebar({open, onClose})` slides over the page, opened by the topbar's
+  «Меню» button (`Topbar({onMenu})`), closed on navigation; ≥ lg nothing changed. `main` padding is `px-4 sm:px-6 lg:px-8`.
+- Pages were NOT rewritten one by one: a block at the end of `globals.css` (`@media (max-width: 1023px)`, scoped to
+  `main`) makes any table's parent scroll sideways (`:has(> table)`), and lets rows of buttons / selects / inputs, tab
+  bars (`.flex.bg-surface-muted.p-1`) and `justify-between` rows wrap. A new page gets this for free; check it at 390 px
+  (`document.querySelector("main").scrollWidth` should equal the width).
+- Till on a phone: the check sits under the product grid; a bottom bar «Чек · N поз. · сумма» jumps to it and hides
+  while the check is on screen.
+- **Product photo** (finished goods, «Фото для кассы» in the product form): resized IN THE BROWSER to ≤ 480 px JPEG
+  (`lib/product-photo.ts`), stored in the DB (`ProductPhoto`, base64, one per product, cascade with the product; migration
+  `20261119120000`) — there is no file storage. `PUT/DELETE /products/:id/photo` (PRODUCT_MANAGE_ROLES, audited
+  `product.photo[Remove]`, ≤ 400 KB; JSON body limit raised to 1 MB in `main.ts`). The picture is served WITHOUT a login by
+  `ProductPhotoController` `GET /products/:id/photo?v=<photoVersion>` (an <img> cannot send a token; immutable cache, a new
+  photo = a new `v`). `ProductDto.photoVersion` (ms of the last change, null = none). POS tiles show it only when present.
+
 ## Baker's calculator (расчёт техкарты на количество) — built
 
 Производство → a calculator icon on every active recipe card and on every task row (task opens at its

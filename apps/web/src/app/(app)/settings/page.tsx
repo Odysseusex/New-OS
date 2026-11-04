@@ -121,7 +121,7 @@ export default function SettingsPage() {
 
       {canManage && (
         <>
-          <div className="mb-6 flex items-start justify-between">
+          <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
             <h2 className="text-sm font-semibold text-foreground">Сотрудники</h2>
             <button
               onClick={() => {

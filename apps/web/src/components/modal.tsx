@@ -39,11 +39,11 @@ export function Modal({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-2 sm:px-4">
       <div
         ref={rootRef}
         data-modal-root=""
-        className={`w-full ${width} max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-surface p-6 shadow-card`}
+        className={`w-full ${width} max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-surface p-4 shadow-card sm:p-6`}
       >
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-base font-semibold text-foreground">{title}</h2>

@@ -4,13 +4,22 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
+import { X } from "lucide-react";
 import { canOpen, primaryNav, secondaryNav } from "@/lib/nav";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
 const NOTIFICATIONS_POLL_MS = 60_000;
 
-export function Sidebar() {
+// Always beside the page on a wide screen; on a phone / narrow tablet a drawer
+// over the page, opened from the topbar's menu button (`open`).
+export function Sidebar({
+  open = false,
+  onClose,
+}: {
+  open?: boolean;
+  onClose?: () => void;
+}) {
   const pathname = usePathname();
   const { user } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
@@ -36,41 +45,73 @@ export function Sidebar() {
   }, [pathname]);
 
   return (
-    <aside className="flex h-screen w-64 shrink-0 flex-col border-r border-border bg-surface">
-      <div className="flex items-center gap-2.5 px-5 py-5">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/logo.png"
-          alt="ArAmir OS"
-          className="h-9 w-9 shrink-0 rounded-xl object-cover"
+    <>
+      {open && (
+        <div
+          className="fixed inset-0 z-40 bg-black/30 lg:hidden"
+          onClick={onClose}
+          aria-hidden
         />
-        <div>
-          <p className="text-sm font-semibold leading-tight text-foreground">ArAmir OS</p>
-          <p className="text-xs leading-tight text-muted">Управление сетью</p>
+      )}
+      <aside
+        className={clsx(
+          "flex h-screen w-64 shrink-0 flex-col border-r border-border bg-surface",
+          "fixed inset-y-0 left-0 z-50 transition-transform lg:static lg:z-auto lg:translate-x-0",
+          open ? "translate-x-0 shadow-card" : "-translate-x-full",
+        )}
+      >
+        <div className="flex items-center gap-2.5 px-5 py-5">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo.png"
+            alt="ArAmir OS"
+            className="h-9 w-9 shrink-0 rounded-xl object-cover"
+          />
+          <div>
+            <p className="text-sm font-semibold leading-tight text-foreground">
+              ArAmir OS
+            </p>
+            <p className="text-xs leading-tight text-muted">Управление сетью</p>
+          </div>
+          <button
+            onClick={onClose}
+            title="Закрыть меню"
+            className="ml-auto flex h-9 w-9 items-center justify-center rounded-xl text-muted transition hover:bg-surface-muted hover:text-foreground lg:hidden"
+          >
+            <X className="h-4 w-4" strokeWidth={1.75} />
+          </button>
         </div>
-      </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 py-2">
-        <ul className="space-y-0.5">
-          {primaryNav.filter((item) => !user || canOpen(item, user.role)).map((item) => (
-            <NavRow key={item.href} item={item} active={pathname === item.href} />
-          ))}
-        </ul>
+        <nav className="flex-1 overflow-y-auto px-3 py-2">
+          <ul className="space-y-0.5">
+            {primaryNav
+              .filter((item) => !user || canOpen(item, user.role))
+              .map((item) => (
+                <NavRow
+                  key={item.href}
+                  item={item}
+                  active={pathname === item.href}
+                />
+              ))}
+          </ul>
 
-        <div className="my-3 border-t border-border" />
+          <div className="my-3 border-t border-border" />
 
-        <ul className="space-y-0.5">
-          {secondaryNav.filter((item) => !user || canOpen(item, user.role)).map((item) => (
-            <NavRow
-              key={item.href}
-              item={item}
-              active={pathname === item.href}
-              badgeCount={item.href === "/notifications" ? unreadCount : 0}
-            />
-          ))}
-        </ul>
-      </nav>
-    </aside>
+          <ul className="space-y-0.5">
+            {secondaryNav
+              .filter((item) => !user || canOpen(item, user.role))
+              .map((item) => (
+                <NavRow
+                  key={item.href}
+                  item={item}
+                  active={pathname === item.href}
+                  badgeCount={item.href === "/notifications" ? unreadCount : 0}
+                />
+              ))}
+          </ul>
+        </nav>
+      </aside>
+    </>
   );
 }
 

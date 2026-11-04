@@ -171,7 +171,7 @@ export default function ProcurementPage() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <div className="mb-6 flex items-start justify-between">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-foreground">Закупки</h1>
           <p className="mt-1 text-sm text-muted">Поставщики и заказы на пополнение склада</p>

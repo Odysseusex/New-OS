@@ -125,7 +125,7 @@ export function LocationPricesTab({
       {state === "error" && <p className="text-sm text-red-700">Не удалось загрузить цены</p>}
 
       {state === "ready" && (
-        <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+        <div className="overflow-x-auto rounded-2xl border border-border bg-surface">
           <table className="w-full text-sm">
             <thead className="border-b border-border bg-surface-muted text-left text-xs text-muted">
               <tr>

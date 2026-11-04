@@ -41,3 +41,31 @@ body {
     text-wrap: balance;
   }
 }
+
+/* Phone / narrow tablet (the menu is a drawer below lg). Pages were laid out for
+   a laptop; rather than rewriting each one, three rules keep them usable:
+   a table scrolls sideways inside its own box instead of pushing the page wider,
+   a row of buttons or tabs wraps onto the next line instead of running off the
+   screen. Wide screens are untouched. */
+@media (max-width: 1023px) {
+  main :has(> table) {
+    overflow-x: auto;
+    max-width: 100%;
+  }
+  main .flex:has(> button + button),
+  main .flex:has(> a + a),
+  main .flex:has(> select),
+  main .flex:has(> input),
+  main .flex:has(> .relative > input),
+  main .flex.bg-surface-muted.p-1 {
+    flex-wrap: wrap;
+  }
+  main .flex.justify-between {
+    flex-wrap: wrap;
+    row-gap: 0.75rem;
+  }
+  main input,
+  main select {
+    max-width: 100%;
+  }
+}

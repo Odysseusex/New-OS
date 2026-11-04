@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Put, Query, Res, UseGuards } from "@nestjs/common";
+import type { Response } from "express";
 import {
   HARD_DELETE_ROLES,
   PRODUCT_FORCE_DELETE_ROLES,
@@ -14,6 +15,7 @@ import { ProductsService } from "./products.service";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 import { SetLocationPriceDto } from "./dto/set-location-price.dto";
+import { SetProductPhotoDto } from "./dto/set-product-photo.dto";
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("products")
@@ -98,6 +100,19 @@ export class ProductsController {
     return this.productsService.restore(user.organizationId, id, user.id);
   }
 
+  // Photo for the till tile: the browser sends it already resized, as a data URL.
+  @Put(":id/photo")
+  @Roles(...PRODUCT_MANAGE_ROLES)
+  setPhoto(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: SetProductPhotoDto) {
+    return this.productsService.setPhoto(user.organizationId, id, dto.dataUrl, user.id);
+  }
+
+  @Delete(":id/photo")
+  @Roles(...PRODUCT_MANAGE_ROLES)
+  removePhoto(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
+    return this.productsService.removePhoto(user.organizationId, id, user.id);
+  }
+
   @Delete(":id")
   @Roles(...HARD_DELETE_ROLES)
   remove(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
@@ -108,5 +123,22 @@ export class ProductsController {
   @Roles(...PRODUCT_FORCE_DELETE_ROLES)
   forceRemove(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
     return this.productsService.forceRemove(user.organizationId, id, user.id);
+  }
+}
+
+// The picture itself, WITHOUT a login: an <img> cannot send a token, and the
+// browser should keep it (the address carries `?v=` = its last change, so a new
+// photo is a new address). A product picture is not sensitive.
+@Controller("products")
+export class ProductPhotoController {
+  constructor(private productsService: ProductsService) {}
+
+  @Get(":id/photo")
+  async photo(@Param("id") id: string, @Res() res: Response) {
+    const photo = await this.productsService.photo(id);
+    if (!photo) throw new NotFoundException("Фото нет");
+    res.setHeader("Content-Type", photo.mime);
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.send(photo.bytes);
   }
 }

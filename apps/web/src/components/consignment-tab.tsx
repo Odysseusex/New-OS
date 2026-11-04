@@ -62,7 +62,7 @@ export function ConsignmentTab() {
         <p className="mt-1 text-2xl font-semibold text-foreground">{formatMoney(totalOwed)}</p>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+      <div className="overflow-x-auto rounded-2xl border border-border bg-surface">
         <table className="w-full text-sm">
           <thead className="border-b border-border bg-surface-muted text-left text-xs text-muted">
             <tr>

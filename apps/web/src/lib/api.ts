@@ -398,6 +398,9 @@ export const api = {
   products: {
     // `locationId` resolves each product's effectivePrice against that point
     // of sale; without it effectivePrice is just the default price.
+    setPhoto: (id: string, dataUrl: string) =>
+      request<ProductDto>(`/products/${id}/photo`, { method: "PUT", body: JSON.stringify({ dataUrl }) }),
+    removePhoto: (id: string) => request<ProductDto>(`/products/${id}/photo`, { method: "DELETE" }),
     list: (includeArchived?: boolean, locationId?: string) =>
       request<ProductDto[]>(
         withQuery("/products", {

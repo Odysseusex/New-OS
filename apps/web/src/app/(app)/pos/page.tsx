@@ -76,6 +76,7 @@ import { LoyaltyLookupPanel } from "@/components/loyalty-lookup-panel";
 import { PosLoyaltyBlock } from "@/components/pos-loyalty";
 import { PosOrderBlock } from "@/components/pos-order";
 import { formatMoney, formatPoints, formatQuantity } from "@/lib/format";
+import { productPhotoUrl } from "@/lib/product-photo";
 
 // A cart line carries its own price rather than reading it off the product,
 // because an open-price line's amount is typed by the cashier and two such
@@ -134,6 +135,16 @@ export default function PosPage() {
   const [categoryId, setCategoryId] = useState("");
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
+  // Phone only: is the check (under the product grid) on screen? The bar that
+  // jumps to it hides while it is.
+  const [checkInView, setCheckInView] = useState(false);
+  useEffect(() => {
+    const el = document.getElementById("pos-check");
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(([entry]) => setCheckInView(entry.isIntersecting), { threshold: 0.15 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [cart.length === 0]); // eslint-disable-line react-hooks/exhaustive-deps
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
@@ -876,7 +887,17 @@ export default function PosPage() {
       {/* 340, not 380: the receipt column is mostly empty most of the time,
           and every pixel it gives back is a pixel of product grid on a
           screen that has none to spare. */}
-      <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
+      {/* On a phone the check sits under the product grid: a bar at the bottom jumps to it. */}
+      {cart.length > 0 && !checkInView && (
+        <button
+          onClick={() => document.getElementById("pos-check")?.scrollIntoView({ behavior: "smooth" })}
+          className="fixed inset-x-4 bottom-4 z-30 flex items-center justify-between rounded-2xl bg-accent px-5 py-3.5 text-sm font-medium text-accent-foreground shadow-card lg:hidden"
+        >
+          <span>Чек · {cart.length} поз.</span>
+          <span>{formatMoney(total)}</span>
+        </button>
+      )}
+      <div className="grid gap-5 pb-20 lg:grid-cols-[1fr_340px] lg:pb-0">
         <div>
           <div className="mb-3 flex flex-wrap items-center gap-1 rounded-xl bg-surface-muted p-1">
             <CategoryChip active={categoryId === ""} onClick={() => setCategoryId("")}>
@@ -928,6 +949,11 @@ export default function PosPage() {
                 // products below the fold.
                 className="flex min-h-[5.5rem] flex-col justify-between gap-2 rounded-2xl border border-border bg-surface p-2.5 text-left transition hover:border-accent hover:shadow-card active:scale-[0.98]"
               >
+                {/* A photo only where one was uploaded: tiles without stay compact. */}
+                {p.photoVersion ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={productPhotoUrl(p) ?? undefined} alt="" loading="lazy" className="aspect-[4/3] w-full rounded-xl object-cover" />
+                ) : null}
                 <span className="line-clamp-3 text-base font-semibold text-foreground">{p.name}</span>
                 <span className="text-lg font-bold text-accent">{formatMoney(p.effectivePrice)}</span>
               </button>
@@ -940,7 +966,7 @@ export default function PosPage() {
           </div>
         </div>
 
-        <div className="flex h-fit flex-col rounded-2xl border border-border bg-surface shadow-card lg:sticky lg:top-4">
+        <div id="pos-check" className="flex h-fit scroll-mt-4 flex-col rounded-2xl border border-border bg-surface shadow-card lg:sticky lg:top-4">
           <div className="flex items-center justify-between border-b border-border px-5 py-4">
             <h2 className="text-sm font-semibold text-foreground">Чек</h2>
             {cart.length > 0 && (

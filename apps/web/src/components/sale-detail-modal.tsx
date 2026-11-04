@@ -81,7 +81,7 @@ export function SaleDetailModal({
               )}
             </div>
 
-            <div className="mb-5 overflow-hidden rounded-2xl border border-border">
+            <div className="mb-5 overflow-x-auto rounded-2xl border border-border">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-surface-muted text-left text-xs uppercase tracking-wide text-muted">

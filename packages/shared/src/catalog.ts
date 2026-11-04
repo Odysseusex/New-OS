@@ -211,6 +211,9 @@ export interface ProductDto {
   // fine for finished goods made to order, but raw materials usually want
   // a real number so purchasing gets a heads-up before they run out.
   minQuantity: number;
+  // Set when the product has a photo: its last change (ms), used to address the
+  // cached picture `GET /products/:id/photo?v=…`. Null = no photo.
+  photoVersion?: number | null;
 }
 
 // One row of the «Цены по точке» screen: the organization's default price

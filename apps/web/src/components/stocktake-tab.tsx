@@ -169,7 +169,7 @@ export function StocktakeTab({ locations }: { locations: LocationDto[] }) {
       {state === "ready" && list.length === 0 && <p className="text-sm text-muted">Инвентаризаций пока нет</p>}
 
       {state === "ready" && list.length > 0 && (
-        <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+        <div className="overflow-x-auto rounded-2xl border border-border bg-surface">
           <table className="w-full text-sm">
             <thead className="border-b border-border bg-surface-muted text-left text-xs text-muted">
               <tr>
@@ -383,7 +383,7 @@ function StocktakeDetail({
         <p className="mb-3 text-xs text-muted">Количество можно вводить так: 3*25+12 (мешки и россыпь), 350г — для товара в кг; кнопка «кг/г» у поля переключает единицу. Enter — к следующему.</p>
       )}
 
-      <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+      <div className="overflow-x-auto rounded-2xl border border-border bg-surface">
         <table className="w-full text-sm">
           <thead className="border-b border-border bg-surface-muted text-left text-xs text-muted">
             <tr>

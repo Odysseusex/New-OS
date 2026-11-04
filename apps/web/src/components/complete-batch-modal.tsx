@@ -125,7 +125,7 @@ export function CompleteBatchModal({
 
         {normError && <p className="mb-4 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">{normError}. Сырьё спишется по норме.</p>}
         {rows.length > 0 && (
-          <div className="mb-5 overflow-hidden rounded-2xl border border-border">
+          <div className="mb-5 overflow-x-auto rounded-2xl border border-border">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface-muted text-left text-xs uppercase tracking-wide text-muted">

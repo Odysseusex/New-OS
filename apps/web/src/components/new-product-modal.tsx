@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Image as ImageIcon } from "lucide-react";
 import type { CategoryDto, ProductDto, SupplierDto } from "@bakery-os/shared";
 import { PRODUCT_TYPE_LABELS_RU, PRODUCT_TYPE_ORDER, ProductType, Unit, UNIT_LABELS_RU, categoryAcceptsType } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
+import { productPhotoUrl, resizeProductPhoto } from "@/lib/product-photo";
 import { Modal } from "@/components/modal";
 import { formatMoneyPrecise } from "@/lib/format";
 
@@ -36,6 +38,11 @@ export function NewProductModal({
   const [trackInventory, setTrackInventory] = useState(product?.trackInventory ?? true);
   const isSemiFinished = type === ProductType.SEMI_FINISHED;
   const [isPosQuickItem, setIsPosQuickItem] = useState(product?.isPosQuickItem ?? false);
+  // Photo for the till tile: a new picture to upload (data URL), or «remove».
+  const [newPhoto, setNewPhoto] = useState<string | null>(null);
+  const [photoRemoved, setPhotoRemoved] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const currentPhoto = newPhoto ?? (photoRemoved || !product ? null : productPhotoUrl(product));
   const [minQuantity, setMinQuantity] = useState(String(product?.minQuantity ?? 0));
   // Goods taken under consignment — somebody else's stock on our shelf that
   // we owe them for once it sells. Off by default: almost everything here is
@@ -121,6 +128,9 @@ export function NewProductModal({
       // product *without* the consignment link and nothing looks wrong until
       // the form is reopened and the checkbox is blank again. Check what came
       // back instead of trusting the status code.
+      // The photo goes separately, after the product exists.
+      if (newPhoto) await api.products.setPhoto(saved.id, newPhoto);
+      else if (photoRemoved && product?.photoVersion) await api.products.removePhoto(saved.id);
       if (isConsignment && !saved.consignmentSupplierId) {
         setError(
           "Товар сохранён, но признак «под реализацию» не записался — сервер работает на старой версии. Сообщите об этом и повторите после обновления.",
@@ -341,6 +351,57 @@ export function NewProductModal({
             </span>
           </label>
         </div>
+
+        {type === ProductType.FINISHED_GOOD && (
+          <div className="mb-5">
+            <p className="mb-1.5 text-sm font-medium text-foreground">Фото для кассы</p>
+            <div className="flex items-center gap-3">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-surface-muted">
+                {currentPhoto ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={currentPhoto} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <ImageIcon className="h-6 w-6 text-muted" strokeWidth={1.5} />
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <label className="cursor-pointer rounded-xl border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted">
+                  {currentPhoto ? "Заменить" : "Загрузить фото"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!file) return;
+                      setPhotoError(null);
+                      try {
+                        setNewPhoto(await resizeProductPhoto(file));
+                        setPhotoRemoved(false);
+                      } catch (err) {
+                        setPhotoError(err instanceof Error ? err.message : "Не удалось открыть картинку");
+                      }
+                    }}
+                  />
+                </label>
+                {currentPhoto && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewPhoto(null);
+                      setPhotoRemoved(true);
+                    }}
+                    className="rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50"
+                  >
+                    Убрать
+                  </button>
+                )}
+              </div>
+            </div>
+            {photoError && <p className="mt-1.5 text-xs text-red-600">{photoError}</p>}
+          </div>
+        )}
 
         <div className="mb-5">
           <label className="flex items-start gap-2.5 text-sm text-foreground">

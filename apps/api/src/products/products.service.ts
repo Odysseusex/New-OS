@@ -28,7 +28,10 @@ const PRODUCT_AUDIT_FIELDS = [
 
 // The category comes with its parent so a product can name where it sits as
 // «Бакалея › Мука пшеничная» wherever a category name is shown.
-const PRODUCT_INCLUDE = { categoryRef: CATEGORY_WITH_PARENT, consignmentSupplier: true };
+// A till tile needs a few dozen KB; the browser resizes before sending.
+const PRODUCT_PHOTO_MAX_BYTES = 400 * 1024;
+
+const PRODUCT_INCLUDE = { categoryRef: CATEGORY_WITH_PARENT, consignmentSupplier: true, photo: { select: { updatedAt: true } } };
 
 const SKU_PREFIX_BY_TYPE: Record<ProductType, string> = {
   [ProductType.RAW_MATERIAL]: "ING",
@@ -602,6 +605,50 @@ export class ProductsService {
     }
   }
 
+  // ── Photo for the till tile ──
+  async setPhoto(organizationId: string, productId: string, dataUrl: string, actorId: string | null): Promise<ProductDto> {
+    const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl ?? "");
+    if (!match) throw new BadRequestException("Фото должно быть картинкой JPEG, PNG или WebP");
+    const [, mime, data] = match;
+    if (Buffer.byteLength(data, "base64") > PRODUCT_PHOTO_MAX_BYTES) {
+      throw new BadRequestException("Фото слишком большое — не больше 400 КБ");
+    }
+    const product = await this.prisma.product.findFirst({ where: { id: productId, organizationId }, select: { id: true } });
+    if (!product) throw new NotFoundException("Товар не найден");
+    await this.prisma.$transaction(async (tx) => {
+      await tx.productPhoto.upsert({
+        where: { productId },
+        create: { productId, organizationId, mime, data },
+        update: { mime, data },
+      });
+      await recordAudit(tx, { organizationId, actorId, action: "product.photo", entityType: "Product", entityId: productId, after: { mime } });
+    });
+    return this.findOneDto(organizationId, productId);
+  }
+
+  async removePhoto(organizationId: string, productId: string, actorId: string | null): Promise<ProductDto> {
+    const product = await this.prisma.product.findFirst({ where: { id: productId, organizationId }, select: { id: true } });
+    if (!product) throw new NotFoundException("Товар не найден");
+    await this.prisma.$transaction(async (tx) => {
+      const removed = await tx.productPhoto.deleteMany({ where: { productId } });
+      if (removed.count > 0) {
+        await recordAudit(tx, { organizationId, actorId, action: "product.photoRemove", entityType: "Product", entityId: productId });
+      }
+    });
+    return this.findOneDto(organizationId, productId);
+  }
+
+  // The picture itself, for the public image route (no organization: the id is the key).
+  async photo(productId: string): Promise<{ mime: string; bytes: Buffer; updatedAt: Date } | null> {
+    const row = await this.prisma.productPhoto.findUnique({ where: { productId } });
+    return row ? { mime: row.mime, bytes: Buffer.from(row.data, "base64"), updatedAt: row.updatedAt } : null;
+  }
+
+  private async findOneDto(organizationId: string, productId: string): Promise<ProductDto> {
+    const product = await this.prisma.product.findFirstOrThrow({ where: { id: productId, organizationId }, include: PRODUCT_INCLUDE });
+    return this.toDto(product);
+  }
+
   private toDto(product: {
     id: string;
     name: string;
@@ -622,6 +669,7 @@ export class ProductsService {
     consignmentSupplier: { name: string } | null;
     consignmentPrice: { toNumber: () => number } | null;
     minQuantity: { toNumber: () => number };
+    photo?: { updatedAt: Date } | null;
   }): ProductDto {
     return {
       id: product.id,
@@ -639,6 +687,7 @@ export class ProductsService {
       averageUnitCost: product.averageUnitCost?.toNumber() ?? null,
       isOpenPrice: product.isOpenPrice,
       isPosQuickItem: product.isPosQuickItem,
+      photoVersion: product.photo ? product.photo.updatedAt.getTime() : null,
       consignmentSupplierId: product.consignmentSupplierId,
       consignmentSupplierName: product.consignmentSupplier?.name ?? null,
       consignmentPrice: product.consignmentPrice?.toNumber() ?? null,

@@ -73,7 +73,7 @@ export function CustomerDetailModal({
           )}
 
           <h3 className="mb-2 text-sm font-semibold text-foreground">История заказов</h3>
-          <div className="overflow-hidden rounded-2xl border border-border">
+          <div className="overflow-x-auto rounded-2xl border border-border">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface-muted text-left text-xs uppercase tracking-wide text-muted">

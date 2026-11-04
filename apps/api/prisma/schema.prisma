@@ -712,8 +712,25 @@ model Product {
   // to reason about the many rows that have no barcode at all.
   @@index([organizationId, barcode])
     stockVoids StockVoid[]
+  photo          ProductPhoto?
 
   @@map("products")
+}
+
+// The product's picture for the till tile. Stored in the database (no file storage
+// is configured): resized in the browser to ≤ 480 px JPEG/PNG/WebP, base64, a few
+// dozen KB. Served publicly by id (`GET /products/:id/photo`) so an <img> can load
+// it and the browser can cache it; a product picture is not sensitive.
+model ProductPhoto {
+  productId      String   @id
+  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  organizationId String
+  mime           String
+  data           String
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("product_photos")
 }
 
 // Current quantity on hand for a product at a specific location.

@@ -83,7 +83,7 @@ export default function AiCenterPage() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <div className="mb-6 flex items-start justify-between">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="mb-1 flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-accent" strokeWidth={1.75} />

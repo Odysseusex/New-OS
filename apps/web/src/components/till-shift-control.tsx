@@ -308,7 +308,7 @@ function ReportView({ shift, report }: { shift: TillShiftDto; report: TillShiftR
         Открыта {time(shift.openedAt)} · {shift.openedByName}
         {shift.closedAt ? ` · закрыта ${time(shift.closedAt)} · ${shift.closedByName ?? ""}` : ""}
       </p>
-      <div className="overflow-hidden rounded-2xl border border-border">
+      <div className="overflow-x-auto rounded-2xl border border-border">
         <table className="w-full text-sm">
           <tbody className="divide-y divide-border">
             {reportRows(report).map(([label, value, bold], i) => (
