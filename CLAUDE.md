@@ -934,6 +934,11 @@ unit cost by Almaty month (12, zero-filled, recharts line). The financiers' acce
   to the DB by specs; `ProcurementService.withNextNumber`; migration `20261118130000` numbered existing orders by
   `orderedAt`). `GET /procurement/orders/:id`. «Новый заказ поставщику» has a «Сумма» per line: typing it sets the price
   = sum ÷ quantity to the тиын (prices are stored to 2 decimals).
+- **Checks have our own number** (`Sale.number`, unique per org; `Organization.saleSequence` incremented INSIDE the sale's
+  transaction in `SalesService.create`, so the org row is locked until commit — two tills never share a number; migration
+  `20261119130000` numbered existing sales by `soldAt` — sales have no `createdAt` column, a first draft of the migration
+  failed on exactly that). Printed on the till receipt «Чек № N», `GET /sales?number=` (Продажи → «№ чека»; the till's
+  «История» treats digits in its search as a check number on any day). Clean start resets the counter to 0.
 - `FinanceCategory.code` (optional, ≤ 20 chars, «Статьи ДДС» shows it before the name; empty string clears it).
 - Склад → «Движения»: `StockMovementDto.document` names the source (check, return → its check, purchase order / supplier
   return → the order, production → «Акт выпуска», requisition/transfer №, stocktake, «Сверка дня»); sale, order and batch

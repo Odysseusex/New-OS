@@ -50,7 +50,7 @@ export function SaleDetailModal({
   }, [saleId]);
 
   return (
-    <Modal title="Накладная на отгрузку" onClose={onClose} width="max-w-2xl">
+    <Modal title={sale?.number ? `Чек № ${sale.number}` : "Накладная на отгрузку"} onClose={onClose} width="max-w-2xl">
       {error && <p className="py-8 text-center text-sm text-red-600">{error}</p>}
       {!sale && !error && <p className="py-8 text-center text-sm text-muted">Загрузка…</p>}
 

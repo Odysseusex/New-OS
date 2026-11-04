@@ -1800,6 +1800,7 @@ function PrintableReceipt({
     <div className="hidden print:block print:mx-auto print:max-w-xs print:text-black">
       <p className="text-center text-sm font-semibold">{orgName}</p>
       <p className="text-center text-xs">{sale.locationName}</p>
+      {sale.number && <p className="text-center text-xs font-semibold">Чек № {sale.number}</p>}
       <p className="text-center text-xs">{new Date(sale.soldAt).toLocaleString("ru-RU")}</p>
       <div className="my-3 border-t border-dashed border-black" />
       <table className="w-full text-xs">

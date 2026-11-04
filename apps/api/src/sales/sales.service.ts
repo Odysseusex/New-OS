@@ -93,6 +93,8 @@ function isoWeekday(dateKey: string): number {
 const SALES_LIST_MAX = 2000;
 
 export interface SaleListSearch {
+  // The check number (exact).
+  number?: number;
   cashierId?: string;
   paymentMethod?: string;
   minTotal?: number;
@@ -198,6 +200,7 @@ export class SalesService {
         ...(locationId ? { locationId } : {}),
         ...(from || to ? { soldAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
         ...(productId ? { items: { some: { productId } } } : {}),
+        ...(search.number !== undefined ? { number: search.number } : {}),
         ...(search.cashierId ? { createdById: search.cashierId } : {}),
         ...(search.paymentMethod ? { paymentMethod: search.paymentMethod as never } : {}),
         ...(search.minTotal !== undefined || search.maxTotal !== undefined
@@ -1476,9 +1479,17 @@ export class SalesService {
           .toFixed(2),
       );
 
+      // The next check number of the organization; the counter row stays locked
+      // until this sale commits, so two tills never get the same number.
+      const { saleSequence: number } = await tx.organization.update({
+        where: { id: user.organizationId },
+        data: { saleSequence: { increment: 1 } },
+        select: { saleSequence: true },
+      });
       const sale = await tx.sale.create({
         data: {
           organizationId: user.organizationId,
+          number,
           locationId,
           customerId: dto.customerId,
           loyaltyMemberId: loyalty?.memberId ?? null,
@@ -1899,6 +1910,7 @@ export class SalesService {
 
   private toSaleDto = (sale: {
     id: string;
+    number?: number | null;
     locationId: string;
     location: { name: string };
     customerId: string | null;
@@ -1922,6 +1934,7 @@ export class SalesService {
 
     return {
       id: sale.id,
+      number: sale.number ?? null,
       locationId: sale.locationId,
       locationName: sale.location.name,
       customerId: sale.customerId,

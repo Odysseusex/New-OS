@@ -65,7 +65,7 @@ export const CLEAN_START_RESETS: string[] = [
   // The moving average came from purchases that are gone; the card price stands in until the first priced receipt.
   `UPDATE "products" SET "averageUnitCost" = NULL WHERE "organizationId" = $1`,
   `UPDATE "organizations" SET "financeInitializedAt" = NULL, "openingInventoryValue" = NULL, "openingReceivablesValue" = NULL,
-     "openingPayablesValue" = NULL, "ledgerStartsAt" = NULL, "journalEntrySequence" = 0 WHERE "id" = $1`,
+     "openingPayablesValue" = NULL, "ledgerStartsAt" = NULL, "journalEntrySequence" = 0, "saleSequence" = 0 WHERE "id" = $1`,
 ];
 
 // Tables with an organizationId that are deleted (above) …

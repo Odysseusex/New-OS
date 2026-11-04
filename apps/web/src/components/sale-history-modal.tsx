@@ -65,21 +65,26 @@ export function SaleHistoryModal({
       .catch(() => setSummary(null));
   }, [locationId]);
 
+  // Digits typed in the search = a check number: found on any day, not only today.
+  const checkNumber = /^\d+$/.test(query.trim()) ? query.trim() : "";
+
   useEffect(() => {
     setState("loading");
     const from = startOfZonedDay(zonedDateKey()).toISOString();
-    api.sales
-      .list(locationId, DAY_LIMIT, undefined, from, undefined, product?.id)
+    const request = checkNumber
+      ? api.sales.list(locationId, 5, undefined, undefined, undefined, undefined, { number: checkNumber })
+      : api.sales.list(locationId, DAY_LIMIT, undefined, from, undefined, product?.id);
+    request
       .then((list) => {
         setSales(list);
         setState("ready");
       })
       .catch(() => setState("error"));
-  }, [locationId, product]);
+  }, [locationId, product, checkNumber]);
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q || product) return [];
+    if (!q || product || /^\d+$/.test(q)) return [];
     return products.filter((p) => p.name.toLowerCase().includes(q)).slice(0, PRODUCT_MATCHES_SHOWN);
   }, [products, query, product]);
 
@@ -101,7 +106,7 @@ export function SaleHistoryModal({
 
   if (openSale) {
     return (
-      <Modal title={`Чек · ${formatTime(openSale.soldAt)}`} onClose={() => setOpenSale(null)} width="max-w-md">
+      <Modal title={`Чек${openSale.number ? ` № ${openSale.number}` : ""} · ${formatTime(openSale.soldAt)}`} onClose={() => setOpenSale(null)} width="max-w-md">
         <div className="mb-4 space-y-2">
           {(openSale.items ?? []).map((item) => (
             <div key={item.id} className="flex justify-between text-sm">
@@ -214,7 +219,7 @@ export function SaleHistoryModal({
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Найти чеки с товаром"
+              placeholder="Товар или № чека"
               className="w-full rounded-xl border border-border bg-surface py-2 pl-9 pr-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
             />
           </div>
@@ -236,7 +241,7 @@ export function SaleHistoryModal({
             ))}
           </ul>
         )}
-        {query.trim() && !product && matches.length === 0 && (
+        {query.trim() && !product && !checkNumber && matches.length === 0 && (
           <p className="mt-1 px-1 text-sm text-muted">Товар не найден</p>
         )}
       </div>
@@ -252,7 +257,7 @@ export function SaleHistoryModal({
 
           {sales.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted">
-              {product ? "Сегодня этот товар не пробивали" : "Продаж пока не было"}
+              {checkNumber ? `Чек № ${checkNumber} не найден` : product ? "Сегодня этот товар не пробивали" : "Продаж пока не было"}
             </p>
           ) : (
             <ul className="max-h-[50vh] space-y-1 overflow-y-auto">
@@ -264,6 +269,7 @@ export function SaleHistoryModal({
                     className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-surface-muted disabled:opacity-50"
                   >
                     <span className="min-w-0">
+                      {sale.number && <span className="mr-2 text-sm font-semibold text-foreground">№{sale.number}</span>}
                       <span className="text-sm font-medium text-foreground">{formatTime(sale.soldAt)}</span>
                       <span className="ml-2 text-xs text-muted">
                         {product && sale.productQuantity != null && (
@@ -365,3 +371,4 @@ function checksPlural(count: number): string {
   if (mod10 === 1 && mod100 !== 11) return "чеке";
   return "чеках";
 }
+

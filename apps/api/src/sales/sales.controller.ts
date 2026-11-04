@@ -59,6 +59,7 @@ export class SalesController {
     @Query("paymentMethod") paymentMethod?: string,
     @Query("minTotal") minTotal?: string,
     @Query("maxTotal") maxTotal?: string,
+    @Query("number") number?: string,
   ) {
     const amount = (v?: string) => (v !== undefined && v !== "" && Number.isFinite(Number(v)) ? Number(v) : undefined);
     return this.salesService.findAll(
@@ -69,7 +70,10 @@ export class SalesController {
       from ? new Date(from) : undefined,
       to ? new Date(to) : undefined,
       productId || undefined,
-      { cashierId: cashierId || undefined, paymentMethod: paymentMethod || undefined, minTotal: amount(minTotal), maxTotal: amount(maxTotal) },
+      {
+        number: number && /^\d+$/.test(number.trim()) ? Number(number.trim()) : undefined,
+        cashierId: cashierId || undefined,
+        paymentMethod: paymentMethod || undefined, minTotal: amount(minTotal), maxTotal: amount(maxTotal) },
     );
   }
 

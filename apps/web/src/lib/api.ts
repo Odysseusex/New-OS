@@ -580,7 +580,7 @@ export const api = {
       from?: string,
       to?: string,
       productId?: string,
-      search: { cashierId?: string; paymentMethod?: string; minTotal?: string; maxTotal?: string } = {},
+      search: { number?: string; cashierId?: string; paymentMethod?: string; minTotal?: string; maxTotal?: string } = {},
     ) =>
       request<SaleDto[]>(
         withQuery("/sales", {

@@ -60,17 +60,19 @@ export default function SalesPage() {
   const [methodFilter, setMethodFilter] = useState("");
   const [minTotal, setMinTotal] = useState("");
   const [maxTotal, setMaxTotal] = useState("");
+  const [numberFilter, setNumberFilter] = useState("");
   const [cashiers, setCashiers] = useState<{ id: string; name: string }[]>([]);
   const search = useMemo(
     () => ({
+      number: numberFilter.trim() || undefined,
       cashierId: cashierFilter || undefined,
       paymentMethod: methodFilter || undefined,
       minTotal: minTotal.trim() || undefined,
       maxTotal: maxTotal.trim() || undefined,
     }),
-    [cashierFilter, methodFilter, minTotal, maxTotal],
+    [numberFilter, cashierFilter, methodFilter, minTotal, maxTotal],
   );
-  const hasSearch = Boolean(productFilter || cashierFilter || methodFilter || minTotal.trim() || maxTotal.trim());
+  const hasSearch = Boolean(numberFilter.trim() || productFilter || cashierFilter || methodFilter || minTotal.trim() || maxTotal.trim());
   const [periodSummary, setPeriodSummary] = useState<SalesReportDto | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
@@ -135,6 +137,7 @@ export default function SalesPage() {
     setMethodFilter("");
     setMinTotal("");
     setMaxTotal("");
+    setNumberFilter("");
   }
 
   // A link from «Сверка дня» (?date=…&locationId=…&productId=…) opens the
@@ -312,6 +315,10 @@ export default function SalesPage() {
               </select>
             </div>
             <div>
+              <label className="mb-1 block text-xs font-medium text-muted">№ чека</label>
+              <input inputMode="numeric" value={numberFilter} onChange={(e) => setNumberFilter(e.target.value.replace(/\D/g, ""))} className={`w-24 ${filterClass}`} />
+            </div>
+            <div>
               <label className="mb-1 block text-xs font-medium text-muted">Оплата</label>
               <select value={methodFilter} onChange={(e) => setMethodFilter(e.target.value)} className={filterClass}>
                 <option value="">Любая</option>
@@ -383,7 +390,10 @@ export default function SalesPage() {
                 onClick={() => setSelectedSaleId(sale.id)}
                 className="cursor-pointer transition hover:bg-surface-muted"
               >
-                <td className="px-5 py-3 text-foreground">{formatDateTime(sale.soldAt)}</td>
+                <td className="px-5 py-3 text-foreground">
+                  {sale.number && <div className="font-medium">№{sale.number}</div>}
+                  {formatDateTime(sale.soldAt)}
+                </td>
                 {isOrgWide && <td className="px-5 py-3 text-muted">{sale.locationName}</td>}
                 <td className="px-5 py-3 text-muted">{sale.customerName ?? "Розница"}</td>
                 <td className="px-5 py-3 text-muted">

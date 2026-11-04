@@ -42,6 +42,8 @@ export interface SaleItemDto {
 
 export interface SaleDto {
   id: string;
+  // Our own check number, per organization (null only on rows made outside the app).
+  number: number | null;
   locationId: string;
   locationName: string;
   customerId: string | null;

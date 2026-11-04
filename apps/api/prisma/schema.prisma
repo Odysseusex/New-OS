@@ -320,6 +320,8 @@ model Organization {
   // (see ProductsService.generateSku) without a retry loop under concurrent
   // creates — Prisma's `increment` compiles to a single atomic UPDATE.
   productSkuSequence Int @default(0)
+  // Last check number given out (Sale.number), incremented inside the sale's own transaction.
+  saleSequence Int @default(0)
 
   // How «Прибыль по направлениям» shares the costs no direction owns: null or
   // REVENUE = by net revenue, GROSS_PROFIT = by gross profit, MANUAL = by the
@@ -836,6 +838,8 @@ model StockMovement {
 model Sale {
   id             String    @id @default(cuid())
   organizationId String
+  // Our own check number, per organization (null only on rows written straight to the DB by specs).
+  number         Int?
   locationId     String
   location       Location  @relation(fields: [locationId], references: [id], onDelete: Cascade)
   customerId     String?
@@ -916,6 +920,7 @@ model Sale {
   @@index([loyaltyMemberId])
   @@index([crmOrderId])
     @@map("sales")
+  @@unique([organizationId, number])
 }
 
 // One tender of a split sale: «2 000 ₸ картой, остальное наличными».

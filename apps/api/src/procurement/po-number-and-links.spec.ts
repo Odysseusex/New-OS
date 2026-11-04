@@ -80,3 +80,15 @@ it("«Сверка дня» values a shortage at cost beside the price", () => {
   expect(s.surplusCost).toBe(0);
   expect(s.goodsDifference).toBe(-700);
 });
+
+it("numbers checks 1, 2, … per organization and finds one by its number", async () => {
+  const { PaymentMethod } = await import("@bakery-os/shared");
+  const bread = (await prisma.product.create({ data: { organizationId: org.organizationId, name: "Хлеб", sku: "PN-9", unit: "PCS", type: "FINISHED_GOOD", price: 300 } })).id;
+  await services.inventory.receive(org.user, { locationId: org.storeId, productId: bread, quantity: 5 } as never);
+  const sell = () => services.sales.create(org.user, { locationId: org.storeId, paymentMethod: PaymentMethod.CASH, items: [{ productId: bread, quantity: 1, unitPrice: 300 }] } as never);
+  const first = await sell();
+  const second = await sell();
+  expect([first.number, second.number]).toEqual([1, 2]);
+  const found = await services.sales.findAll(org.user, undefined, 10, 0, undefined, undefined, undefined, { number: 2 });
+  expect(found.map((s) => s.id)).toEqual([second.id]);
+});
