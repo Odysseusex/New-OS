@@ -5,7 +5,7 @@ import clsx from "clsx";
 import { Download, FileText} from "lucide-react";
 import type { CashFlowGranularity, CashFlowMonthlyDto, CashFlowOperationsDto, CashFlowMonthCellDto } from "@bakery-os/shared";
 import { CASH_SECTION_LABELS_RU, CashSection } from "@bakery-os/shared";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, type CashScope } from "@/lib/api";
 import { downloadTable, withExportTarget } from "@/lib/export-table";
 import { addDaysKey, firstOfMonthKey, zonedDateKey } from "@/lib/reporting-period";
 import { Modal } from "@/components/modal";
@@ -83,7 +83,7 @@ interface Drill {
   to: string;
 }
 
-export function CashFlowMonthly() {
+export function CashFlowMonthly({ scope = {} }: { scope?: CashScope }) {
   const [granularity, setGranularity] = useState<CashFlowGranularity>("month");
   const initial = useMemo(() => defaultRange("month"), []);
   const [fromKey, setFromKey] = useState(initial.from);
@@ -108,7 +108,7 @@ export function CashFlowMonthly() {
     setLoading(true);
     setError(null);
     const g = granularity;
-    (g === "month" ? api.finance.cashFlowMonthly(fromKey, toKey) : api.finance.cashFlowByDate(g, fromKey, toKey))
+    (g === "month" ? api.finance.cashFlowMonthly(fromKey, toKey, scope) : api.finance.cashFlowByDate(g, fromKey, toKey, scope))
       .then((r) => {
         if (cancelled) return;
         setReport(r);
@@ -119,7 +119,8 @@ export function CashFlowMonthly() {
     return () => {
       cancelled = true;
     };
-  }, [granularity, fromKey, toKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [granularity, fromKey, toKey, scope.locationId, scope.accountId]);
 
   const today = zonedDateKey();
   const isMonth = granularity === "month";
@@ -292,7 +293,7 @@ export function CashFlowMonthly() {
         </div>
       )}
 
-      {drill && <OperationsModal drill={drill} onClose={() => setDrill(null)} />}
+      {drill && <OperationsModal drill={drill} scope={scope} onClose={() => setDrill(null)} />}
     </div>
   );
 }
@@ -373,15 +374,15 @@ function SectionRows({
   );
 }
 
-function OperationsModal({ drill, onClose }: { drill: Drill; onClose: () => void }) {
+function OperationsModal({ drill, scope, onClose }: { drill: Drill; scope: CashScope; onClose: () => void }) {
   const [data, setData] = useState<CashFlowOperationsDto | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (drill.granularity === "month"
-      ? api.finance.cashFlowOperations({ section: drill.section, label: drill.label, fromMonth: drill.from, toMonth: drill.to })
-      : api.finance.cashFlowOperationsByDate({ section: drill.section, label: drill.label, fromDate: drill.from, toDate: drill.to }))
+      ? api.finance.cashFlowOperations({ section: drill.section, label: drill.label, fromMonth: drill.from, toMonth: drill.to, ...scope })
+      : api.finance.cashFlowOperationsByDate({ section: drill.section, label: drill.label, fromDate: drill.from, toDate: drill.to, ...scope }))
       .then((r) => !cancelled && setData(r))
       .catch((err) => !cancelled && setError(err instanceof ApiError ? err.message : "Не удалось загрузить операции"));
     return () => {

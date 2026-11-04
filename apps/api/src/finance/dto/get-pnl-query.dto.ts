@@ -10,4 +10,9 @@ export class GetPnlQueryDto {
   @IsOptional()
   @IsString()
   locationId?: string;
+
+  // ДДС only: one account.
+  @IsOptional()
+  @IsString()
+  accountId?: string;
 }

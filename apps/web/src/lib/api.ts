@@ -117,6 +117,8 @@ import type {
   CustomerDetailDto,
   CustomerDto,
   DashboardSummaryDto,
+  DashboardFinanceDto,
+  PnlByLocationDto,
   DeliveryRouteDto,
   DismissAiInsightResponseDto,
   DriverDto,
@@ -305,6 +307,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// ДДС for one point / one account (empty = all).
+export interface CashScope {
+  locationId?: string;
+  accountId?: string;
+}
+
 function withQuery(path: string, params: Record<string, string | undefined>) {
   const query = Object.entries(params)
     .filter(([, value]) => value !== undefined && value !== "")
@@ -367,7 +375,8 @@ export const api = {
       return { filename, size: blob.size };
     },
   },
-  dashboardSummary: () => request<DashboardSummaryDto>("/dashboard/summary"),
+  dashboardSummary: (locationId?: string) => request<DashboardSummaryDto>(withQuery("/dashboard/summary", { locationId })),
+  dashboardFinance: (locationId?: string) => request<DashboardFinanceDto>(withQuery("/dashboard/finance", { locationId })),
   locations: {
     list: (includeArchived?: boolean) =>
       request<LocationDto[]>(withQuery("/locations", { includeArchived: includeArchived ? "true" : undefined })),
@@ -1019,6 +1028,7 @@ export const api = {
     inventoryValuation: () => request<InventoryValuationDto>("/finance/inventory-valuation"),
     pnl: (from: string, to: string, locationId?: string) =>
       request<ProfitAndLossDto>(withQuery("/finance/pnl", { from, to, locationId })),
+    pnlLocations: (from: string, to: string) => request<PnlByLocationDto>(withQuery("/finance/pnl/locations", { from, to })),
     pnlDirections: (from: string, to: string, locationId?: string) =>
       request<DirectionPnlDto>(withQuery("/finance/pnl/directions", { from, to, locationId })),
     setDirectionAllocation: (dto: DirectionAllocationDto) =>
@@ -1030,16 +1040,16 @@ export const api = {
       request<InventoryRollForwardDto>(withQuery("/finance/inventory-rollforward", { from, to })),
     monthlyReport: (year: number, month: number) =>
       request<MonthlyReportDto>(withQuery("/finance/monthly-report", { year: String(year), month: String(month) })),
-    cashFlow: (from: string, to: string) =>
-      request<CashFlowDto>(withQuery("/finance/cash-flow", { from, to })),
-    cashFlowMonthly: (fromMonth: string, toMonth: string) =>
-      request<CashFlowMonthlyDto>(withQuery("/finance/cash-flow/monthly", { fromMonth, toMonth })),
-    cashFlowOperations: (q: { section: string; label: string; fromMonth: string; toMonth: string }) =>
-      request<CashFlowOperationsDto>(withQuery("/finance/cash-flow/operations", q)),
-    cashFlowByDate: (granularity: "week" | "day", fromDate: string, toDate: string) =>
-      request<CashFlowMonthlyDto>(withQuery("/finance/cash-flow/by-date", { granularity, fromDate, toDate })),
-    cashFlowOperationsByDate: (q: { section: string; label: string; fromDate: string; toDate: string }) =>
-      request<CashFlowOperationsDto>(withQuery("/finance/cash-flow/operations-by-date", q)),
+    cashFlow: (from: string, to: string, scope: CashScope = {}) =>
+      request<CashFlowDto>(withQuery("/finance/cash-flow", { from, to, ...scope })),
+    cashFlowMonthly: (fromMonth: string, toMonth: string, scope: CashScope = {}) =>
+      request<CashFlowMonthlyDto>(withQuery("/finance/cash-flow/monthly", { fromMonth, toMonth, ...scope })),
+    cashFlowOperations: (q: { section: string; label: string; fromMonth: string; toMonth: string } & CashScope) =>
+      request<CashFlowOperationsDto>(withQuery("/finance/cash-flow/operations", { ...q })),
+    cashFlowByDate: (granularity: "week" | "day", fromDate: string, toDate: string, scope: CashScope = {}) =>
+      request<CashFlowMonthlyDto>(withQuery("/finance/cash-flow/by-date", { granularity, fromDate, toDate, ...scope })),
+    cashFlowOperationsByDate: (q: { section: string; label: string; fromDate: string; toDate: string } & CashScope) =>
+      request<CashFlowOperationsDto>(withQuery("/finance/cash-flow/operations-by-date", { ...q })),
     breakEven: (from: string, to: string, locationId?: string) =>
       request<BreakEvenDto>(withQuery("/finance/break-even", { from, to, locationId })),
     plannedBreakEven: (from: string, to: string, locationId?: string) =>

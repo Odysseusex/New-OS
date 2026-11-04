@@ -1,3 +1,4 @@
+import { CashScope, CashScopeIndex, scopeCashEvents } from "./events/cash-scope";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { purchaseOrderOwed } from "../procurement/purchase-owed";
 import { PrismaService } from "../prisma/prisma.service";
@@ -61,6 +62,8 @@ import {
   ProductType,
   ProductUnitCostRowDto,
   ProfitAndLossDto,
+  PnlByLocationDto,
+  PnlFiguresDto,
   Unit,
 } from "@bakery-os/shared";
 import {
@@ -343,6 +346,54 @@ export class FinanceService {
     byProduct.sort((a, b) => b.value - a.value);
 
     return { totalValue: round2(totalValue), unknownValueLineItems, byProduct };
+  }
+
+  // ОПиУ with a column per point plus «Итого» (ТЗ §8.2). Each column IS that
+  // point's own P&L; whatever the network has that no point has goes to one
+  // «Не отнесено к точкам» column, so the columns always add up to «Итого».
+  async getPnlByLocation(organizationId: string, from: Date, to: Date): Promise<PnlByLocationDto> {
+    const locations = await this.prisma.location.findMany({ where: { organizationId, isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } });
+    const [total, ...perPoint] = await Promise.all([
+      this.getProfitAndLoss(organizationId, from, to),
+      ...locations.map((l) => this.getProfitAndLoss(organizationId, from, to, l.id)),
+    ]);
+    const pick = (p: ProfitAndLossDto): PnlFiguresDto => ({
+      grossRevenue: p.grossRevenue,
+      discountsTotal: p.discountsTotal,
+      returnsTotal: p.returnsTotal,
+      netRevenue: p.netRevenue,
+      cogs: p.cogs,
+      grossProfit: p.grossProfit,
+      grossMarginPercent: p.grossMarginPercent,
+      inventoryLosses: p.inventoryLosses,
+      expensesTotal: p.expensesTotal,
+      depreciation: p.depreciation,
+      operatingProfit: p.operatingProfit,
+      otherResult: p.otherResult,
+      profitBeforeTax: p.profitBeforeTax,
+      incomeTax: p.incomeTax,
+      netProfit: p.netProfit,
+    });
+    const columns = locations.map((l, i) => ({ locationId: l.id, locationName: l.name, figures: pick(perPoint[i]) }));
+    const totalFigures = pick(total);
+    const keys = Object.keys(totalFigures) as (keyof PnlFiguresDto)[];
+    const rest = {} as Record<keyof PnlFiguresDto, number | null>;
+    for (const k of keys) {
+      if (k === "grossMarginPercent") continue;
+      const t = totalFigures[k];
+      rest[k] = t === null ? null : round2(t - columns.reduce((s, c) => s + ((c.figures[k] as number | null) ?? 0), 0));
+    }
+    const restNet = rest.netRevenue ?? 0;
+    rest.grossMarginPercent = restNet > 0 ? round2(((rest.grossProfit ?? 0) / restNet) * 100) : null;
+    const hasRest = keys.some((k) => k !== "grossMarginPercent" && (rest[k] ?? 0) !== 0);
+    // A point with nothing at all in the period is left out.
+    const active = columns.filter((c) => keys.some((k) => k !== "grossMarginPercent" && ((c.figures[k] as number | null) ?? 0) !== 0));
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      columns: hasRest ? [...active, { locationId: null, locationName: "Не отнесено к точкам", figures: rest as unknown as PnlFiguresDto }] : active,
+      total: totalFigures,
+    };
   }
 
   async getProfitAndLoss(
@@ -1360,12 +1411,51 @@ export class FinanceService {
   // ADJUSTMENT is signed (mirroring StockMovement) and so is classified by
   // the sign of its amount, not by its type — the same rule the dashboard and
   // the Telegram bot already use.
-  async getCashFlow(organizationId: string, from: Date, to: Date): Promise<CashFlowDto> {
-    const [events, movements, accounts] = await Promise.all([
-      this.events.project(organizationId, { upTo: to }),
+  // The point / account filter of the ДДС: which point each movement and account belongs to.
+  private async cashScopeIndex(organizationId: string, scope: CashScope): Promise<CashScopeIndex | undefined> {
+    if (!scope.locationId) return undefined;
+    const [movements, accounts] = await Promise.all([
+      this.prisma.cashMovement.findMany({
+        where: { organizationId },
+        select: {
+          id: true,
+          account: { select: { locationId: true } },
+          sale: { select: { locationId: true } },
+          saleReturn: { select: { locationId: true } },
+          expense: { select: { locationId: true } },
+          purchaseOrderPayment: { select: { purchaseOrder: { select: { locationId: true } } } },
+        },
+      }),
+      this.prisma.cashAccount.findMany({ where: { organizationId }, select: { id: true, locationId: true } }),
+    ]);
+    return {
+      movementLocation: new Map(
+        movements.map((m) => [
+          m.id,
+          m.sale?.locationId ??
+            m.saleReturn?.locationId ??
+            m.expense?.locationId ??
+            m.purchaseOrderPayment?.purchaseOrder.locationId ??
+            m.account.locationId ??
+            null,
+        ]),
+      ),
+      accountLocation: new Map(accounts.map((a) => [a.id, a.locationId])),
+    };
+  }
+
+  private async scopedEvents(organizationId: string, upTo: Date, scope: CashScope) {
+    const [events, index] = await Promise.all([this.events.project(organizationId, { upTo }), this.cashScopeIndex(organizationId, scope)]);
+    return scopeCashEvents(events, scope, index);
+  }
+
+  async getCashFlow(organizationId: string, from: Date, to: Date, scope: CashScope = {}): Promise<CashFlowDto> {
+    const [events, allMovements, allAccounts, index] = await Promise.all([
+      this.scopedEvents(organizationId, to, scope),
       this.prisma.cashMovement.findMany({
         where: {
           organizationId,
+          ...(scope.accountId ? { accountId: scope.accountId } : {}),
           occurredAt: { gte: from, lte: to },
           // Internal transfers and opening balances are not money entering or
           // leaving the business; they have their own place in the statement.
@@ -1373,8 +1463,12 @@ export class FinanceService {
         },
         include: { categoryRef: true },
       }),
-      this.prisma.cashAccount.findMany({ where: { organizationId }, select: { currentBalance: true } }),
+      this.prisma.cashAccount.findMany({ where: { organizationId }, select: { id: true, currentBalance: true } }),
+      this.cashScopeIndex(organizationId, scope),
     ]);
+    const movements = scope.locationId ? allMovements.filter((m) => index?.movementLocation.get(m.id) === scope.locationId) : allMovements;
+    // An account's statement reconciles with that account; a point shares bank accounts, so it has no ledger to match.
+    const accounts = scope.accountId ? allAccounts.filter((a) => a.id === scope.accountId) : allAccounts;
     const statement = buildCashFlowFromEvents(events, from, to);
 
     const signedOf = (type: CashMovementType, amount: number): number =>
@@ -1447,7 +1541,7 @@ export class FinanceService {
       netFlow: roundMoney(statement.totalInflow - statement.totalOutflow),
       sections: statement.sections,
       internalTransfers: statement.internalTransfers,
-      reconciliation: runsToNow ? { accountsBalance, difference, reconciles: difference === 0 } : null,
+      reconciliation: runsToNow && !scope.locationId ? { accountsBalance, difference, reconciles: difference === 0 } : null,
       inflowByType: toLines(inflowByType),
       outflowByType: toLines(outflowByType),
       outflowByCategory: Array.from(outflowByCategory.entries())
@@ -1465,24 +1559,31 @@ export class FinanceService {
   // ДДС with a column per calendar month (Almaty months), `fromMonth`…`toMonth`
   // inclusive as "YYYY-MM". Live from the events: a closed month's writes are
   // refused, so what it shows cannot differ from the month's frozen snapshot.
-  async getCashFlowMonthly(organizationId: string, fromMonth: string, toMonth: string): Promise<CashFlowMonthlyDto> {
+  async getCashFlowMonthly(organizationId: string, fromMonth: string, toMonth: string, scope: CashScope = {}): Promise<CashFlowMonthlyDto> {
     const ranges = monthRanges(fromMonth, toMonth);
-    const events = await this.events.project(organizationId, { upTo: ranges[ranges.length - 1].to });
+    const events = await this.scopedEvents(organizationId, ranges[ranges.length - 1].to, scope);
     return buildCashFlowMonthly(events, ranges);
   }
 
   // The same grid with a column per week (Mon–Sun) or per day.
-  async getCashFlowByDate(organizationId: string, granularity: "week" | "day", fromDate: string, toDate: string): Promise<CashFlowMonthlyDto> {
+  async getCashFlowByDate(organizationId: string, granularity: "week" | "day", fromDate: string, toDate: string, scope: CashScope = {}): Promise<CashFlowMonthlyDto> {
     const ranges = granularity === "day" ? dayRanges(fromDate, toDate) : weekRanges(fromDate, toDate);
-    const events = await this.events.project(organizationId, { upTo: ranges[ranges.length - 1].to });
+    const events = await this.scopedEvents(organizationId, ranges[ranges.length - 1].to, scope);
     return buildCashFlowMonthly(events, ranges);
   }
 
   // The movements behind a cell of the weekly/daily grid: whole days from/to.
-  async getCashFlowOperationsByDate(organizationId: string, section: CashSection, label: string, fromDate: string, toDate: string): Promise<CashFlowOperationsDto> {
+  async getCashFlowOperationsByDate(
+    organizationId: string,
+    section: CashSection,
+    label: string,
+    fromDate: string,
+    toDate: string,
+    scope: CashScope = {},
+  ): Promise<CashFlowOperationsDto> {
     const ranges = dayRanges(fromDate, toDate, new Date(), 400);
     const to = ranges[ranges.length - 1].to;
-    const events = await this.events.project(organizationId, { upTo: to });
+    const events = await this.scopedEvents(organizationId, to, scope);
     return cashFlowOperations(events, section, label, ranges[0].from, to);
   }
 
@@ -1494,11 +1595,12 @@ export class FinanceService {
     label: string,
     fromMonth: string,
     toMonth: string,
+    scope: CashScope = {},
   ): Promise<CashFlowOperationsDto> {
     const ranges = monthRanges(fromMonth, toMonth);
     const from = ranges[0].from;
     const to = ranges[ranges.length - 1].to;
-    const events = await this.events.project(organizationId, { upTo: to });
+    const events = await this.scopedEvents(organizationId, to, scope);
     return cashFlowOperations(events, section, label, from, to);
   }
 

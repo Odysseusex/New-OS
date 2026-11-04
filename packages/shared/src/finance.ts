@@ -899,3 +899,37 @@ export function ebitdaOf(pnl: { operatingProfit: number; depreciation: number })
 export function netMarginPercent(pnl: { netProfit: number; netRevenue: number }): number | null {
   return pnl.netRevenue > 0 ? (pnl.netProfit / pnl.netRevenue) * 100 : null;
 }
+
+// ── ОПиУ по точкам (ТЗ §8.2: «колонки — направления и точки, плюс Итого») ──
+export interface PnlFiguresDto {
+  grossRevenue: number;
+  discountsTotal: number;
+  returnsTotal: number;
+  netRevenue: number;
+  cogs: number;
+  grossProfit: number;
+  grossMarginPercent: number | null;
+  inventoryLosses: number;
+  expensesTotal: number;
+  depreciation: number;
+  operatingProfit: number;
+  otherResult: number;
+  profitBeforeTax: number;
+  incomeTax: number | null;
+  netProfit: number;
+}
+
+export interface PnlByLocationColumnDto {
+  // null = «Не отнесено к точкам»: what the whole network's P&L has that no point's has
+  // (expenses without a point, depreciation, the month-end cost correction…).
+  locationId: string | null;
+  locationName: string;
+  figures: PnlFiguresDto;
+}
+
+export interface PnlByLocationDto {
+  from: string;
+  to: string;
+  columns: PnlByLocationColumnDto[];
+  total: PnlFiguresDto;
+}

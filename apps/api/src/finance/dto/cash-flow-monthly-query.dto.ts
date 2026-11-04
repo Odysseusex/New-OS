@@ -1,9 +1,20 @@
-import { IsEnum, IsIn, IsString, Matches, MaxLength, MinLength } from "class-validator";
+import { IsEnum, IsIn, IsOptional, IsString, Matches, MaxLength, MinLength } from "class-validator";
 import { CashSection } from "@bakery-os/shared";
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 
-export class CashFlowMonthlyQueryDto {
+// ДДС for one point or one account (both optional).
+export class CashScopeQueryDto {
+  @IsOptional()
+  @IsString()
+  locationId?: string;
+
+  @IsOptional()
+  @IsString()
+  accountId?: string;
+}
+
+export class CashFlowMonthlyQueryDto extends CashScopeQueryDto {
   @Matches(MONTH, { message: "Месяц — в формате ГГГГ-ММ" })
   fromMonth!: string;
 
@@ -24,7 +35,7 @@ export class CashFlowOperationsQueryDto extends CashFlowMonthlyQueryDto {
 const DATE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
 // ДДС by weeks or by days: from/to are dates, "YYYY-MM-DD".
-export class CashFlowByDateQueryDto {
+export class CashFlowByDateQueryDto extends CashScopeQueryDto {
   @IsIn(["week", "day"])
   granularity!: "week" | "day";
 
@@ -35,7 +46,7 @@ export class CashFlowByDateQueryDto {
   toDate!: string;
 }
 
-export class CashFlowDateOperationsQueryDto {
+export class CashFlowDateOperationsQueryDto extends CashScopeQueryDto {
   @Matches(DATE, { message: "Дата — в формате ГГГГ-ММ-ДД" })
   fromDate!: string;
 

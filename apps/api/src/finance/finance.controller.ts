@@ -14,6 +14,8 @@ import { GetPnlQueryDto } from "./dto/get-pnl-query.dto";
 import { CashFlowByDateQueryDto, CashFlowDateOperationsQueryDto, CashFlowMonthlyQueryDto, CashFlowOperationsQueryDto } from "./dto/cash-flow-monthly-query.dto";
 import { GetProductPnlQueryDto } from "./dto/get-product-pnl-query.dto";
 
+const scopeOf = (q: { locationId?: string; accountId?: string }) => ({ locationId: q.locationId || undefined, accountId: q.accountId || undefined });
+
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(...FINANCE_VIEW_ROLES)
 @Controller("finance")
@@ -54,6 +56,12 @@ export class FinanceController {
     );
   }
 
+  // ОПиУ with a column per point plus «Итого». Always live.
+  @Get("pnl/locations")
+  getPnlByLocation(@CurrentUser() user: AuthenticatedUser, @Query() query: GetPnlQueryDto) {
+    return this.financeService.getPnlByLocation(user.organizationId, new Date(query.from), new Date(query.to));
+  }
+
   // Прибыль по направлениям: опт / розница / заказы. Always live.
   @Get("pnl/directions")
   getPnlByDirection(@CurrentUser() user: AuthenticatedUser, @Query() query: GetPnlQueryDto) {
@@ -84,33 +92,35 @@ export class FinanceController {
   // as every other finance figure — cash movements are not shop-floor data.
   @Get("cash-flow")
   async getCashFlow(@CurrentUser() user: AuthenticatedUser, @Query() query: GetPnlQueryDto) {
-    const month = this.periods.matchWholeMonth(new Date(query.from), new Date(query.to));
+    const scope = { locationId: query.locationId || undefined, accountId: query.accountId || undefined };
+    // The frozen snapshot is the whole network's; a point or account is read live.
+    const month = !scope.locationId && !scope.accountId && this.periods.matchWholeMonth(new Date(query.from), new Date(query.to));
     const frozen = month && (await this.periods.frozenSection<CashFlowDto>(user.organizationId, month.year, month.month, "cashFlow"));
     if (frozen) return { ...frozen.data, frozen: frozen.info };
-    return this.financeService.getCashFlow(user.organizationId, new Date(query.from), new Date(query.to));
+    return this.financeService.getCashFlow(user.organizationId, new Date(query.from), new Date(query.to), scope);
   }
 
   // ДДС with a column per month: from/to are months, "YYYY-MM".
   @Get("cash-flow/monthly")
   getCashFlowMonthly(@CurrentUser() user: AuthenticatedUser, @Query() query: CashFlowMonthlyQueryDto) {
-    return this.financeService.getCashFlowMonthly(user.organizationId, query.fromMonth, query.toMonth);
+    return this.financeService.getCashFlowMonthly(user.organizationId, query.fromMonth, query.toMonth, scopeOf(query));
   }
 
   // ДДС with a column per week or per day: from/to are dates, "YYYY-MM-DD".
   @Get("cash-flow/by-date")
   getCashFlowByDate(@CurrentUser() user: AuthenticatedUser, @Query() query: CashFlowByDateQueryDto) {
-    return this.financeService.getCashFlowByDate(user.organizationId, query.granularity, query.fromDate, query.toDate);
+    return this.financeService.getCashFlowByDate(user.organizationId, query.granularity, query.fromDate, query.toDate, scopeOf(query));
   }
 
   @Get("cash-flow/operations-by-date")
   getCashFlowOperationsByDate(@CurrentUser() user: AuthenticatedUser, @Query() query: CashFlowDateOperationsQueryDto) {
-    return this.financeService.getCashFlowOperationsByDate(user.organizationId, query.section, query.label, query.fromDate, query.toDate);
+    return this.financeService.getCashFlowOperationsByDate(user.organizationId, query.section, query.label, query.fromDate, query.toDate, scopeOf(query));
   }
 
   // The movements behind one cell of that report.
   @Get("cash-flow/operations")
   getCashFlowOperations(@CurrentUser() user: AuthenticatedUser, @Query() query: CashFlowOperationsQueryDto) {
-    return this.financeService.getCashFlowOperations(user.organizationId, query.section, query.label, query.fromMonth, query.toMonth);
+    return this.financeService.getCashFlowOperations(user.organizationId, query.section, query.label, query.fromMonth, query.toMonth, scopeOf(query));
   }
 
   @Get("break-even")

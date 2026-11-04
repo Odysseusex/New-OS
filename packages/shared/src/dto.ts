@@ -130,3 +130,38 @@ export interface DashboardSummaryDto {
   // that does not see debts. Optional for a client one build ahead of the API.
   receivables?: { total: number; overdue: number } | null;
 }
+
+// The money side of the dashboard (ТЗ §8.4), FINANCE_VIEW_ROLES only.
+export interface DashboardPeriodFiguresDto {
+  netRevenue: number;
+  grossProfit: number;
+  grossMarginPercent: number | null;
+}
+
+export interface DashboardTopProductDto {
+  productId: string;
+  productName: string;
+  quantitySold: number;
+  revenue: number;
+  grossProfit: number;
+  marginPercent: number | null;
+}
+
+export interface DashboardFinanceDto {
+  locationId: string | null;
+  today: DashboardPeriodFiguresDto;
+  // The last 7 days including today.
+  week: DashboardPeriodFiguresDto;
+  // The calendar month so far (Almaty).
+  month: DashboardPeriodFiguresDto;
+  // Balances of the active accounts (with a point chosen: the accounts tied to it).
+  cashTotal: number;
+  cashAccounts: { id: string; name: string; balance: number }[];
+  // Network-wide: debts are kept per counterparty, not per point.
+  payables: { total: number; overdue: number };
+  receivables: { total: number; overdue: number };
+  // Finished goods on the shelves of the shops (STORE points, or the chosen point).
+  finishedGoods: { atCost: number; atSalePrice: number; unknownCostItems: number };
+  // This month, by revenue.
+  topProducts: DashboardTopProductDto[];
+}

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { Download, FileText, Printer } from "lucide-react";
 import type {
+  CashAccountDto,
   CategoryDto,
   CustomerDto,
   HrKpiResponseDto,
@@ -37,7 +38,7 @@ import {
   UNIT_LABELS_RU,
   WRITE_OFF_REASON_LABELS_RU,
 } from "@bakery-os/shared";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, type CashScope } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { periodRange, type PeriodValue } from "@/lib/period";
 import { PeriodPicker } from "@/components/period-picker";
@@ -100,10 +101,20 @@ export default function ReportsPage() {
   const [cashFlowMode, setCashFlowMode] = useState<"period" | "months">("period");
   const [locationFilter, setLocationFilter] = useState("");
   const [locations, setLocations] = useState<LocationDto[]>([]);
+  const [accountFilter, setAccountFilter] = useState("");
+  const [accounts, setAccounts] = useState<CashAccountDto[]>([]);
 
   useEffect(() => {
     api.locations.list().then(setLocations).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (activeReport === "cashflow" && accounts.length === 0) api.finance.accounts.list().then(setAccounts).catch(() => {});
+  }, [activeReport, accounts.length]);
+  const cashScope = useMemo(
+    () => ({ locationId: locationFilter || undefined, accountId: accountFilter || undefined }),
+    [locationFilter, accountFilter],
+  );
 
   if (availableReports.length === 0) return null;
 
@@ -169,6 +180,20 @@ export default function ReportsPage() {
               ))}
             </select>
           )}
+          {activeReport === "cashflow" && (
+            <select
+              value={accountFilter}
+              onChange={(e) => setAccountFilter(e.target.value)}
+              className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            >
+              <option value="">Все счета</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         <button
@@ -189,7 +214,8 @@ export default function ReportsPage() {
           <ProfitabilityReport period={period} locationId={locationFilter} />
         )}
         {activeReport === "dynamics" && <DynamicsReport period={period} locationId={locationFilter} />}
-        {activeReport === "cashflow" && (cashFlowMode === "months" ? <CashFlowMonthly /> : <CashFlowReport period={period} />)}
+        {activeReport === "cashflow" &&
+          (cashFlowMode === "months" ? <CashFlowMonthly scope={cashScope} /> : <CashFlowReport period={period} scope={cashScope} />)}
         {activeReport === "trend" && <CustomerSalesTrendCard locationId={locationFilter} />}
         {activeReport === "quality" && <QualityReport period={period} locationId={locationFilter} />}
         {activeReport === "hr" && <HrReport period={period} locationId={locationFilter} />}
@@ -1522,7 +1548,7 @@ function SalesHistoryTable({ report, period }: { report: SalesDynamicsDto; perio
 }
 
 // ── ДДС: движение денежных средств ────────────────────────────────────
-function CashFlowReport({ period }: { period: Period }) {
+function CashFlowReport({ period, scope }: { period: Period; scope: CashScope }) {
   const [report, setReport] = useState<CashFlowDto | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -1531,12 +1557,12 @@ function CashFlowReport({ period }: { period: Period }) {
     setReport(null);
     setError(null);
     api.finance
-      .cashFlow(from.toISOString(), to.toISOString())
+      .cashFlow(from.toISOString(), to.toISOString(), scope)
       .then(setReport)
       .catch((err) =>
         setError(err instanceof ApiError ? err.message : "Не удалось загрузить отчёт"),
       );
-  }, [period]);
+  }, [period, scope]);
 
   if (error) return <ErrorState message={error} />;
   if (!report) return <EmptyState />;

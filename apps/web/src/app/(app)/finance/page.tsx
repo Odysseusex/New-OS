@@ -1,6 +1,7 @@
 "use client";
 
 import { DirectionPnlCard } from "@/components/direction-pnl-card";
+import { LocationPnlCard } from "@/components/location-pnl-card";
 import { BankStatementsTab } from "@/components/bank-statements-tab";
 import { NonCashAccountsCard } from "@/components/non-cash-accounts-card";
 import { PnlLadder, pnlLadderRows } from "@/components/pnl-ladder";
@@ -982,6 +983,8 @@ export default function FinancePage() {
           )}
 
           {pnl && <PnlLadder pnl={pnl} />}
+
+          {pnl && !locationFilter && <LocationPnlCard period={period} reloadKey={pnl} />}
 
           {pnl && <DirectionPnlCard period={period} locationId={locationFilter} reloadKey={pnl} />}
 
