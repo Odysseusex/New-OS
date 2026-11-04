@@ -27,10 +27,41 @@ export function businessDirectionOf(sale: { crmOrderId?: string | null; customer
   return BusinessDirection.RETAIL;
 }
 
+// The base the costs no direction owns are shared by (the ТЗ's three choices).
+export enum DirectionAllocationBase {
+  REVENUE = "REVENUE",
+  GROSS_PROFIT = "GROSS_PROFIT",
+  MANUAL = "MANUAL",
+}
+
+export const DIRECTION_ALLOCATION_BASE_LABELS_RU: Record<DirectionAllocationBase, string> = {
+  [DirectionAllocationBase.REVENUE]: "Пропорционально выручке",
+  [DirectionAllocationBase.GROSS_PROFIT]: "Пропорционально валовой прибыли",
+  [DirectionAllocationBase.MANUAL]: "Вручную, %",
+};
+
+export interface DirectionAllocationDto {
+  base: DirectionAllocationBase;
+  // Percentages per direction for MANUAL (sum 100); null otherwise.
+  shares: Record<BusinessDirection, number> | null;
+}
+
+// Checks manual percentages: each 0..100, together exactly 100 (to 0.01).
+export function directionSharesError(shares: Partial<Record<BusinessDirection, number>> | null | undefined): string | null {
+  if (!shares) return "Укажите проценты по направлениям";
+  let sum = 0;
+  for (const d of BUSINESS_DIRECTION_ORDER) {
+    const v = shares[d] ?? 0;
+    if (!Number.isFinite(v) || v < 0 || v > 100) return "Процент — от 0 до 100";
+    sum += v;
+  }
+  return Math.abs(sum - 100) > 0.005 ? `Сумма процентов должна быть 100, сейчас ${Math.round(sum * 100) / 100}` : null;
+}
+
 // One direction's P&L. Выручка and себестоимость are its own, and so is an
 // expense booked to it (Expense.direction); everything the business spends in
 // common (inventory losses, other operating expenses, depreciation, the other
-// result and the recorded income tax) is allocated by its share of net revenue.
+// result and the recorded income tax) is allocated by the chosen base.
 export interface DirectionPnlRowDto {
   direction: BusinessDirection;
   checks: number;
@@ -40,10 +71,18 @@ export interface DirectionPnlRowDto {
   grossMarginPercent: number | null;
   // Share of the organization's net revenue, 0..100 (null when it is ≤ 0).
   revenueSharePercent: number | null;
+  // Share of the common costs this direction carries under the chosen base (null = nothing shared).
+  allocationSharePercent: number | null;
+  // Gross profit less what is booked to the direction itself (its own expenses and other result).
+  profitBeforeAllocation: number;
+  // Its part of the common costs (losses, common expenses, depreciation, common other result, tax).
+  allocatedCosts: number;
   inventoryLosses: number;
   expenses: number;
   // Part of `expenses` booked to this direction wholly (the rest is its share of common ones).
   directExpenses: number;
+  // Operating profit before depreciation.
+  ebitda: number;
   depreciation: number;
   operatingProfit: number;
   otherResult: number;
@@ -56,9 +95,10 @@ export interface DirectionPnlDto {
   to: string;
   rows: DirectionPnlRowDto[];
   // The same figures for the whole business (equal to the P&L of the period).
-  total: Omit<DirectionPnlRowDto, "direction" | "checks" | "revenueSharePercent"> & { checks: number };
-  // False when the period's net revenue is not positive: common costs then have
-  // no base to be shared by and stay with the total only.
+  total: Omit<DirectionPnlRowDto, "direction" | "checks" | "revenueSharePercent" | "allocationSharePercent"> & { checks: number };
+  allocation: DirectionAllocationDto;
+  // False when the chosen base is not positive for any direction (no revenue, no
+  // gross profit): common costs then stay with the total only.
   allocated: boolean;
   netProfitStatus: NetProfitStatus;
 }

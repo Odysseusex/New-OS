@@ -3,7 +3,7 @@
 import { DirectionPnlCard } from "@/components/direction-pnl-card";
 import { BankStatementsTab } from "@/components/bank-statements-tab";
 import { NonCashAccountsCard } from "@/components/non-cash-accounts-card";
-import { PnlLadder } from "@/components/pnl-ladder";
+import { PnlLadder, pnlLadderRows } from "@/components/pnl-ladder";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
@@ -67,11 +67,12 @@ import {
   PaymentStatus,
   SUPPLIER_PAYMENT_ROLES,
   PAYMENT_RECORD_ROLES,
+  netMarginPercent,
 } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
-import { downloadTable } from "@/lib/export-table";
+import { downloadWorkbook } from "@/lib/export-table";
 import { NewExpenseModal } from "@/components/new-expense-modal";
 import { PeriodPicker } from "@/components/period-picker";
 import { periodLabel, periodRange, type PeriodValue } from "@/lib/period";
@@ -394,19 +395,34 @@ export default function FinancePage() {
 
   function exportPnlCsv() {
     if (!pnl) return;
-    downloadTable(
-      `pnl-${period}.csv`,
-      ["Товар", "Продано", "Выручка", "Себестоимость", "Валовая прибыль", "Маржа %", "Наценка %"],
-      pnl.byProduct.map((p) => [
-        p.productName,
-        formatQuantity(p.quantitySold),
-        p.revenue.toFixed(2),
-        p.hasCostData ? p.cogs.toFixed(2) : "нет данных",
-        p.grossProfit.toFixed(2),
-        p.marginPercent !== null ? { v: p.marginPercent, fmt: "percent" as const } : "—",
-        p.markupPercent !== null ? { v: p.markupPercent, fmt: "percent" as const } : "—",
-      ]),
-    );
+    const margin = netMarginPercent(pnl);
+    void downloadWorkbook(`pnl-${period}`, [
+      {
+        name: "ОПиУ",
+        titleLines: [`Отчёт о прибылях и убытках · ${periodLabel(period)}`],
+        headers: ["Показатель", "Сумма, ₸"],
+        rows: [
+          ...pnlLadderRows(pnl).map((r) => [
+            r.label,
+            r.value === null ? "не настроен" : { v: r.value, fmt: "money" as const, bold: r.kind === "total" },
+          ]),
+          ["Рентабельность по чистой прибыли", margin === null ? "—" : { v: margin, fmt: "percent" as const }],
+        ],
+      },
+      {
+        name: "По товарам",
+        headers: ["Товар", "Продано", "Выручка", "Себестоимость", "Валовая прибыль", "Маржа %", "Наценка %"],
+        rows: pnl.byProduct.map((p) => [
+          p.productName,
+          formatQuantity(p.quantitySold),
+          p.revenue.toFixed(2),
+          p.hasCostData ? p.cogs.toFixed(2) : "нет данных",
+          p.grossProfit.toFixed(2),
+          p.marginPercent !== null ? { v: p.marginPercent, fmt: "percent" as const } : "—",
+          p.markupPercent !== null ? { v: p.markupPercent, fmt: "percent" as const } : "—",
+        ]),
+      },
+    ]);
   }
 
   async function handleArchiveAccount(account: CashAccountDto) {

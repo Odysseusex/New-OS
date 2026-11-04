@@ -1,8 +1,9 @@
-import { BusinessDirection, CostBehavior, FinanceCategoryKind, PaymentMethod } from "@bakery-os/shared";
+import { BusinessDirection, CostBehavior, DirectionAllocationBase, FinanceCategoryKind, PaymentMethod } from "@bakery-os/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { createIsolatedOrg, destroyOrg, IsolatedOrg } from "../../test/support/isolated-org";
 import { buildServices } from "../../test/support/services";
 import { allocate } from "./direction-pnl";
+import { AUDIT_ACTION_GROUPS } from "../audit/audit";
 
 // Прибыль по направлениям (опт / розница / заказы): each direction's own revenue
 // and cost of goods, common costs shared by net revenue, and the whole always
@@ -122,6 +123,38 @@ describe("P&L by business direction", () => {
     expect(row(BusinessDirection.ORDERS)).toMatchObject({ expenses: 700, directExpenses: 400, operatingProfit: 100 });
     expect(d.total).toMatchObject({ expenses: pnl.expensesTotal, directExpenses: 400 });
     expect(d.rows.reduce((s, r) => s + r.operatingProfit, 0)).toBeCloseTo(pnl.operatingProfit, 2);
+  });
+
+  it("shares common costs by gross profit or by stated percentages, and shows profit before and after", async () => {
+    const to = new Date();
+    const byRevenue = await services.finance.getPnlByDirection(org.organizationId, start, to);
+    expect(byRevenue.allocation).toEqual({ base: DirectionAllocationBase.REVENUE, shares: null });
+    const orders = byRevenue.rows.find((r) => r.direction === BusinessDirection.ORDERS)!;
+    // Gross profit 800 − its own boxes 400; then its 300 of the common rent.
+    expect(orders).toMatchObject({ profitBeforeAllocation: 400, allocatedCosts: 300, ebitda: 100, netProfit: 100 });
+    expect(byRevenue.total.ebitda).toBe(byRevenue.total.operatingProfit + byRevenue.total.depreciation);
+
+    await expect(
+      services.finance.setDirectionAllocation(org.organizationId, org.user.id, { base: DirectionAllocationBase.MANUAL, shares: { WHOLESALE: 50, RETAIL: 30, ORDERS: 10 } as never }),
+    ).rejects.toThrow(/100/);
+    await services.finance.setDirectionAllocation(org.organizationId, org.user.id, {
+      base: DirectionAllocationBase.MANUAL,
+      shares: { WHOLESALE: 50, RETAIL: 50, ORDERS: 0 } as never,
+    });
+    const manual = await services.finance.getPnlByDirection(org.organizationId, start, to);
+    const m = (dir: BusinessDirection) => manual.rows.find((r) => r.direction === dir)!;
+    expect(m(BusinessDirection.ORDERS)).toMatchObject({ allocatedCosts: 0, netProfit: 400, allocationSharePercent: 0 });
+    expect(m(BusinessDirection.WHOLESALE)).toMatchObject({ allocatedCosts: 600, allocationSharePercent: 50 });
+    expect(manual.rows.reduce((s, r) => s + r.netProfit, 0)).toBeCloseTo(manual.total.netProfit, 2);
+
+    // Gross profit 1 600 / 800 / 800 → rent 600 / 300 / 300, the same split as revenue here.
+    await services.finance.setDirectionAllocation(org.organizationId, org.user.id, { base: DirectionAllocationBase.GROSS_PROFIT, shares: null });
+    const byGross = await services.finance.getPnlByDirection(org.organizationId, start, to);
+    expect(byGross.allocation).toEqual({ base: DirectionAllocationBase.GROSS_PROFIT, shares: null });
+    expect(byGross.rows.find((r) => r.direction === BusinessDirection.WHOLESALE)!.allocationSharePercent).toBeCloseTo(50, 6);
+
+    const logged = new Set((await prisma.auditLog.findMany({ where: { organizationId: org.organizationId } })).map((e) => e.action));
+    expect(AUDIT_ACTION_GROUPS.directionAllocation.filter((a) => !logged.has(a))).toEqual([]);
   });
 
   it("allocation always adds up to the тиын", () => {

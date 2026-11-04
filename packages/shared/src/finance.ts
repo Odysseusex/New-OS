@@ -465,7 +465,8 @@ export interface ProfitAndLossDto {
   // Capital purchases (and owner/loan flows booked as expenses): NOT expenses.
   capitalizedExpensesTotal: number;
   depreciation: number;
-  // = grossProfit − inventoryLosses − expensesTotal − depreciation. NOT the
+  // = grossProfit − inventoryLosses − expensesTotal − depreciation (EBIT); EBITDA is
+  // this plus depreciation (`ebitdaOf`). NOT the
   // net profit: interest, other results and tax come after it.
   operatingProfit: number;
   // Financial and other income/expense. Zero until classified events exist.
@@ -882,4 +883,14 @@ export interface LocationNonCashAccountDto {
 
 export interface SetLocationNonCashAccountRequestDto {
   accountId: string | null;
+}
+
+// Operating profit before depreciation (EBITDA): derived, so a frozen snapshot shows it too.
+export function ebitdaOf(pnl: { operatingProfit: number; depreciation: number }): number {
+  return Math.round((pnl.operatingProfit + pnl.depreciation) * 100) / 100;
+}
+
+// Net profit as a share of net revenue (рентабельность по чистой прибыли), null without revenue.
+export function netMarginPercent(pnl: { netProfit: number; netRevenue: number }): number | null {
+  return pnl.netRevenue > 0 ? (pnl.netProfit / pnl.netRevenue) * 100 : null;
 }

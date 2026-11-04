@@ -255,6 +255,7 @@ import type {
   ProductionOutputReportDto,
   ProductionUnitCostTrendDto,
   ReferenceCell,
+  DirectionAllocationDto,
   ReferenceExportDto,
   ReferenceImportPreviewDto,
   ReferenceImportResultDto,
@@ -957,6 +958,8 @@ export const api = {
       request<ProfitAndLossDto>(withQuery("/finance/pnl", { from, to, locationId })),
     pnlDirections: (from: string, to: string, locationId?: string) =>
       request<DirectionPnlDto>(withQuery("/finance/pnl/directions", { from, to, locationId })),
+    setDirectionAllocation: (dto: DirectionAllocationDto) =>
+      request<DirectionAllocationDto>("/finance/pnl/directions/allocation", { method: "PUT", body: JSON.stringify(dto) }),
     productPnl: (productId: string, from: string, to: string, locationId?: string) =>
       request<ProductPnLDetailDto>(withQuery("/finance/pnl/product", { productId, from, to, locationId })),
     balance: (asOf?: string) => request<BalanceSheetDto>(withQuery("/finance/balance", { asOf })),

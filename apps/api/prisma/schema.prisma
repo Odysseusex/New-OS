@@ -317,6 +317,13 @@ model Organization {
   // creates — Prisma's `increment` compiles to a single atomic UPDATE.
   productSkuSequence Int @default(0)
 
+  // How «Прибыль по направлениям» shares the costs no direction owns: null or
+  // REVENUE = by net revenue, GROSS_PROFIT = by gross profit, MANUAL = by the
+  // percentages in directionAllocationShares ({ WHOLESALE: 40, … }, sum 100).
+  // A management view only — no figure in the books depends on it.
+  directionAllocationBase   String?
+  directionAllocationShares Json?
+
   // The purchasing cutover. Null = the old behaviour (a received purchase
   // order creates no payable; supplier invoices may still be created). Once
   // set — by an explicit owner action, never moved back — purchases follow

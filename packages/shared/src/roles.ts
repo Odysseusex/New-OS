@@ -365,3 +365,6 @@ export const DEMO_COMPANY_ROLES: Role[] = [Role.OWNER];
 // Загрузка банковской выписки: it writes money into the books, so the people
 // who answer for them.
 export const BANK_IMPORT_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT];
+
+// Choosing how common costs are shared between directions («Прибыль по направлениям»).
+export const DIRECTION_ALLOCATION_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT];

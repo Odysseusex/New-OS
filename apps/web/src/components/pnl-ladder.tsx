@@ -4,6 +4,8 @@ import {
   NET_PROFIT_STATUS_LABELS_RU,
   NOT_CONFIGURED_ITEM_LABELS_RU,
   NetProfitStatus,
+  ebitdaOf,
+  netMarginPercent,
 } from "@bakery-os/shared";
 import type { ProfitAndLossDto } from "@bakery-os/shared";
 import { formatMoney } from "@/lib/format";
@@ -14,8 +16,11 @@ import { formatMoney } from "@/lib/format";
 // A deduction shown as a negative — but never "−0".
 const neg = (v: number): number => (v === 0 ? 0 : -v);
 
-export function PnlLadder({ pnl }: { pnl: ProfitAndLossDto }) {
-  const rows: { label: string; value: number | null; kind?: "sub" | "total" | "minus"; note?: string }[] = [
+export type PnlLadderRow = { label: string; value: number | null; kind?: "sub" | "total" | "minus"; note?: string };
+
+// The statement's lines, also what «Excel» writes on the «ОПиУ» sheet.
+export function pnlLadderRows(pnl: ProfitAndLossDto): PnlLadderRow[] {
+  return [
     { label: "Валовая выручка", value: pnl.grossRevenue },
     { label: "Скидки", value: neg(pnl.discountsTotal), kind: "minus" },
     { label: "Возвраты", value: neg(pnl.returnsTotal), kind: "minus" },
@@ -28,8 +33,9 @@ export function PnlLadder({ pnl }: { pnl: ProfitAndLossDto }) {
     },
     { label: "Потери по запасам", value: neg(pnl.inventoryLosses), kind: "minus" },
     { label: "Операционные расходы", value: neg(pnl.expensesTotal), kind: "minus" },
+    { label: "EBITDA", value: ebitdaOf(pnl), kind: "total" },
     { label: "Амортизация", value: neg(pnl.depreciation), kind: "minus" },
-    { label: "Операционная прибыль", value: pnl.operatingProfit, kind: "total" },
+    { label: "Операционная прибыль (EBIT)", value: pnl.operatingProfit, kind: "total" },
     { label: "Прочие доходы и расходы", value: pnl.otherResult },
     { label: "Прибыль до налогообложения", value: pnl.profitBeforeTax, kind: "total" },
     { label: "Налог на прибыль", value: pnl.incomeTax === null ? null : neg(pnl.incomeTax), kind: "minus" },
@@ -39,6 +45,11 @@ export function PnlLadder({ pnl }: { pnl: ProfitAndLossDto }) {
       kind: "total",
     },
   ];
+}
+
+export function PnlLadder({ pnl }: { pnl: ProfitAndLossDto }) {
+  const rows = pnlLadderRows(pnl);
+  const netMargin = netMarginPercent(pnl);
 
   return (
     <div className="mb-4 rounded-2xl border border-border bg-surface shadow-card">
@@ -66,6 +77,10 @@ export function PnlLadder({ pnl }: { pnl: ProfitAndLossDto }) {
               </td>
             </tr>
           ))}
+          <tr>
+            <td className="px-5 py-2.5 text-muted">Рентабельность по чистой прибыли</td>
+            <td className="px-5 py-2.5 text-right tabular-nums text-foreground">{netMargin === null ? "—" : `${netMargin.toFixed(1)}%`}</td>
+          </tr>
         </tbody>
       </table>
 

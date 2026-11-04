@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
-import { CashFlowDto, EXPENSE_MANAGE_ROLES, FINANCE_VIEW_ROLES, ProfitAndLossDto } from "@bakery-os/shared";
+import { Body, Controller, Get, Param, Post, Put, Query, UseGuards } from "@nestjs/common";
+import { CashFlowDto, DIRECTION_ALLOCATION_ROLES, EXPENSE_MANAGE_ROLES, FINANCE_VIEW_ROLES, ProfitAndLossDto } from "@bakery-os/shared";
+import { DirectionAllocationBodyDto } from "./dto/direction-allocation.dto";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
 import { Roles } from "../common/decorators/roles.decorator";
@@ -57,6 +58,13 @@ export class FinanceController {
   @Get("pnl/directions")
   getPnlByDirection(@CurrentUser() user: AuthenticatedUser, @Query() query: GetPnlQueryDto) {
     return this.financeService.getPnlByDirection(user.organizationId, new Date(query.from), new Date(query.to), query.locationId);
+  }
+
+  // How common costs are shared between directions: revenue / gross profit / stated %.
+  @Put("pnl/directions/allocation")
+  @Roles(...DIRECTION_ALLOCATION_ROLES)
+  setDirectionAllocation(@CurrentUser() user: AuthenticatedUser, @Body() dto: DirectionAllocationBodyDto) {
+    return this.financeService.setDirectionAllocation(user.organizationId, user.id, { base: dto.base, shares: (dto.shares ?? null) as never });
   }
 
   // One row of «Финансовый результат по товарам», opened up. Always live:

@@ -4,7 +4,8 @@ import { PrismaService } from "../prisma/prisma.service";
 import { customerAdvanceBalances } from "../sales/customer-advances";
 import { cogsDeltaOf, correctionsInRange, lossDeltaOf } from "./cost-correction/stored";
 import { buildDirectionPnl } from "./direction-pnl";
-import type { BusinessDirection } from "@bakery-os/shared";
+import { BUSINESS_DIRECTION_ORDER, BusinessDirection, DirectionAllocationBase, DirectionAllocationDto, directionSharesError } from "@bakery-os/shared";
+import { audited } from "../audit/audit";
 import { CostingService } from "../costing/costing.service";
 import { FinancialEventProjector } from "./events/projector";
 import { PeriodGuard } from "./periods/period-guard";
@@ -615,8 +616,44 @@ export class FinanceService {
   // The P&L split by business direction (опт / розница / заказы); common costs
   // by share of net revenue. Totals are this same period's P&L.
   async getPnlByDirection(organizationId: string, from: Date, to: Date, locationId?: string) {
-    const pnl = await this.getProfitAndLoss(organizationId, from, to, locationId);
-    return buildDirectionPnl(this.prisma, this.costing, pnl, organizationId, from, to, locationId);
+    const [pnl, allocation] = await Promise.all([this.getProfitAndLoss(organizationId, from, to, locationId), this.getDirectionAllocation(organizationId)]);
+    return buildDirectionPnl(this.prisma, this.costing, pnl, organizationId, from, to, locationId, allocation);
+  }
+
+  async getDirectionAllocation(organizationId: string): Promise<DirectionAllocationDto> {
+    const org = await this.prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+      select: { directionAllocationBase: true, directionAllocationShares: true },
+    });
+    const base = Object.values(DirectionAllocationBase).includes(org.directionAllocationBase as DirectionAllocationBase)
+      ? (org.directionAllocationBase as DirectionAllocationBase)
+      : DirectionAllocationBase.REVENUE;
+    const shares = org.directionAllocationShares as Record<BusinessDirection, number> | null;
+    return { base, shares: base === DirectionAllocationBase.MANUAL ? shares : null };
+  }
+
+  // Management view only: changes how «Прибыль по направлениям» shares common costs, nothing in the books.
+  async setDirectionAllocation(organizationId: string, actorId: string, dto: DirectionAllocationDto): Promise<DirectionAllocationDto> {
+    if (!Object.values(DirectionAllocationBase).includes(dto.base)) throw new BadRequestException("Неизвестная база распределения");
+    let shares: Record<BusinessDirection, number> | null = null;
+    if (dto.base === DirectionAllocationBase.MANUAL) {
+      const problem = directionSharesError(dto.shares);
+      if (problem) throw new BadRequestException(problem);
+      shares = Object.fromEntries(BUSINESS_DIRECTION_ORDER.map((d) => [d, round2(dto.shares?.[d] ?? 0)])) as Record<BusinessDirection, number>;
+    }
+    const before = await this.getDirectionAllocation(organizationId);
+    await audited(
+      this.prisma,
+      { organizationId, actorId, action: "directionAllocation.update", entityType: "Organization", entityId: organizationId, before },
+      async (tx) => {
+        await tx.organization.update({
+          where: { id: organizationId },
+          data: { directionAllocationBase: dto.base, directionAllocationShares: shares ?? Prisma.DbNull },
+        });
+        return { result: true, after: { base: dto.base, shares } };
+      },
+    );
+    return { base: dto.base, shares };
   }
 
   // One product's row of the P&L, opened up. Totals follow getProfitAndLoss

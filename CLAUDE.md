@@ -1068,6 +1068,15 @@ same roles/period/location as the P&L). `finance/direction-pnl.ts`; shared `pack
   sold. **Common costs (inventory losses, operating expenses, depreciation, other result, recorded tax) are allocated
   by share of net revenue — the owner's decision (03.11.2026).** Totals ARE the period's P&L; parts are made to add up
   to the тиын (`allocate`, remainder on the largest). Net revenue ≤ 0 → nothing allocated (`allocated: false`).
+- **Allocation base is a choice** (ТЗ §8.2, migration `20261111120000`, `Organization.directionAllocationBase` +
+  `directionAllocationShares`, `PUT /finance/pnl/directions/allocation`, `DIRECTION_ALLOCATION_ROLES` = OWNER/ADMIN/ACCOUNTANT,
+  audited `directionAllocation.update`): REVENUE (default = the owner's decision above), GROSS_PROFIT, or MANUAL %
+  (sum 100, shared `directionSharesError`). The table shows «Прибыль до распределения» (gross profit − the direction's
+  own expenses/other result), «Распределённые общие расходы» and «Прибыль после распределения (чистая)», plus EBITDA;
+  Excel alongside. A management view only — nothing in the books depends on it.
+- **EBITDA** = operating profit + depreciation (`ebitdaOf`, derived on the client so frozen snapshots show it too); the
+  P&L ladder shows EBITDA → Амортизация → «Операционная прибыль (EBIT)» and «Рентабельность по чистой прибыли»
+  (`netMarginPercent`). Финансы → P&L «Excel» is a workbook: «ОПиУ» (the ladder) + «По товарам» (`downloadWorkbook`).
 - **Direct expenses** (migration `20261107120000`, enum `BusinessDirection`, `Expense.direction` nullable): «Направление»
   in «Новый расход» (empty = common). A confirmed expense with a direction goes wholly to it — operating ones into its
   «Операционные расходы» (`directExpenses` shown as «в т.ч. прямые»), other/financial ones into its other result —

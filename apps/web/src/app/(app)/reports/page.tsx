@@ -32,6 +32,7 @@ import {
   buildCategoryTree,
   categoryAcceptsType,
   categoryIdsWithDescendants,
+  ebitdaOf,
   QUALITY_VIEW_ROLES,
   UNIT_LABELS_RU,
   WRITE_OFF_REASON_LABELS_RU,
@@ -292,7 +293,8 @@ function FinanceReport({ period, locationId }: { period: Period; locationId: str
           { label: "Чистая выручка", value: formatMoney(pnl.netRevenue) },
           { label: "Себестоимость", value: formatMoney(pnl.cogs) },
           { label: "Валовая прибыль", value: formatMoney(pnl.grossProfit) },
-          { label: "Операционная прибыль", value: formatMoney(pnl.operatingProfit) },
+          { label: "EBITDA", value: formatMoney(ebitdaOf(pnl)) },
+          { label: "Операционная прибыль (EBIT)", value: formatMoney(pnl.operatingProfit) },
           { label: `Чистая прибыль (${pnl.netProfitStatus === "COMPLETE" ? "итоговая" : "предварительная"})`, value: formatMoney(pnl.netProfit) },
         ]}
       />

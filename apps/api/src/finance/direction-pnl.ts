@@ -4,6 +4,8 @@ import {
   BUSINESS_DIRECTION_ORDER,
   BusinessDirection,
   businessDirectionOf,
+  DirectionAllocationBase,
+  DirectionAllocationDto,
   DirectionPnlDto,
   DirectionPnlRowDto,
   ProfitAndLossDto,
@@ -43,7 +45,8 @@ export function allocate(total: number, weights: Weights): Map<BusinessDirection
 // cost of goods in proportion to how much of it each direction sold. Everything
 // the business spends in common — inventory losses, operating expenses,
 // depreciation, the other result and the recorded income tax — is allocated by
-// each direction's share of net revenue (the owner's decision). The totals are
+// the organization's chosen base: share of net revenue (the default, the owner's
+// decision of 03.11.2026), of gross profit, or percentages stated by hand. The totals are
 // the period's P&L itself, so the directions always add up to it.
 export async function buildDirectionPnl(
   prisma: PrismaService,
@@ -52,7 +55,8 @@ export async function buildDirectionPnl(
   organizationId: string,
   from: Date,
   to: Date,
-  locationId?: string,
+  locationId: string | undefined,
+  allocation: DirectionAllocationDto,
 ): Promise<DirectionPnlDto> {
   const where = { organizationId, ...(locationId ? { locationId } : {}) };
   const [sales, returns, currentCosts, corrections, directExpenses] = await Promise.all([
@@ -163,7 +167,16 @@ export async function buildDirectionPnl(
   }
   const sumOf = (m: Map<BusinessDirection, number>) => round2(BUSINESS_DIRECTION_ORDER.reduce((s, d) => s + m.get(d)!, 0));
 
-  const share: Weights = new Map(BUSINESS_DIRECTION_ORDER.map((d) => [d, Math.max(revenueParts.get(d)!, 0)]));
+  const revenueShare: Weights = new Map(BUSINESS_DIRECTION_ORDER.map((d) => [d, Math.max(revenueParts.get(d)!, 0)]));
+  const revenueBase = BUSINESS_DIRECTION_ORDER.reduce((s, d) => s + revenueShare.get(d)!, 0);
+  // The base common costs are shared by: revenue (default), gross profit, or the stated percentages.
+  const share: Weights = new Map(
+    BUSINESS_DIRECTION_ORDER.map((d) => {
+      if (allocation.base === DirectionAllocationBase.MANUAL) return [d, Math.max(allocation.shares?.[d] ?? 0, 0)];
+      if (allocation.base === DirectionAllocationBase.GROSS_PROFIT) return [d, Math.max(round2(revenueParts.get(d)! - cogsParts.get(d)!), 0)];
+      return [d, revenueShare.get(d)!];
+    }),
+  );
   const shareBase = BUSINESS_DIRECTION_ORDER.reduce((s, d) => s + share.get(d)!, 0);
   const allocated = shareBase > 0;
   const losses = allocate(pnl.inventoryLosses, share);
@@ -182,6 +195,8 @@ export async function buildDirectionPnl(
     const operatingProfit = round2(grossProfit - inventoryLosses - exp - dep);
     const otherResult = round2(other.get(d)! + directOther.get(d)!);
     const incomeTax = tax ? tax.get(d)! : null;
+    const profitBeforeAllocation = round2(grossProfit - directOp.get(d)! + directOther.get(d)!);
+    const netProfit = round2(operatingProfit + otherResult - (incomeTax ?? 0));
     return {
       direction: d,
       checks: acc.get(d)!.checks,
@@ -189,23 +204,32 @@ export async function buildDirectionPnl(
       cogs,
       grossProfit,
       grossMarginPercent: netRevenue > 0 ? (grossProfit / netRevenue) * 100 : null,
-      revenueSharePercent: allocated ? (share.get(d)! / shareBase) * 100 : null,
+      revenueSharePercent: revenueBase > 0 ? (revenueShare.get(d)! / revenueBase) * 100 : null,
+      allocationSharePercent: allocated ? (share.get(d)! / shareBase) * 100 : null,
+      profitBeforeAllocation,
+      allocatedCosts: round2(profitBeforeAllocation - netProfit),
       inventoryLosses,
       expenses: exp,
       directExpenses: directOp.get(d)!,
+      ebitda: round2(operatingProfit + dep),
       depreciation: dep,
       operatingProfit,
       otherResult,
       incomeTax,
-      netProfit: round2(operatingProfit + otherResult - (incomeTax ?? 0)),
+      netProfit,
     };
   });
 
+  const totalBefore = round2(pnl.grossProfit - sumOf(directOp) + sumOf(directOther));
   return {
     from: from.toISOString(),
     to: to.toISOString(),
     rows,
+    allocation,
     total: {
+      profitBeforeAllocation: totalBefore,
+      allocatedCosts: round2(totalBefore - pnl.netProfit),
+      ebitda: round2(pnl.operatingProfit + pnl.depreciation),
       checks: rows.reduce((s, r) => s + r.checks, 0),
       netRevenue: pnl.netRevenue,
       cogs: pnl.cogs,

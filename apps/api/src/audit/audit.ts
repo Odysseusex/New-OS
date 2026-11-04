@@ -44,6 +44,7 @@ export const AUDIT_ACTION_GROUPS = {
   nonCashAccounts: ["cashAccount.locationNonCash"],
   customerPayments: ["customer.payment"],
   referenceImport: ["referenceImport.apply"],
+  directionAllocation: ["directionAllocation.update"],
   bankStatements: ["bankStatement.upload", "bankStatement.delete", "bankStatementLine.post"],
   procurement: ["procurement.cutover", "purchaseOrder.payment", "purchaseOrder.paymentReverse", "purchaseOrder.revise", "purchaseOrder.supplierReturn"],
   master: [
