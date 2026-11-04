@@ -77,8 +77,8 @@ export class BalanceService implements OnModuleInit {
     const proj = (line: BalanceLine) => round2(projected.get(line) ?? 0);
 
     // What the ledgers, registers and documents actually hold.
-    const [cash, inventoryParts, fixedAssets, payables, receivablesDoc, advances] = await Promise.all([
-      this.cashAt(organizationId, asOf),
+    const [cashParts, inventoryParts, fixedAssets, payables, receivablesDoc, advances] = await Promise.all([
+      this.cashByAccountAt(organizationId, asOf),
       this.inventoryAt(organizationId, asOf),
       this.fixedAssetsAt(organizationId, asOf),
       live ? this.finance.getPayablesBreakdown(organizationId) : Promise.resolve(null),
@@ -89,6 +89,7 @@ export class BalanceService implements OnModuleInit {
     ]);
 
     const inventory = inventoryParts.total;
+    const cash = cashParts.total;
     const line = (l: BalanceLine, amount: number, source: BalanceSource): BalanceLineDto => ({
       line: l,
       label: BALANCE_LINE_LABELS_RU[l],
@@ -96,7 +97,7 @@ export class BalanceService implements OnModuleInit {
       source,
     });
     const assetLines = [
-      line(BalanceLine.CASH_AND_BANK, cash, "LEDGER"),
+      { ...line(BalanceLine.CASH_AND_BANK, cash, "LEDGER"), breakdown: cashParts.breakdown },
       { ...line(BalanceLine.INVENTORY, inventory, "LEDGER"), breakdown: inventoryParts.breakdown.map(({ label, amount }) => ({ label, amount })) },
       line(BalanceLine.RECEIVABLES, receivablesDoc ?? proj(BalanceLine.RECEIVABLES), receivablesDoc === null ? "EVENTS" : "DOCUMENTS"),
       line(BalanceLine.FIXED_ASSETS, fixedAssets, "REGISTER"),
@@ -104,7 +105,10 @@ export class BalanceService implements OnModuleInit {
     ];
     const liabilityLines = [
       line(BalanceLine.SUPPLIER_PAYABLES, payables?.suppliers ?? proj(BalanceLine.SUPPLIER_PAYABLES), payables ? "DOCUMENTS" : "EVENTS"),
-      line(BalanceLine.EXPENSE_PAYABLES, payables?.expenses ?? proj(BalanceLine.EXPENSE_PAYABLES), payables ? "DOCUMENTS" : "EVENTS"),
+      {
+        ...line(BalanceLine.EXPENSE_PAYABLES, payables?.expenses ?? proj(BalanceLine.EXPENSE_PAYABLES), payables ? "DOCUMENTS" : "EVENTS"),
+        ...(payables && payables.expensesByArticle.length > 0 ? { breakdown: payables.expensesByArticle } : {}),
+      },
       line(BalanceLine.CONSIGNMENT_PAYABLES, payables?.consignment ?? proj(BalanceLine.CONSIGNMENT_PAYABLES), payables ? "DOCUMENTS" : "EVENTS"),
       // No register of loans exists: the figure IS the events'.
       line(BalanceLine.LOANS, proj(BalanceLine.LOANS), "EVENTS"),
@@ -317,11 +321,26 @@ export class BalanceService implements OnModuleInit {
 
   // Money in the accounts at a moment: the cash ledger summed up to it.
   async cashAt(organizationId: string, asOf: Date): Promise<number> {
+    return (await this.cashByAccountAt(organizationId, asOf)).total;
+  }
+
+  // Money on `asOf`, and per account (ТЗ §8.3 «Денежные средства (по счетам)»).
+  async cashByAccountAt(organizationId: string, asOf: Date): Promise<{ total: number; breakdown: { label: string; amount: number }[] }> {
     const rows = await this.prisma.cashMovement.findMany({
       where: { organizationId, occurredAt: { lte: asOf } },
-      select: { type: true, amount: true },
+      select: { type: true, amount: true, account: { select: { name: true } } },
     });
-    return round2(rows.reduce((s, m) => s + cashEffectOf({ type: m.type, amount: m.amount.toNumber() }), 0));
+    const byAccount = new Map<string, number>();
+    let total = 0;
+    for (const m of rows) {
+      const v = cashEffectOf({ type: m.type, amount: m.amount.toNumber() });
+      total += v;
+      byAccount.set(m.account.name, (byAccount.get(m.account.name) ?? 0) + v);
+    }
+    return {
+      total: round2(total),
+      breakdown: [...byAccount].map(([label, amount]) => ({ label, amount: round2(amount) })).filter((l) => l.amount !== 0).sort((a, b) => b.amount - a.amount),
+    };
   }
 
   // Stock on hand at a moment × the costing service's cost. Anchored at today's

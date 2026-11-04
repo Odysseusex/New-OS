@@ -113,6 +113,39 @@ export function SaleDetailModal({
               </table>
             </div>
 
+            {sale.items.some((i) => i.unitCost !== undefined) &&
+              (() => {
+                // ТЗ §5.3: what this check earned — own goods with a known cost only.
+                const costed = sale.items.filter((i) => i.unitCost !== null && i.unitCost !== undefined);
+                const revenue = costed.reduce((s, i) => s + i.subtotal, 0);
+                const cost = costed.reduce((s, i) => s + (i.unitCost ?? 0) * i.quantity, 0);
+                const profit = revenue - cost;
+                const pct = (a: number, b: number) => (b > 0 ? `${((a / b) * 100).toFixed(1)}%` : "—");
+                return (
+                  <div className="mb-5 grid grid-cols-2 gap-3 rounded-xl bg-surface-muted px-4 py-3 text-sm sm:grid-cols-4">
+                    <div>
+                      <p className="text-muted">Себестоимость</p>
+                      <p className="font-semibold text-foreground">{formatMoney(cost)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted">Валовая прибыль</p>
+                      <p className="font-semibold text-foreground">{formatMoney(profit)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted">Маржа</p>
+                      <p className="font-semibold text-foreground">{pct(profit, revenue)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted">Наценка</p>
+                      <p className="font-semibold text-foreground">{pct(profit, cost)}</p>
+                    </div>
+                    {costed.length < sale.items.length && (
+                      <p className="col-span-full text-xs text-muted">Без строк под реализацию и без себестоимости: {sale.items.length - costed.length}</p>
+                    )}
+                  </div>
+                );
+              })()}
+
             <div className="mb-5 grid grid-cols-3 gap-3 text-sm">
               <div>
                 <p className="text-muted">Итого</p>

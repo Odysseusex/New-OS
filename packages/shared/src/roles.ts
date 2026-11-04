@@ -306,6 +306,9 @@ export const QUALITY_VIEW_ROLES: Role[] = [
 // otherwise create/edit/archive the same entity type.
 export const HARD_DELETE_ROLES: Role[] = [Role.OWNER, Role.ADMIN];
 
+// Closing a month (ТЗ §9.1: «Финансист … закрытие периода»). Reopening stays the owner's alone.
+export const PERIOD_CLOSE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT];
+
 // Approving an accounting policy changes what the numbers mean, so it is held
 // to the same bar as a permanent delete.
 export const POLICY_MANAGE_ROLES: Role[] = HARD_DELETE_ROLES;

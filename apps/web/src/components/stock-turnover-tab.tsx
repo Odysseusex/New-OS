@@ -22,6 +22,7 @@ export function StockTurnoverTab({ locations, isOrgWide }: { locations: Location
   const [locationId, setLocationId] = useState("");
   const [type, setType] = useState("");
   const [query, setQuery] = useState("");
+  const [group, setGroup] = useState("");
   const [data, setData] = useState<StockTurnoverDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,7 +43,12 @@ export function StockTurnoverTab({ locations, isOrgWide }: { locations: Location
   }, [range, locationId]);
 
   const q = query.trim().toLowerCase();
-  const lines = (data?.lines ?? []).filter((l) => (!type || l.productType === type) && (!q || l.productName.toLowerCase().includes(q)));
+  // Группа = the top-level category («Родитель › Под» → «Родитель»).
+  const groupOf = (name: string | null | undefined) => (name ? name.split(" › ")[0] : "Без группы");
+  const groups = Array.from(new Set((data?.lines ?? []).map((l) => groupOf(l.categoryName)))).sort((a, b) => a.localeCompare(b, "ru"));
+  const lines = (data?.lines ?? []).filter(
+    (l) => (!type || l.productType === type) && (!group || groupOf(l.categoryName) === group) && (!q || l.productName.toLowerCase().includes(q)),
+  );
   const totals = lines.reduce(
     (s, l) => ({ o: s.o + l.openingValue, i: s.i + l.inValue, x: s.x + l.outValue, c: s.c + l.closingValue }),
     { o: 0, i: 0, x: 0, c: 0 },
@@ -88,6 +94,14 @@ export function StockTurnoverTab({ locations, isOrgWide }: { locations: Location
             ))}
           </select>
         )}
+        <select value={group} onChange={(e) => setGroup(e.target.value)} className={selectClass} aria-label="Группа товаров">
+          <option value="">Все группы</option>
+          {groups.map((g) => (
+            <option key={g} value={g}>
+              {g}
+            </option>
+          ))}
+        </select>
         <select value={type} onChange={(e) => setType(e.target.value)} className={selectClass}>
           <option value="">Все типы</option>
           {Object.values(ProductType).map((t) => (

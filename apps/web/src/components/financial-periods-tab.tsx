@@ -6,7 +6,7 @@ import { AlertTriangle } from "lucide-react";
 import {
   FINANCIAL_PERIOD_STATUS_LABELS_RU,
   FinancialPeriodStatus,
-  HARD_DELETE_ROLES,
+  PERIOD_CLOSE_ROLES,
   Role,
 } from "@bakery-os/shared";
 import type { CostCorrectionDto, FinancialPeriodDto, PeriodDiagnosticsDto, PeriodPreflightDto, PeriodSnapshotDto } from "@bakery-os/shared";
@@ -29,7 +29,7 @@ const STATUS_STYLES: Record<FinancialPeriodStatus, string> = {
 // current month. Reopening is owner-only and only for the latest closed month.
 export function FinancialPeriodsTab() {
   const { user } = useAuth();
-  const canClose = user ? HARD_DELETE_ROLES.includes(user.role) : false;
+  const canClose = user ? PERIOD_CLOSE_ROLES.includes(user.role) : false;
   const isOwner = user?.role === Role.OWNER;
   const [periods, setPeriods] = useState<FinancialPeriodDto[]>([]);
   const [state, setState] = useState<"loading" | "error" | "ready">("loading");

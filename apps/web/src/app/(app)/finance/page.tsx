@@ -405,7 +405,7 @@ export default function FinancePage() {
         headers: ["Показатель", "Сумма, ₸"],
         rows: [
           ...pnlLadderRows(pnl).map((r) => [
-            r.label,
+            r.kind === "sub" ? `    ${r.label}` : r.label,
             r.value === null ? "не настроен" : { v: r.value, fmt: "money" as const, bold: r.kind === "total" },
           ]),
           ["Рентабельность по чистой прибыли", margin === null ? "—" : { v: margin, fmt: "percent" as const }],

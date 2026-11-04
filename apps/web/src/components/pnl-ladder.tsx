@@ -33,10 +33,12 @@ export function pnlLadderRows(pnl: ProfitAndLossDto): PnlLadderRow[] {
     },
     { label: "Потери по запасам", value: neg(pnl.inventoryLosses), kind: "minus" },
     { label: "Операционные расходы", value: neg(pnl.expensesTotal), kind: "minus" },
+    ...(pnl.operatingExpenseLines ?? []).map((l): PnlLadderRow => ({ label: l.label, value: neg(l.amount), kind: "sub" })),
     { label: "EBITDA", value: ebitdaOf(pnl), kind: "total" },
     { label: "Амортизация", value: neg(pnl.depreciation), kind: "minus" },
     { label: "Операционная прибыль (EBIT)", value: pnl.operatingProfit, kind: "total" },
     { label: "Прочие доходы и расходы", value: pnl.otherResult },
+    ...(pnl.otherResultLines ?? []).map((l): PnlLadderRow => ({ label: l.label, value: l.amount, kind: "sub" })),
     { label: "Прибыль до налогообложения", value: pnl.profitBeforeTax, kind: "total" },
     { label: "Налог на прибыль", value: pnl.incomeTax === null ? null : neg(pnl.incomeTax), kind: "minus" },
     {
@@ -55,13 +57,14 @@ export function PnlLadder({ pnl }: { pnl: ProfitAndLossDto }) {
     <div className="mb-4 rounded-2xl border border-border bg-surface shadow-card">
       <table className="w-full text-sm">
         <tbody className="divide-y divide-border">
-          {rows.map((row) => (
-            <tr key={row.label} className={clsx(row.kind === "total" && "bg-surface-muted")}>
+          {rows.map((row, i) => (
+            <tr key={`${i}-${row.label}`} className={clsx(row.kind === "total" && "bg-surface-muted")}>
               <td
                 className={clsx(
                   "px-5 py-2.5",
                   row.kind === "total" ? "font-semibold text-foreground" : "text-muted",
                   row.kind === "minus" && "pl-9",
+                  row.kind === "sub" && "py-1.5 pl-14 text-xs",
                 )}
               >
                 {row.label}
@@ -69,7 +72,7 @@ export function PnlLadder({ pnl }: { pnl: ProfitAndLossDto }) {
               <td
                 className={clsx(
                   "px-5 py-2.5 text-right tabular-nums",
-                  row.kind === "total" ? "font-semibold text-foreground" : "text-foreground",
+                  row.kind === "total" ? "font-semibold text-foreground" : row.kind === "sub" ? "py-1.5 text-xs text-muted" : "text-foreground",
                   row.value !== null && row.value < 0 && row.kind === "total" && "text-red-700",
                 )}
               >

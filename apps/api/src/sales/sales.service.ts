@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { assertTillShiftOpen } from "../till-shifts/till-shift-guard";
 import { resolveTillApproval } from "../auth/till-pin";
-import { isPointsRedeemableLine, manualDiscountTarget, TILL_ROLES } from "@bakery-os/shared";
+import { FINANCE_VIEW_ROLES, isPointsRedeemableLine, manualDiscountTarget, TILL_ROLES } from "@bakery-os/shared";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { isDemoOrganization } from "../common/demo-guard";
@@ -520,7 +520,7 @@ export class SalesService {
   ): Promise<ProductProfitabilityDto> {
     const locationId = resolveLocationScope(user, requestedLocationId);
 
-    const [items, unitCosts] = await Promise.all([
+    const [items, unitCosts, categories] = await Promise.all([
       this.prisma.saleItem.findMany({
         where: {
           ...OWN_ITEMS,
@@ -533,11 +533,20 @@ export class SalesService {
         include: { product: true },
       }),
       resolveProductUnitCosts(this.prisma, user.organizationId),
+      this.prisma.category.findMany({ where: { organizationId: user.organizationId }, select: { id: true, name: true, parentId: true } }),
     ]);
+    // The product's group (top-level category) at the time of sale, for «по группам».
+    const categoryById = new Map(categories.map((c) => [c.id, c]));
+    const groupOf = (categoryId: string | null): string | null => {
+      const c = categoryId ? categoryById.get(categoryId) : undefined;
+      if (!c) return null;
+      return (c.parentId ? categoryById.get(c.parentId)?.name : null) ?? c.name;
+    };
 
     const acc = new Map<
       string,
       {
+        categoryName: string | null;
         productName: string;
         quantity: number;
         revenue: number;
@@ -553,6 +562,7 @@ export class SalesService {
       // consignment terms, then today's cost only for lines that predate stamps.
       const unitCost = item.unitCost?.toNumber() ?? item.consignmentUnitCost?.toNumber() ?? unitCosts.get(item.productId);
       const entry = acc.get(item.productId) ?? {
+        categoryName: groupOf(item.categoryIdSnapshot ?? item.product.categoryId),
         productName: item.product.name,
         quantity: 0,
         revenue: 0,
@@ -598,6 +608,7 @@ export class SalesService {
         return {
           productId,
           productName: v.productName,
+          categoryName: v.categoryName,
           quantity: v.quantity,
           revenue: round2(v.revenue),
           cost: round2(v.cost),
@@ -1148,7 +1159,14 @@ export class SalesService {
       throw new NotFoundException("Продажа не найдена");
     }
     resolveLocationScope(user, sale.locationId);
-    return this.toSaleDetailDto(sale);
+    const dto = this.toSaleDetailDto(sale);
+    // ТЗ §5.3: the cost stamped on each line, so the check shows its margin — for finance roles only.
+    if (FINANCE_VIEW_ROLES.includes(user.role)) {
+      const stamp = new Map(sale.items.map((i) => [i.id, i.unitCost?.toNumber() ?? null]));
+      const consignment = new Set(sale.items.filter((i) => i.consignmentSupplierId).map((i) => i.id));
+      dto.items = dto.items.map((i) => ({ ...i, unitCost: consignment.has(i.id) ? null : (stamp.get(i.id) ?? null) }));
+    }
+    return dto;
   }
 
   async create(user: AuthenticatedUser, dto: CreateSaleDto): Promise<SaleDetailDto> {

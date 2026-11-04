@@ -59,3 +59,14 @@ it("balance sheet splits inventory into store / workshop / finished goods, addin
   expect(parts.breakdown.reduce((s, b) => s + b.amount, 0)).toBeCloseTo(parts.total, 2);
   expect(await balance.inventoryValueAt(org.organizationId, new Date())).toBe(parts.total);
 });
+
+it("operating expenses by article add up to the line", async () => {
+  const rent = await prisma.financeCategory.create({
+    data: { organizationId: org.organizationId, name: "Аренда", kind: "EXPENSE", pnlTreatment: "OPERATING_EXPENSE", cashActivity: "OPERATING", balanceTreatment: "NONE" } as never,
+  });
+  await prisma.expense.create({ data: { organizationId: org.organizationId, amount: 2500, categoryId: rent.id, createdById: org.user.id } });
+  const pnl = await services.finance.getProfitAndLoss(org.organizationId, new Date(Date.now() - 3_600_000), new Date());
+  const lines = pnl.operatingExpenseLines ?? [];
+  expect(lines.find((l) => l.label === "Аренда")?.amount).toBe(2500);
+  expect(lines.reduce((s, l) => s + l.amount, 0)).toBeCloseTo(pnl.expensesTotal, 2);
+});

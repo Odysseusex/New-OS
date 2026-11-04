@@ -35,6 +35,9 @@ export interface SaleItemDto {
   loyaltyDiscount: number | null;
   // The part of the price taken off by a check discount at the till (null = none).
   manualDiscount?: number | null;
+  // Cost of one unit stamped at the sale; only in the check card, only for finance roles
+  // (null = unknown or goods «под реализацию»).
+  unitCost?: number | null;
 }
 
 export interface SaleDto {
@@ -444,6 +447,8 @@ export interface CreateSaleReturnRequestDto {
 export interface ProductProfitabilityRowDto {
   productId: string;
   productName: string;
+  // Группа товаров (top-level category at the time of sale); null = none.
+  categoryName?: string | null;
   quantity: number;
   revenue: number;
   // Себестоимость проданного: unit cost × quantity sold.

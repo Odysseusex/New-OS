@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, UseGuards } from "@nestjs/common";
-import { FINANCE_VIEW_ROLES, HARD_DELETE_ROLES, Role } from "@bakery-os/shared";
+import { FINANCE_VIEW_ROLES, PERIOD_CLOSE_ROLES, Role } from "@bakery-os/shared";
 import { JwtAuthGuard } from "../../auth/jwt-auth.guard";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
@@ -69,7 +69,7 @@ export class FinancialPeriodsController {
   }
 
   @Post(":year/:month/close")
-  @Roles(...HARD_DELETE_ROLES)
+  @Roles(...PERIOD_CLOSE_ROLES)
   close(
     @CurrentUser() user: AuthenticatedUser,
     @Param("year", ParseIntPipe) year: number,

@@ -258,7 +258,12 @@ export class TillShiftsService {
       checks: takings.checks,
       returns: takings.returns,
       revenue: takings.revenue,
-      tenders: TENDERS.map((method) => ({ method, sales: get(takings.taken, method), refunds: get(takings.refunded, method) })),
+      tenders: TENDERS.map((method) => ({
+        method,
+        sales: get(takings.taken, method),
+        refunds: get(takings.refunded, method),
+        ...(method === PaymentMethod.CARD && (takings.qrTaken || takings.qrRefunded) ? { kaspiQr: { sales: takings.qrTaken, refunds: takings.qrRefunded } } : {}),
+      })),
       onCredit: takings.onCredit,
       openingCash,
       cashSales,

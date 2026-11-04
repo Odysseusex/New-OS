@@ -8,6 +8,9 @@ export interface TillTakings {
   taken: Map<string, number>;
   refunded: Map<string, number>;
   onCredit: number;
+  // The part of CARD that the Kaspi terminal reported as paid by QR (and given back the same way).
+  qrTaken: number;
+  qrRefunded: number;
   checks: number;
   returns: number;
   revenue: number;
@@ -19,7 +22,7 @@ export async function tillTakings(prisma: PrismaService, organizationId: string,
   const [sales, returns] = await Promise.all([
     prisma.sale.findMany({
       where: { organizationId, locationId, soldAt: { gte: start, lt: end } },
-      select: { totalAmount: true, amountPaid: true, paymentMethod: true, payments: { select: { method: true, amount: true } } },
+      select: { totalAmount: true, amountPaid: true, paymentMethod: true, terminalMethod: true, payments: { select: { method: true, amount: true } } },
     }),
     prisma.saleReturn.findMany({
       where: { organizationId, locationId, returnedAt: { gte: start, lt: end } },
@@ -27,13 +30,14 @@ export async function tillTakings(prisma: PrismaService, organizationId: string,
         id: true,
         totalAmount: true,
         creditedAmount: true,
-        sale: { select: { paymentMethod: true, payments: { select: { method: true, amount: true } } } },
+        sale: { select: { paymentMethod: true, terminalMethod: true, payments: { select: { method: true, amount: true } } } },
         cashMovements: { select: { amount: true, account: { select: { type: true } } } },
       },
     }),
   ]);
 
   const taken = new Map<string, number>();
+  let qrTaken = 0;
   let onCredit = 0;
   let revenue = 0;
   // Same rule as the Sales summary: a split sale is its payment rows, anything
@@ -46,6 +50,7 @@ export async function tillTakings(prisma: PrismaService, organizationId: string,
     for (const t of tenders) {
       if (t.amount <= 0 || t.method === PaymentMethod.MIXED) continue;
       taken.set(t.method, (taken.get(t.method) ?? 0) + t.amount);
+      if (t.method === PaymentMethod.CARD && sale.terminalMethod === "qr") qrTaken += t.amount;
     }
   }
 
@@ -53,8 +58,14 @@ export async function tillTakings(prisma: PrismaService, organizationId: string,
   // return. The rest goes back the way the sale was paid (D8), in proportion for a
   // split sale.
   const refunded = new Map<string, number>();
-  const addRefund = (method: string, amount: number) => refunded.set(method, (refunded.get(method) ?? 0) + amount);
+  let qrRefunded = 0;
+  let viaQr = false;
+  const addRefund = (method: string, amount: number) => {
+    refunded.set(method, (refunded.get(method) ?? 0) + amount);
+    if (method === PaymentMethod.CARD && viaQr) qrRefunded += amount;
+  };
   for (const ret of returns) {
+    viaQr = ret.sale.terminalMethod === "qr";
     // Only money that went back; a return against an unpaid debt moved none.
     const total = round2(ret.totalAmount.toNumber() - ret.creditedAmount.toNumber());
     if (total <= 0) continue;
@@ -72,5 +83,5 @@ export async function tillTakings(prisma: PrismaService, organizationId: string,
     }
   }
 
-  return { taken, refunded, onCredit: round2(onCredit), checks: sales.length, returns: returns.length, revenue: round2(revenue) };
+  return { taken, refunded, onCredit: round2(onCredit), qrTaken: round2(qrTaken), qrRefunded: round2(qrRefunded), checks: sales.length, returns: returns.length, revenue: round2(revenue) };
 }

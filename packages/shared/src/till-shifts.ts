@@ -7,6 +7,8 @@ export interface TillShiftTenderDto {
   method: string;
   sales: number;
   refunds: number;
+  // Card only: the part the Kaspi terminal took by QR («в т.ч. Kaspi QR»).
+  kaspiQr?: { sales: number; refunds: number };
 }
 
 export interface TillShiftCashMoveDto {

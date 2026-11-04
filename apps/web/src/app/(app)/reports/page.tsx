@@ -1311,6 +1311,55 @@ function ProfitabilityReport({ period, locationId }: { period: Period; locationI
         />
       </ReportCard>
 
+      {(() => {
+        // ТЗ §8.1: the same figures by группа товаров (top-level category).
+        const groups = new Map<string, { revenue: number; cost: number; noCost: number }>();
+        for (const r of report.rows) {
+          const g = groups.get(r.categoryName ?? "Без группы") ?? { revenue: 0, cost: 0, noCost: 0 };
+          if (r.hasCostData) {
+            g.revenue += r.revenue;
+            g.cost += r.cost;
+          } else g.noCost += r.revenue;
+          groups.set(r.categoryName ?? "Без группы", g);
+        }
+        const list = Array.from(groups).map(([name, g]) => ({ name, ...g, margin: g.revenue - g.cost })).sort((a, b) => b.margin - a.margin);
+        if (list.length < 2) return null;
+        const pct = (a: number, b: number) => (b > 0 ? `${((a / b) * 100).toFixed(1)}%` : "—");
+        return (
+          <ReportCard
+            title="По группам товаров"
+            onExport={() =>
+              downloadTable(
+                `profitability-groups-${period}.csv`,
+                ["Группа", "Выручка", "Себестоимость", "Маржинальная прибыль", "Маржинальность, %", "Наценка, %", "Доля в выручке, %"],
+                list.map((g) => [
+                  g.name,
+                  g.revenue.toFixed(2),
+                  g.cost.toFixed(2),
+                  g.margin.toFixed(2),
+                  g.revenue > 0 ? ((g.margin / g.revenue) * 100).toFixed(1) : "",
+                  g.cost > 0 ? ((g.margin / g.cost) * 100).toFixed(1) : "",
+                  report.totalRevenue > 0 ? ((g.revenue / report.totalRevenue) * 100).toFixed(1) : "",
+                ]),
+              )
+            }
+          >
+            <ReportTable
+              columns={["Группа", "Выручка", "Себестоимость", "Маржинальная прибыль", "Маржинальность", "Наценка", "Доля в выручке"]}
+              rows={list.map((g) => [
+                g.name,
+                formatMoney(g.revenue),
+                formatMoney(g.cost),
+                formatMoney(g.margin),
+                pct(g.margin, g.revenue),
+                pct(g.margin, g.cost),
+                pct(g.revenue, report.totalRevenue),
+              ])}
+            />
+          </ReportCard>
+        );
+      })()}
+
       {report.rows.some((r) => r.markdownQuantity > 0) && (
         <ReportCard title="Потери на уценке">
           <ReportTable

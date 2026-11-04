@@ -464,6 +464,11 @@ export interface ProfitAndLossDto {
   unclassifiedExpensesTotal: number;
   // Capital purchases (and owner/loan flows booked as expenses): NOT expenses.
   capitalizedExpensesTotal: number;
+  // «Операционные расходы» by article (ФОТ, аренда, коммунальные…), adding up to expensesTotal.
+  // Absent on a frozen snapshot made before it existed.
+  operatingExpenseLines?: { label: string; amount: number }[];
+  // «Прочие доходы и расходы» by article (проценты по кредитам…): positive = income, adding up to otherResult.
+  otherResultLines?: { label: string; amount: number }[];
   depreciation: number;
   // = grossProfit − inventoryLosses − expensesTotal − depreciation (EBIT); EBITDA is
   // this plus depreciation (`ebitdaOf`). NOT the

@@ -623,7 +623,7 @@ export class FinanceService {
     // recorded income tax, or a capital purchase that never reaches the P&L. A
     // category with no classification keeps counting as an operating expense —
     // what the system has always done — and is reported as such.
-    const results = await this.categoryResults(organizationId, from, to, locationId, expenses);
+    const results = await this.categoryResults(organizationId, from, to, locationId, expenses, options.ownExpensesOnly);
     const extras = await this.periodExtras(organizationId, from, to, locationId);
     const expensesTotal = round2(results.operatingExpenses);
     const operatingProfit = round2(grossProfit - inventoryLosses - expensesTotal - extras.depreciation);
@@ -657,6 +657,10 @@ export class FinanceService {
       incomeTax,
       unclassifiedExpensesTotal: round2(results.unclassifiedExpenses),
       capitalizedExpensesTotal: round2(results.capitalized),
+      operatingExpenseLines: articleLines(results.operatingLines),
+      otherResultLines: articleLines(
+        extras.otherResult !== 0 ? new Map([...results.otherLines, ["Выбытие основных средств", extras.otherResult]]) : results.otherLines,
+      ),
       netProfit: round2(profitBeforeTax - (incomeTax ?? 0)),
       netProfitStatus: notConfigured.length === 0 ? NetProfitStatus.COMPLETE : NetProfitStatus.PRELIMINARY,
       notConfigured,
@@ -887,7 +891,8 @@ export class FinanceService {
     from: Date,
     to: Date,
     locationId: string | undefined,
-    expenses: { amount: { toNumber: () => number }; categoryRef: { pnlTreatment: string; cashActivity: string; balanceTreatment: string } | null }[],
+    expenses: { amount: { toNumber: () => number }; categoryRef: { name: string; pnlTreatment: string; cashActivity: string; balanceTreatment: string } | null }[],
+    ownOnly = false,
   ) {
     const out = {
       operatingExpenses: 0,
@@ -896,15 +901,21 @@ export class FinanceService {
       taxRecorded: false,
       unclassifiedExpenses: 0,
       capitalized: 0,
+      // ТЗ §8.2: the same figures by article (ФОТ, аренда, проценты по кредитам…).
+      operatingLines: new Map<string, number>(),
+      otherLines: new Map<string, number>(),
     };
-    const add = (line: PnlLine | null, amount: number) => {
+    const bump = (map: Map<string, number>, label: string, amount: number) => map.set(label, (map.get(label) ?? 0) + amount);
+    const add = (line: PnlLine | null, amount: number, label = "Без статьи") => {
       switch (line) {
         case PnlLine.OPERATING_EXPENSE:
           out.operatingExpenses += amount;
+          bump(out.operatingLines, label, amount);
           break;
         case PnlLine.OTHER_EXPENSE:
         case PnlLine.FINANCIAL_EXPENSE:
           out.otherResult -= amount;
+          bump(out.otherLines, label, -amount);
           break;
         case PnlLine.INCOME_TAX:
           out.incomeTax += amount;
@@ -918,7 +929,7 @@ export class FinanceService {
       const effect = expenseAccrualEffect(e.categoryRef);
       const amount = e.amount.toNumber();
       if (effect.unclassified) out.unclassifiedExpenses += amount;
-      add(effect.pnlLine, amount);
+      add(effect.pnlLine, amount, e.categoryRef?.name ?? "Без статьи");
     }
 
     // Money that is a result by itself, with no expense document behind it: an
@@ -940,7 +951,7 @@ export class FinanceService {
           ],
         },
         categoryRef: { isNot: null },
-        ...(locationId ? { account: { OR: [{ locationId }, { locationId: null }] } } : {}),
+        ...(locationId ? { account: ownOnly ? { locationId } : { OR: [{ locationId }, { locationId: null }] } } : {}),
       },
       include: { categoryRef: true },
     });
@@ -950,8 +961,10 @@ export class FinanceService {
       const line = pnlLineOfTreatment(category.pnlTreatment);
       if (!line) continue;
       const signed = signedCashAmount(m.type, m.amount.toNumber());
-      if (line === PnlLine.OTHER_INCOME || line === PnlLine.FINANCIAL_INCOME) out.otherResult += signed;
-      else add(line, -signed);
+      if (line === PnlLine.OTHER_INCOME || line === PnlLine.FINANCIAL_INCOME) {
+        out.otherResult += signed;
+        bump(out.otherLines, category.name, signed);
+      } else add(line, -signed, category.name);
     }
     return out;
   }
@@ -1273,7 +1286,9 @@ export class FinanceService {
   // The same figure split the way the balance sheet needs it. Supplier invoices
   // (legacy) and received purchase orders are separate documents and are each
   // counted once.
-  async getPayablesBreakdown(organizationId: string): Promise<{ suppliers: number; expenses: number; consignment: number }> {
+  async getPayablesBreakdown(
+    organizationId: string,
+  ): Promise<{ suppliers: number; expenses: number; consignment: number; expensesByArticle: { label: string; amount: number }[] }> {
     const [unpaidInvoices, unpaidExpenses, consignmentOwed, orderPayables] = await Promise.all([
       this.prisma.invoice.findMany({
         where: { organizationId, status: PrismaInvoiceStatus.CONFIRMED },
@@ -1281,7 +1296,7 @@ export class FinanceService {
       }),
       this.prisma.expense.findMany({
         where: { organizationId, status: ExpenseStatus.CONFIRMED },
-        select: { amount: true, amountPaid: true },
+        select: { amount: true, amountPaid: true, categoryRef: { select: { name: true } } },
       }),
       // Goods sold on consignment are money owed to their owner just as much
       // as an unpaid supplier invoice is, and it is owed from the moment they
@@ -1296,6 +1311,14 @@ export class FinanceService {
       ),
       expenses: roundMoney(unpaidExpenses.reduce((sum, e) => sum + Math.max(0, e.amount.toNumber() - e.amountPaid.toNumber()), 0)),
       consignment: roundMoney(consignmentOwed),
+      // ТЗ §8.3 «Задолженность по зарплате и налогам»: unpaid expenses by article.
+      expensesByArticle: articleLines(
+        unpaidExpenses.reduce((map, e) => {
+          const owed = Math.max(0, e.amount.toNumber() - e.amountPaid.toNumber());
+          const label = e.categoryRef?.name ?? "Без статьи";
+          return owed > 0 ? map.set(label, (map.get(label) ?? 0) + owed) : map;
+        }, new Map<string, number>()),
+      ),
     };
   }
 
@@ -1695,4 +1718,12 @@ export class FinanceService {
       direction: (expense.direction as BusinessDirection | null | undefined) ?? null,
     };
   };
+}
+
+// A P&L figure by article, largest first; zero lines left out.
+function articleLines(map: Map<string, number>): { label: string; amount: number }[] {
+  return [...map]
+    .map(([label, amount]) => ({ label, amount: round2(amount) }))
+    .filter((l) => l.amount !== 0)
+    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
 }

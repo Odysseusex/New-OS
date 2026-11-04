@@ -289,6 +289,7 @@ function reportRows(report: TillShiftReportDto): [string, number | string, boole
   ];
   for (const t of report.tenders) {
     rows.push([PAYMENT_METHOD_LABELS_RU[t.method as PaymentMethod] ?? t.method, t.sales]);
+    if (t.kaspiQr) rows.push(["  в т.ч. Kaspi QR", t.kaspiQr.sales]);
     if (t.refunds) rows.push([`  возвраты: ${(PAYMENT_METHOD_LABELS_RU[t.method as PaymentMethod] ?? t.method).toLowerCase()}`, -t.refunds]);
   }
   if (report.onCredit) rows.push(["В долг", report.onCredit]);

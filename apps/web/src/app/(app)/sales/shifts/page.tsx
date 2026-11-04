@@ -200,7 +200,11 @@ export default function TillShiftsPage() {
               <Row label="Чеков" value={String(detail.report.checks)} />
               <Row label="Выручка" value={formatMoney(detail.report.revenue)} bold />
               {detail.report.tenders.map((t) => (
-                <Row key={t.method} label={PAYMENT_METHOD_LABELS_RU[t.method as PaymentMethod] ?? t.method} value={`${formatMoney(t.sales)}${t.refunds ? ` (возвраты ${formatMoney(t.refunds)})` : ""}`} />
+                <Row
+                  key={t.method}
+                  label={PAYMENT_METHOD_LABELS_RU[t.method as PaymentMethod] ?? t.method}
+                  value={`${formatMoney(t.sales)}${t.refunds ? ` (возвраты ${formatMoney(t.refunds)})` : ""}${t.kaspiQr ? `, в т.ч. Kaspi QR ${formatMoney(t.kaspiQr.sales)}` : ""}`}
+                />
               ))}
               <Row label="Наличные на начало смены" value={formatMoney(detail.report.openingCash)} />
               {detail.report.cashMoves.map((m, i) => (
