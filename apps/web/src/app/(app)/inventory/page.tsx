@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import clsx from "clsx";
-import { AlertTriangle, ArrowDownCircle, ArrowLeft, ArrowUpCircle, Ban, Plus, Search, Wrench, X } from "lucide-react";
+import { AlertTriangle, ArrowDownCircle, ArrowLeft, ArrowLeftRight, ArrowUpCircle, Ban, Plus, Search, Wrench, X } from "lucide-react";
 import type { CategoryDto, CategoryTypeGroup, LocationDto, ProductDto, StockLevelDto } from "@bakery-os/shared";
 import {
   HARD_DELETE_ROLES,
@@ -23,6 +23,7 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatMoney, formatQuantity } from "@/lib/format";
 import { StockMovementModal } from "@/components/stock-movement-modal";
+import { StockTransferModal } from "@/components/stock-transfer-modal";
 import { LabelPrintModal } from "@/components/label-print-modal";
 import { NewProductModal } from "@/components/new-product-modal";
 import { CategoryModal } from "@/components/category-modal";
@@ -58,7 +59,7 @@ export default function InventoryPage() {
   const [locationFilter, setLocationFilter] = useState("");
   const [showArchivedProducts, setShowArchivedProducts] = useState(false);
   const [showArchivedCategories, setShowArchivedCategories] = useState(false);
-  const [modal, setModal] = useState<"receive" | "write-off" | "adjustment" | "product" | "category" | "void" | "standard-catalog" | "classification" | null>(
+  const [modal, setModal] = useState<"receive" | "write-off" | "adjustment" | "transfer" | "product" | "category" | "void" | "standard-catalog" | "classification" | null>(
     null,
   );
   const [forceDeleteProduct, setForceDeleteProduct] = useState<ProductDto | undefined>(undefined);
@@ -272,6 +273,13 @@ export default function InventoryPage() {
             >
               <Wrench className="h-4 w-4" strokeWidth={1.75} />
               Корректировка
+            </button>
+            <button
+              onClick={() => setModal("transfer")}
+              className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3.5 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+            >
+              <ArrowLeftRight className="h-4 w-4" strokeWidth={1.75} />
+              Перемещение
             </button>
             {canVoidStock && (
               <button
@@ -759,6 +767,20 @@ export default function InventoryPage() {
             loadStock();
             // A priced receipt moves a raw material's average and latest price.
             loadProducts();
+          }}
+        />
+      )}
+
+      {modal === "transfer" && (
+        <StockTransferModal
+          locations={locations}
+          products={products.filter((p) => p.trackInventory)}
+          stockLevels={stockLevels}
+          fixedLocationId={fixedLocationId}
+          onClose={() => setModal(null)}
+          onCreated={() => {
+            setModal(null);
+            loadStock();
           }}
         />
       )}

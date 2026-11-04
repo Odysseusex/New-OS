@@ -50,7 +50,11 @@ export function BalanceTab() {
     const rows: (string | { v: string | number | null; fmt?: "money"; bold?: boolean })[][] = [];
     const section = (title: string, sec: BalanceSectionDto, extra: { label: string; amount: number }[] = []) => {
       rows.push([{ v: title, bold: true }]);
-      for (const l of [...sec.lines, ...extra]) rows.push([l.label, money(l.amount)]);
+      for (const l of sec.lines) {
+        rows.push([l.label, money(l.amount)]);
+        for (const b of l.breakdown ?? []) rows.push([`    в т.ч. ${b.label}`, money(b.amount)]);
+      }
+      for (const l of extra) rows.push([l.label, money(l.amount)]);
       rows.push([{ v: `Итого: ${title.toLowerCase()}`, bold: true }, money(sec.total, true)]);
     };
     section("Активы", shown.assets);
@@ -206,9 +210,21 @@ function Column({ title, section, extra }: { title: string; section: BalanceSect
       <div className="border-b border-border px-5 py-3 text-sm font-semibold text-foreground">{title}</div>
       <ul className="divide-y divide-border text-sm">
         {section.lines.map((l) => (
-          <li key={l.line} className="flex items-center justify-between gap-3 px-5 py-2.5">
-            <span className="text-muted">{l.label}</span>
-            <span className="tabular-nums text-foreground">{formatMoney(l.amount)}</span>
+          <li key={l.line} className="px-5 py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-muted">{l.label}</span>
+              <span className="tabular-nums text-foreground">{formatMoney(l.amount)}</span>
+            </div>
+            {l.breakdown && l.breakdown.length > 0 && (
+              <ul className="mt-1.5 space-y-1 text-xs">
+                {l.breakdown.map((b) => (
+                  <li key={b.label} className="flex items-center justify-between gap-3 pl-4">
+                    <span className="text-muted">{b.label}</span>
+                    <span className="tabular-nums text-muted">{formatMoney(b.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </li>
         ))}
         {extra?.map((l) => (

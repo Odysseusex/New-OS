@@ -28,6 +28,8 @@ export interface MaterialRequisitionLineDto {
 
 export interface MaterialRequisitionDto {
   id: string;
+  // REQUISITION = требование-накладная; TRANSFER = Склад → «Перемещение».
+  kind: "REQUISITION" | "TRANSFER";
   number: number;
   status: MaterialRequisitionStatus;
   fromLocationId: string;
@@ -83,3 +85,10 @@ export interface UpdateMaterialRequisitionRequestDto {
 }
 
 export const MATERIAL_REQUISITION_MAX_LINES = 200;
+
+export interface CreateStockTransferRequestDto {
+  fromLocationId: string;
+  toLocationId: string;
+  note?: string;
+  lines: { productId: string; quantity: number }[];
+}

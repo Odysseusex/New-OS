@@ -31,6 +31,9 @@ export interface BalanceLineDto {
   label: string;
   amount: number;
   source: BalanceSource;
+  // «Запасы» split into сырьё на складе / незавершённое производство / готовая продукция;
+  // the parts add up to `amount`. Absent on other lines and on snapshots made before it.
+  breakdown?: { label: string; amount: number }[];
 }
 
 export interface BalanceSectionDto {

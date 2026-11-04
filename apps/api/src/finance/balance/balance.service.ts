@@ -77,9 +77,9 @@ export class BalanceService implements OnModuleInit {
     const proj = (line: BalanceLine) => round2(projected.get(line) ?? 0);
 
     // What the ledgers, registers and documents actually hold.
-    const [cash, inventory, fixedAssets, payables, receivablesDoc, advances] = await Promise.all([
+    const [cash, inventoryParts, fixedAssets, payables, receivablesDoc, advances] = await Promise.all([
       this.cashAt(organizationId, asOf),
-      this.inventoryValueAt(organizationId, asOf),
+      this.inventoryAt(organizationId, asOf),
       this.fixedAssetsAt(organizationId, asOf),
       live ? this.finance.getPayablesBreakdown(organizationId) : Promise.resolve(null),
       live ? this.finance.getAccountsReceivable(organizationId) : Promise.resolve(null),
@@ -88,6 +88,7 @@ export class BalanceService implements OnModuleInit {
       live ? this.finance.getAdvances(organizationId) : Promise.resolve({ paid: 0, received: 0 }),
     ]);
 
+    const inventory = inventoryParts.total;
     const line = (l: BalanceLine, amount: number, source: BalanceSource): BalanceLineDto => ({
       line: l,
       label: BALANCE_LINE_LABELS_RU[l],
@@ -96,7 +97,7 @@ export class BalanceService implements OnModuleInit {
     });
     const assetLines = [
       line(BalanceLine.CASH_AND_BANK, cash, "LEDGER"),
-      line(BalanceLine.INVENTORY, inventory, "LEDGER"),
+      { ...line(BalanceLine.INVENTORY, inventory, "LEDGER"), breakdown: inventoryParts.breakdown.map(({ label, amount }) => ({ label, amount })) },
       line(BalanceLine.RECEIVABLES, receivablesDoc ?? proj(BalanceLine.RECEIVABLES), receivablesDoc === null ? "EVENTS" : "DOCUMENTS"),
       line(BalanceLine.FIXED_ASSETS, fixedAssets, "REGISTER"),
       ...(advances.paid > 0 ? [line(BalanceLine.ADVANCES_PAID, advances.paid, "DOCUMENTS")] : []),
@@ -327,27 +328,72 @@ export class BalanceService implements OnModuleInit {
   // stock levels, with everything recorded after the moment taken back out —
   // so it holds the physical count where the ledger has drifted from it.
   async inventoryValueAt(organizationId: string, asOf: Date): Promise<number> {
-    const [levels, after, costs] = await Promise.all([
-      this.prisma.stockLevel.findMany({ where: { organizationId, product: { trackInventory: true } }, select: { productId: true, quantity: true } }),
+    return (await this.inventoryAt(organizationId, asOf)).total;
+  }
+
+  // Stock at cost on `asOf`, and the same figure split for the balance sheet (ТЗ §8.3):
+  // raw materials in store, raw materials in the workshop (незавершённое
+  // производство) and finished goods. Each product is valued exactly as before
+  // (network quantity × its unit cost, rounded once), then shared between the
+  // parts by where its quantity lies — so the parts always add up to the total.
+  async inventoryAt(organizationId: string, asOf: Date): Promise<{ total: number; breakdown: { key: string; label: string; amount: number }[] }> {
+    const [levels, after, costs, products, locations] = await Promise.all([
+      this.prisma.stockLevel.findMany({ where: { organizationId, product: { trackInventory: true } }, select: { productId: true, locationId: true, quantity: true } }),
       asOf.getTime() >= Date.now() - NEAR_NOW_MS
         ? Promise.resolve([])
         : this.prisma.stockMovement.findMany({
             where: { organizationId, createdAt: { gt: asOf }, product: { trackInventory: true } },
-            select: { productId: true, type: true, quantity: true, saleReturnId: true },
+            select: { productId: true, locationId: true, type: true, quantity: true, saleReturnId: true },
           }),
       this.costing.currentUnitCosts(organizationId),
+      this.prisma.product.findMany({ where: { organizationId, trackInventory: true }, select: { id: true, type: true } }),
+      this.prisma.location.findMany({ where: { organizationId }, select: { id: true, type: true } }),
     ]);
-    const qty = new Map<string, number>();
-    for (const l of levels) qty.set(l.productId, (qty.get(l.productId) ?? 0) + l.quantity.toNumber());
+    const at = new Map<string, number>(); // `${locationId}:${productId}`
+    for (const l of levels) at.set(`${l.locationId}:${l.productId}`, (at.get(`${l.locationId}:${l.productId}`) ?? 0) + l.quantity.toNumber());
     for (const m of after) {
-      qty.set(m.productId, (qty.get(m.productId) ?? 0) - stockEffectOf({ type: m.type, quantity: m.quantity.toNumber(), saleReturnId: m.saleReturnId }));
+      const k = `${m.locationId}:${m.productId}`;
+      at.set(k, (at.get(k) ?? 0) - stockEffectOf({ type: m.type, quantity: m.quantity.toNumber(), saleReturnId: m.saleReturnId }));
+    }
+    const typeOf = new Map(products.map((p) => [p.id, p.type]));
+    const workshop = new Set(locations.filter((l) => l.type === "BAKERY_PRODUCTION").map((l) => l.id));
+    const partOf = (locationId: string, productId: string) =>
+      typeOf.get(productId) === "FINISHED_GOOD" ? "FINISHED" : workshop.has(locationId) ? "WORKSHOP" : "STORE";
+
+    const perProduct = new Map<string, { q: number; parts: Map<string, number> }>();
+    for (const [k, q] of at) {
+      const [locationId, productId] = k.split(":");
+      const entry = perProduct.get(productId) ?? { q: 0, parts: new Map<string, number>() };
+      entry.q += q;
+      const part = partOf(locationId, productId);
+      entry.parts.set(part, (entry.parts.get(part) ?? 0) + q);
+      perProduct.set(productId, entry);
     }
     let total = 0;
-    for (const [productId, q] of qty) {
+    const parts = new Map<string, number>([["STORE", 0], ["WORKSHOP", 0], ["FINISHED", 0]]);
+    for (const [productId, { q, parts: where }] of perProduct) {
       const unit = costs.get(productId)?.unitCost;
-      if (q > 0 && unit !== undefined) total += round2(q * unit);
+      if (!(q > 0) || unit === undefined) continue;
+      const value = round2(q * unit);
+      total += value;
+      // Shared by positive quantities only; the last part takes the remainder.
+      const positive = [...where].filter(([, x]) => x > 0);
+      const base = positive.reduce((s, [, x]) => s + x, 0);
+      let left = value;
+      positive.forEach(([part, x], i) => {
+        const share = i === positive.length - 1 ? left : round2((value * x) / base);
+        left = round2(left - share);
+        parts.set(part, round2((parts.get(part) ?? 0) + share));
+      });
     }
-    return round2(total);
+    return {
+      total: round2(total),
+      breakdown: [
+        { key: "STORE", label: "Сырьё и материалы на складе", amount: parts.get("STORE")! },
+        { key: "WORKSHOP", label: "Незавершённое производство (сырьё в цехе)", amount: parts.get("WORKSHOP")! },
+        { key: "FINISHED", label: "Готовая продукция", amount: parts.get("FINISHED")! },
+      ],
+    };
   }
 
   // Cost less depreciation, from the register, for assets that had not left yet.

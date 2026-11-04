@@ -44,3 +44,11 @@ export class CreateRequisitionInput extends UpdateRequisitionInput {
   @IsString({ each: true })
   batchIds?: string[];
 }
+
+export class CreateTransferInput extends UpdateRequisitionInput {
+  @IsString()
+  fromLocationId!: string;
+
+  @IsString()
+  toLocationId!: string;
+}

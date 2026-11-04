@@ -253,6 +253,7 @@ import type {
   ProductionBatchNormDto,
   ProductionDeviationReportDto,
   MaterialRequisitionDto,
+  CreateStockTransferRequestDto,
   RequisitionNeedDto,
   CreateMaterialRequisitionRequestDto,
   UpdateMaterialRequisitionRequestDto,
@@ -475,6 +476,8 @@ export const api = {
   },
 
   inventory: {
+    transfer: (dto: CreateStockTransferRequestDto) =>
+      request<MaterialRequisitionDto>("/inventory/transfers", { method: "POST", body: JSON.stringify(dto) }),
     stockLevels: (locationId?: string) =>
       request<StockLevelDto[]>(withQuery("/inventory/stock-levels", { locationId })),
     movements: (filter: { locationId?: string; productId?: string; type?: string; from?: string; to?: string } = {}) =>

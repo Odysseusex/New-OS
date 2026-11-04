@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import { Prisma, ProductionBatchStatus, StockMovementType } from "@prisma/client";
+import { MaterialRequisitionKind, Prisma, ProductionBatchStatus, StockMovementType } from "@prisma/client";
 import {
   debtDateKey,
   MATERIAL_REQUISITION_MAX_LINES,
@@ -141,11 +141,12 @@ export class MaterialRequisitionsService {
     };
   }
 
-  async list(user: AuthenticatedUser, from?: string, to?: string): Promise<MaterialRequisitionDto[]> {
+  async list(user: AuthenticatedUser, from?: string, to?: string, kind: MaterialRequisitionKind = MaterialRequisitionKind.REQUISITION): Promise<MaterialRequisitionDto[]> {
     const pinned = ORG_WIDE_ROLES.includes(user.role) ? null : (user.locationId ?? "__none__");
     const rows = await this.prisma.materialRequisition.findMany({
       where: {
         organizationId: user.organizationId,
+        kind,
         ...(from || to
           ? { planDate: { ...(from ? { gte: startOfZonedDate(from) } : {}), ...(to ? { lt: startOfZonedDate(addDays(to, 1)) } : {}) } }
           : {}),
@@ -170,7 +171,7 @@ export class MaterialRequisitionsService {
     return row;
   }
 
-  private async cleanLines(organizationId: string, lines: MaterialRequisitionLineInputDto[]) {
+  private async cleanLines(organizationId: string, lines: MaterialRequisitionLineInputDto[], kind: MaterialRequisitionKind = MaterialRequisitionKind.REQUISITION) {
     const kept = lines.filter((l) => l.quantity > 0 || (l.requiredQuantity ?? 0) > 0);
     if (kept.length === 0) throw new BadRequestException("Добавьте хотя бы одну строку");
     if (kept.length > MATERIAL_REQUISITION_MAX_LINES) throw new BadRequestException(`Не больше ${MATERIAL_REQUISITION_MAX_LINES} строк`);
@@ -181,9 +182,13 @@ export class MaterialRequisitionsService {
     }
     const products = await this.prisma.product.findMany({ where: { organizationId, id: { in: ids } }, select: { id: true, name: true, type: true, trackInventory: true } });
     if (products.length !== ids.length) throw new NotFoundException("Товар не найден");
-    const untracked = products.filter((p) => !p.trackInventory || p.type === ProductType.FINISHED_GOOD);
+    const untracked = products.filter((p) => !p.trackInventory || (kind === MaterialRequisitionKind.REQUISITION && p.type === ProductType.FINISHED_GOOD));
     if (untracked.length > 0) {
-      throw new BadRequestException(`Не выдаётся со склада по требованию: ${untracked.map((p) => p.name).join(", ")}`);
+      throw new BadRequestException(
+        kind === MaterialRequisitionKind.TRANSFER
+          ? `Не учитывается на складе: ${untracked.map((p) => p.name).join(", ")}`
+          : `Не выдаётся со склада по требованию: ${untracked.map((p) => p.name).join(", ")}`,
+      );
     }
     return kept.map((l) => ({
       productId: l.productId,
@@ -195,11 +200,12 @@ export class MaterialRequisitionsService {
   async create(
     user: AuthenticatedUser,
     dto: { fromLocationId: string; toLocationId: string; planDate: string; batchIds?: string[]; note?: string; lines: MaterialRequisitionLineInputDto[] },
+    kind: MaterialRequisitionKind = MaterialRequisitionKind.REQUISITION,
   ): Promise<MaterialRequisitionDto> {
     await this.assertLocations(user.organizationId, dto.fromLocationId, dto.toLocationId);
     this.assertAccess(user, dto.fromLocationId, dto.toLocationId);
     const planDate = startOfZonedDate(dto.planDate);
-    const lines = await this.cleanLines(user.organizationId, dto.lines);
+    const lines = await this.cleanLines(user.organizationId, dto.lines, kind);
     const batchIds = dto.batchIds?.length
       ? (
           await this.prisma.productionBatch.findMany({
@@ -215,13 +221,14 @@ export class MaterialRequisitionsService {
       try {
         const row = await this.prisma.$transaction(async (tx) => {
           const last = await tx.materialRequisition.findFirst({
-            where: { organizationId: user.organizationId },
+            where: { organizationId: user.organizationId, kind },
             orderBy: { number: "desc" },
             select: { number: true },
           });
           const created = await tx.materialRequisition.create({
             data: {
               organizationId: user.organizationId,
+              kind,
               number: (last?.number ?? 0) + 1,
               fromLocationId: dto.fromLocationId,
               toLocationId: dto.toLocationId,
@@ -237,7 +244,7 @@ export class MaterialRequisitionsService {
           await recordAudit(tx, {
             organizationId: user.organizationId,
             actorId: user.id,
-            action: "materialRequisition.create",
+            action: kind === MaterialRequisitionKind.TRANSFER ? "stockTransfer.create" : "materialRequisition.create",
             entityType: "MaterialRequisition",
             entityId: created.id,
             after: { number: created.number, lines: lines.length },
@@ -333,7 +340,7 @@ export class MaterialRequisitionsService {
       }
       // Both legs carry the SAME cost (a move between own points changes no value).
       const costs = await this.costing.snapshotCosts(user.organizationId, lines.map((l) => l.productId), tx);
-      const reason = `Требование-накладная №${current.number}`;
+      const reason = current.kind === MaterialRequisitionKind.TRANSFER ? `Перемещение №${current.number}` : `Требование-накладная №${current.number}`;
       await tx.stockMovement.createMany({
         data: lines.flatMap((line) => [
           {
@@ -363,7 +370,7 @@ export class MaterialRequisitionsService {
       await recordAudit(tx, {
         organizationId: user.organizationId,
         actorId: user.id,
-        action: "materialRequisition.post",
+        action: current.kind === MaterialRequisitionKind.TRANSFER ? "stockTransfer.post" : "materialRequisition.post",
         entityType: "MaterialRequisition",
         entityId: id,
         after: { number: current.number, lines: lines.map((l) => ({ productId: l.productId, quantity: l.quantity.toNumber() })) },
@@ -373,11 +380,27 @@ export class MaterialRequisitionsService {
     return this.toDto(row);
   }
 
+  // Склад → «Перемещение»: goods between any two own points, issued at once.
+  async transfer(
+    user: AuthenticatedUser,
+    dto: { fromLocationId: string; toLocationId: string; note?: string; lines: MaterialRequisitionLineInputDto[] },
+  ): Promise<MaterialRequisitionDto> {
+    const draft = await this.create(user, { ...dto, planDate: debtDateKey(new Date()) }, MaterialRequisitionKind.TRANSFER);
+    try {
+      return await this.post(user, draft.id);
+    } catch (e) {
+      // Nothing moved: leave no half-made document behind.
+      await this.prisma.materialRequisition.deleteMany({ where: { id: draft.id, status: MaterialRequisitionStatus.DRAFT } });
+      throw e;
+    }
+  }
+
   private async toDto(row: Row): Promise<MaterialRequisitionDto> {
     const draft = row.status === MaterialRequisitionStatus.DRAFT;
     const stock = draft ? await this.stockAt([row.fromLocationId, row.toLocationId], row.lines.map((l) => l.productId)) : null;
     return {
       id: row.id,
+      kind: row.kind as MaterialRequisitionDto["kind"],
       number: row.number,
       status: row.status as MaterialRequisitionStatus,
       fromLocationId: row.fromLocationId,

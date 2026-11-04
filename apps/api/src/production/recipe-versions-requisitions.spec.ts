@@ -170,3 +170,25 @@ describe("требование-накладная", () => {
     expect(AUDIT_ACTION_GROUPS.materialRequisitions.filter((a) => !logged.has(a))).toEqual([]);
   });
 });
+
+describe("перемещение", () => {
+  it("moves finished goods between points at once, numbered on its own; a shortage moves nothing", async () => {
+    const id = org.organizationId;
+    const cake = await prisma.product.findFirstOrThrow({ where: { organizationId: id, name: "Торт" } });
+    const before = await level(org.storeId, cake.id);
+    const t = await requisitions.transfer(org.user, { fromLocationId: org.storeId, toLocationId: org.warehouseId, lines: [{ productId: cake.id, quantity: 2 }] });
+    expect(t).toMatchObject({ kind: "TRANSFER", number: 1, status: "POSTED" });
+    expect(await level(org.storeId, cake.id)).toBe(before - 2);
+    expect(await level(org.warehouseId, cake.id)).toBe(2);
+    const moves = await prisma.stockMovement.findMany({ where: { materialRequisitionId: t.id } });
+    expect(moves.every((m) => m.reason === "Перемещение №1")).toBe(true);
+    await expect(
+      requisitions.transfer(org.user, { fromLocationId: org.storeId, toLocationId: org.warehouseId, lines: [{ productId: cake.id, quantity: 1000 }] }),
+    ).rejects.toThrow(/Недостаточно/);
+    expect(await prisma.materialRequisition.count({ where: { organizationId: id, kind: "TRANSFER" } })).toBe(1);
+    // The requisitions list does not show transfers.
+    expect((await requisitions.list(org.user)).every((r) => r.kind === "REQUISITION")).toBe(true);
+    const logged = new Set((await prisma.auditLog.findMany({ where: { organizationId: id } })).map((e) => e.action));
+    expect(AUDIT_ACTION_GROUPS.stockTransfers.filter((a) => !logged.has(a))).toEqual([]);
+  });
+});

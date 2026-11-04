@@ -1407,6 +1407,13 @@ enum MaterialRequisitionStatus {
   POSTED
 }
 
+// REQUISITION = «требование-накладная» (workshop's request by the plan);
+// TRANSFER = Склад → «Перемещение» between any two points, posted at once.
+enum MaterialRequisitionKind {
+  REQUISITION
+  TRANSFER
+}
+
 // «Требование-накладная»: the workshop asks the warehouse for raw materials for
 // its production plan. The need is the plan × the recipe norm; the issued
 // quantity is typed. Posting moves the goods (TRANSFER_OUT at the warehouse,
@@ -1415,6 +1422,7 @@ enum MaterialRequisitionStatus {
 model MaterialRequisition {
   id              String                    @id @default(cuid())
   organizationId  String
+  kind            MaterialRequisitionKind   @default(REQUISITION)
   number          Int
   status          MaterialRequisitionStatus @default(DRAFT)
   fromLocationId  String
@@ -1437,7 +1445,7 @@ model MaterialRequisition {
   lines          MaterialRequisitionLine[]
   stockMovements StockMovement[]
 
-  @@unique([organizationId, number])
+  @@unique([organizationId, kind, number])
   @@index([organizationId, planDate])
   @@map("material_requisitions")
 }

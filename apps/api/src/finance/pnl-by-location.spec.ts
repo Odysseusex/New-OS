@@ -37,3 +37,18 @@ it("columns per point add up to the network total", async () => {
     expect(r.columns.reduce((s, c) => s + c.figures[key], 0)).toBeCloseTo(r.total[key], 2);
   }
 });
+
+it("balance sheet splits inventory into store / workshop / finished goods, adding up", async () => {
+  const { BalanceService } = await import("./balance/balance.service");
+  const balance = new BalanceService(prisma, services.finance);
+  const flour = (await prisma.product.create({ data: { organizationId: org.organizationId, name: "Мука", sku: "PL-2", unit: "KG", type: "RAW_MATERIAL", price: 400 } })).id;
+  const workshop = await prisma.location.create({ data: { organizationId: org.organizationId, name: "Цех", type: "BAKERY_PRODUCTION", city: "Алматы", address: "—" } as never });
+  await services.inventory.receive(org.user, { locationId: org.warehouseId, productId: flour, quantity: 3 } as never);
+  await services.inventory.receive(org.user, { locationId: workshop.id, productId: flour, quantity: 1 } as never);
+  const parts = await balance.inventoryAt(org.organizationId, new Date());
+  const by = Object.fromEntries(parts.breakdown.map((b) => [b.label, b.amount]));
+  expect(by["Сырьё и материалы на складе"]).toBe(1200);
+  expect(by["Незавершённое производство (сырьё в цехе)"]).toBe(400);
+  expect(parts.breakdown.reduce((s, b) => s + b.amount, 0)).toBeCloseTo(parts.total, 2);
+  expect(await balance.inventoryValueAt(org.organizationId, new Date())).toBe(parts.total);
+});
