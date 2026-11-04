@@ -255,6 +255,13 @@ import type {
   ProductionOutputReportDto,
   ProductionUnitCostTrendDto,
   ReferenceCell,
+  TillShiftStateDto,
+  TillShiftDto,
+  TillShiftDetailDto,
+  TillShiftReportDto,
+  OpenTillShiftRequestDto,
+  TillShiftCashRequestDto,
+  CloseTillShiftRequestDto,
   DirectionAllocationDto,
   ReferenceExportDto,
   ReferenceImportPreviewDto,
@@ -420,6 +427,19 @@ export const api = {
     batches: () => request<ClassificationBatchDto[]>("/classification/batches"),
     revert: (id: string, dto: ClassificationRevertRequestDto) =>
       request<ClassificationRevertResultDto>(`/classification/batches/${id}/revert`, { method: "POST", body: JSON.stringify(dto) }),
+  },
+
+  tillShifts: {
+    current: (locationId: string) => request<TillShiftStateDto>(withQuery("/till-shifts/current", { locationId })),
+    open: (dto: OpenTillShiftRequestDto) => request<TillShiftDto>("/till-shifts", { method: "POST", body: JSON.stringify(dto) }),
+    moveCash: (id: string, dto: TillShiftCashRequestDto) =>
+      request<TillShiftReportDto>(`/till-shifts/${id}/cash`, { method: "POST", body: JSON.stringify(dto) }),
+    close: (id: string, dto: CloseTillShiftRequestDto) =>
+      request<TillShiftDetailDto>(`/till-shifts/${id}/close`, { method: "POST", body: JSON.stringify(dto) }),
+    list: (from: string, to: string, locationId?: string) => request<TillShiftDto[]>(withQuery("/till-shifts", { from, to, locationId })),
+    detail: (id: string) => request<TillShiftDetailDto>(`/till-shifts/${id}`),
+    setRequired: (required: boolean) =>
+      request<{ required: boolean }>("/till-shifts/required", { method: "PUT", body: JSON.stringify({ required }) }),
   },
 
   referenceData: {

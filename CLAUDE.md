@@ -930,6 +930,25 @@ a product twice is refused; an adjustment line that already matches is skipped a
 never read as 0 (that would empty the shelf on a correction). The single-product endpoints are unchanged — the
 Telegram bot still uses them.
 
+## Кассовая смена (till shift, ТЗ §5.4) — built
+
+The till's «Смена» button (`components/till-shift-control.tsx`): open with the cash counted in the drawer → «Внесение» /
+«Выемка» with a comment → «X-отчёт» any time → «Закрыть смену» with the cash counted → Z-отчёт (printable via
+`printSheets`). Продажи → «Смены» (`/sales/shifts`, `TILL_SHIFT_HISTORY_ROLES` = RECONCILIATION_ROLES): every shift with
+расчёт / посчитано / расхождение, Excel/PDF, and the switch «Продажа на кассе только в открытой смене»
+(`Organization.tillShiftsRequired`, default OFF, OWNER/ADMIN; when on, a CASHIER's sale without an open shift at that point
+is refused — `till-shifts/till-shift-guard.ts`, called in `SalesService.create`). `apps/api/src/till-shifts/`, shared
+`till-shifts.ts`, migration `20261112120000_till_shifts` (additive table; one open shift per point by partial unique
+index; a closed shift cannot be updated — trigger).
+- **A shift owns nothing**: it is a time window over the point's own documents. Figures = `reconciliation/till-takings.ts`
+  (`tillTakings`, the SAME tender rule «Сверка дня» uses — extracted from it) + the point's CASH accounts' other movements
+  in the window. Expected cash = opening count + cash sales − cash refunds + those movements.
+- **Внесение / выемка = an ordinary transfer** between the drawer (the point's CASH account, default first) and another own
+  account chosen by the cashier (`CashMovementsService.transfer`, reason «Выемка (смена №n): …») — no new accounting rule.
+- Closing stores the Z-report JSON, expected, counted and the difference; **it moves nothing** (an adjustment of stock or
+  cash stays «Сверка дня»'s / Банк и касса's job). Audited `tillShift.open/close/setRequired`.
+- Not built yet (ТЗ §5.4 rest): PIN login, «Старший кассир» role with approval of discounts/returns/line removal.
+
 ## Debts — дебиторка/кредиторка by document, акт сверки (built, ТЗ stage 1)
 
 From the financiers' ТЗ (iiko-style). `apps/api/src/debts/` (read-only service), shared pure maths in

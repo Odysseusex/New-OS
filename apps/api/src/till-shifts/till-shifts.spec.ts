@@ -85,9 +85,9 @@ describe("till shift", () => {
     await expect(shifts.moveCash(cashier, shift.id, { direction: "OUT", amount: 1000, accountId: safeId, comment: "" })).rejects.toThrow(/комментарий/);
     await shifts.moveCash(cashier, shift.id, { direction: "IN", amount: 5000, accountId: safeId, comment: "Размен" });
     const x = await shifts.moveCash(cashier, shift.id, { direction: "OUT", amount: 10000, accountId: safeId, comment: "Инкассация в сейф" });
-    expect(x.cashMoves.map((m) => [m.amount, m.counterpart])).toEqual([
-      [5000, "Сейф"],
-      [-10000, "Сейф"],
+    expect(x.cashMoves.map((m) => [m.amount, m.counterpart, m.comment])).toEqual([
+      [5000, "Сейф", "Размен"],
+      [-10000, "Сейф", "Инкассация в сейф"],
     ]);
     // 20 000 + 2 400 + 5 000 − 10 000
     expect(x.expectedCash).toBe(17400);

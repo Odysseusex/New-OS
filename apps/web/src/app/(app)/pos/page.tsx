@@ -49,6 +49,7 @@ import {
 } from "@bakery-os/shared";
 import { Modal } from "@/components/modal";
 import { UiScaleControl } from "@/components/ui-scale-control";
+import { TillShiftControl } from "@/components/till-shift-control";
 import { NumberPad } from "@/components/number-pad";
 import { LabelPrintPicker } from "@/components/label-print-modal";
 import { CustomerScreenPickerModal } from "@/components/customer-screen-picker";
@@ -707,6 +708,7 @@ export default function PosPage() {
           <MonitorSmartphone className="h-4 w-4" strokeWidth={1.75} />
           Экран покупателя
         </button>
+        {locationId && <TillShiftControl locationId={locationId} reloadKey={lastSale} />}
         <UiScaleControl />
         {/* Escape hatch for exactly what the owner hit: Windows decided a
             different physical monitor is now "главный", or a cable got

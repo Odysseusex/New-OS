@@ -228,7 +228,8 @@ export class TillShiftsService {
     const cashMoves: TillShiftCashMoveDto[] = movements.map((m) => ({
       at: m.occurredAt.toISOString(),
       amount: round2(cashEffectOf({ type: m.type, amount: m.amount.toNumber() })),
-      comment: m.reason,
+      // The stored reason carries «Выемка (смена №n): …» for the books; the report shows the cashier's words.
+      comment: m.reason?.replace(/^(Внесение|Выемка) \(смена №\d+\): /, "") ?? null,
       byName: m.createdBy?.fullName ?? null,
       counterpart: m.transferGroupId ? (otherSide.get(m.transferGroupId) ?? null) : (m.categoryRef?.name ?? null),
     }));

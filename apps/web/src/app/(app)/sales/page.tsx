@@ -202,6 +202,14 @@ export default function SalesPage() {
               Сверка дня
             </Link>
           )}
+          {canReconcile && (
+            <Link
+              href="/sales/shifts"
+              className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3.5 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+            >
+              Смены
+            </Link>
+          )}
           {canCreateSale && (
             <button
               onClick={() => setIsModalOpen(true)}
