@@ -59,6 +59,8 @@ export interface TillShiftDto {
 // whether a shift is required to sell, and where a выемка/внесение can go.
 export interface TillShiftStateDto {
   required: boolean;
+  // A cashier removes a line / lowers a quantity only with a senior cashier's PIN.
+  lineRemovalApproval: boolean;
   shift: TillShiftDto | null;
   report: TillShiftReportDto | null;
   // The point's cash account (the drawer); null = none, so no shift can be opened.
@@ -87,4 +89,51 @@ export interface TillShiftCashRequestDto {
 export interface CloseTillShiftRequestDto {
   countedCash: number;
   note?: string;
+}
+
+// ── PIN and the senior cashier's approval (ТЗ §5.4) ──
+
+export const TILL_PIN_PATTERN = /^\d{4,6}$/;
+
+export type TillApprovalAction = "DISCOUNT" | "RETURN" | "LINE_REMOVAL";
+
+export const TILL_APPROVAL_ACTION_LABELS_RU: Record<TillApprovalAction, string> = {
+  DISCOUNT: "Скидка на чек",
+  RETURN: "Возврат",
+  LINE_REMOVAL: "Удаление позиции из чека",
+};
+
+export interface TillApprovalRequestDto {
+  pin: string;
+  action: TillApprovalAction;
+  locationId?: string;
+  // What is being approved, for the audit log: «Круассан × 2».
+  detail?: string;
+}
+
+// A one-use-ish approval: valid for minutes, for this action, for the cashier who asked.
+export interface TillApprovalDto {
+  approvalToken: string;
+  approverName: string;
+}
+
+export interface PinLoginRequestDto {
+  pin: string;
+}
+
+export interface SetUserPinRequestDto {
+  // null removes the PIN.
+  pin: string | null;
+}
+
+// A discount on the whole check at the till: a percent or a sum (one of them).
+export interface ManualDiscountDto {
+  percent?: number;
+  amount?: number;
+}
+
+// The discount in ₸ a manual discount asks for, on a base of `base` ₸ (never more than the base).
+export function manualDiscountTarget(base: number, discount: ManualDiscountDto): number {
+  const raw = discount.percent !== undefined ? (base * discount.percent) / 100 : (discount.amount ?? 0);
+  return Math.max(0, Math.min(Math.floor(raw * 100 + 1e-6) / 100, base));
 }

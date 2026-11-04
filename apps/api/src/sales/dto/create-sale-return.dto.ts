@@ -36,6 +36,11 @@ export class CreateSaleReturnDto {
   @IsBoolean()
   restocked?: boolean;
 
+  // A cashier's return carries a senior cashier's approval (ТЗ §5.4).
+  @IsOptional()
+  @IsString()
+  approvalToken?: string;
+
   // Explicit override of how the refund is paid out. Left out, a refund follows
   // the original tender allocation proportionally (a mixed sale is split).
   @IsOptional()

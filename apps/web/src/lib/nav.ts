@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { CRM_ROLES, REVENUE_VIEW_ROLES, Role } from "@bakery-os/shared";
+import { CRM_ROLES, REVENUE_VIEW_ROLES, Role, TILL_ROLES } from "@bakery-os/shared";
 import {
   LayoutDashboard,
   Sparkles,
@@ -191,7 +191,7 @@ export function canOpen(item: NavItem, role: Role): boolean {
 
 // The page a role lands on after login, or when it opens one it may not see.
 export function homeFor(role: Role): string {
-  if (role === Role.CASHIER) return "/pos";
+  if (TILL_ROLES.includes(role)) return "/pos";
   if (role === Role.CLIENT_MANAGER) return "/crm";
   return REVENUE_VIEW_ROLES.includes(role) ? "/dashboard" : "/sales";
 }

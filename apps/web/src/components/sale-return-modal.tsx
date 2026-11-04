@@ -11,11 +11,14 @@ export function SaleReturnModal({
   previousReturns,
   onClose,
   onReturned,
+  needsApproval = false,
 }: {
   sale: SaleDetailDto;
   previousReturns: SaleReturnDto[];
   onClose: () => void;
   onReturned: () => void;
+  // A cashier's return: the senior cashier types their PIN here (ТЗ §5.4).
+  needsApproval?: boolean;
 }) {
   // How much of each line is still returnable, after everything earlier
   // returns already took back.
@@ -38,6 +41,7 @@ export function SaleReturnModal({
   const [reason, setReason] = useState("");
   const [restocked, setRestocked] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const lines = returnable
@@ -52,10 +56,14 @@ export function SaleReturnModal({
     setIsSubmitting(true);
     setError(null);
     try {
+      const approval = needsApproval
+        ? await api.tillPin.approve({ pin, action: "RETURN", locationId: sale.locationId, detail: `Чек на ${formatMoney(sale.totalAmount)}, возврат ${formatMoney(total)}` })
+        : null;
       await api.sales.returns.create(sale.id, {
         items: lines.map((l) => ({ productId: l.item.productId, quantity: l.quantity })),
         reason: reason.trim() || undefined,
         restocked,
+        ...(approval ? { approvalToken: approval.approvalToken } : {}),
       });
       onReturned();
       onClose();
@@ -160,6 +168,21 @@ export function SaleReturnModal({
             )}
           </div>
 
+          {needsApproval && (
+            <div className="mb-4">
+              <label className="mb-1.5 block text-sm font-medium text-foreground">PIN старшего кассира</label>
+              <input
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={6}
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+                className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-center text-lg tracking-widest text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+              />
+            </div>
+          )}
+
           {error && <p className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
 
           <div className="flex gap-3">
@@ -171,7 +194,7 @@ export function SaleReturnModal({
             </button>
             <button
               onClick={handleSubmit}
-              disabled={lines.length === 0 || isSubmitting}
+              disabled={lines.length === 0 || isSubmitting || (needsApproval && pin.length < 4)}
               className="flex-1 rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-40"
             >
               {isSubmitting ? "Оформляем…" : "Оформить возврат"}

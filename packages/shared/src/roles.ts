@@ -19,6 +19,9 @@ export enum Role {
   // follow-ups, cake orders. Sees the customer base, not the books; the web app
   // keeps them on /crm the way a cashier is kept on /pos.
   CLIENT_MANAGER = "CLIENT_MANAGER",
+  // «Старший кассир» (ТЗ §5.4): a cashier who may also give a discount, take a
+  // return and remove a line, and who approves those for a cashier with a PIN.
+  SENIOR_CASHIER = "SENIOR_CASHIER",
 }
 
 export const ROLE_LABELS_RU: Record<Role, string> = {
@@ -35,7 +38,15 @@ export const ROLE_LABELS_RU: Record<Role, string> = {
   [Role.ADMIN]: "Администратор",
   [Role.OPERATOR]: "Оператор",
   [Role.CLIENT_MANAGER]: "Менеджер по клиентам",
+  [Role.SENIOR_CASHIER]: "Старший кассир",
 };
+
+// The till's own people: kept on /pos, their price at the till is the point's.
+export const TILL_ROLES: Role[] = [Role.CASHIER, Role.SENIOR_CASHIER];
+
+// Who may give a discount, take a return or remove a line at the till, and
+// approve those by PIN for a cashier.
+export const TILL_APPROVER_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.STORE_MANAGER, Role.SENIOR_CASHIER];
 
 // Roles that see data across the whole organization instead of being pinned
 // to a single location. Everyone else is scoped to their assigned location.
@@ -63,6 +74,7 @@ export const SALE_CREATE_ROLES: Role[] = [
   Role.ADMIN,
   Role.STORE_MANAGER,
   Role.CASHIER,
+  Role.SENIOR_CASHIER,
   Role.OPERATOR,
 ];
 
@@ -82,7 +94,9 @@ export const RECONCILIATION_ROLES: Role[] = [
 // classic till-fraud shape — so this is deliberately NARROWER than
 // SALE_CREATE_ROLES: a cashier can sell but not refund. Widen it only if the
 // owner decides a lone cashier on shift needs to handle returns unsupervised.
-export const SALE_RETURN_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.STORE_MANAGER];
+export const SALE_RETURN_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.STORE_MANAGER, Role.SENIOR_CASHIER];
+// A cashier may take a return only with a senior cashier's PIN (checked by the service).
+export const SALE_RETURN_WITH_APPROVAL_ROLES: Role[] = [...SALE_RETURN_ROLES, Role.CASHIER];
 
 export const INVENTORY_MANAGE_ROLES: Role[] = [
   Role.OWNER,
@@ -187,6 +201,7 @@ export const CASH_REGISTER_MANAGE_ROLES: Role[] = [
   Role.ACCOUNTANT,
   Role.STORE_MANAGER,
   Role.CASHIER,
+  Role.SENIOR_CASHIER,
 ];
 
 // Correcting a cash movement after the fact (the CashMovement ledger is
@@ -374,3 +389,6 @@ export const TILL_SHIFT_ROLES: Role[] = SALE_CREATE_ROLES;
 // The shifts' history (differences per cashier) and the «смена обязательна» switch.
 export const TILL_SHIFT_HISTORY_ROLES: Role[] = RECONCILIATION_ROLES;
 export const TILL_SHIFT_SETTINGS_ROLES: Role[] = HARD_DELETE_ROLES;
+
+// Setting a till PIN for an employee, and the «удаление позиции — с PIN» switch.
+export const TILL_PIN_MANAGE_ROLES: Role[] = USER_MANAGE_ROLES;

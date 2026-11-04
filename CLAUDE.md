@@ -582,9 +582,8 @@ it refuses to refund more than the buyer actually paid.
 `SaleReturn.restocked` decides whether the goods go back on the shelf or are
 written off (`WRITE_OFF` + `OTHER`) — bread a buyer carried home cannot be
 resold, and stock must not claim otherwise. Gated by `SALE_RETURN_ROLES`
-(OWNER/ADMIN/STORE_MANAGER), deliberately *narrower* than SALE_CREATE_ROLES:
-a cashier can sell but not refund, since a refund is money leaving the till.
-Widen only if the owner asks.
+(OWNER/ADMIN/STORE_MANAGER/SENIOR_CASHIER), deliberately *narrower* than SALE_CREATE_ROLES:
+a cashier refunds only with a senior cashier's PIN (ТЗ §5.4, see «Кассовая смена»).
 
 **The re:Kassa return payload, established empirically** (their docs were not
 to hand, so this came from their own error messages — an empty `parentTicket`
@@ -947,7 +946,27 @@ index; a closed shift cannot be updated — trigger).
   account chosen by the cashier (`CashMovementsService.transfer`, reason «Выемка (смена №n): …») — no new accounting rule.
 - Closing stores the Z-report JSON, expected, counted and the difference; **it moves nothing** (an adjustment of stock or
   cash stays «Сверка дня»'s / Банк и касса's job). Audited `tillShift.open/close/setRequired`.
-- Not built yet (ТЗ §5.4 rest): PIN login, «Старший кассир» role with approval of discounts/returns/line removal.
+- **PIN + «Старший кассир»** (migration `20261113120000`, `auth/till-pin.ts`): `Role.SENIOR_CASHIER` (till like a
+  cashier — `TILL_ROLES` = CASHIER + SENIOR_CASHIER are kept on /pos and priced by the point; in SALE_CREATE_ROLES,
+  CASH_REGISTER_MANAGE_ROLES and SALE_RETURN_ROLES). `TILL_APPROVER_ROLES` = OWNER/ADMIN/STORE_MANAGER/SENIOR_CASHIER.
+  - PIN = 4–6 digits set by OWNER/ADMIN in the employee card (`PUT /users/:id/pin`, audited `user.pin`); stored ONLY as
+    `User.pinDigest` = HMAC(JWT_SECRET, org:pin), unique per organization (so the PIN alone identifies the person),
+    redacted from backups. 5 wrong PINs in 5 min per device user → 5-min lock (in memory).
+  - «Сменить кассира» on the till (`POST /auth/pin-login`, needs a signed-in device; same point or org-wide) → a normal
+    login token for that employee.
+  - Approval: `POST /auth/till-approval {pin, action}` → a 10-min JWT signed with a DIFFERENT key (`…:till-approval`), so it
+    can never be used as a login; bound to the action, the asking cashier and the org (`resolveTillApproval`). An approver
+    role approves itself.
+  - **Скидка на чек** (`CreateSaleDto.manualDiscount {percent|amount}` + `approvalToken`): spread over own goods at their
+    normal price by the SAME `distributePointsDiscount` as points (till previews identically) as a lower unit price with
+    `fullUnitPrice` = list price → the P&L/events DISCOUNTS line, returns and fiscal need no special case;
+    `SaleItem.manualDiscount` marks the lines so markdown figures skip them; `Sale.manualDiscountAmount` +
+    `discountApprovedByName`; audited `sale.manualDiscount`. Not combinable with a coupon or points.
+  - Возврат: a CASHIER may return only with an approval (`SALE_RETURN_WITH_APPROVAL_ROLES` on the route, check in
+    `SaleReturnsService.create`); `SaleReturn.approvedByName`. The till's «История» → a check → «Возврат» asks the PIN.
+  - Удаление позиции / уменьшение количества: only with the switch `Organization.tillLineRemovalApproval` (default OFF,
+    Продажи → Смены) — then a cashier needs the senior's PIN, logged as `till.lineRemoval` (the cart is client-side, so the
+    approval log IS the record).
 
 ## Debts — дебиторка/кредиторка by document, акт сверки (built, ТЗ stage 1)
 

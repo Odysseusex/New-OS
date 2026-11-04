@@ -27,6 +27,8 @@ enum Role {
   ADMIN
   OPERATOR
   CLIENT_MANAGER
+  // «Старший кассир»: the till, plus discounts, returns and line removal, and approves them for a cashier by PIN.
+  SENIOR_CASHIER
 }
 
 enum LocationType {
@@ -326,6 +328,8 @@ model Organization {
 
   // When true, a cashier can sell at a point only while a till shift is open there.
   tillShiftsRequired Boolean @default(false)
+  // When true, a cashier removes a line or lowers a quantity in the check only with a senior cashier's PIN.
+  tillLineRemovalApproval Boolean @default(false)
 
   // The purchasing cutover. Null = the old behaviour (a received purchase
   // order creates no payable; supplier invoices may still be created). Once
@@ -474,6 +478,10 @@ model User {
   email        String
   passwordHash String
   role         Role
+  // A till PIN, kept only as a keyed digest (HMAC with the server's secret), unique in the
+  // organization so the PIN alone says who it is. Null = no PIN. Never exported in backups.
+  pinDigest    String?
+  pinSetAt     DateTime?
   // Optional custom display label shown instead of the role name in the
   // topbar (e.g. "Разработчик" for someone who's technically OWNER-level
   // but isn't "the bakery owner" in the everyday sense) — purely cosmetic,
@@ -546,6 +554,7 @@ model User {
 
   @@unique([organizationId, email])
   @@index([organizationId])
+  @@unique([organizationId, pinDigest])
   @@map("users")
 }
 
@@ -871,11 +880,17 @@ model Sale {
   // pointer so a Sale can be checked for one.
   promotionCoupon PromotionCoupon?
 
+  // A discount given by hand at the till (% or sum), spread over the lines as a lower
+  // price like a coupon; who gave or approved it. Null = none.
+  manualDiscountAmount   Decimal? @db.Decimal(12, 2)
+  discountApprovedById   String?
+  discountApprovedByName String?
+
   @@index([organizationId, locationId])
   @@index([soldAt])
   @@index([loyaltyMemberId])
   @@index([crmOrderId])
-  @@map("sales")
+    @@map("sales")
 }
 
 // One tender of a split sale: «2 000 ₸ картой, остальное наличными».
@@ -1014,6 +1029,10 @@ model SaleReturn {
 
   loyaltyPointsEntries LoyaltyPointsEntry[]
 
+  // A cashier's return is approved by a senior cashier's PIN: who it was.
+  approvedById   String?
+  approvedByName String?
+
   @@index([organizationId, saleId])
   @@index([returnedAt])
   @@map("sale_returns")
@@ -1102,6 +1121,9 @@ model SaleItem {
   // lines that belong to it.
   promotionId String?
   promotion   Promotion? @relation(fields: [promotionId], references: [id])
+
+  // The part of this line's price taken off by the check's manual discount (so markdown figures skip it).
+  manualDiscount Decimal? @db.Decimal(12, 2)
 
   @@index([consignmentSupplierId])
   @@index([promotionId])

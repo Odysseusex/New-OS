@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { resolveTillApproval } from "../auth/till-pin";
 import { nonCashAccountFor } from "../common/non-cash-account";
 import { FiscalReceiptStatus, Prisma, StockMovementType } from "@prisma/client";
 import {
@@ -71,6 +72,8 @@ export class SaleReturnsService {
     });
     if (!sale) throw new NotFoundException("Продажа не найдена");
     resolveLocationScope(user, sale.locationId);
+    // A cashier returns only with a senior cashier's PIN; everyone else allowed here approves themselves.
+    const approver = await resolveTillApproval(this.prisma, user, "RETURN", dto.approvalToken);
 
     if (dto.items.length === 0) {
       throw new BadRequestException("Не выбрано ни одной позиции для возврата");
@@ -188,6 +191,7 @@ export class SaleReturnsService {
           returnedAt,
           totalAmount,
           creditedAmount,
+          ...(approver.id !== user.id ? { approvedById: approver.id, approvedByName: approver.fullName } : {}),
           // The refunded part that belongs to consignment goods (SaleReturn.consignmentAmount).
           consignmentAmount: Number(lines.reduce((sum, l) => sum + (l.consignmentSupplierId ? l.subtotal : 0), 0).toFixed(2)),
           reason: dto.reason,

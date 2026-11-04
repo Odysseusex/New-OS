@@ -42,7 +42,7 @@ export class TillShiftsService {
   async state(user: AuthenticatedUser, requestedLocationId: string | undefined): Promise<TillShiftStateDto> {
     const locationId = requireLocationScope(user, requestedLocationId);
     const [org, shift, till, accounts, last] = await Promise.all([
-      this.prisma.organization.findUniqueOrThrow({ where: { id: user.organizationId }, select: { tillShiftsRequired: true } }),
+      this.prisma.organization.findUniqueOrThrow({ where: { id: user.organizationId }, select: { tillShiftsRequired: true, tillLineRemovalApproval: true } }),
       this.openShift(user.organizationId, locationId),
       this.tillAccount(user.organizationId, locationId),
       this.prisma.cashAccount.findMany({ where: { organizationId: user.organizationId, isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, locationId: true, type: true } }),
@@ -50,6 +50,7 @@ export class TillShiftsService {
     ]);
     return {
       required: org.tillShiftsRequired,
+      lineRemovalApproval: org.tillLineRemovalApproval,
       shift: shift ? await this.toDto(shift) : null,
       report: shift ? await this.report(shift, new Date()) : null,
       tillAccount: till ? { id: till.id, name: till.name, balance: till.currentBalance.toNumber() } : null,
@@ -171,6 +172,21 @@ export class TillShiftsService {
         organizationId: user.organizationId,
         actorId: user.id,
         action: "tillShift.setRequired",
+        entityType: "Organization",
+        entityId: user.organizationId,
+        after: { required },
+      });
+    });
+    return { required };
+  }
+
+  async setLineRemovalApproval(user: AuthenticatedUser, required: boolean): Promise<{ required: boolean }> {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.organization.update({ where: { id: user.organizationId }, data: { tillLineRemovalApproval: required } });
+      await recordAudit(tx, {
+        organizationId: user.organizationId,
+        actorId: user.id,
+        action: "tillShift.setLineRemovalApproval",
         entityType: "Organization",
         entityId: user.organizationId,
         after: { required },

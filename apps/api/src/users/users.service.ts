@@ -6,6 +6,8 @@ import { AuthenticatedUser } from "../auth/auth.types";
 import { CreateUserAccountDto } from "./dto/create-user-account.dto";
 import { UpdateUserAccountDto } from "./dto/update-user-account.dto";
 import { auditFields, recordAudit } from "../audit/audit";
+import { Prisma } from "@prisma/client";
+import { assertPinFormat, pinDigest } from "../auth/till-pin";
 
 // What the audit log keeps about an account. Never the password hash — a
 // password change is recorded only as the fact that it happened.
@@ -192,6 +194,38 @@ export class UsersService {
     }
   }
 
+  // A till PIN (4–6 digits), unique in the organization; null removes it. The PIN
+  // itself is never stored or returned — only its keyed digest.
+  async setPin(actor: AuthenticatedUser, userId: string, pin: string | null): Promise<UserAccountDto> {
+    const user = await this.prisma.user.findFirst({ where: { id: userId, organizationId: actor.organizationId } });
+    if (!user) throw new NotFoundException("Сотрудник не найден");
+    if (pin !== null) assertPinFormat(pin);
+    try {
+      const updated = await this.prisma.$transaction(async (tx) => {
+        const saved = await tx.user.update({
+          where: { id: userId },
+          data: { pinDigest: pin === null ? null : pinDigest(actor.organizationId, pin), pinSetAt: pin === null ? null : new Date() },
+          include: { location: true },
+        });
+        await recordAudit(tx, {
+          organizationId: actor.organizationId,
+          actorId: actor.id,
+          action: "user.pin",
+          entityType: "User",
+          entityId: userId,
+          after: { hasPin: pin !== null },
+        });
+        return saved;
+      });
+      return this.toDto(updated);
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        throw new ConflictException("Этот PIN уже занят другим сотрудником — придумайте другой");
+      }
+      throw err;
+    }
+  }
+
   private async assertLocationExists(organizationId: string, locationId: string) {
     const location = await this.prisma.location.findFirst({ where: { id: locationId, organizationId } });
     if (!location) {
@@ -208,7 +242,9 @@ export class UsersService {
     locationId: string | null;
     location: { name: string } | null;
     isActive: boolean;
+    pinDigest?: string | null;
   }): UserAccountDto => ({
+    hasPin: Boolean(user.pinDigest),
     id: user.id,
     fullName: user.fullName,
     email: user.email,

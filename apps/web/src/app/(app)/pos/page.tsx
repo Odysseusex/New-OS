@@ -16,6 +16,8 @@ import {
   Tag,
   Trash2,
   UserRound,
+  Users,
+  Percent,
   X,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
@@ -46,7 +48,11 @@ import {
   distributePointsDiscount,
   loyaltyRedeemCap,
   UNIT_LABELS_RU,
+  TILL_APPROVER_ROLES,
+  isPointsRedeemableLine,
+  manualDiscountTarget,
 } from "@bakery-os/shared";
+import { CheckDiscountModal, PinLoginModal, SeniorPinModal, type AppliedDiscount } from "@/components/till-approval";
 import { Modal } from "@/components/modal";
 import { UiScaleControl } from "@/components/ui-scale-control";
 import { TillShiftControl } from "@/components/till-shift-control";
@@ -163,6 +169,12 @@ export default function PosPage() {
   const [loyaltyMember, setLoyaltyMember] = useState<LoyaltyMemberDto | null>(null);
   const [crmOrder, setCrmOrder] = useState<OpenCrmOrderDto | null>(null);
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
+  // «Скидка на чек» and the senior cashier's approvals (ТЗ §5.4).
+  const [checkDiscount, setCheckDiscount] = useState<AppliedDiscount | null>(null);
+  const [discountOpen, setDiscountOpen] = useState(false);
+  const [pinLoginOpen, setPinLoginOpen] = useState(false);
+  const [pendingLine, setPendingLine] = useState<{ key: string; quantity: number; detail: string } | null>(null);
+  const [lineRemovalApproval, setLineRemovalApproval] = useState(false);
   // Set only when openCustomerDisplay() cannot tell which physical monitor is
   // the customer's — no remembered choice yet, or Windows' own displays
   // changed since. See customer-screen-picker.tsx for why this exists at all.
@@ -373,7 +385,24 @@ export default function PosPage() {
   const pointsRequested = Math.min(pointsToRedeem, pointsCap);
   const pointsDiscount = loyaltyActive && pointsRequested > 0 ? distributePointsDiscount(loyaltyLines, pointsRequested) : null;
   const pointsDiscountByIndex = new Map((pointsDiscount?.lines ?? []).map((l) => [l.index, l]));
-  const total = Math.round((cartTotal - (pointsDiscount?.total ?? 0)) * 100) / 100;
+  // The check discount: same shared spreading as the server, never with a coupon or points.
+  const discountBase =
+    Math.round(loyaltyLines.filter(isPointsRedeemableLine).reduce((sum, l) => sum + l.unitPrice * l.quantity, 0) * 100) / 100;
+  const checkDiscountSpread =
+    checkDiscount && !pointsDiscount && !appliedCoupon ? distributePointsDiscount(loyaltyLines, manualDiscountTarget(discountBase, checkDiscount)) : null;
+  const total = Math.round((cartTotal - (pointsDiscount?.total ?? 0) - (checkDiscountSpread?.total ?? 0)) * 100) / 100;
+  const isApprover = !!user && TILL_APPROVER_ROLES.includes(user.role);
+
+  // Lowering a quantity or removing a line: with the switch on, a cashier needs the senior cashier's PIN.
+  function changeLine(key: string, quantity: number) {
+    const line = cart.find((l) => l.key === key);
+    if (line && quantity < line.quantity && lineRemovalApproval && !isApprover) {
+      const removed = quantity <= 0 ? line.quantity : line.quantity - quantity;
+      setPendingLine({ key, quantity, detail: `${line.product.name} × ${formatQuantity(removed)}` });
+      return;
+    }
+    setLineQuantity(key, quantity);
+  }
   const itemCount = cart.reduce((sum, line) => sum + line.quantity, 0);
 
   async function applyCoupon() {
@@ -556,6 +585,12 @@ export default function PosPage() {
           ? { loyaltyMemberId: loyaltyMember.id, ...(pointsRequested > 0 ? { loyaltyPointsToRedeem: pointsRequested } : {}) }
           : {}),
         ...(crmOrder ? { crmOrderId: crmOrder.id } : {}),
+        ...(checkDiscountSpread && checkDiscount
+          ? {
+              manualDiscount: checkDiscount.percent !== undefined ? { percent: checkDiscount.percent } : { amount: checkDiscount.amount },
+              ...(checkDiscount.approvalToken ? { approvalToken: checkDiscount.approvalToken } : {}),
+            }
+          : {}),
         items: cart.map((line) => ({
           productId: line.product.id,
           quantity: line.quantity,
@@ -586,6 +621,7 @@ export default function PosPage() {
       setLoyaltyMember(null);
       setCrmOrder(null);
       setPointsToRedeem(0);
+      setCheckDiscount(null);
       setChargedButUnrecorded(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось провести продажу");
@@ -708,7 +744,15 @@ export default function PosPage() {
           <MonitorSmartphone className="h-4 w-4" strokeWidth={1.75} />
           Экран покупателя
         </button>
-        {locationId && <TillShiftControl locationId={locationId} reloadKey={lastSale} />}
+        {locationId && <TillShiftControl locationId={locationId} reloadKey={lastSale} onState={(st) => setLineRemovalApproval(st.lineRemovalApproval)} />}
+        <button
+          onClick={() => setPinLoginOpen(true)}
+          title="Сменить кассира"
+          className="flex shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+        >
+          <Users className="h-4 w-4" strokeWidth={1.75} />
+          {user?.fullName.split(" ")[0] ?? "Кассир"}
+        </button>
         <UiScaleControl />
         {/* Escape hatch for exactly what the owner hit: Windows decided a
             different physical monitor is now "главный", or a cable got
@@ -932,7 +976,7 @@ export default function PosPage() {
                       )}
                     </span>
                     <button
-                      onClick={() => setLineQuantity(line.key, 0)}
+                      onClick={() => changeLine(line.key, 0)}
                       aria-label={`Убрать ${line.product.name}`}
                       className="shrink-0 text-muted transition hover:text-red-600"
                     >
@@ -942,7 +986,7 @@ export default function PosPage() {
                   <div className="mt-2 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <QtyButton
-                        onClick={() => setLineQuantity(line.key, line.quantity - 1)}
+                        onClick={() => changeLine(line.key, line.quantity - 1)}
                         label={`Меньше ${line.product.name}`}
                       >
                         <Minus className="h-3.5 w-3.5" strokeWidth={2} />
@@ -1058,6 +1102,29 @@ export default function PosPage() {
 
           <div className="border-t border-border px-5 py-3">
             <PosOrderBlock order={crmOrder} onChange={setCrmOrder} />
+          </div>
+
+          <div className="border-t border-border px-5 py-3">
+            {checkDiscount && checkDiscountSpread ? (
+              <div className="flex items-center justify-between gap-2 text-sm">
+                <span className="text-foreground">
+                  Скидка {checkDiscount.percent !== undefined ? `${checkDiscount.percent}%` : formatMoney(checkDiscount.amount ?? 0)} · −{formatMoney(checkDiscountSpread.total)}
+                  {checkDiscount.approverName && <span className="ml-1 text-xs text-muted">({checkDiscount.approverName})</span>}
+                </span>
+                <button onClick={() => setCheckDiscount(null)} aria-label="Убрать скидку" className="text-muted hover:text-red-600">
+                  <X className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setDiscountOpen(true)}
+                disabled={cart.length === 0 || !!appliedCoupon || pointsRequested > 0}
+                className="flex items-center gap-2 text-sm font-medium text-foreground transition hover:text-accent disabled:opacity-40"
+              >
+                <Percent className="h-4 w-4" strokeWidth={1.75} />
+                Скидка на чек
+              </button>
+            )}
           </div>
 
           {loyaltySettings?.enabled && (
@@ -1217,6 +1284,31 @@ export default function PosPage() {
           setLabelsOpen(false);
           focusScan();
         }}
+      />
+    )}
+    {discountOpen && (
+      <CheckDiscountModal
+        base={discountBase}
+        needsApproval={!isApprover}
+        locationId={locationId || undefined}
+        onApply={(d) => {
+          setCheckDiscount(d);
+          setDiscountOpen(false);
+        }}
+        onClose={() => setDiscountOpen(false)}
+      />
+    )}
+    {pinLoginOpen && <PinLoginModal onClose={() => setPinLoginOpen(false)} />}
+    {pendingLine && (
+      <SeniorPinModal
+        action="LINE_REMOVAL"
+        locationId={locationId || undefined}
+        detail={pendingLine.detail}
+        onApproved={() => {
+          setLineQuantity(pendingLine.key, pendingLine.quantity);
+          setPendingLine(null);
+        }}
+        onClose={() => setPendingLine(null)}
       />
     )}
     {terminalSettingsOpen && (

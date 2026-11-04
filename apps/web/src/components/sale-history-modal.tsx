@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Printer, Search, X } from "lucide-react";
-import type { ProductDto, SaleDetailDto, SaleDto, SalesSummaryDto } from "@bakery-os/shared";
-import { PAYMENT_METHOD_LABELS_RU, UNIT_LABELS_RU } from "@bakery-os/shared";
+import { Printer, Search, Undo2, X } from "lucide-react";
+import type { ProductDto, SaleDetailDto, SaleDto, SaleReturnDto, SalesSummaryDto } from "@bakery-os/shared";
+import { PAYMENT_METHOD_LABELS_RU, SALE_RETURN_WITH_APPROVAL_ROLES, TILL_APPROVER_ROLES, UNIT_LABELS_RU } from "@bakery-os/shared";
+import { useAuth } from "@/lib/auth-context";
+import { SaleReturnModal } from "@/components/sale-return-modal";
 import { api } from "@/lib/api";
 import { Modal } from "@/components/modal";
 import { formatMoney, formatQuantity } from "@/lib/format";
@@ -47,6 +49,10 @@ export function SaleHistoryModal({
   const [summary, setSummary] = useState<SalesSummaryDto | null>(null);
   const [state, setState] = useState<"loading" | "error" | "ready">("loading");
   const [openSale, setOpenSale] = useState<SaleDetailDto | null>(null);
+  const [returnsOf, setReturnsOf] = useState<SaleReturnDto[] | null>(null);
+  const { user } = useAuth();
+  const canReturn = !!user && SALE_RETURN_WITH_APPROVAL_ROLES.includes(user.role);
+  const isApprover = !!user && TILL_APPROVER_ROLES.includes(user.role);
   const [loadingSaleId, setLoadingSaleId] = useState<string | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -110,7 +116,7 @@ export function SaleHistoryModal({
                       stale-goods markdown — the same distinction the receipt
                       and markdownLoss reporting already make. */}
                   {item.fullUnitPrice != null && (
-                    <span className="ml-1 text-amber-700">{item.promotionName ?? (item.loyaltyDiscount ? "баллы" : "уценка")}</span>
+                    <span className="ml-1 text-amber-700">{item.promotionName ?? (item.loyaltyDiscount ? "баллы" : item.manualDiscount ? "скидка" : "уценка")}</span>
                   )}
                 </span>
               </span>
@@ -143,6 +149,16 @@ export function SaleHistoryModal({
           <Printer className="h-4 w-4" strokeWidth={1.75} />
           Напечатать ещё раз
         </button>
+        {canReturn && (
+          <button
+            type="button"
+            onClick={() => api.sales.returns.list(openSale.id).then(setReturnsOf).catch(() => setReturnsOf([]))}
+            className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+          >
+            <Undo2 className="h-4 w-4" strokeWidth={1.75} />
+            Возврат
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setOpenSale(null)}
@@ -150,6 +166,15 @@ export function SaleHistoryModal({
         >
           Назад к списку
         </button>
+        {returnsOf && (
+          <SaleReturnModal
+            sale={openSale}
+            previousReturns={returnsOf}
+            needsApproval={!isApprover}
+            onClose={() => setReturnsOf(null)}
+            onReturned={() => setOpenSale(null)}
+          />
+        )}
       </Modal>
     );
   }

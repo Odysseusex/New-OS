@@ -20,7 +20,15 @@ type Mode = "view" | "IN" | "OUT" | "close";
 // «Смена» on the till: open with the cash counted, внесение / выемка, X-отчёт,
 // close with the Z-отчёт. When the organization requires a shift and none is
 // open, it says so in the header (the server refuses a cashier's sale anyway).
-export function TillShiftControl({ locationId, reloadKey }: { locationId: string; reloadKey?: unknown }) {
+export function TillShiftControl({
+  locationId,
+  reloadKey,
+  onState,
+}: {
+  locationId: string;
+  reloadKey?: unknown;
+  onState?: (state: TillShiftStateDto) => void;
+}) {
   const [state, setState] = useState<TillShiftStateDto | null>(null);
   const [open, setOpen] = useState(false);
   const [closed, setClosed] = useState<TillShiftDetailDto | null>(null);
@@ -29,8 +37,12 @@ export function TillShiftControl({ locationId, reloadKey }: { locationId: string
     if (!locationId) return;
     api.tillShifts
       .current(locationId)
-      .then(setState)
+      .then((st) => {
+        setState(st);
+        onState?.(st);
+      })
       .catch(() => setState(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locationId]);
 
   useEffect(load, [load, reloadKey]);

@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { Role } from "@bakery-os/shared";
+import { Role, TILL_ROLES } from "@bakery-os/shared";
 import { useAuth } from "@/lib/auth-context";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
@@ -18,7 +18,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const isCashier = user?.role === Role.CASHIER;
+  const isCashier = !!user && TILL_ROLES.includes(user.role);
   // The client manager works only in the CRM, which lives outside this layout.
   const isClientManager = user?.role === Role.CLIENT_MANAGER;
   // A page hidden from this role's menu (e.g. «Отчёты» for an operator) is not

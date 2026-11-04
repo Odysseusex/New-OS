@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { assertTillShiftOpen } from "../till-shifts/till-shift-guard";
+import { resolveTillApproval } from "../auth/till-pin";
+import { isPointsRedeemableLine, manualDiscountTarget, TILL_ROLES } from "@bakery-os/shared";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { isDemoOrganization } from "../common/demo-guard";
@@ -409,7 +411,7 @@ export class SalesService {
         // overproduction signal this figure exists to give. See
         // PromotionsService.report() for where that money IS counted.
         const full = item.fullUnitPrice?.toNumber();
-        if (full !== undefined && item.promotionId === null && item.loyaltyDiscount === null) {
+        if (full !== undefined && item.promotionId === null && item.loyaltyDiscount === null && !item.manualDiscount) {
           const loss = (full - item.unitPrice.toNumber()) * quantity;
           productEntry.markdownQuantity += quantity;
           productEntry.markdownLoss += loss;
@@ -566,7 +568,7 @@ export class SalesService {
       // Same promotionId exclusion as report() above — a coupon discount is
       // not a markdown, and must not be counted as one here either.
       const full = item.fullUnitPrice?.toNumber();
-      if (full !== undefined && item.promotionId === null && item.loyaltyDiscount === null) {
+      if (full !== undefined && item.promotionId === null && item.loyaltyDiscount === null && !item.manualDiscount) {
         entry.markdownQuantity += quantity;
         entry.markdownLoss += (full - item.unitPrice.toNumber()) * quantity;
       }
@@ -1162,7 +1164,7 @@ export class SalesService {
 
     const productIds = dto.items.map((i) => i.productId);
 
-    if (user.role === Role.CASHIER) {
+    if (TILL_ROLES.includes(user.role)) {
       await assertTillShiftOpen(this.prisma, user, locationId);
       await this.assertTillPrices(user.organizationId, locationId, dto.items);
     }
@@ -1224,6 +1226,7 @@ export class SalesService {
       subtotal: number;
       promotionId: string | null;
       loyaltyDiscount: number | null;
+      manualDiscount?: number | null;
     }[] = dto.items.map((item) => {
       // A markdown that did not lower the price is not a markdown. Letting
       // one through would put a negative "loss" into the report and quietly
@@ -1286,6 +1289,36 @@ export class SalesService {
       });
       if (!order) throw new BadRequestException("Заказ не найден");
       if (order.stage === "CANCELLED") throw new BadRequestException("Заказ отменён — оплату по нему принять нельзя");
+    }
+
+    // --- A discount on the whole check given at the till (ТЗ §5.4) ---------
+    //
+    // A percent or a sum, given by a senior cashier / manager, or by a cashier with a
+    // senior cashier's PIN. Spread over our own goods at their normal price as a lower
+    // unit price, like a coupon — so revenue, the P&L discounts line, returns and the
+    // fiscal receipt need no special case. Never stacked with a coupon or points.
+    let manualDiscount: { amount: number; approver: { id: string; fullName: string } } | null = null;
+    if (dto.manualDiscount) {
+      const { percent, amount } = dto.manualDiscount;
+      if ((percent === undefined) === (amount === undefined)) throw new BadRequestException("Скидка — процент или сумма");
+      if (percent !== undefined && !(percent > 0 && percent <= 100)) throw new BadRequestException("Процент скидки — от 0 до 100");
+      if (amount !== undefined && !(amount > 0)) throw new BadRequestException("Сумма скидки должна быть больше нуля");
+      if (couponCode || dto.loyaltyPointsToRedeem) throw new BadRequestException("Скидка на чек не совмещается с купоном и оплатой баллами");
+      const approver = await resolveTillApproval(this.prisma, user, "DISCOUNT", dto.approvalToken);
+      const flags = await this.prisma.product.findMany({
+        where: { id: { in: productIds }, organizationId: user.organizationId },
+        select: { id: true, consignmentSupplierId: true },
+      });
+      const consignment = new Map(flags.map((p) => [p.id, p.consignmentSupplierId !== null]));
+      const cart = items.map((i) => ({ ...i, consignment: consignment.get(i.productId) ?? false }));
+      const base = cart.filter(isPointsRedeemableLine).reduce((sum, l) => sum + l.subtotal, 0);
+      const target = manualDiscountTarget(round2(base), dto.manualDiscount);
+      if (target <= 0) throw new BadRequestException("В чеке нет товаров, на которые можно дать скидку");
+      const spread = distributePointsDiscount(cart, target);
+      for (const line of spread.lines) {
+        items[line.index] = { ...items[line.index], unitPrice: line.unitPrice, fullUnitPrice: line.fullUnitPrice, subtotal: line.subtotal, manualDiscount: line.discount };
+      }
+      manualDiscount = { amount: spread.total, approver };
     }
 
     let loyalty: (PreparedSaleLoyalty & { redeem: number; consignmentById: Map<string, boolean> }) | null = null;
@@ -1431,6 +1464,9 @@ export class SalesService {
           customerId: dto.customerId,
           loyaltyMemberId: loyalty?.memberId ?? null,
           crmOrderId: dto.crmOrderId ?? null,
+          ...(manualDiscount
+            ? { manualDiscountAmount: manualDiscount.amount, discountApprovedById: manualDiscount.approver.id, discountApprovedByName: manualDiscount.approver.fullName }
+            : {}),
           totalAmount,
           consignmentAmount,
           amountPaid,
@@ -1491,6 +1527,16 @@ export class SalesService {
 
       // Spend and earn points with the sale itself: one transaction, so a failed
       // sale never costs the customer points and a sale never earns twice.
+      if (manualDiscount) {
+        await recordAudit(tx, {
+          organizationId: user.organizationId,
+          actorId: user.id,
+          action: "sale.manualDiscount",
+          entityType: "Sale",
+          entityId: sale.id,
+          after: { amount: manualDiscount.amount, request: dto.manualDiscount, approvedBy: manualDiscount.approver.fullName },
+        });
+      }
       let loyaltyEntries: { type: string; points: Prisma.Decimal }[] = [];
       if (loyalty) {
         const result = await this.loyaltyPoints.recordSale(tx, {
@@ -1953,6 +1999,7 @@ export class SalesService {
       subtotal: { toNumber: () => number };
       promotion?: { name: string } | null;
       loyaltyDiscount?: { toNumber: () => number } | null;
+      manualDiscount?: { toNumber: () => number } | null;
     }[];
     fiscalReceipt?: {
       status: string;
@@ -1967,8 +2014,12 @@ export class SalesService {
     terminalMethod?: string | null;
     terminalTransactionId?: string | null;
     terminalCardMask?: string | null;
+    manualDiscountAmount?: { toNumber: () => number } | null;
+    discountApprovedByName?: string | null;
   }): SaleDetailDto => ({
     ...this.toSaleDto(sale),
+    manualDiscountAmount: sale.manualDiscountAmount?.toNumber() ?? null,
+    discountApprovedByName: sale.discountApprovedByName ?? null,
     // Both halves or nothing: a method without the transaction it refers to
     // cannot refund anything, so it would be a promise the till cannot keep.
     terminalPayment:
@@ -1989,6 +2040,7 @@ export class SalesService {
       subtotal: item.subtotal.toNumber(),
       promotionName: item.promotion?.name ?? null,
       loyaltyDiscount: item.loyaltyDiscount?.toNumber() ?? null,
+      manualDiscount: item.manualDiscount?.toNumber() ?? null,
     })),
     payments: (sale.payments ?? []).map((p) => ({
       method: p.method as PaymentMethod,

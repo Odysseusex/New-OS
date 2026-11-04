@@ -8,6 +8,7 @@ import {
   IsPositive,
   IsString,
   Matches,
+  Max,
   MaxLength,
   Min,
   ValidateNested,
@@ -61,6 +62,20 @@ export class CreateSaleTerminalPaymentDto {
   @IsString()
   @MaxLength(32)
   cardMask?: string;
+}
+
+// A discount on the whole check at the till: a percent or a sum.
+export class ManualDiscountBodyDto {
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(100)
+  percent?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  amount?: number;
 }
 
 export class CreateSaleDto {
@@ -117,6 +132,17 @@ export class CreateSaleDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   loyaltyPointsToRedeem?: number;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ManualDiscountBodyDto)
+  manualDiscount?: ManualDiscountBodyDto;
+
+  // A senior cashier's approval, for a cashier's discount.
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  approvalToken?: string;
 
   // The cake order (CRM) this sale pays for.
   @IsOptional()

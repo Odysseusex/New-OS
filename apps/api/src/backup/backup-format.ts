@@ -18,7 +18,7 @@ export const EXCLUDED_TABLES: ReadonlySet<string> = new Set(["_prisma_migrations
 
 // Columns left out of the rows. A restore asks for a temporary password instead.
 export const REDACTED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
-  users: ["passwordHash"],
+  users: ["passwordHash", "pinDigest"],
 };
 
 // A column whose name looks like a secret must be accounted for above; a spec scans the

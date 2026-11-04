@@ -33,6 +33,8 @@ export interface SaleItemDto {
   promotionName: string | null;
   // Part of the line paid with loyalty points (a discount, not a markdown).
   loyaltyDiscount: number | null;
+  // The part of the price taken off by a check discount at the till (null = none).
+  manualDiscount?: number | null;
 }
 
 export interface SaleDto {
@@ -95,6 +97,9 @@ export interface SaleTerminalPaymentDto {
 
 export interface SaleDetailDto extends SaleDto {
   items: SaleItemDto[];
+  // A manual discount on the check and who gave or approved it.
+  manualDiscountAmount: number | null;
+  discountApprovedByName: string | null;
   // Present only when the card half went through the Kaspi terminal.
   terminalPayment: SaleTerminalPaymentDto | null;
   // Empty for an ordinary single-method sale — `paymentMethod` says it all
@@ -164,6 +169,10 @@ export interface CreateSaleRequestDto {
   // with (a discount on the check; the server re-checks balance and limit).
   loyaltyMemberId?: string;
   loyaltyPointsToRedeem?: number;
+  // A discount on the whole check at the till (a percent or a sum). A cashier needs a
+  // senior cashier's approval (approvalToken); a senior cashier/manager gives it directly.
+  manualDiscount?: import("./till-shifts").ManualDiscountDto;
+  approvalToken?: string;
   // The cake order (CRM) this sale pays for — puts it in «Заказы».
   crmOrderId?: string;
   items: CreateSaleItemRequestDto[];
@@ -417,6 +426,8 @@ export interface CreateSaleReturnRequestDto {
   items: CreateSaleReturnItemRequestDto[];
   reason?: string;
   restocked?: boolean;
+  // A cashier's return carries a senior cashier's approval.
+  approvalToken?: string;
 }
 
 // ── Product profitability and ABC analysis ────────────────────────────

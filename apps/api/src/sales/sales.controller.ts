@@ -4,7 +4,7 @@ import {
   PAYMENT_RECORD_ROLES,
   REVENUE_VIEW_ROLES,
   SALE_CREATE_ROLES,
-  SALE_RETURN_ROLES,
+  SALE_RETURN_WITH_APPROVAL_ROLES,
 } from "@bakery-os/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
@@ -37,7 +37,7 @@ export class SalesController {
 
   // Narrower than selling on purpose — see SALE_RETURN_ROLES.
   @Post(":id/returns")
-  @Roles(...SALE_RETURN_ROLES)
+  @Roles(...SALE_RETURN_WITH_APPROVAL_ROLES)
   createReturn(
     @CurrentUser() user: AuthenticatedUser,
     @Param("id") id: string,

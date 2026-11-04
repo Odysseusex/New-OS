@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { SetUserPinDto } from "../auth/dto/till-pin.dto";
+import { Body, Controller, Get, Param, Patch, Post, Put, Query, UseGuards } from "@nestjs/common";
 import { USER_MANAGE_ROLES } from "@bakery-os/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
@@ -28,6 +29,11 @@ export class UsersController {
   @Patch(":id")
   update(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: UpdateUserAccountDto) {
     return this.usersService.update(user, id, dto);
+  }
+
+  @Put(":id/pin")
+  setPin(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: SetUserPinDto) {
+    return this.usersService.setPin(user, id, dto.pin ?? null);
   }
 
   @Post(":id/archive")

@@ -95,6 +95,8 @@ export interface UserAccountDto {
   locationId: string | null;
   locationName: string | null;
   isActive: boolean;
+  // A till PIN is set (the PIN itself is never sent back).
+  hasPin: boolean;
 }
 
 export interface CreateUserAccountRequestDto {

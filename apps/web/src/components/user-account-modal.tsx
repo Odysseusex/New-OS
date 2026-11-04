@@ -23,6 +23,8 @@ export function UserAccountModal({
   const [role, setRole] = useState<Role>(account?.role ?? Role.CASHIER);
   const [title, setTitle] = useState(account?.title ?? "");
   const [locationId, setLocationId] = useState(account?.locationId ?? "");
+  const [pin, setPin] = useState("");
+  const [removePin, setRemovePin] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -40,8 +42,13 @@ export function UserAccountModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (pin && !/^\d{4,6}$/.test(pin)) {
+      setError("PIN — от 4 до 6 цифр");
+      return;
+    }
     setIsSubmitting(true);
     try {
+      let savedId = account?.id;
       if (account) {
         await api.users.update(account.id, {
           fullName,
@@ -52,7 +59,7 @@ export function UserAccountModal({
           password: password || undefined,
         });
       } else {
-        await api.users.create({
+        const created = await api.users.create({
           fullName,
           email,
           password,
@@ -60,7 +67,11 @@ export function UserAccountModal({
           title: title || undefined,
           locationId: needsLocation ? locationId : undefined,
         });
+        savedId = created.id;
       }
+      // The till PIN is its own request: it is checked for uniqueness on its own.
+      if (savedId && pin) await api.users.setPin(savedId, pin);
+      else if (savedId && removePin) await api.users.setPin(savedId, null);
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось сохранить сотрудника");
@@ -161,6 +172,33 @@ export function UserAccountModal({
             Если указано, показывается вместо названия роли в правом верхнем углу — на права
             доступа не влияет, их по-прежнему определяет роль
           </p>
+        </div>
+
+        <div className="mb-4">
+          <label className="mb-1.5 block text-sm font-medium text-foreground">
+            PIN для кассы <span className="text-muted">(4–6 цифр)</span>
+          </label>
+          <div className="flex items-center gap-2">
+            <input
+              type="password"
+              inputMode="numeric"
+              autoComplete="new-password"
+              maxLength={6}
+              value={pin}
+              onChange={(e) => {
+                setPin(e.target.value.replace(/\D/g, ""));
+                setRemovePin(false);
+              }}
+              placeholder={account?.hasPin ? "PIN задан — введите новый, чтобы сменить" : "Не задан"}
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+            {account?.hasPin && (
+              <label className="flex shrink-0 items-center gap-1.5 text-sm text-muted">
+                <input type="checkbox" checked={removePin} onChange={(e) => { setRemovePin(e.target.checked); if (e.target.checked) setPin(""); }} />
+                Убрать
+              </label>
+            )}
+          </div>
         </div>
 
         {error && (

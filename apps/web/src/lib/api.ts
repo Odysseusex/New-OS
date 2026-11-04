@@ -255,6 +255,8 @@ import type {
   ProductionOutputReportDto,
   ProductionUnitCostTrendDto,
   ReferenceCell,
+  TillApprovalRequestDto,
+  TillApprovalDto,
   TillShiftStateDto,
   TillShiftDto,
   TillShiftDetailDto,
@@ -311,6 +313,10 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   me: () => request<LoginResponseDto["user"]>("/auth/me"),
+  tillPin: {
+    login: (pin: string) => request<LoginResponseDto>("/auth/pin-login", { method: "POST", body: JSON.stringify({ pin }) }),
+    approve: (dto: TillApprovalRequestDto) => request<TillApprovalDto>("/auth/till-approval", { method: "POST", body: JSON.stringify(dto) }),
+  },
   crm: {
     today: () => request<CrmTodayDto>("/crm/today"),
     recordContact: (dto: CreateCrmContactRequestDto) => request<CrmContactDto>("/crm/contacts", { method: "POST", body: JSON.stringify(dto) }),
@@ -440,6 +446,8 @@ export const api = {
     detail: (id: string) => request<TillShiftDetailDto>(`/till-shifts/${id}`),
     setRequired: (required: boolean) =>
       request<{ required: boolean }>("/till-shifts/required", { method: "PUT", body: JSON.stringify({ required }) }),
+    setLineRemovalApproval: (required: boolean) =>
+      request<{ required: boolean }>("/till-shifts/line-removal-approval", { method: "PUT", body: JSON.stringify({ required }) }),
   },
 
   referenceData: {
@@ -960,6 +968,7 @@ export const api = {
   },
 
   users: {
+    setPin: (id: string, pin: string | null) => request<UserAccountDto>(`/users/${id}/pin`, { method: "PUT", body: JSON.stringify({ pin }) }),
     list: (includeArchived?: boolean) =>
       request<UserAccountDto[]>(withQuery("/users", { includeArchived: includeArchived ? "true" : undefined })),
     create: (dto: CreateUserAccountRequestDto) =>

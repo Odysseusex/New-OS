@@ -109,6 +109,12 @@ export class TillShiftsController {
     return this.service.setRequired(user, dto.required);
   }
 
+  @Put("line-removal-approval")
+  @Roles(...TILL_SHIFT_SETTINGS_ROLES)
+  setLineRemovalApproval(@CurrentUser() user: AuthenticatedUser, @Body() dto: TillShiftRequiredDto) {
+    return this.service.setLineRemovalApproval(user, dto.required);
+  }
+
   // A shift's report: the cashier's own point, or any for the history roles.
   @Get(":id")
   @Roles(...TILL_SHIFT_ROLES, ...TILL_SHIFT_HISTORY_ROLES)

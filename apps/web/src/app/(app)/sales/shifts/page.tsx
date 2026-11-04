@@ -28,6 +28,7 @@ export default function TillShiftsPage() {
   const [shifts, setShifts] = useState<TillShiftDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [required, setRequired] = useState<boolean | null>(null);
+  const [lineApproval, setLineApproval] = useState(false);
   const [detail, setDetail] = useState<TillShiftDetailDto | null>(null);
 
   useEffect(() => {
@@ -47,7 +48,13 @@ export default function TillShiftsPage() {
   useEffect(() => {
     const loc = locationId || user?.locationId || locations[0]?.id;
     if (!loc || !canView) return;
-    api.tillShifts.current(loc).then((s) => setRequired(s.required)).catch(() => {});
+    api.tillShifts
+      .current(loc)
+      .then((s) => {
+        setRequired(s.required);
+        setLineApproval(s.lineRemovalApproval);
+      })
+      .catch(() => {});
   }, [locationId, locations, user, canView]);
 
   if (!canView) return <p className="text-sm text-muted">Нет доступа</p>;
@@ -74,21 +81,36 @@ export default function TillShiftsPage() {
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-foreground">Кассовые смены</h1>
         {canSwitch && required !== null && (
-          <label className="flex items-center gap-2 text-sm text-foreground">
-            <input
-              type="checkbox"
-              checked={required}
-              onChange={async (e) => {
-                const next = e.target.checked;
-                try {
-                  setRequired((await api.tillShifts.setRequired(next)).required);
-                } catch (err) {
-                  setError(err instanceof ApiError ? err.message : "Не удалось сохранить");
-                }
-              }}
-            />
-            Продажа на кассе только в открытой смене
-          </label>
+          <div className="flex flex-col gap-1.5">
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={required}
+                onChange={async (e) => {
+                  try {
+                    setRequired((await api.tillShifts.setRequired(e.target.checked)).required);
+                  } catch (err) {
+                    setError(err instanceof ApiError ? err.message : "Не удалось сохранить");
+                  }
+                }}
+              />
+              Продажа на кассе только в открытой смене
+            </label>
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={lineApproval}
+                onChange={async (e) => {
+                  try {
+                    setLineApproval((await api.tillShifts.setLineRemovalApproval(e.target.checked)).required);
+                  } catch (err) {
+                    setError(err instanceof ApiError ? err.message : "Не удалось сохранить");
+                  }
+                }}
+              />
+              Удаление позиции из чека — только с PIN старшего кассира
+            </label>
+          </div>
         )}
       </div>
 
