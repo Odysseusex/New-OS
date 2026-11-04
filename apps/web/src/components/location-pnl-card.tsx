@@ -54,7 +54,8 @@ export function LocationPnlCard({ period, reloadKey }: { period: PeriodValue; re
   }, [range, reloadKey]);
 
   const columns = data ? [...data.columns.map((c) => ({ key: c.locationId ?? "rest", label: c.locationName, f: c.figures })), { key: "total", label: "Итого", f: data.total }] : [];
-  const show = (line: Line, v: number | null) => (v === null ? "не настроен" : line.percent ? `${v.toFixed(1)}%` : formatMoney(v));
+  // A percent without revenue is just empty; only the income tax can be «не настроен».
+  const show = (line: Line, v: number | null) => (v === null ? (line.percent ? "—" : "не настроен") : line.percent ? `${v.toFixed(1)}%` : formatMoney(v));
 
   function exportExcel() {
     if (!data) return;

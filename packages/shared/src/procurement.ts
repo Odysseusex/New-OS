@@ -81,6 +81,9 @@ export interface PurchaseOrderDto {
   totalCost: number;
   orderedAt: string;
   receivedAt: string | null;
+  // The supplier's own document number and a comment (null = not stated).
+  supplierDocNumber: string | null;
+  note: string | null;
   createdByName: string;
   items: PurchaseOrderItemDto[];
   // What was actually delivered, valued at delivered costs (null until received).
@@ -128,6 +131,10 @@ export interface ReceivePurchaseOrderItemRequestDto {
 
 export interface ReceivePurchaseOrderRequestDto {
   items?: ReceivePurchaseOrderItemRequestDto[];
+  supplierDocNumber?: string;
+  note?: string;
+  // «Оплачено сразу»: pay what the delivery came to from this account right after receiving.
+  payNow?: { accountId: string };
 }
 
 export interface RecordPurchaseOrderPaymentRequestDto {
@@ -213,6 +220,8 @@ export interface CreatePurchaseOrderItemRequestDto {
 export interface CreatePurchaseOrderRequestDto {
   supplierId: string;
   locationId?: string;
+  supplierDocNumber?: string;
+  note?: string;
   items: CreatePurchaseOrderItemRequestDto[];
 }
 

@@ -161,6 +161,8 @@ export function PurchaseOrderDocumentModal({
           <Field label="Точка" value={doc.locationName} />
           <Field label="Дата заказа" value={formatDateTime(doc.orderedAt)} />
           <Field label="Дата приёмки" value={doc.receivedAt ? formatDateTime(doc.receivedAt) : "—"} />
+          {doc.supplierDocNumber && <Field label="№ документа поставщика" value={doc.supplierDocNumber} />}
+          {doc.note && <Field label="Комментарий" value={doc.note} />}
         </div>
 
         <div className="overflow-x-auto rounded-xl border border-border">

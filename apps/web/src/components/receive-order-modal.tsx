@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import type { PurchaseOrderDto } from "@bakery-os/shared";
+import { useEffect, useState } from "react";
+import type { CashAccountDto, PurchaseOrderDto } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
 import { formatMoney, formatQuantity } from "@/lib/format";
@@ -16,13 +16,30 @@ const inputClass =
 // user actually changed is sent, so "as ordered" stays "as ordered".
 export function ReceiveOrderModal({
   order,
+  canPayNow = false,
   onClose,
   onDone,
 }: {
   order: PurchaseOrderDto;
+  // The purchasing cutover is on and this user may pay suppliers.
+  canPayNow?: boolean;
   onClose: () => void;
   onDone: () => void;
 }) {
+  const [docNumber, setDocNumber] = useState(order.supplierDocNumber ?? "");
+  const [payNow, setPayNow] = useState(false);
+  const [accountId, setAccountId] = useState("");
+  const [accounts, setAccounts] = useState<CashAccountDto[]>([]);
+  useEffect(() => {
+    if (!canPayNow) return;
+    api.finance.accounts
+      .list()
+      .then((list) => {
+        setAccounts(list);
+        setAccountId((cur) => cur || (list.find((a) => a.isDefault) ?? list[0])?.id || "");
+      })
+      .catch(() => {});
+  }, [canPayNow]);
   const [rows, setRows] = useState(
     order.items.map((i) => ({ id: i.id, quantity: String(i.quantity), unitCost: String(i.unitCost) })),
   );
@@ -49,7 +66,11 @@ export function ReceiveOrderModal({
           };
         })
         .filter((i) => i.quantity !== undefined || i.unitCost !== undefined);
-      await api.procurement.receiveOrder(order.id, { items });
+      await api.procurement.receiveOrder(order.id, {
+        items,
+        supplierDocNumber: docNumber.trim() !== (order.supplierDocNumber ?? "") ? docNumber.trim() : undefined,
+        payNow: canPayNow && payNow && accountId ? { accountId } : undefined,
+      });
       onDone();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось принять заказ");
@@ -99,6 +120,27 @@ export function ReceiveOrderModal({
             ))}
           </tbody>
         </table>
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-foreground">№ документа поставщика</span>
+          <input value={docNumber} onChange={(e) => setDocNumber(e.target.value)} className={inputClass.replace("w-28", "w-full").replace("text-right", "")} />
+        </label>
+        {canPayNow && (
+          <div className="flex flex-wrap items-center gap-3 rounded-xl bg-surface-muted px-4 py-3 text-sm">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={payNow} onChange={(e) => setPayNow(e.target.checked)} className="h-4 w-4 accent-accent" />
+              <span className="text-foreground">Оплачено сразу</span>
+            </label>
+            {payNow && (
+              <select value={accountId} onChange={(e) => setAccountId(e.target.value)} className={inputClass.replace("w-28", "w-56").replace("text-right", "")}>
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        )}
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted">Итого по факту</span>
           <span className="font-semibold text-foreground">{formatMoney(Number.isFinite(total) ? total : 0)}</span>

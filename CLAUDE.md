@@ -886,6 +886,36 @@ unit cost by Almaty month (12, zero-filled, recharts line). The financiers' acce
   TRANSFER_IN pair per line with `StockMovement.materialRequisitionId`, same cost stamp on both legs (like a route
   delivery) — no money, events or ledger. Numbered per organization; audited `materialRequisition.*`. Printable.
 
+## ТЗ remainder (04.11.2026) — dashboard, ДДС filters, ОПиУ by points, balance inventory split, transfers, act of output, PO fields
+
+- **Дашборд** (ТЗ §8.4): `GET /dashboard/finance?locationId` (FINANCE_VIEW_ROLES, `dashboard/dashboard-finance.service.ts`) —
+  выручка / валовая прибыль / маржа today, last 7 days, calendar month (each straight from `getProfitAndLoss`), money on
+  accounts (with a point: its own accounts + its non-cash account), receivables/payables from the debts reports, own
+  finished goods on STORE shelves at cost and at the point's price, top-5 of the month. Point filter on the page;
+  `/dashboard/summary` takes `locationId` too. Other roles keep the revenue-only cards.
+- **ДДС by point / account** (ТЗ §6.3): `locationId` / `accountId` on every `/finance/cash-flow*` endpoint.
+  `events/cash-scope.ts` filters CASH LEGS: an account keeps only its legs (a transfer stays as its internal movement, so
+  closing = the account's balance and it reconciles); a point keeps movements whose document (sale, return, expense,
+  supplier order) is at that point, else whose account is tied to it — no reconciliation for a point (shared accounts).
+  A scoped request is always live (the frozen snapshot is the network's).
+- **ОПиУ по точкам** (ТЗ §8.2): `GET /finance/pnl/locations` → one `getProfitAndLoss(…, locationId, { ownExpensesOnly })`
+  per active point + the network total; whatever no point has (expenses with no point, depreciation, cost correction)
+  is ONE column «Не отнесено к точкам», so the columns add up to «Итого» (spec). The ordinary single-point P&L still
+  includes company-wide expenses (unchanged). Card `location-pnl-card.tsx` under the ladder when no point is filtered.
+- **Баланс**: «Запасы» carries `breakdown` (сырьё на складе / незавершённое производство = сырьё в цехе, i.e. at a
+  BAKERY_PRODUCTION point / готовая продукция) — `BalanceService.inventoryAt`, each product valued exactly as before and
+  shared by where its quantity lies, so the total never changes (presentation only).
+- **Склад → «Перемещение»** (ТЗ §3.3): the SAME document as the требование-накладная, `MaterialRequisition.kind = TRANSFER`
+  (migration `20261116120000`, numbering per kind), `POST /inventory/transfers` (INVENTORY_MANAGE_ROLES) creates and posts
+  at once (a failed post deletes the draft); finished goods allowed; reason «Перемещение №n»; audited `stockTransfer.*`.
+- **Выпуск**: `CompleteBatchDto.outputLocationId` puts the output straight into another point (PRODUCTION_OUTPUT movement
+  there, reason «… → точка»); everything else about the batch stays at its own point. «Акт выпуска»
+  (`GET /production/batches/:id/document`, link on a completed batch): per ingredient norm / fact / stamped price / sum /
+  deviation, batch cost (the norm, D1) and unit cost, «Прочее» = untracked ingredients; printable.
+- **Заказ поставщику** (migration `20261117120000`): `supplierDocNumber` + `note` (at creation or receipt);
+  `receive({ payNow: { accountId } })` = «Оплачено сразу»: checked first (SUPPLIER_PAYMENT_ROLES, cutover on, account),
+  then the receipt, then `recordPayment` of the balance due (note «Оплачено при приёмке»).
+
 ## Baker's calculator (расчёт техкарты на количество) — built
 
 Производство → a calculator icon on every active recipe card and on every task row (task opens at its

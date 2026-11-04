@@ -355,7 +355,7 @@ export class FinanceService {
     const locations = await this.prisma.location.findMany({ where: { organizationId, isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } });
     const [total, ...perPoint] = await Promise.all([
       this.getProfitAndLoss(organizationId, from, to),
-      ...locations.map((l) => this.getProfitAndLoss(organizationId, from, to, l.id)),
+      ...locations.map((l) => this.getProfitAndLoss(organizationId, from, to, l.id, { ownExpensesOnly: true })),
     ]);
     const pick = (p: ProfitAndLossDto): PnlFiguresDto => ({
       grossRevenue: p.grossRevenue,
@@ -401,6 +401,9 @@ export class FinanceService {
     from: Date,
     to: Date,
     locationId?: string,
+    // A point's P&L normally carries the company-wide expenses too (no point on
+    // them); «ОПиУ по точкам» asks for the point's own only, so the columns add up.
+    options: { ownExpensesOnly?: boolean } = {},
   ): Promise<ProfitAndLossDto> {
     const [sales, returns, movements, currentCosts, expenses] = await Promise.all([
       this.prisma.sale.findMany({
@@ -446,7 +449,7 @@ export class FinanceService {
           organizationId,
           status: ExpenseStatus.CONFIRMED,
           incurredOn: { gte: from, lte: to },
-          ...(locationId ? { OR: [{ locationId }, { locationId: null }] } : {}),
+          ...(locationId ? (options.ownExpensesOnly ? { locationId } : { OR: [{ locationId }, { locationId: null }] }) : {}),
         },
         include: { categoryRef: true },
       }),

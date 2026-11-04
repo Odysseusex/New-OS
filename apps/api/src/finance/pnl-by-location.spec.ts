@@ -27,12 +27,19 @@ afterAll(async () => {
 });
 
 it("columns per point add up to the network total", async () => {
+  // Rent of the shop is the shop's; an office expense with no point is «Не отнесено к точкам».
+  await prisma.expense.create({ data: { organizationId: org.organizationId, locationId: org.storeId, amount: 300, createdById: org.user.id } });
+  await prisma.expense.create({ data: { organizationId: org.organizationId, amount: 700, createdById: org.user.id } });
   const r = await services.finance.getPnlByLocation(org.organizationId, new Date(Date.now() - 3_600_000), new Date());
   const store = r.columns.find((c) => c.locationId === org.storeId)!;
   const warehouse = r.columns.find((c) => c.locationId === org.warehouseId)!;
   expect(store.figures.netRevenue).toBe(1500);
   expect(warehouse.figures.netRevenue).toBe(500);
   expect(r.total.netRevenue).toBe(2000);
+  expect(store.figures.expensesTotal).toBe(300);
+  expect(warehouse.figures.expensesTotal).toBe(0);
+  expect(r.columns.find((c) => c.locationId === null)?.figures.expensesTotal).toBe(700);
+  expect(r.total.expensesTotal).toBe(1000);
   for (const key of ["netRevenue", "cogs", "grossProfit", "operatingProfit", "netProfit"] as const) {
     expect(r.columns.reduce((s, c) => s + c.figures[key], 0)).toBeCloseTo(r.total[key], 2);
   }

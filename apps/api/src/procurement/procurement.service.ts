@@ -1,7 +1,8 @@
 import { recordRawMaterialPurchase, revisePurchaseAverage } from "../costing/raw-material-average";
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import {
+  SUPPLIER_PAYMENT_ROLES,
   CostBasis,
   BusinessContextPurchaseSupplierRowDto,
   BusinessContextPurchaseProductRowDto,
@@ -242,6 +243,8 @@ export class ProcurementService {
         supplierId: dto.supplierId,
         locationId,
         totalCost,
+        supplierDocNumber: dto.supplierDocNumber?.trim() || null,
+        note: dto.note?.trim() || null,
         createdById: user.id,
         items: { create: items },
       },
@@ -255,6 +258,19 @@ export class ProcurementService {
   // goods and the debt for them appear together, at the delivered quantity and
   // cost (the ordered values unless actuals are given).
   async receive(user: AuthenticatedUser, orderId: string, dto: ReceivePurchaseOrderRequestDto = {}): Promise<PurchaseOrderDto> {
+    // «Оплачено сразу» (ТЗ §3.1): checked before anything moves, then paid right after the receipt.
+    if (dto.payNow) {
+      if (!SUPPLIER_PAYMENT_ROLES.includes(user.role)) throw new ForbiddenException("Оплату поставщику может записать только финансовая роль");
+      if (!(await this.cutoverAt(user.organizationId))) throw new BadRequestException("Оплаты поставщикам ведутся после включения учёта закупок");
+      const account = await this.prisma.cashAccount.findFirst({ where: { id: dto.payNow.accountId, organizationId: user.organizationId, isActive: true } });
+      if (!account) throw new NotFoundException("Счёт не найден");
+    }
+    const received = await this.receiveGoods(user, orderId, dto);
+    if (!dto.payNow || !(received.balanceDue > 0)) return received;
+    return this.recordPayment(user, orderId, { accountId: dto.payNow.accountId, amount: received.balanceDue, note: "Оплачено при приёмке" });
+  }
+
+  private async receiveGoods(user: AuthenticatedUser, orderId: string, dto: ReceivePurchaseOrderRequestDto): Promise<PurchaseOrderDto> {
     return this.prisma.$transaction(async (tx) => {
       const existing = await tx.purchaseOrder.findFirst({ where: { id: orderId, organizationId: user.organizationId } });
       if (!existing) {
@@ -267,7 +283,12 @@ export class ProcurementService {
       const receivedAt = new Date();
       const flipped = await tx.purchaseOrder.updateMany({
         where: { id: orderId, status: PrismaPurchaseOrderStatus.PLACED },
-        data: { status: PrismaPurchaseOrderStatus.RECEIVED, receivedAt },
+        data: {
+          status: PrismaPurchaseOrderStatus.RECEIVED,
+          receivedAt,
+          ...(dto.supplierDocNumber !== undefined ? { supplierDocNumber: dto.supplierDocNumber.trim() || null } : {}),
+          ...(dto.note !== undefined ? { note: dto.note.trim() || null } : {}),
+        },
       });
       if (flipped.count !== 1) {
         throw new BadRequestException("Заказ уже обработан");
@@ -1152,6 +1173,8 @@ export class ProcurementService {
       receivedTotal: { toNumber: () => number } | null;
       orderedAt: Date;
       receivedAt: Date | null;
+      supplierDocNumber?: string | null;
+      note?: string | null;
       createdBy: { fullName: string };
       items: {
         id: string;
@@ -1198,6 +1221,8 @@ export class ProcurementService {
       totalCost: order.totalCost.toNumber(),
       orderedAt: order.orderedAt.toISOString(),
       receivedAt: order.receivedAt ? order.receivedAt.toISOString() : null,
+      supplierDocNumber: order.supplierDocNumber ?? null,
+      note: order.note ?? null,
       createdByName: order.createdBy.fullName,
       receivedTotal: order.receivedTotal ? order.receivedTotal.toNumber() : null,
       payableRecognized: recognized,

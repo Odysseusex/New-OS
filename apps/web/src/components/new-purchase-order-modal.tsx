@@ -40,6 +40,8 @@ export function NewPurchaseOrderModal({
   const [rows, setRows] = useState<Row[]>([emptyRow()]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [docNumber, setDocNumber] = useState("");
+  const [note, setNote] = useState("");
 
   // suppliers/locations/products can still be loading when this modal opens,
   // so the first render may have nothing to default to. Backfill once the
@@ -92,6 +94,8 @@ export function NewPurchaseOrderModal({
       await api.procurement.createOrder({
         supplierId,
         locationId: fixedLocationId ?? locationId,
+        supplierDocNumber: docNumber.trim() || undefined,
+        note: note.trim() || undefined,
         items: lines.map((r) => ({
           productId: r.productId,
           quantity: Number(r.quantity),
@@ -193,6 +197,29 @@ export function NewPurchaseOrderModal({
               </button>
             </div>
           ))}
+        </div>
+
+        <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="text-sm">
+            <span className="mb-1.5 block font-medium text-foreground">
+              № документа поставщика <span className="text-muted">(необязательно)</span>
+            </span>
+            <input
+              value={docNumber}
+              onChange={(e) => setDocNumber(e.target.value)}
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+          </label>
+          <label className="text-sm">
+            <span className="mb-1.5 block font-medium text-foreground">
+              Комментарий <span className="text-muted">(необязательно)</span>
+            </span>
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+          </label>
         </div>
 
         <div className="mb-5 flex items-center justify-between rounded-xl bg-surface-muted px-4 py-3">

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Banknote, Building2, Clock, Croissant, HandCoins, MapPin, Receipt, Sparkles, TrendingUp, Users, Wallet } from "lucide-react";
+import { AlertTriangle, Banknote, Building2, Croissant, HandCoins, MapPin, Receipt, Sparkles, TrendingUp, Users, Wallet } from "lucide-react";
 import type { DashboardFinanceDto, DashboardPeriodFiguresDto, DashboardSummaryDto, LocationDto } from "@bakery-os/shared";
 import { FINANCE_VIEW_ROLES, LOCATION_TYPE_LABELS_RU, ORG_WIDE_ROLES } from "@bakery-os/shared";
 import { api } from "@/lib/api";

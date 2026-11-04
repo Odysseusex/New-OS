@@ -17,6 +17,7 @@ import {
   PURCHASE_ORDER_STATUS_LABELS_RU,
   PurchaseOrderStatus,
   SUPPLIER_MANAGE_ROLES,
+  SUPPLIER_PAYMENT_ROLES,
 } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -522,6 +523,7 @@ export default function ProcurementPage() {
       {receiving && (
         <ReceiveOrderModal
           order={receiving}
+          canPayNow={!!workflow?.activated && !!user && SUPPLIER_PAYMENT_ROLES.includes(user.role)}
           onClose={() => setReceiving(null)}
           onDone={() => {
             setReceiving(null);
