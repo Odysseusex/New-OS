@@ -1028,6 +1028,12 @@ index; a closed shift cannot be updated — trigger).
   in the window. Expected cash = opening count + cash sales − cash refunds + those movements.
 - **Внесение / выемка = an ordinary transfer** between the drawer (the point's CASH account, default first) and another own
   account chosen by the cashier (`CashMovementsService.transfer`, reason «Выемка (смена №n): …») — no new accounting rule.
+- **Blind count for the till's own staff** (owner's decision, 04.11.2026 — a cashier saw «По учёту в кассе: 4 357 195»):
+  for `TILL_ROLES` (cashier, senior cashier) the SERVER withholds the drawer's book balance, «Должно быть в кассе», the
+  cash takings/refunds, total revenue (it would give the cash back), the CASH tender row, `bookCashAtOpen` and the
+  difference (`blindShift`/`blindReport` in `till-shifts.service.ts`, `TillShiftReportDto.blind`). They see checks,
+  card/transfer/Kaspi QR, the opening count they typed and their own внесения/выемки, and close by typing the count.
+  Managers see everything in Продажи → «Смены» (stored figures are unchanged).
 - Closing stores the Z-report JSON, expected, counted and the difference; **it moves nothing** (an adjustment of stock or
   cash stays «Сверка дня»'s / Банк и касса's job). Audited `tillShift.open/close/setRequired`.
 - **PIN + «Старший кассир»** (migration `20261113120000`, `auth/till-pin.ts`): `Role.SENIOR_CASHIER` (till like a

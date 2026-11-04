@@ -198,7 +198,7 @@ export default function TillShiftsPage() {
           <table className="w-full text-sm">
             <tbody className="divide-y divide-border">
               <Row label="Чеков" value={String(detail.report.checks)} />
-              <Row label="Выручка" value={formatMoney(detail.report.revenue)} bold />
+              {detail.report.revenue !== null && <Row label="Выручка" value={formatMoney(detail.report.revenue)} bold />}
               {detail.report.tenders.map((t) => (
                 <Row
                   key={t.method}
@@ -210,7 +210,7 @@ export default function TillShiftsPage() {
               {detail.report.cashMoves.map((m, i) => (
                 <Row key={i} label={`${m.amount > 0 ? "Внесение" : "Выемка"} · ${m.comment ?? ""}`} value={formatMoney(m.amount)} />
               ))}
-              <Row label="Должно быть в кассе" value={formatMoney(detail.report.expectedCash)} bold />
+              {detail.report.expectedCash !== null && <Row label="Должно быть в кассе" value={formatMoney(detail.report.expectedCash)} bold />}
               {detail.countedCash !== null && <Row label="Посчитано" value={formatMoney(detail.countedCash)} bold />}
               {detail.difference !== null && <Row label="Расхождение" value={formatMoney(detail.difference)} bold />}
               {detail.note && <Row label="Комментарий" value={detail.note} />}

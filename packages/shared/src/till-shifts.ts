@@ -24,19 +24,22 @@ export interface TillShiftCashMoveDto {
 // X-отчёт / Z-отчёт: the shift's figures, read from the point's sales, returns
 // and till movements inside the shift.
 export interface TillShiftReportDto {
+  // Set for the till's own staff (cashier, senior cashier): a blind count — every figure
+  // that would tell them what the drawer should hold is null, and the cash line is left out.
+  blind?: boolean;
   checks: number;
   returns: number;
-  revenue: number;
+  revenue: number | null;
   tenders: TillShiftTenderDto[];
   // Sold on credit (wholesale at the till), not money.
   onCredit: number;
   openingCash: number;
-  cashSales: number;
-  cashRefunds: number;
+  cashSales: number | null;
+  cashRefunds: number | null;
   // Every other movement of the till's cash in the shift: внесения, выемки, expenses paid from the till.
   cashMoves: TillShiftCashMoveDto[];
   cashMovesTotal: number;
-  expectedCash: number;
+  expectedCash: number | null;
 }
 
 export interface TillShiftDto {
@@ -48,7 +51,7 @@ export interface TillShiftDto {
   openedByName: string;
   openingCash: number;
   // What the till's cash accounts held in the books at the opening (shown when it differs from the count).
-  bookCashAtOpen: number;
+  bookCashAtOpen: number | null;
   closedAt: string | null;
   closedByName: string | null;
   countedCash: number | null;
@@ -66,7 +69,8 @@ export interface TillShiftStateDto {
   shift: TillShiftDto | null;
   report: TillShiftReportDto | null;
   // The point's cash account (the drawer); null = none, so no shift can be opened.
-  tillAccount: { id: string; name: string; balance: number } | null;
+  // `balance` is null for the till's own staff (blind count).
+  tillAccount: { id: string; name: string; balance: number | null } | null;
   otherAccounts: { id: string; name: string }[];
   nextNumber: number;
 }

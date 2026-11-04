@@ -11,6 +11,8 @@ import {
   TillShiftDto,
   TillShiftReportDto,
   TillShiftStateDto,
+  Role,
+  TILL_ROLES,
 } from "@bakery-os/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuthenticatedUser } from "../auth/auth.types";
@@ -51,9 +53,9 @@ export class TillShiftsService {
     return {
       required: org.tillShiftsRequired,
       lineRemovalApproval: org.tillLineRemovalApproval,
-      shift: shift ? await this.toDto(shift) : null,
-      report: shift ? await this.report(shift, new Date()) : null,
-      tillAccount: till ? { id: till.id, name: till.name, balance: till.currentBalance.toNumber() } : null,
+      shift: shift ? blindShift(user, await this.toDto(shift)) : null,
+      report: shift ? blindReport(user, await this.report(shift, new Date())) : null,
+      tillAccount: till ? { id: till.id, name: till.name, balance: isBlindTill(user) ? null : till.currentBalance.toNumber() } : null,
       otherAccounts: accounts.filter((a) => a.id !== till?.id).map((a) => ({ id: a.id, name: a.name })),
       nextNumber: (last?.number ?? 0) + 1,
     };
@@ -111,7 +113,7 @@ export class TillShiftsService {
       amount: round2(dto.amount),
       reason: `${label} (смена №${shift.number}): ${comment}`,
     });
-    return this.report(shift, new Date());
+    return blindReport(user, await this.report(shift, new Date()));
   }
 
   async close(user: AuthenticatedUser, shiftId: string, dto: CloseTillShiftRequestDto): Promise<TillShiftDetailDto> {
@@ -146,7 +148,7 @@ export class TillShiftsService {
       });
       return tx.tillShift.findUniqueOrThrow({ where: { id: shift.id } });
     });
-    return { ...(await this.toDto(updated)), report };
+    return { ...blindShift(user, await this.toDto(updated)), report: blindReport(user, report) };
   }
 
   async list(user: AuthenticatedUser, requestedLocationId: string | undefined, from: Date, to: Date): Promise<TillShiftDto[]> {
@@ -162,7 +164,7 @@ export class TillShiftsService {
     if (!shift) throw new NotFoundException("Смена не найдена");
     requireLocationScope(user, shift.locationId);
     const report = shift.closedAt && shift.report ? (shift.report as unknown as TillShiftReportDto) : await this.report(shift, new Date());
-    return { ...(await this.toDto(shift)), report };
+    return { ...blindShift(user, await this.toDto(shift)), report: blindReport(user, report) };
   }
 
   async setRequired(user: AuthenticatedUser, required: boolean): Promise<{ required: boolean }> {
@@ -293,4 +295,31 @@ export class TillShiftsService {
       note: s.note,
     };
   }
+}
+
+// Blind count (owner's decision): the people at the till never see what the books say
+// the drawer holds — not the account balance, not «должно быть в кассе», not the cash
+// takings or the difference at the close. They count and type what they counted; the
+// comparison is for managers (Продажи → Смены). Withheld here, not only on the screen.
+function isBlindTill(user: AuthenticatedUser): boolean {
+  return TILL_ROLES.includes(user.role as Role);
+}
+
+function blindShift<T extends TillShiftDto>(user: AuthenticatedUser, shift: T): T {
+  if (!isBlindTill(user)) return shift;
+  return { ...shift, bookCashAtOpen: null, expectedCash: null, difference: null };
+}
+
+function blindReport(user: AuthenticatedUser, report: TillShiftReportDto): TillShiftReportDto {
+  if (!isBlindTill(user)) return report;
+  return {
+    ...report,
+    blind: true,
+    // Revenue less card/transfer would give the cash back, so it goes too.
+    revenue: null,
+    tenders: report.tenders.filter((t) => t.method !== "CASH"),
+    cashSales: null,
+    cashRefunds: null,
+    expectedCash: null,
+  };
 }

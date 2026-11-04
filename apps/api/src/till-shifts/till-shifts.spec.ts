@@ -46,6 +46,9 @@ describe("till shift", () => {
     const before = await shifts.state(cashier, undefined);
     expect(before).toMatchObject({ required: false, shift: null, nextNumber: 1 });
     expect(before.tillAccount?.id).toBe(org.cashAccountId);
+    // Blind count: the cashier is never told what the books say the drawer holds; a manager is.
+    expect(before.tillAccount?.balance).toBeNull();
+    expect((await shifts.state(org.user, org.storeId)).tillAccount?.balance).toEqual(expect.any(Number));
     expect(before.otherAccounts.map((a) => a.id)).toContain(safeId);
 
     await shifts.setRequired(org.user, true);
@@ -64,11 +67,16 @@ describe("till shift", () => {
       ],
       PaymentMethod.TRANSFER,
     );
-    const x = (await shifts.state(cashier, undefined)).report!;
+    const blind = (await shifts.state(cashier, undefined)).report!;
+    expect(blind).toMatchObject({ blind: true, checks: 1, revenue: null, cashSales: null, expectedCash: null });
+    expect(blind.tenders.map((t) => t.method)).not.toContain(PaymentMethod.CASH);
+    const x = (await shifts.state(org.user, org.storeId)).report!;
     expect(x).toMatchObject({ checks: 1, revenue: 3000, cashSales: 0, expectedCash: 20000 });
     expect(x.tenders.find((t) => t.method === PaymentMethod.TRANSFER)).toMatchObject({ sales: 3000, refunds: 0 });
 
-    const z = await shifts.close(cashier, shift.id, { countedCash: 20000 });
+    const zBlind = await shifts.close(cashier, shift.id, { countedCash: 20000 });
+    expect(zBlind).toMatchObject({ expectedCash: null, countedCash: 20000, difference: null, bookCashAtOpen: null });
+    const z = await shifts.detail(org.user, shift.id);
     expect(z).toMatchObject({ expectedCash: 20000, countedCash: 20000, difference: 0 });
     expect(z.report.tenders.find((t) => t.method === PaymentMethod.TRANSFER)!.sales).toBe(3000);
     await expect(shifts.close(cashier, shift.id, { countedCash: 1 })).rejects.toThrow(/закрыта/);
@@ -89,11 +97,13 @@ describe("till shift", () => {
       [5000, "Сейф", "Размен"],
       [-10000, "Сейф", "Инкассация в сейф"],
     ]);
+    expect(x.expectedCash).toBeNull(); // the cashier's own view stays blind
     // 20 000 + 2 400 + 5 000 − 10 000
-    expect(x.expectedCash).toBe(17400);
+    expect((await shifts.detail(org.user, shift.id)).report.expectedCash).toBe(17400);
     expect((await prisma.cashAccount.findUniqueOrThrow({ where: { id: safeId } })).currentBalance.toNumber()).toBe(105000);
 
-    const z = await shifts.close(cashier, shift.id, { countedCash: 17000, note: "Не хватает 400" });
+    await shifts.close(cashier, shift.id, { countedCash: 17000, note: "Не хватает 400" });
+    const z = await shifts.detail(org.user, shift.id);
     expect(z).toMatchObject({ expectedCash: 17400, countedCash: 17000, difference: -400, note: "Не хватает 400" });
     const history = await shifts.list(org.user, org.storeId, new Date(Date.now() - 3600_000), new Date());
     expect(history.map((s) => [s.number, s.difference])).toEqual([

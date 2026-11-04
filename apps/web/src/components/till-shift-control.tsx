@@ -128,7 +128,9 @@ function ShiftModal({
       <Modal title={`Z-отчёт · смена №${closed.number}`} onClose={onClose} width="max-w-xl">
         <ReportView shift={closed} report={closed.report} />
         <ResultLine label="Посчитано в кассе" value={closed.countedCash ?? 0} />
-        <ResultLine label="Расхождение" value={closed.difference ?? 0} tone={closed.difference ? (closed.difference < 0 ? "text-red-700" : "text-emerald-700") : undefined} />
+        {closed.difference !== null && (
+          <ResultLine label="Расхождение" value={closed.difference} tone={closed.difference ? (closed.difference < 0 ? "text-red-700" : "text-emerald-700") : undefined} />
+        )}
         <button onClick={() => printReport("Z-отчёт", closed, closed.report)} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted">
           <Printer className="h-4 w-4" strokeWidth={1.75} />
           Печать Z-отчёта
@@ -158,7 +160,9 @@ function ShiftModal({
           {!state.tillAccount && <p className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">У точки нет кассы наличных — создайте счёт «Касса» с этой точкой в Финансах</p>}
           <label className="mb-1.5 block text-sm font-medium text-foreground">Наличные в кассе, ₸</label>
           <input autoFocus inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className={input} />
-          {state.tillAccount && <p className="mt-1.5 text-xs text-muted">По учёту в кассе: {formatMoney(state.tillAccount.balance)}</p>}
+          {state.tillAccount && state.tillAccount.balance !== null && (
+            <p className="mt-1.5 text-xs text-muted">По учёту в кассе: {formatMoney(state.tillAccount.balance)}</p>
+          )}
           {error && <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
           <button type="submit" data-submit disabled={busy || !state.tillAccount} className="mt-4 w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-50">
             {busy ? "Открываем…" : "Открыть смену"}
@@ -168,7 +172,8 @@ function ShiftModal({
     );
   }
 
-  const expected = report?.expectedCash ?? 0;
+  // Null for the till's own staff: a blind count, nothing to compare against on screen.
+  const expected = report?.expectedCash ?? null;
   const counted = parse(amount);
 
   return (
@@ -236,10 +241,10 @@ function ShiftModal({
             });
           }}
         >
-          <ResultLine label="Должно быть в кассе" value={expected} />
+          {expected !== null && <ResultLine label="Должно быть в кассе" value={expected} />}
           <label className="mb-1.5 mt-3 block text-sm font-medium text-foreground">Посчитано наличных, ₸</label>
           <input autoFocus inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className={input} />
-          {amount.trim() !== "" && Number.isFinite(counted) && (
+          {expected !== null && amount.trim() !== "" && Number.isFinite(counted) && (
             <ResultLine
               label="Расхождение"
               value={Math.round((counted - expected) * 100) / 100}
@@ -285,8 +290,8 @@ function reportRows(report: TillShiftReportDto): [string, number | string, boole
   const rows: [string, number | string, boolean?][] = [
     ["Чеков", report.checks],
     ["Возвратов", report.returns],
-    ["Выручка", report.revenue, true],
   ];
+  if (report.revenue !== null) rows.push(["Выручка", report.revenue, true]);
   for (const t of report.tenders) {
     rows.push([PAYMENT_METHOD_LABELS_RU[t.method as PaymentMethod] ?? t.method, t.sales]);
     if (t.kaspiQr) rows.push(["  в т.ч. Kaspi QR", t.kaspiQr.sales]);
@@ -294,10 +299,10 @@ function reportRows(report: TillShiftReportDto): [string, number | string, boole
   }
   if (report.onCredit) rows.push(["В долг", report.onCredit]);
   rows.push(["Наличные на начало смены", report.openingCash, true]);
-  rows.push(["+ продажи наличными", report.cashSales]);
+  if (report.cashSales !== null) rows.push(["+ продажи наличными", report.cashSales]);
   if (report.cashRefunds) rows.push(["− возвраты наличными", -report.cashRefunds]);
   for (const m of report.cashMoves) rows.push([`${m.amount > 0 ? "Внесение" : "Выемка"} ${time(m.at)}${m.comment ? ` · ${m.comment}` : ""}${m.counterpart ? ` (${m.counterpart})` : ""}`, m.amount]);
-  rows.push(["Должно быть в кассе", report.expectedCash, true]);
+  if (report.expectedCash !== null) rows.push(["Должно быть в кассе", report.expectedCash, true]);
   return rows;
 }
 
@@ -328,7 +333,7 @@ function printReport(title: string, shift: TillShiftDto, report: TillShiftReport
   const rows = reportRows(report).map(([label, value, bold]) => [{ v: label, bold }, typeof value === "number" && !/^Чеков|^Возвратов/.test(label) ? { v: value, fmt: "money" as const, bold } : value]);
   if (shift.countedCash !== null) {
     rows.push([{ v: "Посчитано в кассе", bold: true }, { v: shift.countedCash, fmt: "money" as const, bold: true }]);
-    rows.push([{ v: "Расхождение", bold: true }, { v: shift.difference ?? 0, fmt: "money" as const, bold: true }]);
+    if (shift.difference !== null) rows.push([{ v: "Расхождение", bold: true }, { v: shift.difference, fmt: "money" as const, bold: true }]);
   }
   printSheets([
     {
