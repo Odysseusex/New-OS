@@ -954,7 +954,10 @@ periods/snapshots/cost corrections, journal, loyalty points entries, routes, HR 
 KEPT: products, prices, photos, categories, recipes + versions + stages, locations, users/PINs, customers, suppliers,
 loyalty members/consents/birthdays, finance categories, accounts, bank rules, promotions, CRM, planning, audit log.
 **Every table with `organizationId` must be listed as removed or kept** — `clean-start.spec.ts` fails otherwise; a new
-table needs a decision. Afterwards: stocktake per point, then Финансы → «Запустить» (accounts, debts) = the opening position.
+table needs a decision. Afterwards the opening stock goes in as Склад → «Приёмка» per point (raw materials first, WITH a
+unit price — that sets the moving average and the card price; then finished goods at recipe cost), NOT as a stocktake: a
+stocktake on zeroed stock books the whole shelf as a surplus = an inventory GAIN in the P&L, while a manual receipt is
+balance-only (`INVENTORY_GAIN` event with no P&L leg). Then Финансы → «Запустить» freezes stock/debts as the opening position.
 Verified on a full clone of the local database (cleared in ~130 ms, every page loads on the empty books).
 
 ## «Корректировка остатка» of a cash/bank account (built)

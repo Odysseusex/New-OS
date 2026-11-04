@@ -94,4 +94,7 @@ it("wipes the history, keeps recipes and the catalogue, and starts the money fro
   await services.inventory.receive(org.user, { locationId: org.storeId, productId: cakeId, quantity: 3 } as never);
   await services.sales.create(org.user, { locationId: org.storeId, paymentMethod: PaymentMethod.CASH, items: [{ productId: cakeId, quantity: 1, unitPrice: 1000 }] } as never);
   expect((await prisma.cashAccount.findUniqueOrThrow({ where: { id: org.cashAccountId } })).currentBalance.toNumber()).toBe(1000);
+  // The opening stock entered as a receipt is not a gain in the P&L (a stocktake surplus would be).
+  const pnl = await services.finance.getProfitAndLoss(org.organizationId, new Date(Date.now() - 60_000), new Date());
+  expect(pnl.inventoryLosses).toBe(0);
 });

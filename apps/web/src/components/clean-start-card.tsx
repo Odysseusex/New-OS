@@ -60,7 +60,7 @@ function CleanStartModal({ onClose }: { onClose: () => void }) {
       <Modal title="Учёт начат с чистого листа" onClose={() => window.location.reload()} width="max-w-lg">
         <p className="mb-3 text-sm text-foreground">Удалено {formatDateTime(done.at)}.</p>
         <ol className="list-decimal space-y-1.5 pl-5 text-sm text-foreground">
-          <li>Склад → «Инвентаризация» на каждой точке</li>
+          <li>Склад → «Приёмка» на каждой точке: сначала сырьё с ценой за единицу, затем готовая продукция</li>
           <li>Финансы → «Запустить»: остатки на счетах, дебиторская и кредиторская задолженность</li>
         </ol>
         <button onClick={() => window.location.reload()} className="mt-5 w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground hover:opacity-90">
