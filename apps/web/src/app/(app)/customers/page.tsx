@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
+import { ReferenceExcelButton } from "@/components/reference-excel";
 import { Plus, Wallet } from "lucide-react";
 import type { CustomerDto } from "@bakery-os/shared";
 import {
@@ -114,16 +115,19 @@ export default function CustomersPage() {
           </p>
         </div>
         {tab === "wholesale" && canManage && (
-          <button
-            onClick={() => {
-              setEditingCustomer(undefined);
-              setIsModalOpen(true);
-            }}
-            className="flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
-          >
-            <Plus className="h-4 w-4" strokeWidth={1.75} />
-            Новый клиент
-          </button>
+          <div className="flex items-center gap-2">
+            <ReferenceExcelButton kind="customers" onChanged={load} />
+            <button
+              onClick={() => {
+                setEditingCustomer(undefined);
+                setIsModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
+            >
+              <Plus className="h-4 w-4" strokeWidth={1.75} />
+              Новый клиент
+            </button>
+          </div>
         )}
       </div>
 

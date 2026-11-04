@@ -254,6 +254,11 @@ import type {
   CustomerPaymentResultDto,
   ProductionOutputReportDto,
   ProductionUnitCostTrendDto,
+  ReferenceCell,
+  ReferenceExportDto,
+  ReferenceImportPreviewDto,
+  ReferenceImportResultDto,
+  ReferenceKind,
 } from "@bakery-os/shared";
 
 import { noteServerDate } from "./server-clock";
@@ -414,6 +419,14 @@ export const api = {
     batches: () => request<ClassificationBatchDto[]>("/classification/batches"),
     revert: (id: string, dto: ClassificationRevertRequestDto) =>
       request<ClassificationRevertResultDto>(`/classification/batches/${id}/revert`, { method: "POST", body: JSON.stringify(dto) }),
+  },
+
+  referenceData: {
+    export: (kind: ReferenceKind) => request<ReferenceExportDto>(`/reference-data/${kind}/export`),
+    preview: (kind: ReferenceKind, grid: ReferenceCell[][]) =>
+      request<ReferenceImportPreviewDto>(`/reference-data/${kind}/preview`, { method: "POST", body: JSON.stringify({ grid }) }),
+    apply: (kind: ReferenceKind, grid: ReferenceCell[][]) =>
+      request<ReferenceImportResultDto>(`/reference-data/${kind}/apply`, { method: "POST", body: JSON.stringify({ grid }) }),
   },
 
   inventory: {

@@ -1,5 +1,6 @@
 "use client";
 
+import { ReferenceExcelButton } from "@/components/reference-excel";
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
 import { CheckCircle2, Plus, XCircle } from "lucide-react";
@@ -233,6 +234,7 @@ export default function ProcurementPage() {
             <ArchivedToggle checked={showArchivedSuppliers} onChange={setShowArchivedSuppliers} />
           )}
 
+          {tab === "suppliers" && canManageSuppliers && <ReferenceExcelButton kind="suppliers" onChanged={loadSuppliers} />}
           {tab === "suppliers" && canManageSuppliers && (
             <button
               onClick={() => {

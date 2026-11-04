@@ -971,6 +971,22 @@ From the financiers' ТЗ (iiko-style). `apps/api/src/debts/` (read-only service
   application is not a second payment). Not built: refunding a customer's advance in money, advances in the bank import.
 - Supplier returns ARE built (see below).
 
+## Справочники через Excel (built, ТЗ §2)
+
+Номенклатура (Склад → Номенклатура), Клиенты (оптовые), Поставщики (Закупки) each have an «Excel» button
+(`components/reference-excel.tsx`): «Скачать шаблон», «Выгрузить справочник», «Загрузить файл» → preview → «Применить».
+`apps/api/src/reference-data/` (`GET /reference-data/:kind/export`, `POST …/preview` writes nothing, `POST …/apply`),
+shared `reference-import.ts` (columns, header finding, number/yes-no parsing). Roles = whoever may create entries of
+that directory by hand (PRODUCT/CUSTOMER/SUPPLIER_MANAGE_ROLES), checked in the service. The browser sends the sheet as
+cells; the server finds the header row (first 15 rows, needs «Наименование»), plans every row against the database and
+on apply goes row by row through `ProductsService`/`CustomersService`/`SuppliersService` create/update, so every rule of
+the form applies; a refused row is reported, the others go in; audited `referenceImport.apply` (counts).
+- Match: product by Артикул, else by name (several → error); counterparty by БИН/ИИН, else by name. A new SKU whose name
+  already exists with another SKU is refused (no silent duplicates). **A blank cell leaves the value unchanged** — the
+  import never clears a field. Categories are found, never created (that is «Классификация»).
+- Excel stores digits as numbers: an 11-digit БИН gets its leading 0 back, a phone 7XXXXXXXXXX gets its «+».
+- Export → load back = all «Без изменений» (spec asserts it).
+
 ## Excel exports, ДДС by month, markup (built, ТЗ stage 2)
 
 - **Every «Excel» button writes a real .xlsx** (numbers are numbers, bold frozen header, widths, title lines). One call:

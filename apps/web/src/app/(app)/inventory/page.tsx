@@ -28,6 +28,7 @@ import { NewProductModal } from "@/components/new-product-modal";
 import { CategoryModal } from "@/components/category-modal";
 import { StandardCatalogModal } from "@/components/standard-catalog-modal";
 import { ClassificationModal } from "@/components/classification-modal";
+import { ReferenceExcelButton } from "@/components/reference-excel";
 import { ForceDeleteProductModal } from "@/components/force-delete-product-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 import { LocationPricesTab } from "@/components/location-prices-tab";
@@ -397,6 +398,7 @@ export default function InventoryPage() {
             <ArchivedToggle checked={showArchivedProducts} onChange={setShowArchivedProducts} />
           )}
 
+          {tab === "catalog" && canManageProducts && <ReferenceExcelButton kind="products" onChanged={loadProducts} />}
           {tab === "catalog" && canManageProducts && (
             <button
               onClick={() => {

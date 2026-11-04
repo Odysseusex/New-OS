@@ -10,6 +10,7 @@ import { DashboardModule } from "./dashboard/dashboard.module";
 import { ProductsModule } from "./products/products.module";
 import { CategoriesModule } from "./categories/categories.module";
 import { ClassificationModule } from "./classification/classification.module";
+import { ReferenceDataModule } from "./reference-data/reference-data.module";
 import { InventoryModule } from "./inventory/inventory.module";
 import { SalesModule } from "./sales/sales.module";
 import { RecipesModule } from "./recipes/recipes.module";
@@ -56,6 +57,7 @@ import { DemoCompanyModule } from "./demo/demo-company.module";
     ProductsModule,
     CategoriesModule,
     ClassificationModule,
+    ReferenceDataModule,
     InventoryModule,
     SalesModule,
     RecipesModule,
