@@ -113,7 +113,7 @@ function AbcXyzView() {
   return (
     <>
       <Card title="Матрица ABC × XYZ">
-        <div className="grid grid-cols-4 gap-px bg-border text-sm">
+        <div className="grid grid-cols-5 gap-px bg-border text-sm">
           <div className="bg-surface-muted px-4 py-2" />
           {["X", "Y", "Z", "?"].map((x) => (
             <div key={x} className="bg-surface-muted px-4 py-2 text-center font-medium text-muted">
