@@ -317,3 +317,40 @@ export interface CancelProductionBatchRequestDto {
   reason?: ProductionCancelReason;
   note?: string;
 }
+
+// «Выпуск»: what was produced in a period, per product and point, at the cost of
+// the ingredients by the norm (overuse is a write-off, not product cost — D1).
+export interface ProductionOutputRowDto {
+  productId: string;
+  productName: string;
+  unit: Unit;
+  locationId: string;
+  locationName: string;
+  batches: number;
+  quantity: number;
+  cost: number;
+  // cost ÷ quantity; null when nothing came out.
+  unitCost: number | null;
+}
+
+export interface ProductionOutputReportDto {
+  from: string;
+  to: string;
+  rows: ProductionOutputRowDto[];
+  totalCost: number;
+}
+
+// Unit cost of one product month by month (Almaty months, zero-filled).
+export interface ProductionUnitCostMonthDto {
+  month: string; // "YYYY-MM"
+  quantity: number;
+  cost: number;
+  unitCost: number | null;
+}
+
+export interface ProductionUnitCostTrendDto {
+  productId: string;
+  productName: string;
+  unit: Unit;
+  months: ProductionUnitCostMonthDto[];
+}

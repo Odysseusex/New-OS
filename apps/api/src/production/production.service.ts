@@ -10,6 +10,10 @@ import {
   ProductionDeviationByIngredientDto,
   ProductionDeviationLineDto,
   ProductionDeviationReportDto,
+  ProductionOutputReportDto,
+  ProductionOutputRowDto,
+  ProductionUnitCostTrendDto,
+  debtDateKey,
   ProductionCancelReason,
   ProductionCostComponent,
   ProductType,
@@ -18,6 +22,12 @@ import {
   WriteOffReason,
 } from "@bakery-os/shared";
 import { round2, round3, round4 } from "../common/money";
+import { monthRanges } from "../common/month-ranges";
+
+const previousMonthKey = (key: string): string => {
+  const [y, m] = key.split("-").map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+};
 import { expandRecipe, isStockedSemiFinished, loadRecipeIndex, recipeUnitCost, TreeRecipe } from "../recipes/recipe-tree";
 import { CostingService } from "../costing/costing.service";
 import { Prisma, ProductionBatchStatus as PrismaProductionBatchStatus, StockMovementType } from "@prisma/client";
@@ -571,6 +581,95 @@ export class ProductionService {
         perUnit: Math.round(l.quantity * 1e7) / 1e7,
         fromStock: l.fromStock,
       })),
+    };
+  }
+
+  // «Выпуск»: completed batches in [from, to] per product and point — how much
+  // came out and what its ingredients cost (ProductionBatchCost, by the norm).
+  async output(user: AuthenticatedUser, from: Date, to: Date, requestedLocationId?: string): Promise<ProductionOutputReportDto> {
+    const locationId = resolveLocationScope(user, requestedLocationId);
+    const batches = await this.prisma.productionBatch.findMany({
+      where: {
+        organizationId: user.organizationId,
+        status: PrismaProductionBatchStatus.COMPLETED,
+        completedAt: { gte: from, lte: to },
+        ...(locationId ? { locationId } : {}),
+      },
+      select: {
+        actualQuantity: true,
+        locationId: true,
+        location: { select: { name: true } },
+        recipe: { select: { product: { select: { id: true, name: true, unit: true } } } },
+        costs: { where: { component: ProductionCostComponent.INGREDIENT }, select: { amount: true } },
+      },
+    });
+    const rows = new Map<string, ProductionOutputRowDto>();
+    for (const b of batches) {
+      const product = b.recipe.product;
+      const key = `${product.id}:${b.locationId}`;
+      const row = rows.get(key) ?? {
+        productId: product.id,
+        productName: product.name,
+        unit: product.unit as Unit,
+        locationId: b.locationId,
+        locationName: b.location.name,
+        batches: 0,
+        quantity: 0,
+        cost: 0,
+        unitCost: null,
+      };
+      row.batches += 1;
+      row.quantity = round3(row.quantity + (b.actualQuantity?.toNumber() ?? 0));
+      row.cost = round2(row.cost + b.costs.reduce((sum, c) => sum + c.amount.toNumber(), 0));
+      rows.set(key, row);
+    }
+    const list = [...rows.values()].map((r) => ({ ...r, unitCost: r.quantity > 0 ? round2(r.cost / r.quantity) : null }));
+    list.sort((a, b) => b.cost - a.cost || a.productName.localeCompare(b.productName, "ru"));
+    return { from: from.toISOString(), to: to.toISOString(), rows: list, totalCost: round2(list.reduce((s, r) => s + r.cost, 0)) };
+  }
+
+  // How one product's unit cost moved, month by month (Almaty months; a month
+  // with no output has no unit cost rather than a zero).
+  async unitCostTrend(user: AuthenticatedUser, productId: string, months: number, requestedLocationId?: string): Promise<ProductionUnitCostTrendDto> {
+    const locationId = resolveLocationScope(user, requestedLocationId);
+    const product = await this.prisma.product.findFirst({
+      where: { id: productId, organizationId: user.organizationId },
+      select: { id: true, name: true, unit: true },
+    });
+    if (!product) throw new NotFoundException("Товар не найден");
+    const count = Math.min(Math.max(Math.floor(months) || 12, 1), 24);
+    const lastKey = debtDateKey(new Date()).slice(0, 7);
+    let firstKey = lastKey;
+    for (let i = 1; i < count; i += 1) firstKey = previousMonthKey(firstKey);
+    const ranges = monthRanges(firstKey, lastKey, new Date(), 24);
+    const batches = await this.prisma.productionBatch.findMany({
+      where: {
+        organizationId: user.organizationId,
+        status: PrismaProductionBatchStatus.COMPLETED,
+        recipe: { productId },
+        completedAt: { gte: ranges[0].from, lte: ranges.at(-1)!.to },
+        ...(locationId ? { locationId } : {}),
+      },
+      select: { completedAt: true, actualQuantity: true, costs: { where: { component: ProductionCostComponent.INGREDIENT }, select: { amount: true } } },
+    });
+    const byMonth = new Map(ranges.map((r) => [r.key, { quantity: 0, cost: 0 }]));
+    for (const b of batches) {
+      const key = debtDateKey(b.completedAt as Date).slice(0, 7);
+      const m = byMonth.get(key);
+      if (!m) continue;
+      m.quantity += b.actualQuantity?.toNumber() ?? 0;
+      m.cost += b.costs.reduce((sum, c) => sum + c.amount.toNumber(), 0);
+    }
+    return {
+      productId: product.id,
+      productName: product.name,
+      unit: product.unit as Unit,
+      months: ranges.map((r) => {
+        const m = byMonth.get(r.key)!;
+        const quantity = round3(m.quantity);
+        const cost = round2(m.cost);
+        return { month: r.key, quantity, cost, unitCost: quantity > 0 ? round2(cost / quantity) : null };
+      }),
     };
   }
 

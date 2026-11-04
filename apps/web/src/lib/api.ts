@@ -252,6 +252,8 @@ import type {
   ProductionDeviationReportDto,
   RecordCustomerPaymentRequestDto,
   CustomerPaymentResultDto,
+  ProductionOutputReportDto,
+  ProductionUnitCostTrendDto,
 } from "@bakery-os/shared";
 
 import { noteServerDate } from "./server-clock";
@@ -693,6 +695,10 @@ export const api = {
     batchNorm: (id: string) => request<ProductionBatchNormDto>(`/production/batches/${id}/norm`),
     deviations: (params: { from: string; to: string; locationId?: string }) =>
       request<ProductionDeviationReportDto>(withQuery("/production/batches/deviations", params)),
+    output: (params: { from: string; to: string; locationId?: string }) =>
+      request<ProductionOutputReportDto>(withQuery("/production/batches/output", params)),
+    unitCostTrend: (params: { productId: string; months?: number; locationId?: string }) =>
+      request<ProductionUnitCostTrendDto>(withQuery("/production/batches/unit-cost-trend", { ...params, months: params.months ? String(params.months) : undefined })),
   },
 
   bankStatements: {

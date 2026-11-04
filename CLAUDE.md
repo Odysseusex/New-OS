@@ -865,7 +865,12 @@ clients are unchanged). The product's cost stays the NORM (D1): consumption rows
 is what pickers offer), below it an `ADJUSTMENT` (+) «Экономия сырья», both with `batchId` and the same cost stamp, posted
 via `postLedgerSources` (inventory loss / gain; the PRODUCTION event stays raw → finished at the norm). The shelf loses
 exactly the actual. Производство → «Отклонения» (`GET /production/batches/deviations`) reads it back from the batch's
-movements: per ingredient and per batch, norm / fact / deviation / ₸, Excel. Not built: требование-накладная
+movements: per ingredient and per batch, norm / fact / deviation / ₸, Excel. Производство → «Выпуск»
+(`GET /production/batches/output`, `…/unit-cost-trend?productId&months`): completed batches per product × point —
+quantity, ingredient cost (`ProductionBatchCost` INGREDIENT, i.e. the norm) and unit cost; a row opens that product's
+unit cost by Almaty month (12, zero-filled, recharts line). The financiers' acceptance example (ТЗ §9.3) runs as
+`finance/acceptance-example.spec.ts` (450 average → 225 a unit → receivable → paid → ОПиУ/ДДС/баланс agree, GL clean).
+Not built: требование-накладная
 (warehouse → workshop request), per-ingredient brutto/netto losses, recipe versions by date.
 
 ## Baker's calculator (расчёт техкарты на количество) — built

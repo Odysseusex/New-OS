@@ -37,6 +37,34 @@ export class ProductionController {
     return this.productionService.deviations(user, start, end, locationId);
   }
 
+  // «Выпуск» for completed batches in [from, to].
+  @Get("output")
+  output(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("locationId") locationId?: string,
+  ) {
+    const end = to ? new Date(to) : new Date();
+    const start = from ? new Date(from) : new Date(end.getTime() - 30 * 86_400_000);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) {
+      throw new BadRequestException("Неверный период");
+    }
+    return this.productionService.output(user, start, end, locationId);
+  }
+
+  // A product's unit cost month by month (last `months`, at most 24).
+  @Get("unit-cost-trend")
+  unitCostTrend(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("productId") productId: string,
+    @Query("months") months?: string,
+    @Query("locationId") locationId?: string,
+  ) {
+    if (!productId) throw new BadRequestException("Не указан товар");
+    return this.productionService.unitCostTrend(user, productId, Number(months ?? 12), locationId);
+  }
+
   @Get(":id/norm")
   norm(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
     return this.productionService.norm(user, id);
