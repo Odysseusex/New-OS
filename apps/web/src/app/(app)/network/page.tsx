@@ -18,6 +18,7 @@ import { periodRange, type PeriodValue } from "@/lib/period";
 import { useAuth } from "@/lib/auth-context";
 import { formatMoney } from "@/lib/format";
 import { NewLocationModal } from "@/components/new-location-modal";
+import { ExcelButton, exportLocations } from "@/components/directory-export";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 
 type Tab = "registry" | "comparison";
@@ -105,17 +106,22 @@ export default function NetworkPage() {
           <h1 className="text-xl font-semibold text-foreground">Сеть точек</h1>
           <p className="mt-1 text-sm text-muted">Реестр точек, франшиза и сравнение локаций</p>
         </div>
-        {canManage && tab === "registry" && (
-          <button
-            onClick={() => {
-              setEditingLocation(undefined);
-              setIsModalOpen(true);
-            }}
-            className="flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
-          >
-            <Plus className="h-4 w-4" strokeWidth={1.75} />
-            Новая точка
-          </button>
+        {tab === "registry" && (
+          <div className="flex items-center gap-2">
+            <ExcelButton onClick={() => exportLocations(locations)} />
+            {canManage && (
+              <button
+                onClick={() => {
+                  setEditingLocation(undefined);
+                  setIsModalOpen(true);
+                }}
+                className="flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
+              >
+                <Plus className="h-4 w-4" strokeWidth={1.75} />
+                Новая точка
+              </button>
+            )}
+          </div>
         )}
       </div>
 

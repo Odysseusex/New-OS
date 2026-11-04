@@ -1153,6 +1153,9 @@ the form applies; a refused row is reported, the others go in; audited `referenc
   import never clears a field. Categories are found, never created (that is «Классификация»).
 - Excel stores digits as numbers: an 11-digit БИН gets its leading 0 back, a phone 7XXXXXXXXXX gets its «+».
 - Export → load back = all «Без изменений» (spec asserts it).
+- The small directories (Точки on Сеть точек, Счета on Банк и касса, Статьи ДДС, Сотрудники on Настройки) are export
+  only (`components/directory-export.tsx`, from the already loaded list): a handful of rows each, typed by hand. PIN
+  column says only whether one is set.
 
 ## Excel exports, ДДС by month, markup (built, ТЗ stage 2)
 

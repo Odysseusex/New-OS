@@ -34,6 +34,7 @@ import { UserAccountModal } from "@/components/user-account-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 import { PromotionModal } from "@/components/promotion-modal";
 import { PromotionCouponsModal } from "@/components/promotion-coupons-modal";
+import { ExcelButton, exportEmployees } from "@/components/directory-export";
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -125,16 +126,19 @@ export default function SettingsPage() {
         <>
           <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
             <h2 className="text-sm font-semibold text-foreground">Сотрудники</h2>
-            <button
-              onClick={() => {
-                setEditingAccount(undefined);
-                setIsModalOpen(true);
-              }}
-              className="flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
-            >
-              <Plus className="h-4 w-4" strokeWidth={1.75} />
-              Новый сотрудник
-            </button>
+            <div className="flex items-center gap-2">
+              <ExcelButton onClick={() => exportEmployees(accounts)} />
+              <button
+                onClick={() => {
+                  setEditingAccount(undefined);
+                  setIsModalOpen(true);
+                }}
+                className="flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
+              >
+                <Plus className="h-4 w-4" strokeWidth={1.75} />
+                Новый сотрудник
+              </button>
+            </div>
           </div>
 
           {error && (

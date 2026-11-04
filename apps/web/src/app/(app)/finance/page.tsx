@@ -88,6 +88,7 @@ import { BalanceTab } from "@/components/balance-tab";
 import { LedgerTab } from "@/components/ledger-tab";
 import { NewCashAccountModal } from "@/components/new-cash-account-modal";
 import { CashMovementModal } from "@/components/cash-movement-modal";
+import { ExcelButton, exportAccounts, exportFinanceCategories } from "@/components/directory-export";
 import { CashAdjustmentModal } from "@/components/cash-adjustment-modal";
 import { CashTransferModal } from "@/components/cash-transfer-modal";
 import { FinanceCategoryModal } from "@/components/finance-category-modal";
@@ -676,15 +677,18 @@ export default function FinancePage() {
         <>
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-foreground">Счета</h2>
-            {canManageAccounts && (
-              <button
-                onClick={() => setAccountModalOpen(true)}
-                className="flex items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
-              >
-                <Plus className="h-4 w-4" strokeWidth={1.75} />
-                Новый счёт
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              <ExcelButton onClick={() => exportAccounts(accounts)} />
+              {canManageAccounts && (
+                <button
+                  onClick={() => setAccountModalOpen(true)}
+                  className="flex items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
+                >
+                  <Plus className="h-4 w-4" strokeWidth={1.75} />
+                  Новый счёт
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="mb-4 flex justify-end">
@@ -912,7 +916,8 @@ export default function FinancePage() {
 
       {tab === "categories" && (
         <>
-          <div className="mb-4 flex justify-end">
+          <div className="mb-4 flex items-center justify-end gap-4">
+            <ExcelButton onClick={() => exportFinanceCategories(categories)} />
             <label className="flex cursor-pointer items-center gap-2 text-sm text-muted">
               <input
                 type="checkbox"
