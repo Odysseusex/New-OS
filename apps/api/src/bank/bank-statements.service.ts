@@ -20,7 +20,13 @@ import {
   PostBankLinesResultDto,
   SettlementDayDto,
   UploadBankStatementRequestDto,
+  purposeHasKeyword,
+  BankKeywordRuleDto,
+  CreateBankKeywordRuleRequestDto,
+  BankImportProfileDto,
+  BankColumnMappingDto,
 } from "@bakery-os/shared";
+import { applyCustomerPayment } from "../sales/customer-payment";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { CashMovementsService } from "../finance/cash-movements.service";
@@ -69,7 +75,7 @@ export function settlementDateOf(purpose: string | null, occurredAt: Date): stri
 // What the bank's own wording says a line is. Learned rules come first.
 export function builtInSuggestion(line: { amount: number; knp: string | null; purpose: string | null }): BankLineSuggestionDto | null {
   const purpose = line.purpose ?? "";
-  const base = { categoryId: null, presetCategory: null, targetAccountId: null, supplierId: null, source: "BUILT_IN" as const };
+  const base = { categoryId: null, presetCategory: null, targetAccountId: null, supplierId: null, customerId: null, source: "BUILT_IN" as const };
   if (line.amount > 0 && (/^продажи с kaspi\.kz/i.test(purpose) || BCC_SETTLEMENT.test(purpose))) return { ...base, action: BankLineAction.SALES_SETTLEMENT };
   if (line.amount < 0 && (line.knp === "841" || line.knp === "851" || /оплата за услуги (процессинга|операций по картам)/i.test(purpose))) {
     return { ...base, action: BankLineAction.CATEGORY, presetCategory: BankPresetCategory.BANK_FEE };
@@ -240,12 +246,14 @@ export class BankStatementsService {
     });
     if (!statement) throw new NotFoundException("Выписка не найдена");
 
-    const [rules, suppliers, categories] = await Promise.all([
+    const [rules, suppliers, customers, categories] = await Promise.all([
       this.prisma.bankRule.findMany({ where: { organizationId: user.organizationId } }),
       this.prisma.supplier.findMany({ where: { organizationId: user.organizationId, bin: { not: null } }, select: { id: true, bin: true } }),
+      this.prisma.customer.findMany({ where: { organizationId: user.organizationId, bin: { not: null }, isActive: true }, select: { id: true, bin: true } }),
       this.prisma.financeCategory.findMany({ where: { organizationId: user.organizationId }, select: { id: true, name: true } }),
     ]);
     const supplierByBin = new Map(suppliers.map((s) => [s.bin as string, s.id]));
+    const customerByBin = new Map(customers.map((c) => [c.bin as string, c.id]));
     const categoryName = new Map(categories.map((c) => [c.id, c.name]));
 
     const suggest = (l: { amount: number; counterpartyBin: string | null; knp: string | null; purpose: string | null }): BankLineSuggestionDto | null => {
@@ -262,14 +270,26 @@ export class BankStatementsService {
           presetCategory: null,
           targetAccountId: rule.targetAccountId,
           supplierId: rule.supplierId,
+          customerId: rule.customerId,
           source: "RULE",
         };
+      }
+      // A word in the purpose («аренда», «ЗП», «налог») → its article; the longest keyword wins.
+      const keywordRule = rules
+        .filter((r) => r.keyword && r.direction === direction && r.categoryId && purposeHasKeyword(l.purpose, r.keyword))
+        .sort((a, b) => (b.keyword as string).length - (a.keyword as string).length)[0];
+      if (keywordRule) {
+        return { action: BankLineAction.CATEGORY, categoryId: keywordRule.categoryId, presetCategory: null, targetAccountId: null, supplierId: null, customerId: null, source: "KEYWORD" };
       }
       const builtIn = builtInSuggestion(l);
       if (builtIn) return builtIn;
       const supplierId = l.amount < 0 && l.counterpartyBin ? supplierByBin.get(l.counterpartyBin) : undefined;
       if (supplierId) {
-        return { action: BankLineAction.SUPPLIER_PAYMENT, categoryId: null, presetCategory: null, targetAccountId: null, supplierId, source: "COUNTERPARTY" };
+        return { action: BankLineAction.SUPPLIER_PAYMENT, categoryId: null, presetCategory: null, targetAccountId: null, supplierId, customerId: null, source: "COUNTERPARTY" };
+      }
+      const customerId = l.amount > 0 && l.counterpartyBin ? customerByBin.get(l.counterpartyBin) : undefined;
+      if (customerId) {
+        return { action: BankLineAction.CUSTOMER_PAYMENT, categoryId: null, presetCategory: null, targetAccountId: null, supplierId: null, customerId, source: "COUNTERPARTY" };
       }
       return null;
     };
@@ -295,6 +315,7 @@ export class BankStatementsService {
         categoryName: l.categoryId ? categoryName.get(l.categoryId) ?? null : null,
         targetAccountId: l.targetAccountId,
         supplierId: l.supplierId,
+        customerId: l.customerId,
         resultNote: l.resultNote,
         suggestion,
         settlementDate: isSettlement ? settlementDateOf(l.purpose, l.occurredAt) : null,
@@ -388,6 +409,7 @@ export class BankStatementsService {
               categoryId: outcome.categoryId,
               targetAccountId: request.targetAccountId ?? null,
               supplierId: request.supplierId ?? null,
+              customerId: request.customerId ?? null,
               resultNote: outcome.note,
               postedAt: new Date(),
               postedById: user.id,
@@ -465,6 +487,23 @@ export class BankStatementsService {
         });
         return { note: `Оплата ${supplier.name}: ${note}`, categoryId: null };
       }
+      case BankLineAction.CUSTOMER_PAYMENT: {
+        if (signed <= 0) throw new BadRequestException("Оплата от покупателя — это поступление денег");
+        if (!request.customerId) throw new BadRequestException("Укажите покупателя");
+        const result = await applyCustomerPayment(tx, this.cash, user, {
+          customerId: request.customerId,
+          accountId,
+          amount,
+          note: reason,
+          occurredAt: line.occurredAt,
+        });
+        const customer = await tx.customer.findUniqueOrThrow({ where: { id: request.customerId }, select: { name: true } });
+        const parts = [
+          result.appliedToSales.length > 0 ? `погашено продаж: ${result.appliedToSales.length}` : null,
+          result.advance > 0 ? `аванс ${result.advance}` : null,
+        ].filter(Boolean);
+        return { note: `Оплата от ${customer.name}: ${parts.join(", ")}`, categoryId: null };
+      }
       case BankLineAction.CATEGORY: {
         const category = await this.categoryFor(tx, user.organizationId, request);
         if (signed < 0) {
@@ -528,6 +567,93 @@ export class BankStatementsService {
     }
   }
 
+  // ── «Ключевые слова»: a word in the purpose → an article (ТЗ §6.2) ──
+
+  async keywordRules(user: AuthenticatedUser): Promise<BankKeywordRuleDto[]> {
+    const rules = await this.prisma.bankRule.findMany({ where: { organizationId: user.organizationId, keyword: { not: null } }, orderBy: { keyword: "asc" } });
+    const categories = await this.prisma.financeCategory.findMany({
+      where: { id: { in: rules.map((r) => r.categoryId).filter((x): x is string => !!x) } },
+      select: { id: true, name: true },
+    });
+    const name = new Map(categories.map((c) => [c.id, c.name]));
+    return rules.map((r) => ({
+      id: r.id,
+      keyword: r.keyword as string,
+      direction: r.direction === 1 ? 1 : -1,
+      categoryId: r.categoryId as string,
+      categoryName: name.get(r.categoryId as string) ?? "",
+    }));
+  }
+
+  async addKeywordRule(user: AuthenticatedUser, dto: CreateBankKeywordRuleRequestDto): Promise<BankKeywordRuleDto[]> {
+    const keyword = dto.keyword.replace(/\s+/g, " ").trim();
+    if (keyword.length < 2) throw new BadRequestException("Ключевое слово — не короче 2 символов");
+    if (dto.direction !== 1 && dto.direction !== -1) throw new BadRequestException("Укажите: поступление или списание");
+    const category = await this.prisma.financeCategory.findFirst({ where: { id: dto.categoryId, organizationId: user.organizationId } });
+    if (!category) throw new BadRequestException("Статья не найдена");
+    if ((dto.direction === -1) !== (category.kind === FinanceCategoryKind.EXPENSE)) {
+      throw new BadRequestException(dto.direction === -1 ? "Для списания выберите статью расхода" : "Для поступления выберите статью дохода");
+    }
+    const existing = (await this.prisma.bankRule.findMany({ where: { organizationId: user.organizationId, direction: dto.direction, keyword: { not: null } } }))
+      .find((r) => (r.keyword as string).toLowerCase() === keyword.toLowerCase());
+    await this.prisma.$transaction(async (tx) => {
+      if (existing) await tx.bankRule.update({ where: { id: existing.id }, data: { categoryId: category.id, keyword } });
+      else
+        await tx.bankRule.create({
+          data: { organizationId: user.organizationId, direction: dto.direction, keyword, action: BankLineAction.CATEGORY, categoryId: category.id },
+        });
+      await recordAudit(tx, {
+        organizationId: user.organizationId,
+        actorId: user.id,
+        action: "bankRule.keyword",
+        entityType: "BankRule",
+        entityId: existing?.id ?? keyword,
+        after: { keyword, direction: dto.direction, category: category.name },
+      });
+    });
+    return this.keywordRules(user);
+  }
+
+  async removeKeywordRule(user: AuthenticatedUser, id: string): Promise<BankKeywordRuleDto[]> {
+    const rule = await this.prisma.bankRule.findFirst({ where: { id, organizationId: user.organizationId, keyword: { not: null } } });
+    if (!rule) throw new NotFoundException("Правило не найдено");
+    await this.prisma.$transaction(async (tx) => {
+      await tx.bankRule.delete({ where: { id } });
+      await recordAudit(tx, {
+        organizationId: user.organizationId,
+        actorId: user.id,
+        action: "bankRule.keywordDelete",
+        entityType: "BankRule",
+        entityId: id,
+        before: { keyword: rule.keyword, direction: rule.direction },
+      });
+    });
+    return this.keywordRules(user);
+  }
+
+  // ── Column mappings per bank (a file from a bank the parser does not know) ──
+
+  async profiles(user: AuthenticatedUser): Promise<BankImportProfileDto[]> {
+    const rows = await this.prisma.bankImportProfile.findMany({ where: { organizationId: user.organizationId }, orderBy: { bankName: "asc" } });
+    return rows.map((r) => ({ bankName: r.bankName, mapping: r.mapping as unknown as BankColumnMappingDto }));
+  }
+
+  async saveProfile(user: AuthenticatedUser, dto: BankImportProfileDto): Promise<BankImportProfileDto[]> {
+    const bankName = dto.bankName.trim();
+    if (!bankName) throw new BadRequestException("Укажите банк");
+    if (!dto.mapping?.date) throw new BadRequestException("Укажите колонку даты");
+    if (!dto.mapping.amount && !dto.mapping.inflow && !dto.mapping.outflow) throw new BadRequestException("Укажите колонку суммы или прихода/расхода");
+    const mapping = Object.fromEntries(
+      Object.entries(dto.mapping).filter(([, v]) => typeof v === "string" && v.trim() !== "").map(([k, v]) => [k, (v as string).slice(0, 200)]),
+    ) as Prisma.InputJsonValue;
+    await this.prisma.bankImportProfile.upsert({
+      where: { organizationId_bankName: { organizationId: user.organizationId, bankName } },
+      create: { organizationId: user.organizationId, bankName, mapping },
+      update: { mapping },
+    });
+    return this.profiles(user);
+  }
+
   // A chosen category, or one of the import's own (created, classified, on first use).
   private async categoryFor(tx: Prisma.TransactionClient, organizationId: string, request: PostBankLineRequestDto) {
     if (request.categoryId) {
@@ -558,6 +684,7 @@ export class BankStatementsService {
       categoryId,
       targetAccountId: request.targetAccountId ?? null,
       supplierId: request.supplierId ?? null,
+      customerId: request.customerId ?? null,
     };
     const existing = await tx.bankRule.findFirst({ where: { organizationId, direction, counterpartyBin: byBin, purposeKey: key } });
     if (existing) await tx.bankRule.update({ where: { id: existing.id }, data });

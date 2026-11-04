@@ -6,6 +6,8 @@ import {
   IsBoolean,
   IsDateString,
   IsEnum,
+  IsIn,
+  IsObject,
   IsNumber,
   IsOptional,
   IsString,
@@ -117,6 +119,10 @@ export class PostBankLineInput {
   supplierId?: string | null;
 
   @IsOptional()
+  @IsString()
+  customerId?: string | null;
+
+  @IsOptional()
   @IsBoolean()
   remember?: boolean;
 }
@@ -128,4 +134,25 @@ export class PostBankLinesInput {
   @ValidateNested({ each: true })
   @Type(() => PostBankLineInput)
   lines!: PostBankLineInput[];
+}
+
+export class KeywordRuleInput {
+  @IsString()
+  @MaxLength(100)
+  keyword!: string;
+
+  @IsIn([1, -1])
+  direction!: 1 | -1;
+
+  @IsString()
+  categoryId!: string;
+}
+
+export class BankProfileInput {
+  @IsString()
+  @MaxLength(60)
+  bankName!: string;
+
+  @IsObject()
+  mapping!: Record<string, string>;
 }

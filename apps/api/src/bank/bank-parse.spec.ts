@@ -1,3 +1,4 @@
+import { guessColumnMapping, headersOf, parseMappedStatement, readCsv, parseAnyBankDate } from "@bakery-os/shared";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { BankLineAction, BankPresetCategory, parseBankStatementRows, readXlsFirstSheet } from "@bakery-os/shared";
@@ -65,5 +66,48 @@ describe("reading a bank statement", () => {
     expect(settlementDateOf(line.purpose, new Date("2026-09-02T01:10:00Z"))).toBe("2026-09-01");
     expect(settlementDateOf(line.purpose, new Date("2026-10-01T00:30:00Z"))).toBe("2026-09-30");
     expect(builtInSuggestion({ amount: -700, knp: "841", purpose: "Расчет комиссии Опция" })).toMatchObject({ presetCategory: BankPresetCategory.BANK_FEE });
+  });
+});
+
+describe("any bank's file by a column mapping", () => {
+  const csv = [
+    "Выписка по счёту KZ00;;;;;",
+    "Дата операции;Приход;Расход;Получатель / Отправитель;БИН;Назначение платежа",
+    '01.10.2026 10:15;;1 200,50;ТОО Аренда Плюс;123456789012;"Аренда; октябрь"',
+    "01.10.2026 11:00;5000;;ТОО Мерей;999988887777;Оплата за хлеб",
+    "01.10.2026 11:00;5000;;ТОО Мерей;999988887777;Оплата за хлеб",
+    ";;;;;",
+  ].join("\r\n");
+
+  it("reads a CSV with «;», quotes and a title line, and guesses the columns", () => {
+    const rows = readCsv(csv);
+    expect(rows[2][5]).toBe("Аренда; октябрь");
+    const mapping = guessColumnMapping(headersOf(rows))!;
+    expect(mapping).toMatchObject({ date: "Дата операции", inflow: "Приход", outflow: "Расход", counterparty: "Получатель / Отправитель", bin: "БИН", purpose: "Назначение платежа" });
+
+    const parsed = parseMappedStatement(rows, mapping, "Halyk");
+    if ("error" in parsed) throw new Error(parsed.error);
+    expect(parsed.lines.map((l) => [l.amount, l.counterpartyBin])).toEqual([
+      [-1200.5, "123456789012"],
+      [5000, "999988887777"],
+      [5000, "999988887777"],
+    ]);
+    // No document number in the file: the same operation always gets the same key, two identical ones differ.
+    const again = parseMappedStatement(readCsv(csv), mapping, "Halyk");
+    if ("error" in again) throw new Error(again.error);
+    expect(again.lines.map((l) => l.docNumber)).toEqual(parsed.lines.map((l) => l.docNumber));
+    expect(new Set(parsed.lines.map((l) => l.docNumber)).size).toBe(3);
+    expect(parsed.lines[0].occurredAt).toBe("2026-10-01T05:15:00.000Z");
+  });
+
+  it("reads dates in several shapes and an amount column with a sign", () => {
+    expect(parseAnyBankDate("2026-10-01 10:15")).toBe("2026-10-01T05:15:00.000Z");
+    expect(parseAnyBankDate("01/10/2026")).toBe("2026-09-30T19:00:00.000Z");
+    expect(parseAnyBankDate(46296.5)).toBe("2026-10-01T07:00:00.000Z");
+    const rows = readCsv("Date,Amount,Description\n2026-10-01,-300,Fee\n2026-10-02,700,Payment");
+    const parsed = parseMappedStatement(rows, { date: "Date", amount: "Amount", purpose: "Description" }, "Freedom");
+    if ("error" in parsed) throw new Error(parsed.error);
+    expect(parsed.lines.map((l) => l.amount)).toEqual([-300, 700]);
+    expect(parseMappedStatement(rows, { date: "Нет такой" }, "X")).toEqual({ error: "В файле нет колонки «Нет такой»" });
   });
 });

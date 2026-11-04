@@ -171,6 +171,63 @@ describe("bank statement import", () => {
     await bank.remove(org.user, dto.id);
   });
 
+  it("suggests an article by a keyword in the purpose, and the keyword list can be kept", async () => {
+    const rent = await prisma.financeCategory.create({
+      data: { organizationId: org.organizationId, name: "Аренда", kind: "EXPENSE", pnlTreatment: "OPERATING_EXPENSE", cashActivity: "OPERATING", balanceTreatment: "NONE" },
+    });
+    await expect(bank.addKeywordRule(org.user, { keyword: "аренда", direction: 1, categoryId: rent.id })).rejects.toThrow(/статью дохода/);
+    const list = await bank.addKeywordRule(org.user, { keyword: "Аренда", direction: -1, categoryId: rent.id });
+    expect(list).toEqual([expect.objectContaining({ keyword: "Аренда", direction: -1, categoryName: "Аренда" })]);
+    const dto = await bank.upload(org.user, {
+      accountId: org.bankAccountId, bankName: "Halyk", iban: null, holderBin: null,
+      periodFrom: day(0).toISOString(), periodTo: day(23).toISOString(), openingBalance: null, closingBalance: null, fileName: null,
+      lines: [{ docNumber: "auto:k1", occurredAt: day(15, 6).toISOString(), amount: -40, counterpartyName: "ИП Арендодатель", counterpartyBin: "111111111111", counterpartyIban: null, knp: null, purpose: "Оплата за АРЕНДУ помещения за октябрь" }],
+    });
+    // «аренду» contains «аренд…» only by the stem; the rule is «аренда», so a different form does not match…
+    expect(dto.lines[0].suggestion).toBeNull();
+    await bank.addKeywordRule(org.user, { keyword: "аренд", direction: -1, categoryId: rent.id });
+    const again = await bank.get(org.user, dto.id);
+    expect(again.lines[0].suggestion).toMatchObject({ action: BankLineAction.CATEGORY, categoryId: rent.id, source: "KEYWORD" });
+    const r = await bank.post(org.user, dto.id, [{ lineId: dto.lines[0].id, action: BankLineAction.CATEGORY, categoryId: rent.id }]);
+    expect(r.posted).toBe(1);
+    const rules = await bank.keywordRules(org.user);
+    for (const rule of rules) await bank.removeKeywordRule(org.user, rule.id);
+    expect(await bank.keywordRules(org.user)).toEqual([]);
+  });
+
+  it("a wholesale customer's payment found by БИН pays their sales oldest first, the rest is an advance", async () => {
+    const customer = await prisma.customer.create({ data: { organizationId: org.organizationId, name: "ТОО Мерей", bin: "999988887777" } });
+    const sale = await services.sales.create(org.user, {
+      locationId: org.storeId, customerId: customer.id, amountPaid: 0, paymentMethod: PaymentMethod.TRANSFER,
+      items: [{ productId: breadId, quantity: 2, unitPrice: 500 }],
+    } as never);
+    const dto = await bank.upload(org.user, {
+      accountId: org.bankAccountId, bankName: "Halyk", iban: null, holderBin: null,
+      periodFrom: day(0).toISOString(), periodTo: day(23).toISOString(), openingBalance: null, closingBalance: null, fileName: null,
+      lines: [{ docNumber: "auto:c1", occurredAt: new Date(Date.now() - 60_000).toISOString(), amount: 1500, counterpartyName: "ТОО Мерей", counterpartyBin: "999988887777", counterpartyIban: null, knp: null, purpose: "Оплата за хлеб" }],
+    });
+    expect(dto.lines[0].suggestion).toMatchObject({ action: BankLineAction.CUSTOMER_PAYMENT, customerId: customer.id, source: "COUNTERPARTY" });
+    const r = await bank.post(org.user, dto.id, [{ lineId: dto.lines[0].id, action: BankLineAction.CUSTOMER_PAYMENT, customerId: customer.id }]);
+    expect(r.failed).toEqual([]);
+    expect(r.statement.lines[0].resultNote).toMatch(/погашено продаж: 1, аванс 500/);
+    expect((await prisma.sale.findUniqueOrThrow({ where: { id: sale.id } })).amountPaid.toNumber()).toBe(1000);
+    // An outflow cannot be a customer's payment.
+    const out = await bank.upload(org.user, {
+      accountId: org.bankAccountId, bankName: "Halyk", iban: null, holderBin: null,
+      periodFrom: day(0).toISOString(), periodTo: day(23).toISOString(), openingBalance: null, closingBalance: null, fileName: null,
+      lines: [{ docNumber: "auto:c2", occurredAt: day(15, 8).toISOString(), amount: -5, counterpartyName: "ТОО Мерей", counterpartyBin: "999988887777", counterpartyIban: null, knp: null, purpose: "?" }],
+    });
+    const bad = await bank.post(org.user, out.id, [{ lineId: out.lines[0].id, action: BankLineAction.CUSTOMER_PAYMENT, customerId: customer.id }]);
+    expect(bad.failed[0].message).toMatch(/поступление/);
+    await bank.remove(org.user, out.id);
+  });
+
+  it("keeps a bank's column mapping", async () => {
+    await bank.saveProfile(org.user, { bankName: "Halyk", mapping: { date: "Дата", inflow: "Приход", outflow: "Расход", purpose: "Назначение" } });
+    expect(await bank.profiles(org.user)).toEqual([{ bankName: "Halyk", mapping: { date: "Дата", inflow: "Приход", outflow: "Расход", purpose: "Назначение" } }]);
+    await expect(bank.saveProfile(org.user, { bankName: "X", mapping: { date: "Дата" } })).rejects.toThrow(/суммы/);
+  });
+
   it("the books, the events and the ledgers all agree", async () => {
     const events = await projector.project(org.organizationId);
     expect(checkEventInvariants(events).violations).toEqual([]);

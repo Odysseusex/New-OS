@@ -3333,6 +3333,8 @@ enum BankLineAction {
   SUPPLIER_PAYMENT
   // Already in the books some other way.
   IGNORE
+  // A wholesale customer's payment: pays their unpaid sales oldest first, the rest is an advance.
+  CUSTOMER_PAYMENT
 }
 
 model BankStatementLine {
@@ -3355,6 +3357,7 @@ model BankStatementLine {
   categoryId       String?
   targetAccountId  String?
   supplierId       String?
+  customerId       String?
   // What the posting wrote (for the history; the rows themselves link nothing back).
   resultNote       String?
   postedAt         DateTime?
@@ -3379,11 +3382,31 @@ model BankRule {
   categoryId      String?
   targetAccountId String?
   supplierId      String?
+  customerId      String?
+  // A word in the payment purpose («аренда», «ЗП», «налог»), case-insensitive. A
+  // keyword rule has neither counterpartyBin nor purposeKey.
+  keyword         String?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
   @@unique([organizationId, direction, counterpartyBin, purposeKey])
   @@map("bank_rules")
+}
+
+// How a bank's file (.xlsx / .xls / .csv) maps to a statement: which header is the
+// date, the amounts, the counterparty… Saved per bank name the first time and
+// offered again for the next file of that bank (ТЗ §6.2).
+model BankImportProfile {
+  id             String   @id @default(cuid())
+  organizationId String
+  bankName       String
+  // BankColumnMappingDto: header texts per field.
+  mapping        Json
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, bankName])
+  @@map("bank_import_profiles")
 }
 
 // A customer's advance (money received with no sale behind it: a CUSTOMER_PAYMENT

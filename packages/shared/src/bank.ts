@@ -7,6 +7,7 @@ export enum BankLineAction {
   TRANSFER = "TRANSFER",
   SUPPLIER_PAYMENT = "SUPPLIER_PAYMENT",
   IGNORE = "IGNORE",
+  CUSTOMER_PAYMENT = "CUSTOMER_PAYMENT",
 }
 
 export const BANK_LINE_ACTION_LABELS_RU: Record<BankLineAction, string> = {
@@ -15,6 +16,7 @@ export const BANK_LINE_ACTION_LABELS_RU: Record<BankLineAction, string> = {
   [BankLineAction.TRANSFER]: "Перевод между своими счетами",
   [BankLineAction.SUPPLIER_PAYMENT]: "Оплата поставщику",
   [BankLineAction.IGNORE]: "Не проводить (уже учтено)",
+  [BankLineAction.CUSTOMER_PAYMENT]: "Оплата от покупателя",
 };
 
 export enum BankLineStatus {
@@ -70,8 +72,9 @@ export interface BankLineSuggestionDto {
   presetCategory: BankPresetCategory | null;
   targetAccountId: string | null;
   supplierId: string | null;
-  // Where the suggestion came from: a remembered rule, the bank's own wording, a known ИИН/БИН.
-  source: "RULE" | "BUILT_IN" | "COUNTERPARTY" | null;
+  customerId: string | null;
+  // Where the suggestion came from: a remembered rule, a keyword in the purpose, the bank's own wording, a known ИИН/БИН.
+  source: "RULE" | "KEYWORD" | "BUILT_IN" | "COUNTERPARTY" | null;
 }
 
 export interface BankStatementLineDto extends ParsedBankLineDto {
@@ -82,6 +85,7 @@ export interface BankStatementLineDto extends ParsedBankLineDto {
   categoryName: string | null;
   targetAccountId: string | null;
   supplierId: string | null;
+  customerId: string | null;
   resultNote: string | null;
   suggestion: BankLineSuggestionDto | null;
   // For a sales settlement: the Almaty day it pays out.
@@ -135,6 +139,7 @@ export interface PostBankLineRequestDto {
   presetCategory?: BankPresetCategory | null;
   targetAccountId?: string | null;
   supplierId?: string | null;
+  customerId?: string | null;
   remember?: boolean;
 }
 
@@ -146,4 +151,27 @@ export interface PostBankLinesResultDto {
   posted: number;
   failed: { lineId: string; message: string }[];
   statement: BankStatementDto;
+}
+
+// «Ключевые слова» (ТЗ §6.2): a word in the payment purpose → a ДДС article.
+export interface BankKeywordRuleDto {
+  id: string;
+  keyword: string;
+  // +1 money in, −1 money out.
+  direction: 1 | -1;
+  categoryId: string;
+  categoryName: string;
+}
+
+export interface CreateBankKeywordRuleRequestDto {
+  keyword: string;
+  direction: 1 | -1;
+  categoryId: string;
+}
+
+// The case-insensitive match of a keyword against a payment purpose: «ЗП» finds «Выплата ЗП за октябрь».
+export function purposeHasKeyword(purpose: string | null | undefined, keyword: string): boolean {
+  const k = keyword.trim().toLowerCase().replace(/ё/g, "е");
+  if (!k || !purpose) return false;
+  return purpose.toLowerCase().replace(/ё/g, "е").includes(k);
 }

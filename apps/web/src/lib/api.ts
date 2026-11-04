@@ -255,6 +255,9 @@ import type {
   ProductionOutputReportDto,
   ProductionUnitCostTrendDto,
   ReferenceCell,
+  BankKeywordRuleDto,
+  CreateBankKeywordRuleRequestDto,
+  BankImportProfileDto,
   TillApprovalRequestDto,
   TillApprovalDto,
   TillShiftStateDto,
@@ -751,6 +754,13 @@ export const api = {
     post: (id: string, dto: PostBankLinesRequestDto) =>
       request<PostBankLinesResultDto>(`/bank-statements/${id}/post`, { method: "POST", body: JSON.stringify(dto) }),
     remove: (id: string) => request<{ deleted: true }>(`/bank-statements/${id}`, { method: "DELETE" }),
+    keywordRules: () => request<BankKeywordRuleDto[]>("/bank-statements/keyword-rules"),
+    addKeywordRule: (dto: CreateBankKeywordRuleRequestDto) =>
+      request<BankKeywordRuleDto[]>("/bank-statements/keyword-rules", { method: "POST", body: JSON.stringify(dto) }),
+    removeKeywordRule: (id: string) => request<BankKeywordRuleDto[]>(`/bank-statements/keyword-rules/${id}`, { method: "DELETE" }),
+    profiles: () => request<BankImportProfileDto[]>("/bank-statements/profiles"),
+    saveProfile: (dto: BankImportProfileDto) =>
+      request<BankImportProfileDto[]>("/bank-statements/profiles", { method: "PUT", body: JSON.stringify(dto) }),
   },
   suppliers: {
     list: (includeArchived?: boolean) =>
