@@ -37,8 +37,8 @@ simple Russian (see CLAUDE.md conventions).
 * Packaging as a recipe ingredient: undecided (workaround: a raw item «Упаковка»). No «Полуфабрикаты»
   category was created. The filling-per-pie norm is deliberately NOT invented: owner measures it, then adds the
   filling to the pie recipe (until then the card shows «Не учтено: начинка»).
-* Known, accepted limitation: finished goods are valued at TODAY's recipe cost, so a price move revalues goods
-  on the shelf and the ledger-vs-valuation diagnostic can show a small difference.
+* FIXED 2026-11-05: finished goods are valued at the moving average of their batches (ТЗ §5.1), so a raw-material
+  price move no longer revalues the shelf or unbalances the balance sheet (see CLAUDE.md, accounting section).
 * Waste of vegetables: modelled as a virtual semi-finished product «X очищенный» (raw → yield = clean weight).
   No per-day actual waste entry or waste report exists.
 * iiko: no access and no integration (Интеграции stays deferred). Fiscal (re:Kassa) work is in CLAUDE.md.
@@ -76,9 +76,19 @@ timeline/rhythm, Группы (RFM + churn radar), Торты на заказ bo
 «CRM». Meta number verification is still pending on the owner's side (Facebook asked for ~2 days of account trust).
 Next candidates: «Чаты» inbox when WhatsApp is connected, automatic welcome/win-back chains.
 
-## Known failing spec (found 2026-11-02, not fixed)
+## Previously failing spec (found 2026-11-02) — passes again as of 2026-11-05 (full suite 803/803 green)
 
 `src/demo/demo-company.spec.ts` › «is generated day by day…» fails on clean `main` too: 80 sandbox stock movements are
 left dated «now» instead of shifted back to their simulated day (`demo_shift_since`). Started after the month changed
 (it passed on 2026-10-27/28), so likely a date-boundary issue in the generator. Production data is not affected; a
 sandbox generated now may have a few rows dated today. Owner of the sandbox code should look first.
+
+## State on 2026-11-05 (end of the ТЗ work)
+* Every ТЗ item is built or listed as different in the report for the financiers (PDF + claude.ai artifact).
+* Waiting for the financiers: tax regime / VAT, an expense article per write-off reason, average per point vs one
+  for the network, depreciation policy, and which of the «отличается от ТЗ» items they actually need.
+* Owner's own steps: separate «Бухгалтер» logins for the financiers (they were using the owner's account), change
+  the owner's password, then the clean start (backup → «Начать учёт с чистого листа» → opening stock via Приёмка →
+  Финансы → «Запустить»).
+* Blocked outside: re:Kassa (shift-close password, production credentials), Meta approval for WhatsApp.
+
