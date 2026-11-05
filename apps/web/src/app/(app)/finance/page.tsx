@@ -1480,6 +1480,7 @@ function CategoryList({
             <button onClick={() => canManage && onEdit(c)} className={clsx("text-left text-foreground", canManage && "hover:underline")}>
               {c.code && <span className="mr-2 font-mono text-xs text-muted">{c.code}</span>}
               {c.name}
+              {c.payroll && <span className="ml-2 inline-block whitespace-nowrap rounded-full bg-surface-muted px-2 py-0.5 text-xs text-muted">Оплата труда</span>}
             </button>
             <div className="flex items-center gap-2">
               {onClassify &&

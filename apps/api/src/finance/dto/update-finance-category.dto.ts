@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength, MinLength } from "class-validator";
+import { IsBoolean, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
 
 export class UpdateFinanceCategoryDto {
   @IsString()
@@ -9,4 +9,8 @@ export class UpdateFinanceCategoryDto {
   @IsString()
   @MaxLength(20)
   code?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  payroll?: boolean;
 }

@@ -34,6 +34,9 @@ export enum BalanceLine {
   EXPENSE_PAYABLES = "EXPENSE_PAYABLES",
   CONSIGNMENT_PAYABLES = "CONSIGNMENT_PAYABLES",
   LOANS = "LOANS",
+  // Unpaid expenses on articles marked «Оплата труда». Presentation only: the events
+  // keep them inside EXPENSE_PAYABLES; the balance sheet shows them on their own line.
+  PAYROLL_PAYABLES = "PAYROLL_PAYABLES",
   // Received from customers ahead of a sale (presentation only, see ADVANCES_PAID).
   ADVANCES_RECEIVED = "ADVANCES_RECEIVED",
   // Equity (direct movements only — the result of operations arrives through
@@ -55,6 +58,7 @@ export const BALANCE_LINE_SIDE: Record<BalanceLine, BalanceSide> = {
   [BalanceLine.EXPENSE_PAYABLES]: "LIABILITY",
   [BalanceLine.CONSIGNMENT_PAYABLES]: "LIABILITY",
   [BalanceLine.LOANS]: "LIABILITY",
+  [BalanceLine.PAYROLL_PAYABLES]: "LIABILITY",
   [BalanceLine.ADVANCES_RECEIVED]: "LIABILITY",
   [BalanceLine.OPENING_EQUITY]: "EQUITY",
   [BalanceLine.OWNER_CONTRIBUTIONS]: "EQUITY",
@@ -71,6 +75,7 @@ export const BALANCE_LINE_LABELS_RU: Record<BalanceLine, string> = {
   [BalanceLine.EXPENSE_PAYABLES]: "Кредиторская задолженность — расходы",
   [BalanceLine.CONSIGNMENT_PAYABLES]: "Кредиторская задолженность — консигнация",
   [BalanceLine.LOANS]: "Займы и кредиты",
+  [BalanceLine.PAYROLL_PAYABLES]: "Задолженность по оплате труда",
   [BalanceLine.ADVANCES_RECEIVED]: "Авансы полученные",
   [BalanceLine.OPENING_EQUITY]: "Начальный капитал",
   [BalanceLine.OWNER_CONTRIBUTIONS]: "Взносы собственника",

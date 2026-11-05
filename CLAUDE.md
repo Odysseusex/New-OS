@@ -897,11 +897,14 @@ unit cost by Almaty month (12, zero-filled, recharts line). The financiers' acce
   accounts (with a point: its own accounts + its non-cash account), receivables/payables from the debts reports, own
   finished goods on STORE shelves at cost and at the point's price, top-5 of the month. Point filter on the page;
   `/dashboard/summary` takes `locationId` too. Other roles keep the revenue-only cards.
-- **ДДС by point / account** (ТЗ §6.3): `locationId` / `accountId` on every `/finance/cash-flow*` endpoint.
+- **ДДС by point / account / direction** (ТЗ §6.3): `locationId` / `accountId` / `direction` on every `/finance/cash-flow*` endpoint.
   `events/cash-scope.ts` filters CASH LEGS: an account keeps only its legs (a transfer stays as its internal movement, so
   closing = the account's balance and it reconciles); a point keeps movements whose document (sale, return, expense,
   supplier order) is at that point, else whose account is tied to it — no reconciliation for a point (shared accounts).
   A scoped request is always live (the frozen snapshot is the network's).
+  A direction keeps only movements whose document has one (`cashScopeIndex`: sale / its return by `businessDirectionOf`,
+  an expense by its `direction`, a customer payment with no sale = wholesale, a correction follows what it corrects);
+  common expenses, suppliers, transfers and opening balances have none — no reconciliation for a direction.
 - **ОПиУ по точкам** (ТЗ §8.2): `GET /finance/pnl/locations` → one `getProfitAndLoss(…, locationId, { ownExpensesOnly })`
   per active point + the network total; whatever no point has (expenses with no point, depreciation, cost correction)
   is ONE column «Не отнесено к точкам», so the columns add up to «Итого» (spec). The ordinary single-point P&L still
@@ -927,6 +930,9 @@ unit cost by Almaty month (12, zero-filled, recharts line). The financiers' acce
   «Excel» is ONE workbook: ОПиУ + По товарам + По точкам + По направлениям (the two cards hand their sheet up via `onSheet`).
 - **Closing a month** = `PERIOD_CLOSE_ROLES` (OWNER/ADMIN/ACCOUNTANT); reopening stays OWNER only.
 - **Balance**: «Денежные средства» broken down by account (`cashByAccountAt`), expense payables by article.
+  Articles marked «Оплата труда» (`FinanceCategory.payroll`, migration `20261120120000`, checkbox in the article form) show
+  their unpaid confirmed expenses as `BalanceLine.PAYROLL_PAYABLES` «Задолженность по оплате труда» — presentation only
+  (events/ledger keep them inside EXPENSE_PAYABLES; CONTROL compares the sum), live date only.
 - Отчёты → Рентабельность «По группам товаров» (top-level category of the sale-time snapshot); Склад → ОСВ group filter.
 - Sale card shows cost / gross profit / margin / markup for FINANCE_VIEW_ROLES (`SaleItemDto.unitCost`, the line stamp).
 - X/Z reports and «Смены»: card takings «в т.ч. Kaspi QR» (`Sale.terminalMethod === "qr"`, `till-takings.ts`).

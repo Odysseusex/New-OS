@@ -23,6 +23,8 @@ import type {
   StockLevelDto,
 } from "@bakery-os/shared";
 import {
+  BUSINESS_DIRECTION_LABELS_RU,
+  BUSINESS_DIRECTION_ORDER,
   CASH_SECTION_LABELS_RU,
   CUSTOMER_VIEW_ROLES,
   FINANCE_VIEW_ROLES,
@@ -102,6 +104,7 @@ export default function ReportsPage() {
   const [locationFilter, setLocationFilter] = useState("");
   const [locations, setLocations] = useState<LocationDto[]>([]);
   const [accountFilter, setAccountFilter] = useState("");
+  const [directionFilter, setDirectionFilter] = useState("");
   const [accounts, setAccounts] = useState<CashAccountDto[]>([]);
 
   useEffect(() => {
@@ -112,8 +115,8 @@ export default function ReportsPage() {
     if (activeReport === "cashflow" && accounts.length === 0) api.finance.accounts.list().then(setAccounts).catch(() => {});
   }, [activeReport, accounts.length]);
   const cashScope = useMemo(
-    () => ({ locationId: locationFilter || undefined, accountId: accountFilter || undefined }),
-    [locationFilter, accountFilter],
+    () => ({ locationId: locationFilter || undefined, accountId: accountFilter || undefined, direction: directionFilter || undefined }),
+    [locationFilter, accountFilter, directionFilter],
   );
 
   if (availableReports.length === 0) return null;
@@ -190,6 +193,20 @@ export default function ReportsPage() {
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}
+                </option>
+              ))}
+            </select>
+          )}
+          {activeReport === "cashflow" && (
+            <select
+              value={directionFilter}
+              onChange={(e) => setDirectionFilter(e.target.value)}
+              className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            >
+              <option value="">Все направления</option>
+              {BUSINESS_DIRECTION_ORDER.map((d) => (
+                <option key={d} value={d}>
+                  {BUSINESS_DIRECTION_LABELS_RU[d]}
                 </option>
               ))}
             </select>

@@ -106,9 +106,18 @@ export class BalanceService implements OnModuleInit {
     const liabilityLines = [
       line(BalanceLine.SUPPLIER_PAYABLES, payables?.suppliers ?? proj(BalanceLine.SUPPLIER_PAYABLES), payables ? "DOCUMENTS" : "EVENTS"),
       {
-        ...line(BalanceLine.EXPENSE_PAYABLES, payables?.expenses ?? proj(BalanceLine.EXPENSE_PAYABLES), payables ? "DOCUMENTS" : "EVENTS"),
+        // Unpaid wages (articles marked «Оплата труда») are shown on their own line below.
+        ...line(BalanceLine.EXPENSE_PAYABLES, payables ? payables.expenses - payables.payroll : proj(BalanceLine.EXPENSE_PAYABLES), payables ? "DOCUMENTS" : "EVENTS"),
         ...(payables && payables.expensesByArticle.length > 0 ? { breakdown: payables.expensesByArticle } : {}),
       },
+      ...(payables
+        ? [
+            {
+              ...line(BalanceLine.PAYROLL_PAYABLES, payables.payroll, "DOCUMENTS"),
+              ...(payables.payrollByArticle.length > 1 ? { breakdown: payables.payrollByArticle } : {}),
+            },
+          ]
+        : []),
       line(BalanceLine.CONSIGNMENT_PAYABLES, payables?.consignment ?? proj(BalanceLine.CONSIGNMENT_PAYABLES), payables ? "DOCUMENTS" : "EVENTS"),
       // No register of loans exists: the figure IS the events'.
       line(BalanceLine.LOANS, proj(BalanceLine.LOANS), "EVENTS"),
@@ -146,7 +155,11 @@ export class BalanceService implements OnModuleInit {
       compare("Основные средства: реестр и события", fixedAssets, proj(BalanceLine.FIXED_ASSETS), 1);
       compare(
         "Кредиторская задолженность: документы и события",
-        liabilityLines.slice(0, 3).reduce((s, l) => s + l.amount, 0) - advances.paid,
+        liabilityLines
+          .filter((l) =>
+            [BalanceLine.SUPPLIER_PAYABLES, BalanceLine.EXPENSE_PAYABLES, BalanceLine.PAYROLL_PAYABLES, BalanceLine.CONSIGNMENT_PAYABLES].includes(l.line),
+          )
+          .reduce((s, l) => s + l.amount, 0) - advances.paid,
         proj(BalanceLine.SUPPLIER_PAYABLES) + proj(BalanceLine.EXPENSE_PAYABLES) + proj(BalanceLine.CONSIGNMENT_PAYABLES),
         -1,
       );

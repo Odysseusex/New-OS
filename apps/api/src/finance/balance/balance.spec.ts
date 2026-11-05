@@ -1,4 +1,4 @@
-import { BalanceStatus, DepreciationMethod, PaymentMethod } from "@bakery-os/shared";
+import { BalanceLine, BalanceStatus, DepreciationMethod, PaymentMethod } from "@bakery-os/shared";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createIsolatedOrg, destroyOrg, IsolatedOrg } from "../../../test/support/isolated-org";
 import { buildServices } from "../../../test/support/services";
@@ -387,5 +387,23 @@ describe("monthly report and frozen snapshots", () => {
     expect(snapshot.diagnostics).toHaveProperty("pnlParityDifference");
     const frozen = (snapshot.payload as unknown as { balance: { asOf: string } }).balance.asOf;
     expect(new Date(frozen).getTime()).toBe(monthRange(m.year, m.month).end.getTime());
+  });
+});
+
+describe("unpaid wages on their own line (ТЗ §8.3)", () => {
+  it("an article marked «Оплата труда» moves its unpaid amount to «Задолженность по оплате труда»; totals and CONTROL unchanged", async () => {
+    const before = await sheet();
+    const line = (s: Awaited<ReturnType<typeof sheet>>, l: BalanceLine) => s.liabilities.lines.find((x) => x.line === l)?.amount ?? 0;
+    const wages = (await prisma.financeCategory.create({
+      data: { organizationId: org.organizationId, name: "Зарплата", kind: "EXPENSE", pnlTreatment: "OPERATING_EXPENSE", cashActivity: "OPERATING", balanceTreatment: "NONE", payroll: true },
+    })).id;
+    const owed = await services.finance.createExpense(org.user, { amount: 1500, categoryId: wages, paidImmediately: false, description: "Зарплата за неделю" } as never);
+    await services.finance.confirmExpense(org.organizationId, owed.id, org.user.id);
+    const after = await sheet();
+    expect(line(after, BalanceLine.PAYROLL_PAYABLES)).toBe(1500);
+    expect(line(after, BalanceLine.EXPENSE_PAYABLES)).toBe(line(before, BalanceLine.EXPENSE_PAYABLES));
+    expect(after.liabilities.total - before.liabilities.total).toBe(1500);
+    expect(after.control.difference).toBe(before.control.difference);
+    expect(after.control.lines.map((c) => [c.label, c.effect])).toEqual(before.control.lines.map((c) => [c.label, c.effect]));
   });
 });

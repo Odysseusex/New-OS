@@ -53,7 +53,7 @@ export function exportAccounts(accounts: CashAccountDto[]) {
 export function exportFinanceCategories(categories: FinanceCategoryDto[]) {
   void downloadTable(
     "stati-dds",
-    ["Код", "Статья", "Вид", "Деятельность (ДДС)", "ОПиУ", "Баланс", "Поведение затрат", "Активна"],
+    ["Код", "Статья", "Вид", "Деятельность (ДДС)", "ОПиУ", "Баланс", "Поведение затрат", "Оплата труда", "Активна"],
     categories.map((c) => [
       c.code ?? "",
       c.name,
@@ -62,6 +62,7 @@ export function exportFinanceCategories(categories: FinanceCategoryDto[]) {
       PNL_TREATMENT_LABELS_RU[c.pnlTreatment],
       BALANCE_TREATMENT_LABELS_RU[c.balanceTreatment],
       COST_BEHAVIOR_LABELS_RU[c.costBehavior],
+      yesNo(c.payroll),
       yesNo(c.isActive),
     ]),
     { sheetName: "Статьи ДДС" },

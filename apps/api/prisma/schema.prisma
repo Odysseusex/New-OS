@@ -2167,6 +2167,9 @@ model FinanceCategory {
   pnlTreatment     PnlTreatment      @default(UNCLASSIFIED)
   cashActivity     CashActivity      @default(UNCLASSIFIED)
   balanceTreatment BalanceTreatment  @default(UNCLASSIFIED)
+  // «Оплата труда»: what is unpaid on this article shows in the balance sheet as
+  // «Задолженность по оплате труда» (presentation only; events/ledger unchanged).
+  payroll          Boolean           @default(false)
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 

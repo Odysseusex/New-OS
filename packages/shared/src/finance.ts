@@ -102,6 +102,8 @@ export interface FinanceCategoryDto {
   pnlTreatment: PnlTreatment;
   cashActivity: CashActivity;
   balanceTreatment: BalanceTreatment;
+  // «Оплата труда»: unpaid amounts show in the balance as «Задолженность по оплате труда».
+  payroll: boolean;
 }
 
 export interface CreateFinanceCategoryRequestDto {
@@ -110,12 +112,15 @@ export interface CreateFinanceCategoryRequestDto {
   costBehavior?: CostBehavior;
   // The article's code («2.1.3»); empty = none.
   code?: string;
+  payroll?: boolean;
 }
 
 export interface UpdateFinanceCategoryRequestDto {
   name: string;
   // Absent = unchanged; empty string = remove the code.
   code?: string;
+  // Absent = unchanged.
+  payroll?: boolean;
 }
 
 export interface SetFinanceCategoryCostBehaviorRequestDto {

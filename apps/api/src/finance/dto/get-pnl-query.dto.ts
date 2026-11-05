@@ -1,4 +1,5 @@
-import { IsDateString, IsOptional, IsString } from "class-validator";
+import { IsDateString, IsEnum, IsOptional, IsString } from "class-validator";
+import { BusinessDirection } from "@bakery-os/shared";
 
 export class GetPnlQueryDto {
   @IsDateString()
@@ -15,4 +16,9 @@ export class GetPnlQueryDto {
   @IsOptional()
   @IsString()
   accountId?: string;
+
+  // ДДС only: one business direction.
+  @IsOptional()
+  @IsEnum(BusinessDirection)
+  direction?: BusinessDirection;
 }

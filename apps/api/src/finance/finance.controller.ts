@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, Put, Query, UseGuards } from "@nestjs/common";
-import { CashFlowDto, DIRECTION_ALLOCATION_ROLES, EXPENSE_MANAGE_ROLES, FINANCE_VIEW_ROLES, ProfitAndLossDto } from "@bakery-os/shared";
+import { BusinessDirection, CashFlowDto, DIRECTION_ALLOCATION_ROLES, EXPENSE_MANAGE_ROLES, FINANCE_VIEW_ROLES, ProfitAndLossDto } from "@bakery-os/shared";
 import { DirectionAllocationBodyDto } from "./dto/direction-allocation.dto";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
@@ -14,7 +14,11 @@ import { GetPnlQueryDto } from "./dto/get-pnl-query.dto";
 import { CashFlowByDateQueryDto, CashFlowDateOperationsQueryDto, CashFlowMonthlyQueryDto, CashFlowOperationsQueryDto } from "./dto/cash-flow-monthly-query.dto";
 import { GetProductPnlQueryDto } from "./dto/get-product-pnl-query.dto";
 
-const scopeOf = (q: { locationId?: string; accountId?: string }) => ({ locationId: q.locationId || undefined, accountId: q.accountId || undefined });
+const scopeOf = (q: { locationId?: string; accountId?: string; direction?: BusinessDirection }) => ({
+  locationId: q.locationId || undefined,
+  accountId: q.accountId || undefined,
+  direction: q.direction || undefined,
+});
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(...FINANCE_VIEW_ROLES)
@@ -92,9 +96,9 @@ export class FinanceController {
   // as every other finance figure — cash movements are not shop-floor data.
   @Get("cash-flow")
   async getCashFlow(@CurrentUser() user: AuthenticatedUser, @Query() query: GetPnlQueryDto) {
-    const scope = { locationId: query.locationId || undefined, accountId: query.accountId || undefined };
-    // The frozen snapshot is the whole network's; a point or account is read live.
-    const month = !scope.locationId && !scope.accountId && this.periods.matchWholeMonth(new Date(query.from), new Date(query.to));
+    const scope = scopeOf(query);
+    // The frozen snapshot is the whole network's; a point, account or direction is read live.
+    const month = !scope.locationId && !scope.accountId && !scope.direction && this.periods.matchWholeMonth(new Date(query.from), new Date(query.to));
     const frozen = month && (await this.periods.frozenSection<CashFlowDto>(user.organizationId, month.year, month.month, "cashFlow"));
     if (frozen) return { ...frozen.data, frozen: frozen.info };
     return this.financeService.getCashFlow(user.organizationId, new Date(query.from), new Date(query.to), scope);

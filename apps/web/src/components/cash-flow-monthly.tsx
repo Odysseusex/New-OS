@@ -120,7 +120,7 @@ export function CashFlowMonthly({ scope = {} }: { scope?: CashScope }) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [granularity, fromKey, toKey, scope.locationId, scope.accountId]);
+  }, [granularity, fromKey, toKey, scope.locationId, scope.accountId, scope.direction]);
 
   const today = zonedDateKey();
   const isMonth = granularity === "month";

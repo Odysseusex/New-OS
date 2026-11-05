@@ -5,7 +5,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { customerAdvanceBalances } from "../sales/customer-advances";
 import { cogsDeltaOf, correctionsInRange, lossDeltaOf } from "./cost-correction/stored";
 import { buildDirectionPnl } from "./direction-pnl";
-import { BUSINESS_DIRECTION_ORDER, BusinessDirection, DirectionAllocationBase, DirectionAllocationDto, directionSharesError } from "@bakery-os/shared";
+import { BUSINESS_DIRECTION_ORDER, BusinessDirection, businessDirectionOf, DirectionAllocationBase, DirectionAllocationDto, directionSharesError } from "@bakery-os/shared";
 import { audited } from "../audit/audit";
 import { CostingService } from "../costing/costing.service";
 import { FinancialEventProjector } from "./events/projector";
@@ -1288,7 +1288,16 @@ export class FinanceService {
   // counted once.
   async getPayablesBreakdown(
     organizationId: string,
-  ): Promise<{ suppliers: number; expenses: number; consignment: number; expensesByArticle: { label: string; amount: number }[] }> {
+  ): Promise<{
+    suppliers: number;
+    // All unpaid confirmed expenses, payroll included (the payables total stays one figure).
+    expenses: number;
+    // The part of `expenses` on articles marked «Оплата труда».
+    payroll: number;
+    consignment: number;
+    expensesByArticle: { label: string; amount: number }[];
+    payrollByArticle: { label: string; amount: number }[];
+  }> {
     const [unpaidInvoices, unpaidExpenses, consignmentOwed, orderPayables] = await Promise.all([
       this.prisma.invoice.findMany({
         where: { organizationId, status: PrismaInvoiceStatus.CONFIRMED },
@@ -1296,7 +1305,7 @@ export class FinanceService {
       }),
       this.prisma.expense.findMany({
         where: { organizationId, status: ExpenseStatus.CONFIRMED },
-        select: { amount: true, amountPaid: true, categoryRef: { select: { name: true } } },
+        select: { amount: true, amountPaid: true, categoryRef: { select: { name: true, payroll: true } } },
       }),
       // Goods sold on consignment are money owed to their owner just as much
       // as an unpaid supplier invoice is, and it is owed from the moment they
@@ -1311,14 +1320,12 @@ export class FinanceService {
       ),
       expenses: roundMoney(unpaidExpenses.reduce((sum, e) => sum + Math.max(0, e.amount.toNumber() - e.amountPaid.toNumber()), 0)),
       consignment: roundMoney(consignmentOwed),
-      // ТЗ §8.3 «Задолженность по зарплате и налогам»: unpaid expenses by article.
-      expensesByArticle: articleLines(
-        unpaidExpenses.reduce((map, e) => {
-          const owed = Math.max(0, e.amount.toNumber() - e.amountPaid.toNumber());
-          const label = e.categoryRef?.name ?? "Без статьи";
-          return owed > 0 ? map.set(label, (map.get(label) ?? 0) + owed) : map;
-        }, new Map<string, number>()),
+      payroll: roundMoney(
+        unpaidExpenses.reduce((sum, e) => sum + (e.categoryRef?.payroll ? Math.max(0, e.amount.toNumber() - e.amountPaid.toNumber()) : 0), 0),
       ),
+      // ТЗ §8.3: unpaid expenses by article — «Оплата труда» articles separately.
+      expensesByArticle: owedByArticle(unpaidExpenses.filter((e) => !e.categoryRef?.payroll)),
+      payrollByArticle: owedByArticle(unpaidExpenses.filter((e) => e.categoryRef?.payroll)),
     };
   }
 
@@ -1439,21 +1446,34 @@ export class FinanceService {
   // the Telegram bot already use.
   // The point / account filter of the ДДС: which point each movement and account belongs to.
   private async cashScopeIndex(organizationId: string, scope: CashScope): Promise<CashScopeIndex | undefined> {
-    if (!scope.locationId) return undefined;
+    if (!scope.locationId && !scope.direction) return undefined;
+    const saleRef = { select: { locationId: true, customerId: true, crmOrderId: true } } as const;
     const [movements, accounts] = await Promise.all([
       this.prisma.cashMovement.findMany({
         where: { organizationId },
         select: {
           id: true,
+          type: true,
+          customerId: true,
+          correctsMovementId: true,
           account: { select: { locationId: true } },
-          sale: { select: { locationId: true } },
-          saleReturn: { select: { locationId: true } },
-          expense: { select: { locationId: true } },
+          sale: saleRef,
+          saleReturn: { select: { locationId: true, sale: saleRef } },
+          expense: { select: { locationId: true, direction: true } },
           purchaseOrderPayment: { select: { purchaseOrder: { select: { locationId: true } } } },
         },
       }),
       this.prisma.cashAccount.findMany({ where: { organizationId }, select: { id: true, locationId: true } }),
     ]);
+    const ownDirection = (m: (typeof movements)[number]): BusinessDirection | null => {
+      if (m.sale) return businessDirectionOf(m.sale);
+      if (m.saleReturn) return businessDirectionOf(m.saleReturn.sale);
+      if (m.expense) return (m.expense.direction as BusinessDirection | null) ?? null;
+      // A wholesale customer's payment with no sale behind it is an advance.
+      if (m.type === CashMovementType.CUSTOMER_PAYMENT && m.customerId) return BusinessDirection.WHOLESALE;
+      return null;
+    };
+    const direct = new Map(movements.map((m) => [m.id, ownDirection(m)]));
     return {
       movementLocation: new Map(
         movements.map((m) => [
@@ -1467,6 +1487,10 @@ export class FinanceService {
         ]),
       ),
       accountLocation: new Map(accounts.map((a) => [a.id, a.locationId])),
+      // A correction follows the movement it corrects.
+      movementDirection: new Map(
+        movements.map((m) => [m.id, direct.get(m.id) ?? (m.correctsMovementId ? (direct.get(m.correctsMovementId) ?? null) : null)]),
+      ),
     };
   }
 
@@ -1492,7 +1516,11 @@ export class FinanceService {
       this.prisma.cashAccount.findMany({ where: { organizationId }, select: { id: true, currentBalance: true } }),
       this.cashScopeIndex(organizationId, scope),
     ]);
-    const movements = scope.locationId ? allMovements.filter((m) => index?.movementLocation.get(m.id) === scope.locationId) : allMovements;
+    const movements = allMovements.filter(
+      (m) =>
+        (!scope.locationId || index?.movementLocation.get(m.id) === scope.locationId) &&
+        (!scope.direction || (index?.movementDirection?.get(m.id) ?? null) === scope.direction),
+    );
     // An account's statement reconciles with that account; a point shares bank accounts, so it has no ledger to match.
     const accounts = scope.accountId ? allAccounts.filter((a) => a.id === scope.accountId) : allAccounts;
     const statement = buildCashFlowFromEvents(events, from, to);
@@ -1567,7 +1595,7 @@ export class FinanceService {
       netFlow: roundMoney(statement.totalInflow - statement.totalOutflow),
       sections: statement.sections,
       internalTransfers: statement.internalTransfers,
-      reconciliation: runsToNow && !scope.locationId ? { accountsBalance, difference, reconciles: difference === 0 } : null,
+      reconciliation: runsToNow && !scope.locationId && !scope.direction ? { accountsBalance, difference, reconciles: difference === 0 } : null,
       inflowByType: toLines(inflowByType),
       outflowByType: toLines(outflowByType),
       outflowByCategory: Array.from(outflowByCategory.entries())
@@ -1726,4 +1754,15 @@ function articleLines(map: Map<string, number>): { label: string; amount: number
     .map(([label, amount]) => ({ label, amount: round2(amount) }))
     .filter((l) => l.amount !== 0)
     .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+}
+
+// Unpaid amount of confirmed expenses grouped by article (for the balance sheet breakdowns).
+function owedByArticle(expenses: { amount: Prisma.Decimal; amountPaid: Prisma.Decimal; categoryRef: { name: string } | null }[]) {
+  return articleLines(
+    expenses.reduce((map, e) => {
+      const owed = Math.max(0, e.amount.toNumber() - e.amountPaid.toNumber());
+      const label = e.categoryRef?.name ?? "Без статьи";
+      return owed > 0 ? map.set(label, (map.get(label) ?? 0) + owed) : map;
+    }, new Map<string, number>()),
+  );
 }

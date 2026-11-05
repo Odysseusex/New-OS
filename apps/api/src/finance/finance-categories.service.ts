@@ -14,7 +14,7 @@ import { CreateFinanceCategoryDto } from "./dto/create-finance-category.dto";
 import { UpdateFinanceCategoryDto } from "./dto/update-finance-category.dto";
 import { auditFields, recordAudit } from "../audit/audit";
 
-const CATEGORY_AUDIT_FIELDS = ["name", "code", "kind", "costBehavior", "pnlTreatment", "cashActivity", "balanceTreatment", "isActive"] as const;
+const CATEGORY_AUDIT_FIELDS = ["name", "code", "kind", "costBehavior", "pnlTreatment", "cashActivity", "balanceTreatment", "payroll", "isActive"] as const;
 
 @Injectable()
 export class FinanceCategoriesService {
@@ -79,7 +79,11 @@ export class FinanceCategoriesService {
     const updated = await this.prisma.$transaction(async (tx) => {
       const saved = await tx.financeCategory.update({
         where: { id: categoryId },
-        data: { name: dto.name, ...(dto.code !== undefined ? { code: dto.code.trim() || null } : {}) },
+        data: {
+          name: dto.name,
+          ...(dto.code !== undefined ? { code: dto.code.trim() || null } : {}),
+          ...(dto.payroll !== undefined ? { payroll: dto.payroll } : {}),
+        },
       });
       await recordAudit(tx, {
         organizationId,
@@ -234,6 +238,7 @@ export class FinanceCategoriesService {
     pnlTreatment: string;
     cashActivity: string;
     balanceTreatment: string;
+    payroll?: boolean;
   }): FinanceCategoryDto => ({
     id: category.id,
     name: category.name,
@@ -244,5 +249,6 @@ export class FinanceCategoriesService {
     pnlTreatment: category.pnlTreatment as PnlTreatment,
     cashActivity: category.cashActivity as CashActivity,
     balanceTreatment: category.balanceTreatment as BalanceTreatment,
+    payroll: category.payroll ?? false,
   });
 }

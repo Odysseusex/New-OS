@@ -22,6 +22,7 @@ export function FinanceCategoryModal({
 }) {
   const [name, setName] = useState(category?.name ?? "");
   const [code, setCode] = useState(category?.code ?? "");
+  const [payroll, setPayroll] = useState(category?.payroll ?? false);
   const kind = category?.kind ?? defaultKind;
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -32,9 +33,9 @@ export function FinanceCategoryModal({
     setIsSubmitting(true);
     try {
       if (category) {
-        await api.finance.categories.update(category.id, { name, code: code.trim() });
+        await api.finance.categories.update(category.id, { name, code: code.trim(), ...(kind === FinanceCategoryKind.EXPENSE ? { payroll } : {}) });
       } else {
-        await api.finance.categories.create({ name, kind, code: code.trim() || undefined });
+        await api.finance.categories.create({ name, kind, code: code.trim() || undefined, ...(kind === FinanceCategoryKind.EXPENSE ? { payroll } : {}) });
       }
       onSaved();
     } catch (err) {
@@ -70,6 +71,13 @@ export function FinanceCategoryModal({
             className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
           />
         </div>
+
+        {kind === FinanceCategoryKind.EXPENSE && (
+          <label className="mb-5 flex cursor-pointer items-center gap-2 text-sm text-foreground">
+            <input type="checkbox" checked={payroll} onChange={(e) => setPayroll(e.target.checked)} className="h-4 w-4 accent-[var(--accent)]" />
+            Оплата труда
+          </label>
+        )}
 
         {error && <div className="mb-4 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
 

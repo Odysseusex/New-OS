@@ -311,10 +311,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-// ДДС for one point / one account (empty = all).
+// ДДС for one point / one account / one business direction (empty = all).
 export interface CashScope {
   locationId?: string;
   accountId?: string;
+  direction?: string;
 }
 
 function withQuery(path: string, params: Record<string, string | undefined>) {

@@ -1,5 +1,5 @@
 import { IsEnum, IsIn, IsOptional, IsString, Matches, MaxLength, MinLength } from "class-validator";
-import { CashSection } from "@bakery-os/shared";
+import { BusinessDirection, CashSection } from "@bakery-os/shared";
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -12,6 +12,10 @@ export class CashScopeQueryDto {
   @IsOptional()
   @IsString()
   accountId?: string;
+
+  @IsOptional()
+  @IsEnum(BusinessDirection)
+  direction?: BusinessDirection;
 }
 
 export class CashFlowMonthlyQueryDto extends CashScopeQueryDto {
