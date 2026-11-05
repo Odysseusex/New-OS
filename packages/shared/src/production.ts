@@ -365,6 +365,9 @@ export interface ProductionOutputRowDto {
   unit: Unit;
   locationId: string;
   locationName: string;
+  // ТЗ §4.4 «по направлениям»: the point's default direction (null = none set).
+  directionId: string | null;
+  directionName: string | null;
   batches: number;
   quantity: number;
   cost: number;

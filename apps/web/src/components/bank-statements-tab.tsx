@@ -11,6 +11,8 @@ import type {
   BankKeywordRuleDto,
   CashAccountDto,
   CustomerDto,
+  DirectionDto,
+  LocationDto,
   FinanceCategoryDto,
   ParsedBankStatement,
   PostBankLineRequestDto,
@@ -47,10 +49,12 @@ interface Choice {
   targetAccountId: string;
   supplierId: string;
   customerId: string;
+  locationId: string;
+  directionId: string;
   remember: boolean;
 }
 
-const emptyChoice: Choice = { action: "", category: "", targetAccountId: "", supplierId: "", customerId: "", remember: false };
+const emptyChoice: Choice = { action: "", category: "", targetAccountId: "", supplierId: "", customerId: "", locationId: "", directionId: "", remember: false };
 
 // A CSV from a Kazakh bank is UTF-8 or Windows-1251; the wrong guess shows as «�».
 async function readCsvFile(file: File) {
@@ -73,6 +77,8 @@ function choiceFromSuggestion(line: BankStatementLineDto): Choice {
     targetAccountId: s.targetAccountId ?? "",
     supplierId: s.supplierId ?? "",
     customerId: s.customerId ?? "",
+    locationId: "",
+    directionId: "",
     remember: false,
   };
 }
@@ -422,6 +428,8 @@ function StatementView({
   const [categories, setCategories] = useState<FinanceCategoryDto[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierDto[]>([]);
   const [customers, setCustomers] = useState<CustomerDto[]>([]);
+  const [locations, setLocations] = useState<LocationDto[]>([]);
+  const [directions, setDirections] = useState<DirectionDto[]>([]);
   const [choices, setChoices] = useState<Record<string, Choice>>({});
   const [onlyNew, setOnlyNew] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -433,6 +441,8 @@ function StatementView({
     api.finance.categories.list().then((c) => setCategories(c.filter((x) => x.isActive))).catch(() => {});
     api.suppliers.list().then(setSuppliers).catch(() => {});
     api.customers.list().then(setCustomers).catch(() => {});
+    api.locations.list().then((l) => setLocations(l.filter((x) => x.isActive !== false))).catch(() => {});
+    api.directions.list().then(setDirections).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -487,6 +497,8 @@ function StatementView({
           targetAccountId: c.action === BankLineAction.TRANSFER ? c.targetAccountId : null,
           supplierId: c.action === BankLineAction.SUPPLIER_PAYMENT ? c.supplierId : null,
           customerId: c.action === BankLineAction.CUSTOMER_PAYMENT ? c.customerId : null,
+          locationId: c.action === BankLineAction.CATEGORY && l.amount < 0 && c.locationId ? c.locationId : null,
+          directionId: c.action === BankLineAction.CATEGORY && l.amount < 0 && c.directionId ? c.directionId : null,
           remember: c.remember,
         };
       });
@@ -672,6 +684,26 @@ function StatementView({
                               </option>
                             ))}
                           </select>
+                        )}
+                        {c.action === BankLineAction.CATEGORY && out && (
+                          <>
+                            <select value={c.locationId} onChange={(e) => set(l.id, { locationId: e.target.value })} className={selectClass} aria-label="Точка">
+                              <option value="">Без точки</option>
+                              {locations.map((x) => (
+                                <option key={x.id} value={x.id}>
+                                  {x.name}
+                                </option>
+                              ))}
+                            </select>
+                            <select value={c.directionId} onChange={(e) => set(l.id, { directionId: e.target.value })} className={selectClass} aria-label="Направление">
+                              <option value="">Общий расход</option>
+                              {directions.map((x) => (
+                                <option key={x.id} value={x.id}>
+                                  {x.name}
+                                </option>
+                              ))}
+                            </select>
+                          </>
                         )}
                         {c.action === BankLineAction.TRANSFER && (
                           <select value={c.targetAccountId} onChange={(e) => set(l.id, { targetAccountId: e.target.value })} className={selectClass}>

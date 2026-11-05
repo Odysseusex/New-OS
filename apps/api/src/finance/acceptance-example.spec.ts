@@ -146,4 +146,33 @@ describe("ТЗ §9.3 — контрольный пример", () => {
     expect(trend.months.at(-1)).toMatchObject({ quantity: 10, cost: 2250, unitCost: 225 });
     expect(trend.months[0]).toMatchObject({ quantity: 0, unitCost: null });
   });
+
+  it("7. finished goods are sold at their batches' average: a flour price change between baking and selling keeps the books balanced", async () => {
+    // Flour gets dearer: 15 kg at 450 + 10 kg at 700 → 550.
+    const po = await services.procurement.create(org.user, { supplierId, locationId: org.storeId, items: [{ productId: flourId, quantity: 10, unitCost: 700 }] } as never);
+    await services.procurement.receive(org.user, po.id);
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: flourId } })).averageUnitCost?.toNumber()).toBe(550);
+    // The 6 loaves on the shelf were baked at 225 and stay at 225 — not today's recipe (0.5 × 550 = 275).
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: cakeId } })).averageUnitCost?.toNumber()).toBe(225);
+    const first = await services.sales.create(org.user, { locationId: org.storeId, paymentMethod: PaymentMethod.CASH, items: [{ productId: cakeId, quantity: 2, unitPrice: 1000 }] } as never);
+    expect((await prisma.saleItem.findFirstOrThrow({ where: { saleId: first.id } })).unitCost?.toNumber()).toBe(225);
+    // A new batch at the new flour price: 275 a unit; the shelf averages 4 × 225 and 10 × 275.
+    const batch = await services.production.create(org.user, { locationId: org.storeId, recipeId, plannedQuantity: 10 });
+    await services.production.start(org.user, batch.id);
+    await services.production.complete(org.user, batch.id, { actualQuantity: 10 });
+    expect((await prisma.stockMovement.findFirstOrThrow({ where: { batchId: batch.id, type: "PRODUCTION_OUTPUT" } })).unitCost?.toNumber()).toBe(275);
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: cakeId } })).averageUnitCost?.toNumber()).toBe(260.7143);
+    const second = await services.sales.create(org.user, { locationId: org.storeId, paymentMethod: PaymentMethod.CASH, items: [{ productId: cakeId, quantity: 3, unitPrice: 1000 }] } as never);
+    expect((await prisma.saleItem.findFirstOrThrow({ where: { saleId: second.id } })).unitCost?.toNumber()).toBe(260.7143);
+    // A loaf of the first sale comes back onto the shelf at the 225 it was sold at: it joins the average.
+    await services.returns.create(org.user, first.id, { items: [{ productId: cakeId, quantity: 1 }], restocked: true } as never);
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: cakeId } })).averageUnitCost?.toNumber()).toBe(Math.round(((11 * 260.7143 + 225) / 12) * 10000) / 10000);
+
+    const sheet = await balance.getBalanceSheet(org.organizationId);
+    expect(sheet.control.lines).toEqual([]);
+    expect(sheet.status).toBe(BalanceStatus.BALANCED);
+    expect(checkEventInvariants(await projector.project(org.organizationId)).violations).toEqual([]);
+    const diag = await diagnostics.run(org.organizationId);
+    expect(diag.checks.filter((c) => c.status !== "PASS")).toEqual([]);
+  });
 });

@@ -230,23 +230,19 @@ describe("a second batch moves the price as a weighted average", () => {
     expect(valueAfter).toBeCloseTo(before.qty * before.avg + 384.5, 1);
     const costs = await costing.currentUnitCosts(org.organizationId);
     expect(costs.get(ids.filling)?.unitCost).toBe(expected);
-    // …and the pie's own cost follows the filling's new average (the existing "finished goods are valued at today's recipe cost" rule).
-    expect(costs.get(ids.pie)?.unitCost).toBeCloseTo((50 + 1.2 * expected) / 36, 4);
+    // …while the pies already baked keep the average of their own batches: a finished
+    // good is not revalued when its filling's price moves (ТЗ §5.1).
+    const piesStamped = (await prisma.stockMovement.findFirstOrThrow({ where: { productId: ids.pie, type: "PRODUCTION_OUTPUT" } })).unitCost!.toNumber();
+    expect(costs.get(ids.pie)?.unitCost).toBe(piesStamped);
   });
 
-  it("the filling's own value is conserved to the cent; the only drift is the pies already on the shelf being revalued", async () => {
+  it("the filling's own value is conserved to the cent, and the pies on the shelf are not revalued", async () => {
     const reports = new LedgerReportsService(prisma, services.finance);
     const diagnostics = new LedgerDiagnosticsService(prisma, services.finance, new BalanceService(prisma, services.finance), reports, ledger);
     const inventory = (await diagnostics.run(org.organizationId)).checks.find((c) => c.check === "INVENTORY_SUBLEDGER")!;
-    // 26 pies were made at the OLD average and are now valued at the NEW one — the
-    // same effect a flour price change has on bread (finished goods carry today's
-    // recipe cost). Nothing of the filling or the raw materials is lost.
-    const costs = await costing.currentUnitCosts(org.organizationId);
-    const pies = await stockOf(ids.pie);
-    const stamped = (await prisma.stockMovement.findFirstOrThrow({ where: { productId: ids.pie, type: "PRODUCTION_OUTPUT" } })).unitCost!.toNumber();
-    const revaluation = round2(pies * ((costs.get(ids.pie)?.unitCost as number) - stamped));
-    // The diagnostic reports ledger − valuation, so a revaluation DOWN shows as a positive difference.
-    expect(inventory.difference ?? 0).toBeCloseTo(-revaluation, 1);
+    // 26 pies were made at the OLD filling average and are still valued at what they
+    // cost (their own average) — the books and the valuation agree.
+    expect(inventory.difference ?? 0).toBeCloseTo(0, 1);
   });
 });
 
@@ -294,8 +290,9 @@ describe("guards and backward compatibility", () => {
     const flour = (await movesOf(id)).find((m) => m.type === "PRODUCTION_CONSUMPTION")!;
     expect(flour.quantity.toNumber()).toBe(1); // 2 kg × 5 ÷ 10, exactly as before this feature
     expect(await stockOf(ids.flour)).toBe(flourBefore - 1);
-    expect(await avgOf(bread.id)).toBeNull(); // no average anywhere but a stocked semi-finished product
-    expect((await costing.currentUnitCosts(org.organizationId)).get(bread.id)?.unitCost).toBeCloseTo(100 / 10, 6); // 2 kg × 50 ÷ 10 pieces
+    // Finished goods carry the average of their batches too: 1 kg × 50 ÷ 5 pieces.
+    expect(await avgOf(bread.id)).toBe(10);
+    expect((await costing.currentUnitCosts(org.organizationId)).get(bread.id)?.unitCost).toBeCloseTo(100 / 10, 6); // = 2 kg × 50 ÷ 10 pieces, the recipe
   });
 
   it("a semi-finished product WITHOUT stock still expands into raw materials, as before", async () => {
@@ -311,11 +308,11 @@ describe("guards and backward compatibility", () => {
   });
 });
 
-describe("the revaluation of finished goods is the architecture's existing rule, not something this feature adds", () => {
-  it("an ordinary price change on a raw material produces the same kind of ledger-vs-valuation difference", async () => {
-    // Bread baked from flour at 50, sold none, then the flour price moves to 80:
-    // the bread already on the shelf is valued at TODAY's recipe cost (CostingService),
-    // the books carry it at what it cost when baked.
+describe("a raw-material price change does not revalue finished goods already baked", () => {
+  it("only the raw material itself is revalued; the bread keeps the average of its batches", async () => {
+    // Bread baked from flour at 50, sold none, then the flour average is moved to 80 behind the
+    // books' back: the flour on hand is revalued, the bread on the shelf is not (ТЗ §5.1 —
+    // finished goods at the average of what their batches cost).
     const bread = await prisma.product.create({ data: { organizationId: org.organizationId, name: "Хлеб-переоценка", sku: `ST-${++n}`, unit: Unit.PCS, type: ProductType.FINISHED_GOOD, price: 100 } });
     const r = await recipes.create(org.user, { productId: bread.id, yieldQuantity: 10, items: [{ ingredientProductId: ids.flour, quantity: 2 }] } as never);
     await batch(r.id, 10, 10);
@@ -328,13 +325,15 @@ describe("the revaluation of finished goods is the architecture's existing rule,
       return levels.reduce((sum, l) => sum + l.quantity.toNumber() * (costs.get(l.productId)?.unitCost ?? 0), 0);
     };
     const [checkBefore, valueBefore] = [await inventoryCheck(), await stockValue()];
+    const breadBefore = (await costing.currentUnitCosts(org.organizationId)).get(bread.id)?.unitCost;
+    const flourOnHand = await stockOf(ids.flour);
     // Flour bought through an order is at its weighted average, so the card's price no longer
     // values it; move the average itself behind the books' back (what a hand-edited price used to do).
     await prisma.product.update({ where: { id: ids.flour }, data: { averageUnitCost: 80 } });
     const [checkAfter, valueAfter] = [await inventoryCheck(), await stockValue()];
-    // The books did not move; the valuation did (raw flour AND every product whose recipe uses it),
-    // so the difference moved by exactly that — with no filling involved at all.
-    expect(Math.abs(valueAfter - valueBefore)).toBeGreaterThan(50);
+    // The books did not move; the valuation did — by the flour on hand × 30 and nothing else.
+    expect((await costing.currentUnitCosts(org.organizationId)).get(bread.id)?.unitCost).toBe(breadBefore);
+    expect(valueAfter - valueBefore).toBeCloseTo(flourOnHand * 30, 2);
     expect(Math.abs((checkAfter.difference ?? 0) - (checkBefore.difference ?? 0))).toBeCloseTo(Math.abs(valueAfter - valueBefore), 0);
     await prisma.product.update({ where: { id: ids.flour }, data: { averageUnitCost: 50 } });
   });

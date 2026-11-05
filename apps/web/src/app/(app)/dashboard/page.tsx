@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Banknote, Building2, Croissant, HandCoins, MapPin, Receipt, Sparkles, TrendingUp, Users, Wallet } from "lucide-react";
-import type { DashboardFinanceDto, DashboardPeriodFiguresDto, DashboardSummaryDto, LocationDto } from "@bakery-os/shared";
+import type { DashboardFinanceDto, DashboardPeriodFiguresDto, DashboardSummaryDto, DirectionDto, LocationDto } from "@bakery-os/shared";
 import { FINANCE_VIEW_ROLES, LOCATION_TYPE_LABELS_RU, ORG_WIDE_ROLES } from "@bakery-os/shared";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -17,11 +17,17 @@ export default function DashboardPage() {
   const [money, setMoney] = useState<DashboardFinanceDto | null>(null);
   const [locations, setLocations] = useState<LocationDto[]>([]);
   const [locationId, setLocationId] = useState("");
+  const [directionId, setDirectionId] = useState("");
+  const [directions, setDirections] = useState<DirectionDto[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOrgWide) api.locations.list().then(setLocations).catch(() => {});
   }, [isOrgWide]);
+
+  useEffect(() => {
+    if (seesFinance) api.directions.list().then(setDirections).catch(() => {});
+  }, [seesFinance]);
 
   useEffect(() => {
     setError(null);
@@ -32,11 +38,11 @@ export default function DashboardPage() {
     if (seesFinance) {
       setMoney(null);
       api
-        .dashboardFinance(locationId || undefined)
+        .dashboardFinance(locationId || undefined, directionId || undefined)
         .then(setMoney)
         .catch((err) => setError(err instanceof Error ? err.message : "Не удалось загрузить финансовые показатели"));
     }
-  }, [locationId, seesFinance]);
+  }, [locationId, directionId, seesFinance]);
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -47,6 +53,22 @@ export default function DashboardPage() {
           </h1>
           <p className="mt-1 text-sm text-muted">Обзор сети {summary?.organizationName ?? ""}</p>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+        {seesFinance && directions.length > 0 && (
+          <select
+            value={directionId}
+            onChange={(e) => setDirectionId(e.target.value)}
+            className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            aria-label="Направление"
+          >
+            <option value="">Все направления</option>
+            {directions.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+        )}
         {isOrgWide && (
           <select
             value={locationId}
@@ -63,6 +85,7 @@ export default function DashboardPage() {
               ))}
           </select>
         )}
+        </div>
       </div>
 
       {error && (

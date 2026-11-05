@@ -17,6 +17,8 @@ import { BankStatementsService, purposeKey, settlementDateOf } from "./bank-stat
 // transfers move money, a supplier's payment settles its orders, a line is
 // loaded and posted once, and every subledger agrees. Own throwaway organization.
 
+import { loadDirectionContext } from "../directions/direction-context";
+
 const prisma = new PrismaService();
 const services = buildServices(prisma);
 const ledger = new LedgerService(prisma);
@@ -120,12 +122,13 @@ describe("bank statement import", () => {
       data: { organizationId: org.organizationId, name: "Хозтовары", kind: "EXPENSE", pnlTreatment: "OPERATING_EXPENSE", cashActivity: "OPERATING", balanceTreatment: "NONE" },
     });
     const bankBefore = (await prisma.cashAccount.findUniqueOrThrow({ where: { id: org.bankAccountId } })).currentBalance.toNumber();
+    const { system } = await loadDirectionContext(prisma, org.organizationId);
     const result = await bank.post(org.user, statementId, [
       { lineId: by("1").id, action: BankLineAction.SALES_SETTLEMENT },
       { lineId: by("2").id, action: BankLineAction.CATEGORY, presetCategory: BankPresetCategory.BANK_FEE },
       { lineId: by("3").id, action: BankLineAction.CATEGORY, presetCategory: BankPresetCategory.OWNER_WITHDRAWAL },
       { lineId: by("4").id, action: BankLineAction.SUPPLIER_PAYMENT, supplierId },
-      { lineId: by("5").id, action: BankLineAction.CATEGORY, categoryId: otherCategory.id, remember: true },
+      { lineId: by("5").id, action: BankLineAction.CATEGORY, categoryId: otherCategory.id, locationId: org.storeId, directionId: system.RETAIL, remember: true },
       { lineId: by("6").id, action: BankLineAction.TRANSFER, targetAccountId: depositId },
     ]);
     expect(result.failed).toEqual([]);
@@ -141,6 +144,10 @@ describe("bank statement import", () => {
     // Movements are dated by the bank, not by the click.
     const movement = await prisma.cashMovement.findFirstOrThrow({ where: { expenseId: fee.id } });
     expect(movement.occurredAt.toISOString()).toBe(by("2").occurredAt);
+    // ТЗ §6.2: the point and direction chosen on the line are the expense's.
+    const household = await prisma.expense.findFirstOrThrow({ where: { organizationId: org.organizationId, amount: 480 } });
+    expect(household).toMatchObject({ locationId: org.storeId, directionId: system.RETAIL });
+    expect(fee).toMatchObject({ locationId: null, directionId: null });
     // The system's balance at the statement's end equals the bank's.
     expect(result.statement.systemClosingBalance).toBeCloseTo(59.5, 2);
 

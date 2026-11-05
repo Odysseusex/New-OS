@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { foldIntoProductionAverage } from "../costing/raw-material-average";
 import { resolveTillApproval } from "../auth/till-pin";
 import { nonCashAccountFor } from "../common/non-cash-account";
 import { FiscalReceiptStatus, Prisma, StockMovementType } from "@prisma/client";
@@ -259,6 +260,8 @@ export class SaleReturnsService {
         if (!trackable?.trackInventory) continue;
 
         if (restocked) {
+          // Back on the shelf at the cost the sale booked: it joins the product's average.
+          await foldIntoProductionAverage(tx, line.productId, line.quantity, line.unitCost);
           await tx.stockLevel.upsert({
             where: { locationId_productId: { locationId: sale.locationId, productId: line.productId } },
             create: {

@@ -75,13 +75,14 @@ export async function resolveProductUnitCosts(
   const merged = new Map<string, number>(avgPurchaseCostByProduct);
   for (const [productId, cost] of recipeCostByProduct) merged.set(productId, cost);
 
-  // A semi-finished product held as stock is worth what its batches cost, as a
-  // moving average — not what its recipe would cost today. Only these products:
-  // every other product's cost above is untouched.
+  // A product made in batches and held as stock (finished goods, stocked
+  // semi-finished) is worth what its batches cost, as a moving average — not what
+  // its recipe would cost today. Before its first batch it has no average and the
+  // recipe cost above stands. Every other product's cost above is untouched.
   const stockedSemiFinished = await prisma.product.findMany({
     where: {
       organizationId,
-      type: ProductType.SEMI_FINISHED,
+      type: { in: [ProductType.SEMI_FINISHED, ProductType.FINISHED_GOOD] },
       trackInventory: true,
       averageUnitCost: { not: null },
       ...(productIds ? { id: { in: productIds } } : {}),

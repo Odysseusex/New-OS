@@ -36,7 +36,9 @@ type Client = Prisma.TransactionClient | PrismaService;
 //
 // Current behaviour (unchanged by this class, only centralised):
 //   RAW_MATERIAL  → Product.price (for raw materials that field IS the cost)
-//   FINISHED_GOOD → active recipe cost, else weighted-average purchase cost
+//   FINISHED_GOOD → the moving average of its batches (Product.averageUnitCost),
+//                   before the first batch the active recipe cost, else
+//                   weighted-average purchase cost
 //   neither       → absent from the map = unknown, never zero
 //
 // Snapshots (unitCost/costBasis on movements and sale lines) are taken from
@@ -78,9 +80,13 @@ export class CostingService {
       }
       const cost = resolved.get(product.id);
       if (cost === undefined) continue;
-      // A semi-finished product held as stock is valued at its moving average (the
-      // resolver already returns that figure); say so instead of «техкарта».
-      const atAverage = product.type === ProductType.SEMI_FINISHED && product.trackInventory && product.averageUnitCost !== null;
+      // A product made in batches and held as stock (finished goods, stocked
+      // semi-finished) is valued at its moving average (the resolver already
+      // returns that figure); say so instead of «техкарта».
+      const atAverage =
+        (product.type === ProductType.SEMI_FINISHED || product.type === ProductType.FINISHED_GOOD) &&
+        product.trackInventory &&
+        product.averageUnitCost !== null;
       out.set(product.id, {
         unitCost: cost,
         basis: atAverage

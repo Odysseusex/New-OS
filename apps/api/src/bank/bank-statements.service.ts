@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { assertDirection } from "../directions/direction-context";
 import {
   BANK_PRESET_CATEGORY_NAMES_RU,
   BalanceTreatment,
@@ -523,10 +524,18 @@ export class BankStatementsService {
             });
             return { note: category.name, categoryId: category.id };
           }
+          // ТЗ §6.2: the point and direction chosen on the line go onto the expense.
+          if (request.locationId) {
+            const location = await tx.location.findFirst({ where: { id: request.locationId, organizationId: user.organizationId }, select: { id: true } });
+            if (!location) throw new BadRequestException("Точка не найдена");
+          }
+          await assertDirection(tx, user.organizationId, request.directionId);
           const expense = await tx.expense.create({
             data: {
               organizationId: user.organizationId,
               categoryId: category.id,
+              locationId: request.locationId || null,
+              directionId: request.directionId || null,
               status: ExpenseStatus.CONFIRMED,
               amount,
               amountPaid: amount,

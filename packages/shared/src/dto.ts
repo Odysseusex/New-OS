@@ -153,6 +153,8 @@ export interface DashboardTopProductDto {
 
 export interface DashboardFinanceDto {
   locationId: string | null;
+  // The direction the sales figures (periods, top products) are limited to; null = all.
+  directionId: string | null;
   today: DashboardPeriodFiguresDto;
   // The last 7 days including today.
   week: DashboardPeriodFiguresDto;

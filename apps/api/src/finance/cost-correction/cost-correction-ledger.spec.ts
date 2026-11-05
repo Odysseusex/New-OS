@@ -78,6 +78,10 @@ describe("the correction recorded at close", () => {
   let firstId: string;
 
   it("moves cost of goods and inventory by the same amount, in the books and both P&Ls", async () => {
+    // The first delivery's price is corrected after the batch was baked: the flour really
+    // cost 300, not 400, so a loaf really cost 5 × 300 ÷ 10 = 150 (sold at 200).
+    const first = await prisma.purchaseOrder.findFirstOrThrow({ where: { organizationId: org.organizationId }, orderBy: { orderedAt: "asc" }, include: { items: true } });
+    await services.procurement.revise(org.user, first.id, { items: [{ itemId: first.items[0].id, quantity: 10, unitCost: 300 }], reason: "Цена в накладной 300" });
     const [cogsBefore, inventoryBefore, pnlBefore, eventsBefore] = await Promise.all([gl(K.COST_OF_GOODS_SOLD), gl(K.INVENTORY), pnl(), eventsPnl()]);
     // Recorded the way a close does it: while the month is CLOSING, when nothing
     // else may be posted into it — this one posting is accepted.
@@ -88,8 +92,8 @@ describe("the correction recorded at close", () => {
     } finally {
       await setStatus("OPEN");
     }
-    // 4 loaves stamped at today's recipe (5 kg at 533.33 ÷ 10 = 266.67) really cost 200 each.
-    expect(recorded.cogsCorrection).toBeCloseTo(800 - 4 * 266.6667, 1);
+    // 4 loaves stamped at their batch's 200 really cost 150 each.
+    expect(recorded.cogsCorrection).toBeCloseTo(600 - 800, 1);
     expect(recorded.status).toBe("POSTED");
     expect(recorded.version).toBe(1);
     const delta = recorded.totalCorrection;
@@ -100,7 +104,7 @@ describe("the correction recorded at close", () => {
     expect(after.cogs).toBeCloseTo(pnlBefore.cogs + delta, 2);
     expect(after.netProfit).toBeCloseTo(pnlBefore.netProfit - delta, 2);
     expect((await eventsPnl()).netProfit).toBeCloseTo(eventsBefore.netProfit - delta, 2);
-    expect(after.byProduct.find((p) => p.productId === breadId)!.cogs).toBe(800);
+    expect(after.byProduct.find((p) => p.productId === breadId)!.cogs).toBe(600);
 
     const events = await projector.project(org.organizationId);
     expect(checkEventInvariants(events).violations).toEqual([]);
@@ -113,15 +117,16 @@ describe("the correction recorded at close", () => {
 
   it("closing again writes the next version, and the first one's entry is reversed", async () => {
     const first = await prisma.purchaseOrder.findFirstOrThrow({ where: { organizationId: org.organizationId }, orderBy: { orderedAt: "asc" }, include: { items: true } });
-    await services.procurement.revise(org.user, first.id, { items: [{ itemId: first.items[0].id, quantity: 10, unitCost: 300 }], reason: "Цена в накладной 300" });
+    await services.procurement.revise(org.user, first.id, { items: [{ itemId: first.items[0].id, quantity: 10, unitCost: 350 }], reason: "Цена в накладной 350" });
     const second = await correction.record(org.user, year, month);
     expect(second.version).toBe(2);
-    // A loaf really cost 5 × 300 ÷ 10 = 150.
-    expect(await pnl().then((p) => p.byProduct.find((r) => r.productId === breadId)!.cogs)).toBe(600);
+    // A loaf really cost 5 × 350 ÷ 10 = 175.
+    expect(await pnl().then((p) => p.byProduct.find((r) => r.productId === breadId)!.cogs)).toBe(700);
     const old = await prisma.accountingEvent.findFirstOrThrow({ where: { organizationId: org.organizationId, eventKey: `costCorrection:${firstId}` } });
     expect(old.status).toBe("REVERSED");
     const stamped = (await prisma.saleItem.findFirstOrThrow({ where: { productId: breadId, sale: { organizationId: org.organizationId } } })).unitCost!.toNumber();
-    expect(await gl(K.COST_OF_GOODS_SOLD)).toBeCloseTo(600 + (Math.round(4 * stamped * 100) / 100 - 4 * stamped), 1);
+    expect(stamped).toBe(200);
+    expect(await gl(K.COST_OF_GOODS_SOLD)).toBeCloseTo(700, 1);
     expect(checkEventInvariants(await projector.project(org.organizationId)).violations).toEqual([]);
     const diagnostics = new LedgerDiagnosticsService(prisma, services.finance, new BalanceService(prisma, services.finance), new LedgerReportsService(prisma, services.finance), ledger);
     const report = await diagnostics.run(org.organizationId);

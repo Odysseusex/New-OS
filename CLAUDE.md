@@ -631,9 +631,16 @@ break by accident:
   average.** It is applied where it is safe — a bought-in product is costed at
   the average of what was actually RECEIVED (RECEIVED orders at delivered
   quantity/cost + CONFIRMED invoices; a PLACED/CANCELLED order counts for
-  nothing — it used to). Baked goods still cost from the recipe (valued at TODAY's
-  recipe, not at what their batch cost — a known CONTROL/diagnostic difference when
-  ingredient costs move). **Raw materials are at a moving weighted average of their
+  nothing — it used to). **Baked goods are at the moving average of their batches**
+  (ТЗ §5.1 «списание готовой продукции по средней себестоимости»; 05.11.2026): every completed
+  batch of a tracked FINISHED_GOOD moves `Product.averageUnitCost` exactly like a stocked
+  semi-finished product (`averagedOutput` in `ProductionService.complete`; before the first batch
+  the existing stock is taken at today's recipe cost), sales/write-offs/transfers are stamped at
+  that average (`CostingService` basis `PRODUCTION_AVERAGE`, `common/product-costs.ts`), and a
+  restocked sale return folds back in at its stamp (`foldIntoProductionAverage`). It used to be
+  TODAY's recipe: every raw-material price change revalued the shelf and the balance showed
+  «не сходится» (found in the sandbox after a purchase-price revision; the ТЗ example spec step 7
+  now guards it). The recipe card's cost/margin is still the recipe (planning). **Raw materials are at a moving weighted average of their
   priced receipts** (owner-approved, iiko-style): `Product.averageUnitCost`, moved by
   `costing/raw-material-average.ts` `recordRawMaterialPurchase()` — called BEFORE the
   stock is added, with a `FOR UPDATE` lock on the product, by Склад → Приёмка lines with
@@ -929,6 +936,14 @@ unit cost by Almaty month (12, zero-filled, recharts line). The financiers' acce
   «Без статьи» for none; disposals of fixed assets as their own line) shown as sub rows in `pnl-ladder.tsx`. The P&L
   «Excel» is ONE workbook: ОПиУ + По товарам + По точкам + По направлениям (the two cards hand their sheet up via `onSheet`).
 - **Closing a month** = `PERIOD_CLOSE_ROLES` (OWNER/ADMIN/ACCOUNTANT); reopening stays OWNER only.
+- **Second audit (05.11.2026), the ТЗ read word by word**: Отчёты → Рентабельность takes `directionId` (sales filtered by
+  `directionIdOfSale`) and shows «Доля в выручке»; Склад → ОСВ shows «Средняя цена» at the end (value ÷ quantity);
+  Производство → «Выпуск» carries the point's default direction (column + filter, «Без направления»); the dashboard takes
+  `directionId` — revenue / gross profit / margin from `getPnlByDirection`, top-5 from the direction's own lines; money,
+  debts and the shelf stay per point; a bank line posted as an expense takes `locationId` / `directionId`
+  (`PostBankLineInput`). The guide lists what is still different from the ТЗ (no direction field on purchase orders /
+  transfers / «Новая операция», no read-only owner role, reopening a month is OWNER only, surplus nets inside
+  «Потери по запасам», prices to 2 decimals).
 - **Balance**: «Денежные средства» broken down by account (`cashByAccountAt`), expense payables by article.
   Articles marked «Оплата труда» (`FinanceCategory.payroll`, migration `20261120120000`, checkbox in the article form) show
   their unpaid confirmed expenses as `BalanceLine.PAYROLL_PAYABLES` «Задолженность по оплате труда» — presentation only
@@ -1358,8 +1373,8 @@ Decided by the owner on 03.11.2026, so not to be re-asked:
   moves by its own delta, losses get a line «Корректировка себестоимости при закрытии месяца»
   (`InventoryLossKind.COST_CORRECTION`); not on a single location's P&L (the average is network-wide); the product
   drill-down shows it as source `COST_CORRECTION`. Audited `costCorrection.record`. A failed close after the record
-  leaves the correction in place; the next close supersedes it. The CONTROL «Запасы» check still values finished
-  goods at today's recipe (a known difference; the correction makes the BOOK equal the walk's valuation).
+  leaves the correction in place; the next close supersedes it. Finished goods are valued at their batches' average
+  (see «Raw materials…» above), so the CONTROL «Запасы» check no longer drifts when raw prices move.
 
 ## Оборотно-сальдовая ведомость по товарам + остатки на дату (built)
 

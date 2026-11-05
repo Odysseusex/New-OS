@@ -140,6 +140,9 @@ export interface PostBankLineRequestDto {
   targetAccountId?: string | null;
   supplierId?: string | null;
   customerId?: string | null;
+  // An expense posted from the line (ТЗ §6.2): its point and direction, both optional.
+  locationId?: string | null;
+  directionId?: string | null;
   remember?: boolean;
 }
 

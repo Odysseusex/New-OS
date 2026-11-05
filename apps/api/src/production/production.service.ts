@@ -301,6 +301,12 @@ export class ProductionService {
       // either way, so a smaller yield makes each kilo dearer. Every other
       // product consumes in proportion to what it actually produced, as always.
       const stockedOutput = batch.recipe.product.type === ProductType.SEMI_FINISHED && batch.recipe.product.trackInventory;
+      // ТЗ §5.1/§5.3: finished goods are sold «по средней себестоимости» — the moving
+      // average of what their batches cost, exactly like a stocked semi-finished
+      // product. Valuing the shelf at today's recipe instead made the balance sheet's
+      // inventory check drift every time a raw-material price moved.
+      const averagedOutput =
+        stockedOutput || (batch.recipe.product.type === ProductType.FINISHED_GOOD && batch.recipe.product.trackInventory);
       const consumeQuantity = stockedOutput ? batch.plannedQuantity.toNumber() : dto.actualQuantity;
       const scale = consumeQuantity / batch.recipe.yieldQuantity.toNumber();
 
@@ -334,7 +340,7 @@ export class ProductionService {
       // made, so whoever reads or changes it first takes the row lock.
       const lockIds = [
         ...trackedItems.filter((l) => isStockedSemiFinished(l.ingredient)).map((l) => l.ingredient.productId),
-        ...(stockedOutput ? [batch.recipe.productId] : []),
+        ...(averagedOutput ? [batch.recipe.productId] : []),
       ];
       await lockProductRows(tx, lockIds);
 
@@ -429,7 +435,7 @@ export class ProductionService {
         await postLedgerSources(tx, { organizationId: user.organizationId, actorId: user.id, scope: { stockMovementIds: deviationIds } });
       }
 
-      if (stockedOutput && dto.actualQuantity > 0) {
+      if (averagedOutput && dto.actualQuantity > 0) {
         // Moving weighted average: what is on the shelf (all locations) at its
         // average, plus this batch at what it cost, over the new quantity. One
         // price per product, so a transfer between locations needs no revaluation.
@@ -612,7 +618,7 @@ export class ProductionService {
       select: {
         actualQuantity: true,
         locationId: true,
-        location: { select: { name: true } },
+        location: { select: { name: true, defaultDirection: { select: { id: true, name: true } } } },
         recipe: { select: { product: { select: { id: true, name: true, unit: true } } } },
         costs: { where: { component: ProductionCostComponent.INGREDIENT }, select: { amount: true } },
       },
@@ -627,6 +633,8 @@ export class ProductionService {
         unit: product.unit as Unit,
         locationId: b.locationId,
         locationName: b.location.name,
+        directionId: b.location.defaultDirection?.id ?? null,
+        directionName: b.location.defaultDirection?.name ?? null,
         batches: 0,
         quantity: 0,
         cost: 0,

@@ -64,3 +64,26 @@ export async function revisePurchaseAverage(
   await tx.product.update({ where: { id: productId }, data: { averageUnitCost: next } });
   return next;
 }
+
+// Goods made in batches and held as stock (finished goods, stocked semi-finished)
+// carry a moving average of what they cost (Product.averageUnitCost). Something
+// coming back onto the shelf at its own stamped cost — a restocked sale return —
+// joins that average, so stock × average keeps equal to what the books hold.
+// Untouched when the product has no average yet (it is then valued by its
+// recipe, as before) or the cost is unknown. Called BEFORE the stock is added.
+export async function foldIntoProductionAverage(
+  tx: Prisma.TransactionClient,
+  productId: string,
+  quantity: number,
+  unitCost: number | null,
+): Promise<number | null> {
+  if (!(quantity > 0) || unitCost === null) return null;
+  const [product] = await tx.$queryRaw<{ type: string; trackInventory: boolean; averageUnitCost: Prisma.Decimal | null }[]>`
+    SELECT "type", "trackInventory", "averageUnitCost" FROM "products" WHERE "id" = ${productId} FOR UPDATE`;
+  if (!product || product.averageUnitCost === null || !product.trackInventory) return null;
+  if (product.type !== ProductType.FINISHED_GOOD && product.type !== ProductType.SEMI_FINISHED) return null;
+  const onHand = Math.max((await tx.stockLevel.aggregate({ _sum: { quantity: true }, where: { productId } }))._sum.quantity?.toNumber() ?? 0, 0);
+  const next = round4((onHand * Number(product.averageUnitCost) + quantity * unitCost) / (onHand + quantity));
+  await tx.product.update({ where: { id: productId }, data: { averageUnitCost: next } });
+  return next;
+}

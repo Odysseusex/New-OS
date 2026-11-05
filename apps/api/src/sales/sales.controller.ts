@@ -114,8 +114,9 @@ export class SalesController {
     @Query("from") from: string,
     @Query("to") to: string,
     @Query("locationId") locationId?: string,
+    @Query("directionId") directionId?: string,
   ) {
-    return this.salesService.productProfitability(user, new Date(from), new Date(to), locationId);
+    return this.salesService.productProfitability(user, new Date(from), new Date(to), locationId, directionId || undefined);
   }
 
   // Revenue day by day, by hour and by weekday.

@@ -386,7 +386,8 @@ export const api = {
     },
   },
   dashboardSummary: (locationId?: string) => request<DashboardSummaryDto>(withQuery("/dashboard/summary", { locationId })),
-  dashboardFinance: (locationId?: string) => request<DashboardFinanceDto>(withQuery("/dashboard/finance", { locationId })),
+  dashboardFinance: (locationId?: string, directionId?: string) =>
+    request<DashboardFinanceDto>(withQuery("/dashboard/finance", { locationId, directionId })),
   directions: {
     list: () => request<DirectionDto[]>("/directions"),
     create: (dto: CreateDirectionRequestDto) => request<DirectionDto>("/directions", { method: "POST", body: JSON.stringify(dto) }),
@@ -609,8 +610,8 @@ export const api = {
       request<SalesSummaryDto>(withQuery("/sales/summary", { locationId })),
     report: (from: string, to: string, locationId?: string) =>
       request<SalesReportDto>(withQuery("/sales/report", { from, to, locationId })),
-    profitability: (from: string, to: string, locationId?: string) =>
-      request<ProductProfitabilityDto>(withQuery("/sales/profitability", { from, to, locationId })),
+    profitability: (from: string, to: string, locationId?: string, directionId?: string) =>
+      request<ProductProfitabilityDto>(withQuery("/sales/profitability", { from, to, locationId, directionId })),
     dynamics: (from: string, to: string, locationId?: string) =>
       request<SalesDynamicsDto>(withQuery("/sales/dynamics", { from, to, locationId })),
     demand: (

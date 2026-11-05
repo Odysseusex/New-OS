@@ -113,7 +113,8 @@ export default function ReportsPage() {
 
   useEffect(() => {
     if (activeReport === "cashflow" && accounts.length === 0) api.finance.accounts.list().then(setAccounts).catch(() => {});
-    if (activeReport === "cashflow" && directions.length === 0) api.directions.list().then(setDirections).catch(() => {});
+    if ((activeReport === "cashflow" || activeReport === "profitability") && directions.length === 0)
+      api.directions.list().then(setDirections).catch(() => {});
   }, [activeReport, accounts.length, directions.length]);
   const cashScope = useMemo(
     () => ({ locationId: locationFilter || undefined, accountId: accountFilter || undefined, direction: directionFilter || undefined }),
@@ -198,7 +199,7 @@ export default function ReportsPage() {
               ))}
             </select>
           )}
-          {activeReport === "cashflow" && (
+          {(activeReport === "cashflow" || activeReport === "profitability") && (
             <select
               value={directionFilter}
               onChange={(e) => setDirectionFilter(e.target.value)}
@@ -229,7 +230,7 @@ export default function ReportsPage() {
           <SalesReport period={period} locationId={locationFilter} isOrgWide={isOrgWide} />
         )}
         {activeReport === "profitability" && (
-          <ProfitabilityReport period={period} locationId={locationFilter} />
+          <ProfitabilityReport period={period} locationId={locationFilter} directionId={directionFilter} />
         )}
         {activeReport === "dynamics" && <DynamicsReport period={period} locationId={locationFilter} />}
         {activeReport === "cashflow" &&
@@ -1226,7 +1227,7 @@ function EmptyState() {
 //
 // The sales report answers which products TURN OVER. This one answers which
 // products EARN, which is a different ranking and usually a surprising one.
-function ProfitabilityReport({ period, locationId }: { period: Period; locationId: string }) {
+function ProfitabilityReport({ period, locationId, directionId }: { period: Period; locationId: string; directionId: string }) {
   const [report, setReport] = useState<ProductProfitabilityDto | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -1235,12 +1236,12 @@ function ProfitabilityReport({ period, locationId }: { period: Period; locationI
     setReport(null);
     setError(null);
     api.sales
-      .profitability(from.toISOString(), to.toISOString(), locationId || undefined)
+      .profitability(from.toISOString(), to.toISOString(), locationId || undefined, directionId || undefined)
       .then(setReport)
       .catch((err) =>
         setError(err instanceof ApiError ? err.message : "Не удалось загрузить отчёт"),
       );
-  }, [period, locationId]);
+  }, [period, locationId, directionId]);
 
   if (error) return <ErrorState message={error} />;
   if (!report) return <EmptyState />;
@@ -1312,6 +1313,7 @@ function ProfitabilityReport({ period, locationId }: { period: Period; locationI
             "Маржинальная прибыль",
             "Маржинальность",
             "Наценка",
+            "Доля в выручке",
             "Доля в прибыли",
             "ABC",
           ]}
@@ -1323,6 +1325,7 @@ function ProfitabilityReport({ period, locationId }: { period: Period; locationI
             r.hasCostData ? formatMoney(r.margin) : "—",
             r.marginPercent !== null ? `${r.marginPercent.toFixed(1)}%` : "—",
             r.markupPercent !== null ? `${r.markupPercent.toFixed(1)}%` : "—",
+            r.hasCostData ? `${r.revenueShare.toFixed(1)}%` : "—",
             r.hasCostData ? `${r.marginShare.toFixed(1)}%` : "—",
             r.abcClass ?? "—",
           ])}

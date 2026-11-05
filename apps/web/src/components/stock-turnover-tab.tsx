@@ -59,7 +59,7 @@ export function StockTurnoverTab({ locations, isOrgWide }: { locations: Location
     if (!data) return;
     downloadTable(
       `osv-tovary-${range.from.toISOString().slice(0, 10)}-${range.to.toISOString().slice(0, 10)}.xlsx`,
-      ["Товар", "Категория", "Ед.", "Начало, кол-во", "Начало, сумма", "Приход, кол-во", "Приход, сумма", "Расход, кол-во", "Расход, сумма", "Конец, кол-во", "Конец, сумма"],
+      ["Товар", "Категория", "Ед.", "Начало, кол-во", "Начало, сумма", "Приход, кол-во", "Приход, сумма", "Расход, кол-во", "Расход, сумма", "Конец, кол-во", "Конец, средняя цена", "Конец, сумма"],
       lines.map((l) => [
         l.productName,
         l.categoryName ?? "",
@@ -71,6 +71,7 @@ export function StockTurnoverTab({ locations, isOrgWide }: { locations: Location
         l.outQuantity,
         { v: l.outValue, fmt: "money" as const },
         l.closingQuantity,
+        closingPrice(l.closingQuantity, l.closingValue) === null ? "" : { v: closingPrice(l.closingQuantity, l.closingValue) as number, fmt: "money" as const },
         { v: l.closingValue, fmt: "money" as const },
       ]),
       {
@@ -153,19 +154,20 @@ export function StockTurnoverTab({ locations, isOrgWide }: { locations: Location
               <th className="px-4 py-3 text-right font-medium">Приход</th>
               <th className="px-4 py-3 text-right font-medium">Расход</th>
               <th className="px-4 py-3 text-right font-medium">Конец</th>
+              <th className="px-4 py-3 text-right font-medium">Средняя цена</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {!data && loading && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-muted">
+                <td colSpan={6} className="px-4 py-8 text-center text-muted">
                   Загрузка…
                 </td>
               </tr>
             )}
             {data && lines.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-muted">
+                <td colSpan={6} className="px-4 py-8 text-center text-muted">
                   Движений за период нет
                 </td>
               </tr>
@@ -180,6 +182,9 @@ export function StockTurnoverTab({ locations, isOrgWide }: { locations: Location
                 <Cell q={l.inQuantity} v={l.inValue} unit={l.unit} />
                 <Cell q={l.outQuantity} v={l.outValue} unit={l.unit} />
                 <Cell q={l.closingQuantity} v={l.closingValue} unit={l.unit} strong />
+                <td className="whitespace-nowrap px-4 py-2.5 text-right text-foreground">
+                  {closingPrice(l.closingQuantity, l.closingValue) === null ? <span className="text-muted">—</span> : formatMoney(closingPrice(l.closingQuantity, l.closingValue) as number)}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -191,6 +196,7 @@ export function StockTurnoverTab({ locations, isOrgWide }: { locations: Location
                 <td className="whitespace-nowrap px-4 py-3 text-right">{formatMoney(totals.i)}</td>
                 <td className="whitespace-nowrap px-4 py-3 text-right">{formatMoney(totals.x)}</td>
                 <td className="whitespace-nowrap px-4 py-3 text-right">{formatMoney(totals.c)}</td>
+                <td />
               </tr>
             </tfoot>
           )}
@@ -198,6 +204,11 @@ export function StockTurnoverTab({ locations, isOrgWide }: { locations: Location
       </div>
     </div>
   );
+}
+
+// Average price of what is left at the end: its value over its quantity (4 places, like the average itself).
+function closingPrice(quantity: number, value: number): number | null {
+  return quantity > 0.0005 ? Math.round((value / quantity) * 10000) / 10000 : null;
 }
 
 function Cell({ q, v, unit, strong }: { q: number; v: number; unit: string; strong?: boolean }) {

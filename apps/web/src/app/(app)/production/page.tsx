@@ -460,7 +460,7 @@ export default function ProductionPage() {
                     </p>
                     <p className="text-xs text-muted">
                       Выход: {recipe.yieldQuantity} {UNIT_LABELS_RU[recipe.productUnit]}
-                      {recipe.versions[0] && ` · версия ${recipe.versions[0].number} с ${formatDate(recipe.versions[0].validFrom)}`}
+                      {recipe.versions[0] && ` · версия ${recipe.versions[0].number} с ${formatDate(recipe.versions[0].validFrom)}, автор ${recipe.versions[0].createdByName}`}
                     </p>
                   </div>
                 </div>

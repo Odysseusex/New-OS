@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { assertTillShiftOpen } from "../till-shifts/till-shift-guard";
 import { resolveTillApproval } from "../auth/till-pin";
-import { FINANCE_VIEW_ROLES, isPointsRedeemableLine, manualDiscountTarget, TILL_ROLES } from "@bakery-os/shared";
+import { directionIdOfSale, FINANCE_VIEW_ROLES, isPointsRedeemableLine, manualDiscountTarget, TILL_ROLES } from "@bakery-os/shared";
+import { loadDirectionContext } from "../directions/direction-context";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { isDemoOrganization } from "../common/demo-guard";
@@ -520,10 +521,14 @@ export class SalesService {
     from: Date,
     to: Date,
     requestedLocationId?: string,
+    directionId?: string,
   ): Promise<ProductProfitabilityDto> {
     const locationId = resolveLocationScope(user, requestedLocationId);
+    // ТЗ §8.1 «разрез: направление» — a sale's direction is read from the sale
+    // itself, by the same rule as «Прибыль по направлениям».
+    const directionCtx = directionId ? await loadDirectionContext(this.prisma, user.organizationId) : null;
 
-    const [items, unitCosts, categories] = await Promise.all([
+    const [allItems, unitCosts, categories] = await Promise.all([
       this.prisma.saleItem.findMany({
         where: {
           ...OWN_ITEMS,
@@ -533,11 +538,12 @@ export class SalesService {
             ...(locationId ? { locationId } : {}),
           },
         },
-        include: { product: true },
+        include: { product: true, sale: { select: { crmOrderId: true, customerId: true, locationId: true } } },
       }),
       resolveProductUnitCosts(this.prisma, user.organizationId),
       this.prisma.category.findMany({ where: { organizationId: user.organizationId }, select: { id: true, name: true, parentId: true } }),
     ]);
+    const items = directionCtx ? allItems.filter((item) => directionIdOfSale(item.sale, directionCtx) === directionId) : allItems;
     // The product's group (top-level category) at the time of sale, for «по группам».
     const categoryById = new Map(categories.map((c) => [c.id, c]));
     const groupOf = (categoryId: string | null): string | null => {

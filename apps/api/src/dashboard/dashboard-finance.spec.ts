@@ -5,6 +5,7 @@ import { buildServices } from "../../test/support/services";
 import { CashAccountsService } from "../finance/cash-accounts.service";
 import { DebtsService } from "../debts/debts.service";
 import { DashboardFinanceService } from "./dashboard-finance.service";
+import { loadDirectionContext } from "../directions/direction-context";
 
 // The dashboard's money block reads each figure from its own report, so it
 // must equal them. Own throwaway organization.
@@ -42,5 +43,34 @@ describe("dashboard money block", () => {
     expect(warehouse.today.netRevenue).toBe(0);
     expect(warehouse.finishedGoods.atSalePrice).toBe(0);
     expect(d.cashTotal).toBe(d.cashAccounts.reduce((s, a) => s + a.balance, 0));
+  });
+
+  it("limits the sales figures to one direction (ТЗ §8.4), the directions adding up to the whole", async () => {
+    const customerId = (await prisma.customer.create({ data: { organizationId: org.organizationId, name: "Оптовик" } })).id;
+    await services.sales.create(org.user, { locationId: org.storeId, customerId, paymentMethod: PaymentMethod.CASH, items: [{ productId: breadId, quantity: 2, unitPrice: 450 }] } as never);
+    const ctx = await loadDirectionContext(prisma, org.organizationId);
+    const all = await dashboard.figures(org.organizationId);
+    const retail = await dashboard.figures(org.organizationId, undefined, new Date(), ctx.system.RETAIL);
+    const wholesale = await dashboard.figures(org.organizationId, undefined, new Date(), ctx.system.WHOLESALE);
+    expect(retail.directionId).toBe(ctx.system.RETAIL);
+    expect(retail.today.netRevenue).toBe(1500);
+    expect(wholesale.today.netRevenue).toBe(900);
+    const sum = ctx.directions.length;
+    let monthTotal = 0;
+    for (const d of ctx.directions) monthTotal += (await dashboard.figures(org.organizationId, undefined, new Date(), d.id)).month.netRevenue;
+    expect(sum).toBeGreaterThanOrEqual(3);
+    expect(Math.round(monthTotal * 100) / 100).toBe(all.month.netRevenue);
+    expect(wholesale.topProducts[0]).toMatchObject({ productName: "Батон", quantitySold: 2, revenue: 900 });
+    expect(retail.topProducts[0]).toMatchObject({ productName: "Батон", quantitySold: 3, revenue: 1500 });
+    // The profitability report (ТЗ §8.1) cut by direction reads the same sales.
+    const dayStart = new Date(Date.now() - 86_400_000);
+    const prof = await services.sales.productProfitability(org.user, dayStart, new Date(), undefined, ctx.system.WHOLESALE);
+    expect(prof.rows).toHaveLength(1);
+    expect(prof.rows[0]).toMatchObject({ productName: "Батон", quantity: 2, revenue: 900 });
+    const profAll = await services.sales.productProfitability(org.user, dayStart, new Date());
+    expect(profAll.rows[0]).toMatchObject({ quantity: 5, revenue: 2400 });
+    // Money, debts and the shelf are not a direction's: unchanged.
+    expect(retail.finishedGoods).toEqual(all.finishedGoods);
+    expect(retail.cashTotal).toBe(all.cashTotal);
   });
 });

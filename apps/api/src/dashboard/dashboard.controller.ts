@@ -53,7 +53,11 @@ export class DashboardController {
   // Gross profit, money, debts, the shops' shelf and the top products (ТЗ §8.4).
   @Get("finance")
   @Roles(...FINANCE_VIEW_ROLES)
-  finance(@CurrentUser() user: AuthenticatedUser, @Query("locationId") locationId?: string): Promise<DashboardFinanceDto> {
-    return this.financeFigures.figures(user.organizationId, resolveLocationScope(user, locationId || undefined));
+  finance(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("locationId") locationId?: string,
+    @Query("directionId") directionId?: string,
+  ): Promise<DashboardFinanceDto> {
+    return this.financeFigures.figures(user.organizationId, resolveLocationScope(user, locationId || undefined), new Date(), directionId || undefined);
   }
 }

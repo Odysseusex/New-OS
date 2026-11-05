@@ -123,6 +123,14 @@ export class PostBankLineInput {
   customerId?: string | null;
 
   @IsOptional()
+  @IsString()
+  locationId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  directionId?: string | null;
+
+  @IsOptional()
   @IsBoolean()
   remember?: boolean;
 }

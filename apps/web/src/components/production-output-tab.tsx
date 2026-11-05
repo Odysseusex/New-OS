@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { FileDown, FileText} from "lucide-react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import type { LocationDto, ProductionOutputReportDto, ProductionUnitCostMonthDto, ProductionUnitCostTrendDto } from "@bakery-os/shared";
+import type { DirectionDto, LocationDto, ProductionOutputReportDto, ProductionUnitCostMonthDto, ProductionUnitCostTrendDto } from "@bakery-os/shared";
 import { UNIT_LABELS_RU } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { PeriodPicker } from "@/components/period-picker";
@@ -23,7 +23,16 @@ export function ProductionOutputTab({ locations, isOrgWide }: { locations: Locat
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [productId, setProductId] = useState<string | null>(null);
+  const [directionId, setDirectionId] = useState("");
+  const [directions, setDirections] = useState<DirectionDto[]>([]);
   const range = useMemo(() => periodRange(period), [period]);
+
+  useEffect(() => {
+    api.directions.list().then(setDirections).catch(() => {});
+  }, []);
+  // «Без направления» is a choice of its own: points with no default direction.
+  const rows = (report?.rows ?? []).filter((r) => !directionId || (directionId === "none" ? r.directionId === null : r.directionId === directionId));
+  const totalCost = Math.round(rows.reduce((s, r) => s + r.cost, 0) * 100) / 100;
 
   useEffect(() => {
     setLoading(true);
@@ -39,8 +48,8 @@ export function ProductionOutputTab({ locations, isOrgWide }: { locations: Locat
     if (!report) return;
     void downloadTable(
       `vypusk-${period}`,
-      ["Изделие", "Точка", "Заданий", "Выпуск", "Ед.", "Себестоимость, ₸", "Себестоимость ед., ₸"],
-      report.rows.map((r) => [r.productName, r.locationName, r.batches, r.quantity, UNIT_LABELS_RU[r.unit], r.cost, r.unitCost ?? "—"]),
+      ["Изделие", "Точка", "Направление", "Заданий", "Выпуск", "Ед.", "Себестоимость, ₸", "Себестоимость ед., ₸"],
+      rows.map((r) => [r.productName, r.locationName, r.directionName ?? "—", r.batches, r.quantity, UNIT_LABELS_RU[r.unit], r.cost, r.unitCost ?? "—"]),
       { sheetName: "Выпуск", titleLines: [`Выпуск продукции · ${periodLabel(period)}`] },
     );
   }
@@ -64,9 +73,23 @@ export function ProductionOutputTab({ locations, isOrgWide }: { locations: Locat
               ))}
             </select>
           )}
+          <select
+            value={directionId}
+            onChange={(e) => setDirectionId(e.target.value)}
+            className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            aria-label="Направление"
+          >
+            <option value="">Все направления</option>
+            {directions.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+            <option value="none">Без направления</option>
+          </select>
           <button
             onClick={exportExcel}
-            disabled={!report || report.rows.length === 0}
+            disabled={!report || rows.length === 0}
             className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground transition hover:bg-surface-muted disabled:opacity-40"
           >
             <FileDown className="h-4 w-4" strokeWidth={1.75} />
@@ -74,7 +97,7 @@ export function ProductionOutputTab({ locations, isOrgWide }: { locations: Locat
           </button>
           <button
             onClick={() => withExportTarget("pdf", () => exportExcel())}
-            disabled={!report || report.rows.length === 0}
+            disabled={!report || rows.length === 0}
             className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground transition hover:bg-surface-muted disabled:opacity-40"
           >
             <FileText className="h-4 w-4" strokeWidth={1.75} />
@@ -93,6 +116,7 @@ export function ProductionOutputTab({ locations, isOrgWide }: { locations: Locat
               <tr className="border-b border-border bg-surface-muted text-left text-xs uppercase tracking-wide text-muted">
                 <th className="px-4 py-2.5 font-medium">Изделие</th>
                 <th className="px-4 py-2.5 font-medium">Точка</th>
+                <th className="px-4 py-2.5 font-medium">Направление</th>
                 <th className="px-4 py-2.5 text-right font-medium">Заданий</th>
                 <th className="px-4 py-2.5 text-right font-medium">Выпуск</th>
                 <th className="px-4 py-2.5 text-right font-medium">Себестоимость</th>
@@ -100,14 +124,14 @@ export function ProductionOutputTab({ locations, isOrgWide }: { locations: Locat
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {report.rows.length === 0 && (
+              {rows.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted">
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted">
                     Нет завершённых заданий за период
                   </td>
                 </tr>
               )}
-              {report.rows.map((r) => {
+              {rows.map((r) => {
                 const open = productId === r.productId;
                 return (
                   <Fragment key={`${r.productId}:${r.locationId}`}>
@@ -117,6 +141,7 @@ export function ProductionOutputTab({ locations, isOrgWide }: { locations: Locat
                     >
                       <td className="px-4 py-2.5 font-medium text-foreground">{r.productName}</td>
                       <td className="px-4 py-2.5 text-muted">{r.locationName}</td>
+                      <td className="px-4 py-2.5 text-muted">{r.directionName ?? "—"}</td>
                       <td className="px-4 py-2.5 text-right text-muted">{r.batches}</td>
                       <td className="px-4 py-2.5 text-right text-foreground">
                         {formatQuantity(r.quantity)} {UNIT_LABELS_RU[r.unit]}
@@ -126,7 +151,7 @@ export function ProductionOutputTab({ locations, isOrgWide }: { locations: Locat
                     </tr>
                     {open && (
                       <tr>
-                        <td colSpan={6} className="bg-surface px-4 py-3">
+                        <td colSpan={7} className="bg-surface px-4 py-3">
                           <UnitCostTrend productId={r.productId} locationId={locationId || undefined} />
                         </td>
                       </tr>
@@ -135,13 +160,13 @@ export function ProductionOutputTab({ locations, isOrgWide }: { locations: Locat
                 );
               })}
             </tbody>
-            {report.rows.length > 0 && (
+            {rows.length > 0 && (
               <tfoot>
                 <tr className="border-t border-border font-semibold">
-                  <td className="px-4 py-2.5 text-foreground" colSpan={4}>
+                  <td className="px-4 py-2.5 text-foreground" colSpan={5}>
                     Итого
                   </td>
-                  <td className="px-4 py-2.5 text-right text-foreground">{formatMoney(report.totalCost)}</td>
+                  <td className="px-4 py-2.5 text-right text-foreground">{formatMoney(totalCost)}</td>
                   <td />
                 </tr>
               </tfoot>

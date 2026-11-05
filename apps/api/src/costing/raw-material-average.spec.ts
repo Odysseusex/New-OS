@@ -117,7 +117,7 @@ describe("production, sales and the books", () => {
 
     await services.sales.create(org.user, { locationId: org.storeId, paymentMethod: PaymentMethod.CASH, items: [{ productId: breadId, quantity: 4, unitPrice: 500 }] } as never);
     const sold = await prisma.saleItem.findFirstOrThrow({ where: { productId: breadId } });
-    expect(sold.unitCost?.toNumber()).toBe(173.75); // today's recipe: 5 × 347.5 ÷ 10
+    expect(sold.unitCost?.toNumber()).toBe(165); // the bread's own average (its batch), not today's recipe (5 × 347.5 ÷ 10 = 173.75)
     await services.inventory.writeOff(org.user, { productId: flourId, quantity: 1, locationId: org.storeId, writeOffReason: WriteOffReason.EXPIRED } as never);
 
     // The moving-average identity, per raw material: what came in at its cost minus
@@ -139,9 +139,10 @@ describe("production, sales and the books", () => {
     const result = await diagnostics.run(org.organizationId);
     expect(result.checks.filter((c) => c.status === "FAIL").map((c) => c.check)).toEqual(["INVENTORY_SUBLEDGER"]);
     // …the difference being exactly what was never posted (manual receipts with no supplier
-    // document, unclassified as before) plus the baked bread on the shelf revalued at today's
-    // recipe (10 loaves × (173.75 − 165)), which is how finished goods were always valued.
+    // document, unclassified as before). The bread is NOT revalued when flour gets dearer:
+    // finished goods sit at the average of their batches (ТЗ §5.1), so the 87.5 drift
+    // (10 loaves × (173.75 − 165)) that today's-recipe valuation used to cause is gone.
     const inventory = result.checks.find((c) => c.check === "INVENTORY_SUBLEDGER")!;
-    expect(inventory.difference).toBeCloseTo(-(3600 + 1000 + 2000 + 750 + 87.5), 2);
+    expect(inventory.difference).toBeCloseTo(-(3600 + 1000 + 2000 + 750), 2);
   });
 });
