@@ -66,6 +66,7 @@ export const AUDIT_ACTION_GROUPS = {
   catalog: ["category.seedStandard"],
   productPhotos: ["product.photo", "product.photoRemove"],
   productClassification: ["classification.apply", "classification.revert"],
+  stockSettings: ["inventory.allowNegativeStock"],
   stocktake: ["stocktake.create", "stocktake.submit", "stocktake.reopen", "stocktake.approve", "stocktake.cancel"],
   stockVoid: ["stockVoid.create"],
   dailyReconciliation: ["dailyReconciliation.save", "dailyReconciliation.apply"],

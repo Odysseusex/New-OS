@@ -58,8 +58,8 @@ export class StocktakeController {
 
   @Post(":id/approve")
   @Roles(...STOCKTAKE_APPROVE_ROLES)
-  approve(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
-    return this.service.approve(user, id);
+  approve(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() body: { opening?: boolean } = {}) {
+    return this.service.approve(user, id, { opening: body?.opening === true });
   }
 
   @Post(":id/cancel")

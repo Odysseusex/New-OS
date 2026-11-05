@@ -38,7 +38,7 @@ import { CreateBatchDto } from "./dto/create-batch.dto";
 import { UpdateBatchDto } from "./dto/update-batch.dto";
 import { CancelBatchDto } from "./dto/cancel-batch.dto";
 import { CompleteBatchDto } from "./dto/complete-batch.dto";
-import { decrementStockOrThrow } from "../common/stock-guard";
+import { allowsNegativeStock, decrementStock } from "../common/stock-guard";
 import { recordAudit } from "../audit/audit";
 import { postLedgerSources, recordProductionEvent } from "../ledger/event-posting";
 
@@ -356,7 +356,10 @@ export class ProductionService {
         actual.set(line.productId, round3(line.quantity));
       }
 
-      for (const [productId, n] of norms) {
+      // Before the first stock count the organization may produce below zero (Organization.allowNegativeStock):
+      // the consumption is written as always and the shelf goes negative until the count.
+      const allowNegative = await allowsNegativeStock(tx, user.organizationId);
+      for (const [productId, n] of allowNegative ? [] : norms) {
         const used = actual.get(productId) ?? 0;
         if (used <= 0) continue;
         const stockLevel = await tx.stockLevel.findUnique({
@@ -370,10 +373,11 @@ export class ProductionService {
       for (const [productId, n] of norms) {
         const used = actual.get(productId) ?? 0;
         if (used <= 0) continue;
-        await decrementStockOrThrow(
+        await decrementStock(
           tx,
-          { locationId: batch.locationId, productId, quantity: used },
+          { organizationId: user.organizationId, locationId: batch.locationId, productId, quantity: used },
           `Недостаточно ингредиента «${n.name}» на точке для этого объёма`,
+          allowNegative,
         );
       }
 

@@ -224,6 +224,18 @@ function StocktakeDetail({
   const [search, setSearch] = useState("");
   const [onlyDiff, setOnlyDiff] = useState(false);
   const [confirmApprove, setConfirmApprove] = useState(false);
+  // The first count after working «в минус»: what is found is the opening stock, not a surplus.
+  const [negativeMode, setNegativeMode] = useState(false);
+  const [opening, setOpening] = useState(false);
+  useEffect(() => {
+    api.inventory
+      .stockSettings()
+      .then((s) => {
+        setNegativeMode(s.allowNegativeStock);
+        setOpening(s.allowNegativeStock);
+      })
+      .catch(() => {});
+  }, []);
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason] = useState("");
 
@@ -303,6 +315,7 @@ function StocktakeDetail({
         <button onClick={onClose} className="text-sm font-medium text-accent">← К списку</button>
         <h2 className="text-lg font-semibold text-foreground">Инвентаризация · {st.locationName}</h2>
         <StatusBadge status={st.status} />
+        {st.opening && <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-800">Начальные остатки</span>}
         <span className="text-sm text-muted">Остатки на {formatDateTime(st.snapshotAt)}</span>
       </div>
 
@@ -439,12 +452,23 @@ function StocktakeDetail({
           )}
           {review && canApprove && confirmApprove && (
             <>
+              {negativeMode && (
+                <label className="flex w-full items-start gap-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  <input type="checkbox" className="mt-0.5" checked={opening} onChange={(e) => setOpening(e.target.checked)} />
+                  <span>
+                    <b>Начальные остатки</b> — найденное сверх учёта записывается как остаток на начало работы, а не как излишек.
+                    Непосчитанные позиции останутся в минусе.
+                  </span>
+                </label>
+              )}
               <span className="text-sm text-foreground">
-                Будут созданы корректировки остатков. Отменить проведение нельзя.
+                {opening && negativeMode
+                  ? "Будут записаны начальные остатки и корректировки. Отменить проведение нельзя."
+                  : "Будут созданы корректировки остатков. Отменить проведение нельзя."}
               </span>
               <button
                 disabled={busy}
-                onClick={() => run(() => api.stocktakes.approve(st.id))}
+                onClick={() => run(() => api.stocktakes.approve(st.id, { opening: opening && negativeMode }))}
                 className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground transition hover:opacity-90 disabled:opacity-50"
               >
                 Подтвердить проведение

@@ -31,3 +31,35 @@ export async function decrementStockOrThrow(
     throw new BadRequestException(insufficientMessage);
   }
 }
+
+// Organization.allowNegativeStock: while no stock count has been made yet, production and the
+// till may take stock below zero (the first stocktake then books the opening position).
+export async function allowsNegativeStock(tx: Prisma.TransactionClient, organizationId: string): Promise<boolean> {
+  const org = await tx.organization.findUnique({ where: { id: organizationId }, select: { allowNegativeStock: true } });
+  return org?.allowNegativeStock ?? false;
+}
+
+// Takes stock off a shelf: refused when short, unless the organization allows going below zero —
+// then the level goes negative (a missing row is created negative, seeded with the product's threshold).
+export async function decrementStock(
+  tx: Prisma.TransactionClient,
+  params: { organizationId: string; locationId: string; productId: string; quantity: number; minQuantity?: Prisma.Decimal | number },
+  insufficientMessage: string,
+  allowNegative: boolean,
+): Promise<void> {
+  if (!allowNegative) {
+    await decrementStockOrThrow(tx, params, insufficientMessage);
+    return;
+  }
+  await tx.stockLevel.upsert({
+    where: { locationId_productId: { locationId: params.locationId, productId: params.productId } },
+    update: { quantity: { decrement: params.quantity } },
+    create: {
+      organizationId: params.organizationId,
+      locationId: params.locationId,
+      productId: params.productId,
+      quantity: -params.quantity,
+      minQuantity: params.minQuantity ?? 0,
+    },
+  });
+}

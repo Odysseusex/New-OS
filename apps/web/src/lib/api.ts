@@ -498,6 +498,12 @@ export const api = {
   inventory: {
     transfer: (dto: CreateStockTransferRequestDto) =>
       request<MaterialRequisitionDto>("/inventory/transfers", { method: "POST", body: JSON.stringify(dto) }),
+    stockSettings: () => request<{ allowNegativeStock: boolean; financeStarted: boolean }>("/inventory/settings"),
+    setStockSettings: (allowNegativeStock: boolean) =>
+      request<{ allowNegativeStock: boolean; financeStarted: boolean }>("/inventory/settings", {
+        method: "PUT",
+        body: JSON.stringify({ allowNegativeStock }),
+      }),
     stockLevels: (locationId?: string) =>
       request<StockLevelDto[]>(withQuery("/inventory/stock-levels", { locationId })),
     movements: (filter: { locationId?: string; productId?: string; type?: string; from?: string; to?: string } = {}) =>
@@ -557,7 +563,8 @@ export const api = {
       request<StocktakeLineDto>(`/stocktakes/${id}/lines/${lineId}`, { method: "PUT", body: JSON.stringify(dto) }),
     submit: (id: string) => request<StocktakeDto>(`/stocktakes/${id}/submit`, { method: "POST" }),
     reopen: (id: string) => request<StocktakeDto>(`/stocktakes/${id}/reopen`, { method: "POST" }),
-    approve: (id: string) => request<StocktakeDto>(`/stocktakes/${id}/approve`, { method: "POST" }),
+    approve: (id: string, opts: { opening?: boolean } = {}) =>
+      request<StocktakeDto>(`/stocktakes/${id}/approve`, { method: "POST", body: JSON.stringify(opts) }),
     cancel: (id: string, reason: string) =>
       request<StocktakeDto>(`/stocktakes/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }),
   },

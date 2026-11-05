@@ -80,7 +80,9 @@ export async function accrualEvents(
         OR: [
           { type: "WRITE_OFF", saleReturnId: null },
           { type: "ADJUSTMENT" },
-          { type: "RECEIPT", purchaseOrderId: null, invoiceId: null, batchId: null },
+          // The opening stock found by the first count (Stocktake.opening) is part of the declared
+          // opening position (added to Organization.openingInventoryValue), not an event of its own.
+          { type: "RECEIPT", purchaseOrderId: null, invoiceId: null, batchId: null, NOT: { stocktake: { opening: true } } },
         ],
       },
       select: { id: true, type: true, productId: true, quantity: true, unitCost: true, createdAt: true, stocktakeId: true },

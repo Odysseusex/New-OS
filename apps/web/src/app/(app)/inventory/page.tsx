@@ -46,6 +46,19 @@ export default function InventoryPage() {
   const canManageInventory = user ? INVENTORY_MANAGE_ROLES.includes(user.role) : false;
   const canManageProducts = user ? PRODUCT_MANAGE_ROLES.includes(user.role) : false;
   const canDelete = user ? HARD_DELETE_ROLES.includes(user.role) : false;
+  // «Уход в минус» before the first stock count: production and the till work without stock.
+  const [allowNegative, setAllowNegative] = useState<boolean | null>(null);
+  useEffect(() => {
+    api.inventory.stockSettings().then((s) => setAllowNegative(s.allowNegativeStock)).catch(() => {});
+  }, []);
+  async function toggleNegative(next: boolean) {
+    if (next && !confirm("Разрешить уход в минус? Производство и касса перестанут проверять остатки до первой ревизии.")) return;
+    try {
+      setAllowNegative((await api.inventory.setStockSettings(next)).allowNegativeStock);
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "Не удалось изменить настройку");
+    }
+  }
   const canVoidStock = user ? STOCK_VOID_ROLES.includes(user.role) : false;
   const canForceDelete = user ? PRODUCT_FORCE_DELETE_ROLES.includes(user.role) : false;
 
@@ -463,6 +476,30 @@ export default function InventoryPage() {
 
       {tab === "stock" && (
         <>
+          {allowNegative && (
+            <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <AlertTriangle className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+              <span className="flex-1">
+                Уход в минус включён: производство и касса работают без проверки остатков. После первой ревизии с отметкой
+                «Начальные остатки» выключите.
+              </span>
+              {canDelete && (
+                <button
+                  onClick={() => toggleNegative(false)}
+                  className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100"
+                >
+                  Выключить
+                </button>
+              )}
+            </div>
+          )}
+          {allowNegative === false && canDelete && (
+            <div className="mb-4 flex justify-end">
+              <button onClick={() => toggleNegative(true)} className="text-xs text-muted underline-offset-2 hover:text-foreground hover:underline">
+                Разрешить уход в минус
+              </button>
+            </div>
+          )}
           {lowStockCount > 0 && (
             <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
               <AlertTriangle className="h-4 w-4 shrink-0" strokeWidth={1.75} />
@@ -498,7 +535,7 @@ export default function InventoryPage() {
                     <td
                       className={clsx(
                         "px-5 py-3 text-right font-medium",
-                        level.isLow ? "text-amber-600" : "text-foreground",
+                        level.quantity < 0 ? "text-red-600" : level.isLow ? "text-amber-600" : "text-foreground",
                       )}
                     >
                       {formatQuantity(level.quantity)} {UNIT_LABELS_RU[level.unit]}

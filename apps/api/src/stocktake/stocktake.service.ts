@@ -209,22 +209,35 @@ export class StocktakeService {
   // Writes one ADJUSTMENT per counted line whose count differs from the
   // snapshot. The status flip is a conditional UPDATE, so a double-click (or
   // two approvers) cannot apply the same count twice.
-  async approve(user: AuthenticatedUser, id: string): Promise<StocktakeDto> {
+  //
+  // `opening` = the first count of a business that started working before it (production and the
+  // till went below zero, Organization.allowNegativeStock): what was found ON TOP of the books is the
+  // opening stock — booked as a RECEIPT (balance only, inside the opening position declared by
+  // Финансы → «Запустить»), not as a gain in the P&L. Only before that launch.
+  async approve(user: AuthenticatedUser, id: string, opts: { opening?: boolean } = {}): Promise<StocktakeDto> {
     const stocktake = await this.load(user, id);
     if (stocktake.status !== PrismaStocktakeStatus.REVIEW) {
       throw new BadRequestException("Провести можно только инвентаризацию на проверке");
+    }
+    const opening = opts.opening === true;
+    if (opening) {
+      const org = await this.prisma.organization.findUniqueOrThrow({ where: { id: user.organizationId }, select: { allowNegativeStock: true } });
+      if (!org.allowNegativeStock) {
+        throw new BadRequestException("Начальные остатки проводятся, пока включён «Уход в минус» — до первой ревизии");
+      }
     }
 
     await this.prisma.$transaction(async (tx) => {
       const flipped = await tx.stocktake.updateMany({
         where: { id, status: PrismaStocktakeStatus.REVIEW },
-        data: { status: PrismaStocktakeStatus.APPROVED, approvedAt: new Date(), approvedById: user.id },
+        data: { status: PrismaStocktakeStatus.APPROVED, approvedAt: new Date(), approvedById: user.id, opening },
       });
       if (flipped.count !== 1) throw new ConflictException("Инвентаризация уже проведена или изменена");
 
       const costs = await this.costing.currentUnitCosts(user.organizationId, tx);
       let shortageValue = 0;
       let surplusValue = 0;
+      let openingValue = 0;
       let adjustedLines = 0;
       const movementIds: string[] = [];
 
@@ -239,9 +252,10 @@ export class StocktakeService {
             organizationId: user.organizationId,
             locationId: stocktake.locationId,
             productId: line.productId,
-            type: StockMovementType.ADJUSTMENT,
+            // The opening stock found by the first count is a receipt; anything else a count adjustment.
+            type: opening && difference > 0 ? StockMovementType.RECEIPT : StockMovementType.ADJUSTMENT,
             quantity: difference,
-            reason: "Инвентаризация",
+            reason: opening && difference > 0 ? "Начальный остаток (инвентаризация)" : "Инвентаризация",
             stocktakeId: id,
             createdById: user.id,
             ...this.costing.fields(cost),
@@ -260,7 +274,8 @@ export class StocktakeService {
               minQuantity: line.product.minQuantity,
             },
           });
-          surplusValue += cost ? difference * cost.unitCost : 0;
+          if (opening) openingValue += round2(difference * (movement.unitCost?.toNumber() ?? 0));
+          else surplusValue += cost ? difference * cost.unitCost : 0;
         } else {
           await decrementStockOrThrow(
             tx,
@@ -272,6 +287,15 @@ export class StocktakeService {
         await tx.stocktakeLine.update({ where: { id: line.id }, data: { movementId: movement.id } });
         movementIds.push(movement.id);
         adjustedLines += 1;
+      }
+
+      // The opening stock joins the declared opening position, as if it had been counted at the start
+      // (before the finance launch the launch itself values it from the stock).
+      if (opening && openingValue > 0) {
+        const org = await tx.organization.findUniqueOrThrow({ where: { id: user.organizationId }, select: { financeInitializedAt: true } });
+        if (org.financeInitializedAt) {
+          await tx.organization.update({ where: { id: user.organizationId }, data: { openingInventoryValue: { increment: round2(openingValue) } } });
+        }
       }
 
       // Count differences are inventory gains/losses: journalised with the approval.
@@ -289,6 +313,8 @@ export class StocktakeService {
           adjustedLines,
           shortageValue: round2(shortageValue),
           surplusValue: round2(surplusValue),
+          opening,
+          openingValue: round2(openingValue),
         },
       });
     });
@@ -390,6 +416,7 @@ export class StocktakeService {
       snapshotAt: row.snapshotAt.toISOString(),
       createdByName: row.createdBy.fullName,
       approvedAt: row.approvedAt?.toISOString() ?? null,
+      opening: row.opening,
       approvedByName: row.approvedBy?.fullName ?? null,
       cancelledAt: row.cancelledAt?.toISOString() ?? null,
       cancelReason: row.cancelReason,

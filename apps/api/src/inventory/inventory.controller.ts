@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from "@nestjs/common";
-import { CreateStockVoidRequestDto, INVENTORY_MANAGE_ROLES, STOCK_MOVEMENTS_MAX, STOCK_VOID_ROLES } from "@bakery-os/shared";
+import { Body, Controller, Get, Post, Put, Query, UseGuards } from "@nestjs/common";
+import { IsBoolean } from "class-validator";
+import { CreateStockVoidRequestDto, HARD_DELETE_ROLES, INVENTORY_MANAGE_ROLES, STOCK_MOVEMENTS_MAX, STOCK_VOID_ROLES } from "@bakery-os/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
 import { Roles } from "../common/decorators/roles.decorator";
@@ -14,6 +15,11 @@ import { StockVoidService } from "./stock-void.service";
 import { CreateStockVoidDto, PreviewStockVoidDto } from "./dto/stock-void.dto";
 import { ListStockMovementsQueryDto } from "./dto/list-stock-movements-query.dto";
 
+class NegativeStockSettingDto {
+  @IsBoolean()
+  allowNegativeStock!: boolean;
+}
+
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("inventory")
 export class InventoryController {
@@ -21,6 +27,18 @@ export class InventoryController {
     private inventoryService: InventoryService,
     private stockVoids: StockVoidService,
   ) {}
+
+  // «Разрешить уход в минус» (before the first stock count): read by anyone, switched by OWNER/ADMIN.
+  @Get("settings")
+  getSettings(@CurrentUser() user: AuthenticatedUser) {
+    return this.inventoryService.getStockSettings(user);
+  }
+
+  @Put("settings")
+  @Roles(...HARD_DELETE_ROLES)
+  setSettings(@CurrentUser() user: AuthenticatedUser, @Body() dto: NegativeStockSettingDto) {
+    return this.inventoryService.setAllowNegativeStock(user, dto.allowNegativeStock);
+  }
 
   @Get("stock-levels")
   getStockLevels(

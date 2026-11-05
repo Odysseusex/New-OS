@@ -25,6 +25,7 @@ import { AdjustStockDto } from "./dto/adjust-stock.dto";
 import { StockBatchLineDto } from "./dto/stock-batch.dto";
 import { StockMovementType as PrismaStockMovementType } from "@prisma/client";
 import { postLedgerSources } from "../ledger/event-posting";
+import { recordAudit } from "../audit/audit";
 
 // A batch of up to 100 lines is a few hundred round trips against a remote database.
 const BATCH_TRANSACTION = { maxWait: 15_000, timeout: 120_000 };
@@ -83,6 +84,31 @@ export class InventoryService {
         movementCount: row._count._all,
       }))
       .sort((a, b) => b.movementCount - a.movementCount);
+  }
+
+  async getStockSettings(user: AuthenticatedUser) {
+    const org = await this.prisma.organization.findUniqueOrThrow({
+      where: { id: user.organizationId },
+      select: { allowNegativeStock: true, financeInitializedAt: true },
+    });
+    return { allowNegativeStock: org.allowNegativeStock, financeStarted: org.financeInitializedAt !== null };
+  }
+
+  async setAllowNegativeStock(user: AuthenticatedUser, enabled: boolean) {
+    await this.prisma.$transaction(async (tx) => {
+      const before = await tx.organization.findUniqueOrThrow({ where: { id: user.organizationId }, select: { allowNegativeStock: true } });
+      await tx.organization.update({ where: { id: user.organizationId }, data: { allowNegativeStock: enabled } });
+      await recordAudit(tx, {
+        organizationId: user.organizationId,
+        actorId: user.id,
+        action: "inventory.allowNegativeStock",
+        entityType: "Organization",
+        entityId: user.organizationId,
+        before: { allowNegativeStock: before.allowNegativeStock },
+        after: { allowNegativeStock: enabled },
+      });
+    });
+    return this.getStockSettings(user);
   }
 
   async getStockLevels(user: AuthenticatedUser, requestedLocationId?: string): Promise<StockLevelDto[]> {

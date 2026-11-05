@@ -52,7 +52,7 @@ import { requireLocationScope, resolveLocationScope } from "../common/location-s
 import { deltaPct, previousRangeOf } from "../common/period-range";
 import { resolveProductUnitCosts } from "../common/product-costs";
 import { OWN_ITEMS, ownAmount } from "../common/own-sales";
-import { decrementStockOrThrow } from "../common/stock-guard";
+import { allowsNegativeStock, decrementStock } from "../common/stock-guard";
 import { CashMovementsService } from "../finance/cash-movements.service";
 import { CostingService } from "../costing/costing.service";
 import { buildFiscalSaleRequest, FiscalService } from "../fiscal/fiscal.service";
@@ -1452,8 +1452,10 @@ export class SalesService {
       // or decrement — selling one must not look like selling out of stock.
       // This is what lets the till's «Произвольная сумма» line work at all.
       const stockedItems = items.filter((item) => trackedById.get(item.productId));
+      // Before the first stock count the organization may sell below zero (Organization.allowNegativeStock).
+      const allowNegative = await allowsNegativeStock(tx, user.organizationId);
 
-      for (const item of stockedItems) {
+      for (const item of allowNegative ? [] : stockedItems) {
         const available = stockByProduct.get(item.productId) ?? 0;
         if (available < item.quantity) {
           const product = products.find((p) => p.id === item.productId);
@@ -1676,10 +1678,17 @@ export class SalesService {
       }
 
       for (const item of stockedItems) {
-        await decrementStockOrThrow(
+        await decrementStock(
           tx,
-          { locationId, productId: item.productId, quantity: item.quantity },
+          {
+            organizationId: user.organizationId,
+            locationId,
+            productId: item.productId,
+            quantity: item.quantity,
+            minQuantity: productById.get(item.productId)?.minQuantity,
+          },
           `Недостаточно товара «${productById.get(item.productId)?.name ?? item.productId}» на складе точки`,
+          allowNegative,
         );
       }
 
@@ -1797,7 +1806,8 @@ export class SalesService {
     // do not have. Products opted out of stock tracking are skipped — there
     // is no stock to be short of.
     const stockByProduct = new Map(stockLevels.map((s) => [s.productId, s.quantity.toNumber()]));
-    for (const item of items) {
+    const allowNegative = await allowsNegativeStock(this.prisma as unknown as Prisma.TransactionClient, user.organizationId);
+    for (const item of allowNegative ? [] : items) {
       if (!productById.get(item.productId)?.trackInventory) continue;
       if ((stockByProduct.get(item.productId) ?? 0) < item.quantity) {
         const name = productById.get(item.productId)?.name ?? item.productId;

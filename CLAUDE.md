@@ -990,6 +990,22 @@ stocktake on zeroed stock books the whole shelf as a surplus = an inventory GAIN
 balance-only (`INVENTORY_GAIN` event with no P&L leg). Then Финансы → «Запустить» freezes stock/debts as the opening position.
 Verified on a full clone of the local database (cleared in ~130 ms, every page loads on the empty books).
 
+## «Уход в минус» before the first stock count (built 05.11.2026)
+
+For opening a new shop/workshop before anyone could count the stock. `Organization.allowNegativeStock` (migration
+`20261122120000`, Склад → Остатки: «Разрешить уход в минус» / «Выключить», OWNER/ADMIN via `PUT /inventory/settings`,
+audited `inventory.allowNegativeStock`): ONLY production consumption and till/«Новая продажа» skip the stock check
+(`common/stock-guard.ts` `allowsNegativeStock` + `decrementStock`, which upserts a negative level); write-offs,
+transfers, supplier returns etc. stay strict. Everything is written as usual (consumption at the norm and the current
+cost). The first count is approved with «Начальные остатки» (`StocktakeService.approve(…, {opening: true})`, allowed only
+while the switch is on): a surplus becomes a RECEIPT «Начальный остаток (инвентаризация)», `Stocktake.opening = true`,
+skipped by the event projection, and — if Финансы → «Запустить» was already done — its value is ADDED to
+`Organization.openingInventoryValue` (as if counted at the start); before the launch the launch values it from the
+stock. A shortage stays an ordinary adjustment. Intended order: «Запустить» on the first morning (cash counted),
+switch on, work, count with «Начальные остатки», switch off. Launching AFTER days of trading instead leaves those days'
+cash outside the opening and the balance unbalanced — that is why the opening is folded in, not delayed.
+Spec `inventory/negative-stock.spec.ts`.
+
 ## «Корректировка остатка» of a cash/bank account (built)
 
 Финансы → Банк и касса → «Корректировка остатка» on each active account (`CASH_ADJUSTMENT_ROLES` = OWNER/ADMIN/ACCOUNTANT,

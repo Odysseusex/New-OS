@@ -334,6 +334,9 @@ model Organization {
   tillShiftsRequired Boolean @default(false)
   // When true, a cashier removes a line or lowers a quantity in the check only with a senior cashier's PIN.
   tillLineRemovalApproval Boolean @default(false)
+  // Production and the till may take stock below zero (no stock count yet); the first stocktake then
+  // books the opening position (Stocktake.opening). Switched by OWNER/ADMIN, off by default.
+  allowNegativeStock Boolean @default(false)
 
   // The purchasing cutover. Null = the old behaviour (a received purchase
   // order creates no payable; supplier invoices may still be created). Once
@@ -2522,6 +2525,8 @@ model Stocktake {
   approvedBy     User?           @relation("StocktakeApprovedBy", fields: [approvedById], references: [id])
   cancelledAt    DateTime?
   cancelReason   String?
+  // Approved as the opening count: surpluses were booked as the opening stock (RECEIPT), not as a gain.
+  opening        Boolean         @default(false)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 

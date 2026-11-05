@@ -43,6 +43,8 @@ export interface StocktakeSummaryDto {
   snapshotAt: string;
   createdByName: string;
   approvedAt: string | null;
+  // Approved as the opening count (surplus booked as the opening stock, not a gain).
+  opening: boolean;
   approvedByName: string | null;
   cancelledAt: string | null;
   cancelReason: string | null;
