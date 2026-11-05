@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import type { CashAccountDto, FinanceCategoryDto, LocationDto } from "@bakery-os/shared";
-import { BUSINESS_DIRECTION_LABELS_RU, BUSINESS_DIRECTION_ORDER, BusinessDirection, FinanceCategoryKind } from "@bakery-os/shared";
+import { FinanceCategoryKind } from "@bakery-os/shared";
+import type { DirectionDto } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
 
@@ -21,7 +22,8 @@ export function NewExpenseModal({
   const [amount, setAmount] = useState("");
   const [locationId, setLocationId] = useState("");
   const [description, setDescription] = useState("");
-  const [direction, setDirection] = useState<BusinessDirection | "">("");
+  const [directionId, setDirectionId] = useState("");
+  const [directions, setDirections] = useState<DirectionDto[]>([]);
   // Checked by default — fast path: log and pay in one step, same as
   // before Expense had a lifecycle at all. Unchecked, it's saved as a
   // draft with nothing paid, to confirm and pay later.
@@ -35,6 +37,7 @@ export function NewExpenseModal({
       setCategories(list);
       setCategoryId((prev) => prev || list[0]?.id || "");
     });
+    api.directions.list().then((list) => setDirections(list.filter((d) => d.isActive))).catch(() => {});
     api.finance.accounts.list().then((list) => {
       setAccounts(list);
       setAccountId((prev) => prev || list[0]?.id || "");
@@ -51,7 +54,7 @@ export function NewExpenseModal({
         amount: Number(amount),
         locationId: locationId || undefined,
         description: description || undefined,
-        direction: direction || null,
+        directionId: directionId || null,
         paidImmediately,
         accountId: paidImmediately ? accountId : undefined,
       });
@@ -117,14 +120,14 @@ export function NewExpenseModal({
         <div className="mb-4">
           <label className="mb-1.5 block text-sm font-medium text-foreground">Направление</label>
           <select
-            value={direction}
-            onChange={(e) => setDirection(e.target.value as BusinessDirection | "")}
+            value={directionId}
+            onChange={(e) => setDirectionId(e.target.value)}
             className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
           >
-            <option value="">Общий расход (делится по выручке)</option>
-            {BUSINESS_DIRECTION_ORDER.map((d) => (
-              <option key={d} value={d}>
-                {BUSINESS_DIRECTION_LABELS_RU[d]}
+            <option value="">Общий расход</option>
+            {directions.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
               </option>
             ))}
           </select>

@@ -1,7 +1,7 @@
 "use client";
 
 import { FileDown } from "lucide-react";
-import type { CashAccountDto, FinanceCategoryDto, LocationDto, UserAccountDto } from "@bakery-os/shared";
+import type { CashAccountDto, DirectionDto, FinanceCategoryDto, LocationDto, UserAccountDto } from "@bakery-os/shared";
 import {
   BALANCE_TREATMENT_LABELS_RU,
   CASH_ACCOUNT_TYPE_LABELS_RU,
@@ -75,5 +75,14 @@ export function exportEmployees(users: UserAccountDto[]) {
     ["ФИО", "Email", "Роль", "Должность", "Точка", "PIN", "Активен"],
     users.map((u) => [u.fullName, u.email, ROLE_LABELS_RU[u.role], u.title ?? "", u.locationName ?? "Вся сеть", yesNo(u.hasPin), yesNo(u.isActive)]),
     { sheetName: "Сотрудники" },
+  );
+}
+
+export function exportDirections(directions: DirectionDto[]) {
+  void downloadTable(
+    "napravleniya",
+    ["Направление", "Ответственный", "Точки по умолчанию", "Активно"],
+    directions.map((d) => [d.name, d.responsible ?? "", d.locationNames.join(", "), yesNo(d.isActive)]),
+    { sheetName: "Направления" },
   );
 }

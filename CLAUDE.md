@@ -1243,10 +1243,17 @@ trigger; `StockMovementType.SUPPLIER_RETURN`, stock sign −1; `supplierReturnId
 
 Финансы → «Прибыли и убытки» → table «Прибыль по направлениям» (`DirectionPnlCard`, `GET /finance/pnl/directions`,
 same roles/period/location as the P&L). `finance/direction-pnl.ts`; shared `packages/shared/src/directions.ts`.
-- A sale's direction is read from the sale itself (`businessDirectionOf`): `Sale.crmOrderId` set → «Заказы»;
-  `customerId` → «Опт»; else «Розница». A return follows its sale. Nothing about directions is stored.
-- **No directions directory** (owner's decision, 04.11.2026): the business has exactly these three; product lines
-  (хлеб / кондитерка) are categories, not directions. Add a user-editable directory only if a fourth one appears.
+- **Directions are a directory** (ТЗ §2, migration `20261121120000_directions`, `Direction`, `apps/api/src/directions/`,
+  Сеть точек → «Направления», `DIRECTION_MANAGE_ROLES` = OWNER/ADMIN/ACCOUNTANT, delete = HARD_DELETE_ROLES, audited
+  `direction.*`). Three SYSTEM rows per organization (`systemKey` WHOLESALE/RETAIL/ORDERS, created lazily by
+  `ensureSystemDirections`; renamable, never archived/deleted) keep the automatic rules; hand-made ones (name +
+  optional responsible) get sales through a point's `Location.defaultDirectionId` and expenses through
+  `Expense.directionId`. Archive refused while a point uses it as default; delete only if unused. Everything keys by
+  direction **id** (P&L columns, allocation shares — legacy WHOLESALE/RETAIL/ORDERS keys are mapped on read, ДДС
+  `direction` filter). The legacy `Expense.direction` enum column stays, back-filled into `directionId`.
+- A sale's direction is read from the sale itself (`directionIdOfSale`): `Sale.crmOrderId` set → «Заказы»;
+  `customerId` → «Опт»; else the point's default direction; else «Розница». A return follows its sale. Nothing about
+  a sale's direction is stored (changing a point's default re-groups its past sales too — it is a management view).
 - `Sale.crmOrderId` (migration `20261106120000`, nullable, SET NULL): the till's «Оплата заказа» (`PosOrderBlock`,
   `GET /sales/open-orders`, SALE_CREATE_ROLES — a cashier cannot reach `/crm`) attaches a prepayment or the rest to an
   open cake order; a CANCELLED order is refused. «Исправить чек» carries it over. Sales before this have no order, so
@@ -1265,7 +1272,7 @@ same roles/period/location as the P&L). `finance/direction-pnl.ts`; shared `pack
 - **EBITDA** = operating profit + depreciation (`ebitdaOf`, derived on the client so frozen snapshots show it too); the
   P&L ladder shows EBITDA → Амортизация → «Операционная прибыль (EBIT)» and «Рентабельность по чистой прибыли»
   (`netMarginPercent`). Финансы → P&L «Excel» is a workbook: «ОПиУ» (the ladder) + «По товарам» (`downloadWorkbook`).
-- **Direct expenses** (migration `20261107120000`, enum `BusinessDirection`, `Expense.direction` nullable): «Направление»
+- **Direct expenses** (migration `20261107120000`; now `Expense.directionId`, see the directory above): «Направление»
   in «Новый расход» (empty = common). A confirmed expense with a direction goes wholly to it — operating ones into its
   «Операционные расходы» (`directExpenses` shown as «в т.ч. прямые»), other/financial ones into its other result —
   and only the REST is shared by revenue. A management dimension only: never in events, the ledger or the P&L total.

@@ -1,4 +1,4 @@
-import { IsEnum, IsNumber, IsOptional, IsString, MinLength } from "class-validator";
+import { IsEnum, IsNumber, IsOptional, IsString, MinLength, ValidateIf } from "class-validator";
 import { LocationOwnership, LocationType } from "@bakery-os/shared";
 
 export class CreateLocationDto {
@@ -32,4 +32,10 @@ export class CreateLocationDto {
   @IsOptional()
   @IsNumber()
   lng?: number;
+
+  // Where this point's till sales go (null = «Розница»).
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsString()
+  defaultDirectionId?: string | null;
 }

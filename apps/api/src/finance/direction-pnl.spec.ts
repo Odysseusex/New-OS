@@ -4,6 +4,8 @@ import { createIsolatedOrg, destroyOrg, IsolatedOrg } from "../../test/support/i
 import { buildServices } from "../../test/support/services";
 import { allocate } from "./direction-pnl";
 import { AUDIT_ACTION_GROUPS } from "../audit/audit";
+import { loadDirectionContext } from "../directions/direction-context";
+import { DirectionsService } from "../directions/directions.service";
 
 // Прибыль по направлениям (опт / розница / заказы): each direction's own revenue
 // and cost of goods, common costs shared by net revenue, and the whole always
@@ -16,6 +18,8 @@ let breadId: string;
 let customerId: string;
 let orderId: string;
 let start: Date;
+let sys: Record<BusinessDirection, string>;
+const byKey = <T extends { directionId: string }>(rows: T[], key: BusinessDirection): T => rows.find((r) => r.directionId === sys[key])!;
 
 beforeAll(async () => {
   await prisma.$connect();
@@ -38,6 +42,7 @@ beforeAll(async () => {
     })
   ).id;
   start = new Date(Date.now() - 1000);
+  sys = (await loadDirectionContext(prisma, organizationId)).system;
 });
 afterAll(async () => {
   const leftovers = await destroyOrg(prisma, org.organizationId);
@@ -81,7 +86,7 @@ describe("P&L by business direction", () => {
     const to = new Date();
     const pnl = await services.finance.getProfitAndLoss(org.organizationId, start, to);
     const d = await services.finance.getPnlByDirection(org.organizationId, start, to);
-    const row = (dir: BusinessDirection) => d.rows.find((r) => r.direction === dir)!;
+    const row = (dir: BusinessDirection) => byKey(d.rows, dir);
 
     // Опт 2 000, розница 1 000 (2 000 − 1 000 returned), заказы 1 000.
     expect(row(BusinessDirection.WHOLESALE)).toMatchObject({ checks: 1, netRevenue: 2000, cogs: 400, grossProfit: 1600 });
@@ -109,15 +114,15 @@ describe("P&L by business direction", () => {
       categoryId,
       paidImmediately: true,
       accountId: org.cashAccountId,
-      direction: BusinessDirection.ORDERS,
+      directionId: sys[BusinessDirection.ORDERS],
       description: "Коробки для тортов",
     });
-    expect(boxes.direction).toBe(BusinessDirection.ORDERS);
+    expect(boxes).toMatchObject({ directionId: sys[BusinessDirection.ORDERS], directionName: "Заказы" });
 
     const to = new Date();
     const pnl = await services.finance.getProfitAndLoss(org.organizationId, start, to);
     const d = await services.finance.getPnlByDirection(org.organizationId, start, to);
-    const row = (dir: BusinessDirection) => d.rows.find((r) => r.direction === dir)!;
+    const row = (dir: BusinessDirection) => byKey(d.rows, dir);
     // Common rent 1 200 still 600 / 300 / 300; the boxes 400 only on orders.
     expect(row(BusinessDirection.WHOLESALE)).toMatchObject({ expenses: 600, directExpenses: 0 });
     expect(row(BusinessDirection.ORDERS)).toMatchObject({ expenses: 700, directExpenses: 400, operatingProfit: 100 });
@@ -129,20 +134,20 @@ describe("P&L by business direction", () => {
     const to = new Date();
     const byRevenue = await services.finance.getPnlByDirection(org.organizationId, start, to);
     expect(byRevenue.allocation).toEqual({ base: DirectionAllocationBase.REVENUE, shares: null });
-    const orders = byRevenue.rows.find((r) => r.direction === BusinessDirection.ORDERS)!;
+    const orders = byKey(byRevenue.rows, BusinessDirection.ORDERS);
     // Gross profit 800 − its own boxes 400; then its 300 of the common rent.
     expect(orders).toMatchObject({ profitBeforeAllocation: 400, allocatedCosts: 300, ebitda: 100, netProfit: 100 });
     expect(byRevenue.total.ebitda).toBe(byRevenue.total.operatingProfit + byRevenue.total.depreciation);
 
     await expect(
-      services.finance.setDirectionAllocation(org.organizationId, org.user.id, { base: DirectionAllocationBase.MANUAL, shares: { WHOLESALE: 50, RETAIL: 30, ORDERS: 10 } as never }),
+      services.finance.setDirectionAllocation(org.organizationId, org.user.id, { base: DirectionAllocationBase.MANUAL, shares: { [sys.WHOLESALE]: 50, [sys.RETAIL]: 30, [sys.ORDERS]: 10 } }),
     ).rejects.toThrow(/100/);
     await services.finance.setDirectionAllocation(org.organizationId, org.user.id, {
       base: DirectionAllocationBase.MANUAL,
-      shares: { WHOLESALE: 50, RETAIL: 50, ORDERS: 0 } as never,
+      shares: { [sys.WHOLESALE]: 50, [sys.RETAIL]: 50, [sys.ORDERS]: 0 },
     });
     const manual = await services.finance.getPnlByDirection(org.organizationId, start, to);
-    const m = (dir: BusinessDirection) => manual.rows.find((r) => r.direction === dir)!;
+    const m = (dir: BusinessDirection) => byKey(manual.rows, dir);
     expect(m(BusinessDirection.ORDERS)).toMatchObject({ allocatedCosts: 0, netProfit: 400, allocationSharePercent: 0 });
     expect(m(BusinessDirection.WHOLESALE)).toMatchObject({ allocatedCosts: 600, allocationSharePercent: 50 });
     expect(manual.rows.reduce((s, r) => s + r.netProfit, 0)).toBeCloseTo(manual.total.netProfit, 2);
@@ -151,15 +156,50 @@ describe("P&L by business direction", () => {
     await services.finance.setDirectionAllocation(org.organizationId, org.user.id, { base: DirectionAllocationBase.GROSS_PROFIT, shares: null });
     const byGross = await services.finance.getPnlByDirection(org.organizationId, start, to);
     expect(byGross.allocation).toEqual({ base: DirectionAllocationBase.GROSS_PROFIT, shares: null });
-    expect(byGross.rows.find((r) => r.direction === BusinessDirection.WHOLESALE)!.allocationSharePercent).toBeCloseTo(50, 6);
+    expect(byKey(byGross.rows, BusinessDirection.WHOLESALE).allocationSharePercent).toBeCloseTo(50, 6);
 
     const logged = new Set((await prisma.auditLog.findMany({ where: { organizationId: org.organizationId } })).map((e) => e.action));
     expect(AUDIT_ACTION_GROUPS.directionAllocation.filter((a) => !logged.has(a))).toEqual([]);
   });
 
+  it("percentages saved before the directory (keyed by опт/розница/заказы) are read by direction id", async () => {
+    await prisma.organization.update({
+      where: { id: org.organizationId },
+      data: { directionAllocationBase: DirectionAllocationBase.MANUAL, directionAllocationShares: { WHOLESALE: 70, RETAIL: 30, ORDERS: 0 } },
+    });
+    const allocation = await services.finance.getDirectionAllocation(org.organizationId);
+    expect(allocation.shares).toEqual({ [sys.WHOLESALE]: 70, [sys.RETAIL]: 30, [sys.ORDERS]: 0 });
+    await services.finance.setDirectionAllocation(org.organizationId, org.user.id, { base: DirectionAllocationBase.REVENUE, shares: null });
+  });
+
+  it("a direction from the directory: a point's default takes its till sales; opt and orders keep their rules", async () => {
+    const directions = new DirectionsService(prisma);
+    const cafe = await directions.create(org.organizationId, org.user.id, { name: "Кофейня", responsible: "Айгерим" });
+    await expect(directions.create(org.organizationId, org.user.id, { name: "Кофейня" })).rejects.toThrow(/уже есть/);
+    await prisma.location.update({ where: { id: org.storeId }, data: { defaultDirectionId: cafe.id } });
+    const from = new Date();
+    await sell(2); // the point's default → «Кофейня»
+    await sell(1, { customerId, amountPaid: 500 }); // a wholesale customer → «Опт»
+    const d = await services.finance.getPnlByDirection(org.organizationId, from, new Date());
+    expect(d.rows.find((r) => r.directionId === cafe.id)).toMatchObject({ name: "Кофейня", netRevenue: 1000, checks: 1 });
+    expect(byKey(d.rows, BusinessDirection.WHOLESALE)).toMatchObject({ netRevenue: 500 });
+    expect(byKey(d.rows, BusinessDirection.RETAIL)).toMatchObject({ netRevenue: 0 });
+    const list = await directions.list(org.organizationId);
+    expect(list.find((x) => x.id === cafe.id)).toMatchObject({ responsible: "Айгерим", locationNames: [expect.any(String)] });
+    // ДДС of «Кофейня»: only the money of its own sales.
+    const flow = await services.finance.getCashFlow(org.organizationId, from, new Date(), { direction: cafe.id });
+    expect(flow.totalInflow).toBe(1000);
+    // In use as a point's default: neither archived nor deleted; system rows never.
+    await expect(directions.update(org.organizationId, org.user.id, cafe.id, { isActive: false })).rejects.toThrow(/по умолчанию/);
+    await expect(directions.remove(org.organizationId, org.user.id, sys.RETAIL)).rejects.toThrow(/Основное/);
+    await prisma.location.update({ where: { id: org.storeId }, data: { defaultDirectionId: null } });
+    const logged = new Set((await prisma.auditLog.findMany({ where: { organizationId: org.organizationId } })).map((e) => e.action));
+    expect(logged.has("direction.create")).toBe(true);
+  });
+
   it("allocation always adds up to the тиын", () => {
-    const parts = allocate(100, new Map([[BusinessDirection.WHOLESALE, 1], [BusinessDirection.RETAIL, 1], [BusinessDirection.ORDERS, 1]]));
+    const parts = allocate(100, new Map([["a", 1], ["b", 1], ["c", 1]]));
     expect([...parts.values()].reduce((s, v) => s + v, 0)).toBe(100);
-    expect(allocate(50, new Map()).get(BusinessDirection.RETAIL)).toBe(0);
+    expect(allocate(50, new Map(), ["a"]).get("a")).toBe(0);
   });
 });

@@ -45,6 +45,7 @@ export const AUDIT_ACTION_GROUPS = {
   customerPayments: ["customer.payment"],
   referenceImport: ["referenceImport.apply"],
   directionAllocation: ["directionAllocation.update"],
+  directions: ["direction.create", "direction.update", "direction.delete"],
   tillShifts: ["tillShift.open", "tillShift.close", "tillShift.setRequired"],
   tillApprovals: ["user.pin", "till.lineRemoval", "sale.manualDiscount", "tillShift.setLineRemovalApproval"],
   bankStatements: ["bankStatement.upload", "bankStatement.delete", "bankStatementLine.post"],

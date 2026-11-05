@@ -5,7 +5,8 @@ import { PrismaService } from "../prisma/prisma.service";
 import { customerAdvanceBalances } from "../sales/customer-advances";
 import { cogsDeltaOf, correctionsInRange, lossDeltaOf } from "./cost-correction/stored";
 import { buildDirectionPnl } from "./direction-pnl";
-import { BUSINESS_DIRECTION_ORDER, BusinessDirection, businessDirectionOf, DirectionAllocationBase, DirectionAllocationDto, directionSharesError } from "@bakery-os/shared";
+import { BusinessDirection, DirectionAllocationBase, DirectionAllocationDto, directionIdOfSale, directionSharesError } from "@bakery-os/shared";
+import { assertDirection, loadDirectionContext } from "../directions/direction-context";
 import { audited } from "../audit/audit";
 import { CostingService } from "../costing/costing.service";
 import { FinancialEventProjector } from "./events/projector";
@@ -80,7 +81,7 @@ import { recordAudit } from "../audit/audit";
 import { postLedgerSources } from "../ledger/event-posting";
 import { startOfZonedDay } from "../common/zoned-day";
 
-const EXPENSE_INCLUDE = { location: true, categoryRef: true, createdBy: true };
+const EXPENSE_INCLUDE = { location: true, categoryRef: true, createdBy: true, directionRef: { select: { name: true } } };
 
 // Tenge to two decimals. Floating-point sums of money drift into
 // 1234.5600000000002, which then renders as a nonsense figure on a statement
@@ -148,6 +149,7 @@ export class FinanceService {
 
     // An expense dated inside a closed month would change a closed report.
     if (dto.incurredOn) await this.periodGuard.assertOpen(user.organizationId, new Date(dto.incurredOn));
+    await assertDirection(this.prisma, user.organizationId, dto.directionId);
 
     const expense = await this.prisma.$transaction(async (tx) => {
       const created = await tx.expense.create({
@@ -160,7 +162,7 @@ export class FinanceService {
           amountPaid: paidImmediately ? dto.amount : 0,
           description: dto.description,
           incurredOn: dto.incurredOn ? new Date(dto.incurredOn) : undefined,
-          direction: dto.direction ?? null,
+          directionId: dto.directionId ?? null,
           createdById: user.id,
         },
         include: EXPENSE_INCLUDE,
@@ -687,18 +689,25 @@ export class FinanceService {
     const base = Object.values(DirectionAllocationBase).includes(org.directionAllocationBase as DirectionAllocationBase)
       ? (org.directionAllocationBase as DirectionAllocationBase)
       : DirectionAllocationBase.REVENUE;
-    const shares = org.directionAllocationShares as Record<BusinessDirection, number> | null;
-    return { base, shares: base === DirectionAllocationBase.MANUAL ? shares : null };
+    if (base !== DirectionAllocationBase.MANUAL) return { base, shares: null };
+    // Percentages stored before the directory are keyed by the system key: read them by id.
+    const { system } = await loadDirectionContext(this.prisma, organizationId);
+    const stored = (org.directionAllocationShares as Record<string, number> | null) ?? {};
+    const shares = Object.fromEntries(
+      Object.entries(stored).map(([key, v]) => [system[key as BusinessDirection] ?? key, v]),
+    );
+    return { base, shares };
   }
 
   // Management view only: changes how «Прибыль по направлениям» shares common costs, nothing in the books.
   async setDirectionAllocation(organizationId: string, actorId: string, dto: DirectionAllocationDto): Promise<DirectionAllocationDto> {
     if (!Object.values(DirectionAllocationBase).includes(dto.base)) throw new BadRequestException("Неизвестная база распределения");
-    let shares: Record<BusinessDirection, number> | null = null;
+    let shares: Record<string, number> | null = null;
     if (dto.base === DirectionAllocationBase.MANUAL) {
-      const problem = directionSharesError(dto.shares);
+      const ids = (await loadDirectionContext(this.prisma, organizationId)).directions.filter((d) => d.isActive).map((d) => d.id);
+      const problem = directionSharesError(dto.shares, ids);
       if (problem) throw new BadRequestException(problem);
-      shares = Object.fromEntries(BUSINESS_DIRECTION_ORDER.map((d) => [d, round2(dto.shares?.[d] ?? 0)])) as Record<BusinessDirection, number>;
+      shares = Object.fromEntries(ids.map((d) => [d, round2(dto.shares?.[d] ?? 0)]));
     }
     const before = await this.getDirectionAllocation(organizationId);
     await audited(
@@ -1448,7 +1457,7 @@ export class FinanceService {
   private async cashScopeIndex(organizationId: string, scope: CashScope): Promise<CashScopeIndex | undefined> {
     if (!scope.locationId && !scope.direction) return undefined;
     const saleRef = { select: { locationId: true, customerId: true, crmOrderId: true } } as const;
-    const [movements, accounts] = await Promise.all([
+    const [movements, accounts, ctx] = await Promise.all([
       this.prisma.cashMovement.findMany({
         where: { organizationId },
         select: {
@@ -1459,18 +1468,19 @@ export class FinanceService {
           account: { select: { locationId: true } },
           sale: saleRef,
           saleReturn: { select: { locationId: true, sale: saleRef } },
-          expense: { select: { locationId: true, direction: true } },
+          expense: { select: { locationId: true, directionId: true } },
           purchaseOrderPayment: { select: { purchaseOrder: { select: { locationId: true } } } },
         },
       }),
       this.prisma.cashAccount.findMany({ where: { organizationId }, select: { id: true, locationId: true } }),
+      loadDirectionContext(this.prisma, organizationId),
     ]);
-    const ownDirection = (m: (typeof movements)[number]): BusinessDirection | null => {
-      if (m.sale) return businessDirectionOf(m.sale);
-      if (m.saleReturn) return businessDirectionOf(m.saleReturn.sale);
-      if (m.expense) return (m.expense.direction as BusinessDirection | null) ?? null;
+    const ownDirection = (m: (typeof movements)[number]): string | null => {
+      if (m.sale) return directionIdOfSale(m.sale, ctx);
+      if (m.saleReturn) return directionIdOfSale(m.saleReturn.sale, ctx);
+      if (m.expense) return m.expense.directionId ?? null;
       // A wholesale customer's payment with no sale behind it is an advance.
-      if (m.type === CashMovementType.CUSTOMER_PAYMENT && m.customerId) return BusinessDirection.WHOLESALE;
+      if (m.type === CashMovementType.CUSTOMER_PAYMENT && m.customerId) return ctx.system[BusinessDirection.WHOLESALE];
       return null;
     };
     const direct = new Map(movements.map((m) => [m.id, ownDirection(m)]));
@@ -1722,7 +1732,8 @@ export class FinanceService {
     amountPaid: { toNumber: () => number };
     description: string | null;
     incurredOn: Date;
-    direction?: string | null;
+    directionId?: string | null;
+    directionRef?: { name: string } | null;
     createdBy: { fullName: string };
   }): ExpenseDto => {
     const amount = expense.amount.toNumber();
@@ -1743,7 +1754,8 @@ export class FinanceService {
       description: expense.description,
       incurredOn: expense.incurredOn.toISOString(),
       createdByName: expense.createdBy.fullName,
-      direction: (expense.direction as BusinessDirection | null | undefined) ?? null,
+      directionId: expense.directionId ?? null,
+      directionName: expense.directionRef?.name ?? null,
     };
   };
 }

@@ -1,4 +1,4 @@
-import { BusinessDirection, FinancialEvent } from "@bakery-os/shared";
+import { FinancialEvent } from "@bakery-os/shared";
 
 // ДДС for one account or one point (ТЗ §6.3 «Фильтры: точка, счёт»).
 //   account: only the cash legs on that account — a transfer to another of our
@@ -15,7 +15,8 @@ import { BusinessDirection, FinancialEvent } from "@bakery-os/shared";
 export interface CashScope {
   accountId?: string;
   locationId?: string;
-  direction?: BusinessDirection;
+  // A direction id from the directory.
+  direction?: string;
 }
 
 export interface CashScopeIndex {
@@ -24,7 +25,7 @@ export interface CashScopeIndex {
   // CashAccount id → the point it is tied to (null = shared).
   accountLocation: Map<string, string | null>;
   // CashMovement id → its business direction (null = common).
-  movementDirection?: Map<string, BusinessDirection | null>;
+  movementDirection?: Map<string, string | null>;
 }
 
 export function scopeCashEvents(events: FinancialEvent[], scope: CashScope, index?: CashScopeIndex): FinancialEvent[] {

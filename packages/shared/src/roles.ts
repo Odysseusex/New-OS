@@ -407,6 +407,8 @@ export const BANK_IMPORT_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTAN
 
 // Choosing how common costs are shared between directions («Прибыль по направлениям»).
 export const DIRECTION_ALLOCATION_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT];
+// Справочник направлений: add, rename, set the responsible person, archive.
+export const DIRECTION_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT];
 
 // Кассовая смена: whoever sells at the till opens, moves cash in/out, prints X and closes with Z.
 export const TILL_SHIFT_ROLES: Role[] = SALE_CREATE_ROLES;

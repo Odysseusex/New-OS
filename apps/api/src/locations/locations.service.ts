@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { audited } from "../audit/audit";
+import { assertDirection } from "../directions/direction-context";
 import { PrismaService } from "../prisma/prisma.service";
 import { ownAmount } from "../common/own-sales";
 import {
@@ -38,6 +39,7 @@ export class LocationsService {
   }
 
   async create(organizationId: string, dto: CreateLocationRequestDto): Promise<LocationDto> {
+    await assertDirection(this.prisma, organizationId, dto.defaultDirectionId);
     const location = await this.prisma.location.create({
       data: {
         organizationId,
@@ -49,6 +51,7 @@ export class LocationsService {
         address: dto.address,
         lat: dto.lat,
         lng: dto.lng,
+        defaultDirectionId: dto.defaultDirectionId ?? null,
       },
     });
     return this.toDto(location);
@@ -59,6 +62,7 @@ export class LocationsService {
     if (!location) {
       throw new NotFoundException("Точка не найдена");
     }
+    if (dto.defaultDirectionId !== undefined) await assertDirection(this.prisma, organizationId, dto.defaultDirectionId);
     const updated = await audited(
       this.prisma,
       { organizationId, actorId, action: "location.update", entityType: "Location", entityId: locationId, before: location },
@@ -280,6 +284,7 @@ export class LocationsService {
     lat: number | null;
     lng: number | null;
     isActive: boolean;
+    defaultDirectionId?: string | null;
   }): LocationDto {
     return {
       id: loc.id,
@@ -292,6 +297,7 @@ export class LocationsService {
       lat: loc.lat,
       lng: loc.lng,
       isActive: loc.isActive,
+      defaultDirectionId: loc.defaultDirectionId ?? null,
     };
   }
 }

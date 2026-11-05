@@ -27,6 +27,49 @@ export function businessDirectionOf(sale: { crmOrderId?: string | null; customer
   return BusinessDirection.RETAIL;
 }
 
+// ── Справочник направлений (ТЗ §2) ──────────────────────────────────────
+// Three rows per organization carry a systemKey (their automatic rules above
+// stay); the others are added by people and reached through a point's default.
+export interface DirectionDto {
+  id: string;
+  name: string;
+  responsible: string | null;
+  systemKey: BusinessDirection | null;
+  isActive: boolean;
+  // Points whose till sales go to this direction by default.
+  locationNames: string[];
+}
+
+export interface CreateDirectionRequestDto {
+  name: string;
+  responsible?: string;
+}
+
+export interface UpdateDirectionRequestDto {
+  name?: string;
+  // Empty string clears it.
+  responsible?: string;
+  isActive?: boolean;
+}
+
+// What a sale needs to be put in a direction: the three system rows and each
+// point's default.
+export interface DirectionContext {
+  system: Record<BusinessDirection, string>;
+  locationDefault: Record<string, string | null>;
+}
+
+// A cake-order payment → «Заказы»; a wholesale customer's sale → «Опт»; anything
+// else → its point's default direction, else «Розница». A return follows its sale.
+export function directionIdOfSale(
+  sale: { crmOrderId?: string | null; customerId?: string | null; locationId?: string | null },
+  ctx: DirectionContext,
+): string {
+  if (sale.crmOrderId) return ctx.system[BusinessDirection.ORDERS];
+  if (sale.customerId) return ctx.system[BusinessDirection.WHOLESALE];
+  return (sale.locationId ? ctx.locationDefault[sale.locationId] : null) ?? ctx.system[BusinessDirection.RETAIL];
+}
+
 // The base the costs no direction owns are shared by (the ТЗ's three choices).
 export enum DirectionAllocationBase {
   REVENUE = "REVENUE",
@@ -42,15 +85,15 @@ export const DIRECTION_ALLOCATION_BASE_LABELS_RU: Record<DirectionAllocationBase
 
 export interface DirectionAllocationDto {
   base: DirectionAllocationBase;
-  // Percentages per direction for MANUAL (sum 100); null otherwise.
-  shares: Record<BusinessDirection, number> | null;
+  // Percentages per direction id for MANUAL (sum 100); null otherwise.
+  shares: Record<string, number> | null;
 }
 
 // Checks manual percentages: each 0..100, together exactly 100 (to 0.01).
-export function directionSharesError(shares: Partial<Record<BusinessDirection, number>> | null | undefined): string | null {
+export function directionSharesError(shares: Record<string, number> | null | undefined, directionIds: string[]): string | null {
   if (!shares) return "Укажите проценты по направлениям";
   let sum = 0;
-  for (const d of BUSINESS_DIRECTION_ORDER) {
+  for (const d of directionIds) {
     const v = shares[d] ?? 0;
     if (!Number.isFinite(v) || v < 0 || v > 100) return "Процент — от 0 до 100";
     sum += v;
@@ -63,7 +106,8 @@ export function directionSharesError(shares: Partial<Record<BusinessDirection, n
 // common (inventory losses, other operating expenses, depreciation, the other
 // result and the recorded income tax) is allocated by the chosen base.
 export interface DirectionPnlRowDto {
-  direction: BusinessDirection;
+  directionId: string;
+  name: string;
   checks: number;
   netRevenue: number;
   cogs: number;
@@ -95,7 +139,7 @@ export interface DirectionPnlDto {
   to: string;
   rows: DirectionPnlRowDto[];
   // The same figures for the whole business (equal to the P&L of the period).
-  total: Omit<DirectionPnlRowDto, "direction" | "checks" | "revenueSharePercent" | "allocationSharePercent"> & { checks: number };
+  total: Omit<DirectionPnlRowDto, "directionId" | "name" | "checks" | "revenueSharePercent" | "allocationSharePercent"> & { checks: number };
   allocation: DirectionAllocationDto;
   // False when the chosen base is not positive for any direction (no revenue, no
   // gross profit): common costs then stay with the total only.

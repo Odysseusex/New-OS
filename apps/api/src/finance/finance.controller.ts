@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, Put, Query, UseGuards } from "@nestjs/common";
-import { BusinessDirection, CashFlowDto, DIRECTION_ALLOCATION_ROLES, EXPENSE_MANAGE_ROLES, FINANCE_VIEW_ROLES, ProfitAndLossDto } from "@bakery-os/shared";
+import { CashFlowDto, DIRECTION_ALLOCATION_ROLES, EXPENSE_MANAGE_ROLES, FINANCE_VIEW_ROLES, ProfitAndLossDto } from "@bakery-os/shared";
 import { DirectionAllocationBodyDto } from "./dto/direction-allocation.dto";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
@@ -14,7 +14,7 @@ import { GetPnlQueryDto } from "./dto/get-pnl-query.dto";
 import { CashFlowByDateQueryDto, CashFlowDateOperationsQueryDto, CashFlowMonthlyQueryDto, CashFlowOperationsQueryDto } from "./dto/cash-flow-monthly-query.dto";
 import { GetProductPnlQueryDto } from "./dto/get-product-pnl-query.dto";
 
-const scopeOf = (q: { locationId?: string; accountId?: string; direction?: BusinessDirection }) => ({
+const scopeOf = (q: { locationId?: string; accountId?: string; direction?: string }) => ({
   locationId: q.locationId || undefined,
   accountId: q.accountId || undefined,
   direction: q.direction || undefined,

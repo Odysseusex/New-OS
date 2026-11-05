@@ -1,4 +1,5 @@
 import type { RequisitionIssueReportDto } from "@bakery-os/shared";
+import type { CreateDirectionRequestDto, DirectionDto, UpdateDirectionRequestDto } from "@bakery-os/shared";
 import type { CleanStartPreviewDto, CleanStartResultDto } from "@bakery-os/shared";
 import type {
   CashFlowMonthlyDto,
@@ -386,6 +387,13 @@ export const api = {
   },
   dashboardSummary: (locationId?: string) => request<DashboardSummaryDto>(withQuery("/dashboard/summary", { locationId })),
   dashboardFinance: (locationId?: string) => request<DashboardFinanceDto>(withQuery("/dashboard/finance", { locationId })),
+  directions: {
+    list: () => request<DirectionDto[]>("/directions"),
+    create: (dto: CreateDirectionRequestDto) => request<DirectionDto>("/directions", { method: "POST", body: JSON.stringify(dto) }),
+    update: (id: string, dto: UpdateDirectionRequestDto) =>
+      request<DirectionDto>(`/directions/${id}`, { method: "PATCH", body: JSON.stringify(dto) }),
+    remove: (id: string) => request<{ deleted: true }>(`/directions/${id}`, { method: "DELETE" }),
+  },
   locations: {
     list: (includeArchived?: boolean) =>
       request<LocationDto[]>(withQuery("/locations", { includeArchived: includeArchived ? "true" : undefined })),

@@ -2,12 +2,14 @@ import { BusinessDirection, PaymentMethod } from "@bakery-os/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { createIsolatedOrg, destroyOrg, IsolatedOrg } from "../../test/support/isolated-org";
 import { buildServices } from "../../test/support/services";
+import { loadDirectionContext } from "../directions/direction-context";
 
 // ДДС for one account or one point (ТЗ §6.3). Own throwaway organization.
 
 const prisma = new PrismaService();
 const services = buildServices(prisma);
 let org: IsolatedOrg;
+let sys: Record<BusinessDirection, string>;
 
 beforeAll(async () => {
   await prisma.$connect();
@@ -20,7 +22,8 @@ beforeAll(async () => {
   // A wholesale customer pays 1 500 for three loaves at once; a direct expense of the «Заказы» direction.
   const customerId = (await prisma.customer.create({ data: { organizationId: org.organizationId, name: "Кофейня", creditLimit: 100000 } })).id;
   await services.sales.create(org.user, { locationId: org.storeId, customerId, amountPaid: 1500, paymentMethod: PaymentMethod.CASH, items: [{ productId: breadId, quantity: 3, unitPrice: 500 }] } as never);
-  await services.finance.createExpense(org.user, { amount: 200, description: "Коробки для тортов", paidImmediately: true, accountId: org.cashAccountId, direction: BusinessDirection.ORDERS } as never);
+  sys = (await loadDirectionContext(prisma, org.organizationId)).system;
+  await services.finance.createExpense(org.user, { amount: 200, description: "Коробки для тортов", paidImmediately: true, accountId: org.cashAccountId, directionId: sys.ORDERS } as never);
 });
 afterAll(async () => {
   const leftovers = await destroyOrg(prisma, org.organizationId);
@@ -57,17 +60,17 @@ describe("ДДС by point and by account", () => {
 
   it("one direction: retail till sale, wholesale customer sale, the direction's own expense; no transfers", async () => {
     const [from, to] = range();
-    const retail = await services.finance.getCashFlow(org.organizationId, from, to, { direction: BusinessDirection.RETAIL });
+    const retail = await services.finance.getCashFlow(org.organizationId, from, to, { direction: sys.RETAIL });
     expect(retail.totalInflow).toBe(1000);
     expect(retail.totalOutflow).toBe(0);
     expect(retail.internalTransfers.net).toBe(0);
     expect(retail.reconciliation).toBeNull();
-    const wholesale = await services.finance.getCashFlow(org.organizationId, from, to, { direction: BusinessDirection.WHOLESALE });
+    const wholesale = await services.finance.getCashFlow(org.organizationId, from, to, { direction: sys.WHOLESALE });
     expect(wholesale.totalInflow).toBe(1500);
-    const orders = await services.finance.getCashFlow(org.organizationId, from, to, { direction: BusinessDirection.ORDERS });
+    const orders = await services.finance.getCashFlow(org.organizationId, from, to, { direction: sys.ORDERS });
     expect(orders.totalInflow).toBe(0);
     expect(orders.totalOutflow).toBe(200);
-    const monthly = await services.finance.getCashFlowByDate(org.organizationId, "day", from.toISOString().slice(0, 10), to.toISOString().slice(0, 10), { direction: BusinessDirection.WHOLESALE });
+    const monthly = await services.finance.getCashFlowByDate(org.organizationId, "day", from.toISOString().slice(0, 10), to.toISOString().slice(0, 10), { direction: sys.WHOLESALE });
     expect(monthly).toBeDefined();
   });
 });

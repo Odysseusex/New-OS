@@ -5,6 +5,7 @@ import clsx from "clsx";
 import { Download, FileText, Printer } from "lucide-react";
 import type {
   CashAccountDto,
+  DirectionDto,
   CategoryDto,
   CustomerDto,
   HrKpiResponseDto,
@@ -23,8 +24,6 @@ import type {
   StockLevelDto,
 } from "@bakery-os/shared";
 import {
-  BUSINESS_DIRECTION_LABELS_RU,
-  BUSINESS_DIRECTION_ORDER,
   CASH_SECTION_LABELS_RU,
   CUSTOMER_VIEW_ROLES,
   FINANCE_VIEW_ROLES,
@@ -105,6 +104,7 @@ export default function ReportsPage() {
   const [locations, setLocations] = useState<LocationDto[]>([]);
   const [accountFilter, setAccountFilter] = useState("");
   const [directionFilter, setDirectionFilter] = useState("");
+  const [directions, setDirections] = useState<DirectionDto[]>([]);
   const [accounts, setAccounts] = useState<CashAccountDto[]>([]);
 
   useEffect(() => {
@@ -113,7 +113,8 @@ export default function ReportsPage() {
 
   useEffect(() => {
     if (activeReport === "cashflow" && accounts.length === 0) api.finance.accounts.list().then(setAccounts).catch(() => {});
-  }, [activeReport, accounts.length]);
+    if (activeReport === "cashflow" && directions.length === 0) api.directions.list().then(setDirections).catch(() => {});
+  }, [activeReport, accounts.length, directions.length]);
   const cashScope = useMemo(
     () => ({ locationId: locationFilter || undefined, accountId: accountFilter || undefined, direction: directionFilter || undefined }),
     [locationFilter, accountFilter, directionFilter],
@@ -204,9 +205,9 @@ export default function ReportsPage() {
               className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
             >
               <option value="">Все направления</option>
-              {BUSINESS_DIRECTION_ORDER.map((d) => (
-                <option key={d} value={d}>
-                  {BUSINESS_DIRECTION_LABELS_RU[d]}
+              {directions.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
                 </option>
               ))}
             </select>

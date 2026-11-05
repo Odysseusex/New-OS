@@ -4,9 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { FileDown, FileText} from "lucide-react";
 import type { DirectionAllocationDto, DirectionPnlDto, DirectionPnlRowDto } from "@bakery-os/shared";
 import {
-  BUSINESS_DIRECTION_LABELS_RU,
-  BUSINESS_DIRECTION_ORDER,
-  BusinessDirection,
   DIRECTION_ALLOCATION_BASE_LABELS_RU,
   DIRECTION_ALLOCATION_ROLES,
   DirectionAllocationBase,
@@ -21,7 +18,7 @@ import { formatMoney } from "@/lib/format";
 import type { XlsxSheet } from "@/lib/xlsx";
 import { downloadTable, withExportTarget } from "@/lib/export-table";
 
-type Figures = Omit<DirectionPnlRowDto, "direction" | "revenueSharePercent" | "allocationSharePercent"> & {
+type Figures = Omit<DirectionPnlRowDto, "directionId" | "name" | "revenueSharePercent" | "allocationSharePercent"> & {
   revenueSharePercent?: number | null;
   allocationSharePercent?: number | null;
 };
@@ -67,7 +64,7 @@ export function DirectionPnlCard({
 
   const columns: { key: string; label: string; f: Figures }[] = data
     ? [
-        ...data.rows.map((r) => ({ key: r.direction, label: BUSINESS_DIRECTION_LABELS_RU[r.direction], f: r as Figures })),
+        ...data.rows.map((r) => ({ key: r.directionId, label: r.name, f: r as Figures })),
         { key: "total", label: "Итого", f: { ...data.total, revenueSharePercent: data.allocated ? 100 : null, allocationSharePercent: data.allocated ? 100 : null } },
       ]
     : [];
@@ -136,7 +133,12 @@ export function DirectionPnlCard({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
         <h2 className="text-sm font-semibold text-foreground">Прибыль по направлениям</h2>
         <div className="flex flex-wrap items-center gap-2">
-          {data && <AllocationControl allocation={data.allocation} canChoose={canChoose} onSaved={() => setVersion((v) => v + 1)} />}
+          {data && <AllocationControl
+              allocation={data.allocation}
+              directions={data.rows.map((r) => ({ id: r.directionId, name: r.name }))}
+              canChoose={canChoose}
+              onSaved={() => setVersion((v) => v + 1)}
+            />}
           <button
             onClick={exportExcel}
             disabled={!data}
@@ -202,27 +204,39 @@ export function DirectionPnlCard({
 }
 
 // The base common costs are shared by; percentages typed for «Вручную».
-function AllocationControl({ allocation, canChoose, onSaved }: { allocation: DirectionAllocationDto; canChoose: boolean; onSaved: () => void }) {
+function AllocationControl({
+  allocation,
+  directions,
+  canChoose,
+  onSaved,
+}: {
+  allocation: DirectionAllocationDto;
+  directions: { id: string; name: string }[];
+  canChoose: boolean;
+  onSaved: () => void;
+}) {
+  const ids = directions.map((d) => d.id);
   const [base, setBase] = useState(allocation.base);
-  const [shares, setShares] = useState<Record<BusinessDirection, string>>(() =>
-    Object.fromEntries(BUSINESS_DIRECTION_ORDER.map((d) => [d, allocation.shares ? String(allocation.shares[d] ?? 0) : ""])) as Record<BusinessDirection, string>,
+  const [shares, setShares] = useState<Record<string, string>>(() =>
+    Object.fromEntries(ids.map((d) => [d, allocation.shares ? String(allocation.shares[d] ?? 0) : ""])),
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setBase(allocation.base);
-    if (allocation.shares) setShares(Object.fromEntries(BUSINESS_DIRECTION_ORDER.map((d) => [d, String(allocation.shares![d] ?? 0)])) as Record<BusinessDirection, string>);
+    if (allocation.shares) setShares(Object.fromEntries(ids.map((d) => [d, String(allocation.shares![d] ?? 0)])));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allocation]);
 
   async function save(next: DirectionAllocationBase) {
     setError(null);
     const numbers =
       next === DirectionAllocationBase.MANUAL
-        ? (Object.fromEntries(BUSINESS_DIRECTION_ORDER.map((d) => [d, Number((shares[d] || "0").replace(",", "."))])) as Record<BusinessDirection, number>)
+        ? Object.fromEntries(ids.map((d) => [d, Number((shares[d] || "0").replace(",", "."))]))
         : null;
     if (numbers) {
-      const problem = directionSharesError(numbers);
+      const problem = directionSharesError(numbers, ids);
       if (problem) {
         setError(problem);
         return;
@@ -245,7 +259,7 @@ function AllocationControl({ allocation, canChoose, onSaved }: { allocation: Dir
 
   const manualDirty =
     base === DirectionAllocationBase.MANUAL &&
-    (allocation.base !== DirectionAllocationBase.MANUAL || BUSINESS_DIRECTION_ORDER.some((d) => Number(shares[d] || 0) !== (allocation.shares?.[d] ?? 0)));
+    (allocation.base !== DirectionAllocationBase.MANUAL || ids.some((d) => Number(shares[d] || 0) !== (allocation.shares?.[d] ?? 0)));
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -269,12 +283,12 @@ function AllocationControl({ allocation, canChoose, onSaved }: { allocation: Dir
       </select>
       {base === DirectionAllocationBase.MANUAL && (
         <>
-          {BUSINESS_DIRECTION_ORDER.map((d) => (
+          {directions.map(({ id: d, name }) => (
             <label key={d} className="flex items-center gap-1 text-sm text-muted">
-              {BUSINESS_DIRECTION_LABELS_RU[d]}
+              {name}
               <input
                 inputMode="decimal"
-                value={shares[d]}
+                value={shares[d] ?? ""}
                 onChange={(e) => setShares((cur) => ({ ...cur, [d]: e.target.value }))}
                 className="w-14 rounded-lg border border-border bg-surface px-2 py-1 text-right text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
               />

@@ -12,6 +12,8 @@ export interface LocationDto {
   lat: number | null;
   lng: number | null;
   isActive: boolean;
+  // Where this point's till sales go (null = «Розница»).
+  defaultDirectionId: string | null;
 }
 
 export interface LocationOverviewDto extends LocationDto {
@@ -28,6 +30,7 @@ export interface CreateLocationRequestDto {
   address: string;
   lat?: number;
   lng?: number;
+  defaultDirectionId?: string | null;
 }
 
 export interface UpdateLocationRequestDto {
@@ -39,6 +42,7 @@ export interface UpdateLocationRequestDto {
   address?: string;
   lat?: number | null;
   lng?: number | null;
+  defaultDirectionId?: string | null;
 }
 
 export interface LocationComparisonDto extends LocationDto {

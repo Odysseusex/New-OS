@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import type { LocationDto, RegionDto } from "@bakery-os/shared";
+import { useEffect, useState } from "react";
+import type { DirectionDto, LocationDto, RegionDto } from "@bakery-os/shared";
+import { BusinessDirection } from "@bakery-os/shared";
 import {
   LOCATION_OWNERSHIP_LABELS_RU,
   LOCATION_TYPE_LABELS_RU,
@@ -32,8 +33,19 @@ export function NewLocationModal({
   const [address, setAddress] = useState(location?.address ?? "");
   const [lat, setLat] = useState(location?.lat !== null && location?.lat !== undefined ? String(location.lat) : "");
   const [lng, setLng] = useState(location?.lng !== null && location?.lng !== undefined ? String(location.lng) : "");
+  const [defaultDirectionId, setDefaultDirectionId] = useState(location?.defaultDirectionId ?? "");
+  const [directions, setDirections] = useState<DirectionDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    api.directions.list().then(setDirections).catch(() => {});
+  }, []);
+  // «Опт» and «Заказы» are set by the sale itself, never by a point.
+  const pointDirections = directions.filter(
+    (d) => (d.isActive || d.id === defaultDirectionId) && d.systemKey !== BusinessDirection.WHOLESALE && d.systemKey !== BusinessDirection.ORDERS,
+  );
+  const retailId = directions.find((d) => d.systemKey === BusinessDirection.RETAIL)?.id ?? "";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -49,6 +61,7 @@ export function NewLocationModal({
         address,
         lat: lat ? Number(lat) : undefined,
         lng: lng ? Number(lng) : undefined,
+        ...(directions.length > 0 ? { defaultDirectionId: defaultDirectionId && defaultDirectionId !== retailId ? defaultDirectionId : null } : {}),
       };
       if (location) {
         await api.locations.update(location.id, dto);
@@ -108,6 +121,23 @@ export function NewLocationModal({
             </select>
           </div>
         </div>
+
+        {pointDirections.length > 1 && (
+          <div className="mb-4">
+            <label className="mb-1.5 block text-sm font-medium text-foreground">Направление по умолчанию</label>
+            <select
+              value={defaultDirectionId || retailId}
+              onChange={(e) => setDefaultDirectionId(e.target.value)}
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            >
+              {pointDirections.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {regions.length > 0 && (
           <div className="mb-4">

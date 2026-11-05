@@ -81,7 +81,7 @@ export const CLEAN_START_REMOVED_TABLES = [
 // … and those that stay: reference data, settings, people and the record of who did what.
 export const CLEAN_START_KEPT_TABLES = [
   "accounting_policies", "audit_logs", "bank_import_profiles", "bank_rules", "cash_accounts", "categories",
-  "classification_batches", "crm_contacts", "crm_orders", "customers", "employee_compensations", "employees",
+  "classification_batches", "crm_contacts", "crm_orders", "customers", "directions", "employee_compensations", "employees",
   "finance_categories", "financial_model_scenarios", "ledger_accounts", "locations", "loyalty_birthday_grants",
   "loyalty_consents", "loyalty_family_members", "loyalty_members", "loyalty_message_logs", "loyalty_settings",
   "loyalty_telegram_links", "management_plan_lines", "planned_fixed_costs", "product_location_prices", "product_photos",

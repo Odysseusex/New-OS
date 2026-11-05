@@ -1,5 +1,4 @@
-import { IsBoolean, IsDateString, IsIn, IsNumber, IsOptional, IsPositive, IsString } from "class-validator";
-import { BusinessDirection } from "@bakery-os/shared";
+import { IsBoolean, IsDateString, IsNumber, IsOptional, IsPositive, IsString, ValidateIf } from "class-validator";
 
 export class CreateExpenseDto {
   @IsOptional()
@@ -30,8 +29,9 @@ export class CreateExpenseDto {
   @IsString()
   accountId?: string;
 
-  // Опт / розница / заказы; absent or null = a common cost.
+  // A direction from the directory; absent or null = a common cost.
   @IsOptional()
-  @IsIn([...Object.values(BusinessDirection), null])
-  direction?: BusinessDirection | null;
+  @ValidateIf((_, v) => v !== null)
+  @IsString()
+  directionId?: string | null;
 }

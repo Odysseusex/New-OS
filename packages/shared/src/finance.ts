@@ -1,4 +1,3 @@
-import type { BusinessDirection } from "./directions";
 import type { BalanceTreatment, CashActivity, PnlTreatment } from "./financial-classification";
 import type { CashSection } from "./financial-events";
 import { PaymentStatus } from "./customers";
@@ -267,8 +266,9 @@ export interface ExpenseDto {
   description: string | null;
   incurredOn: string;
   createdByName: string;
-  // The business direction it belongs to wholly; null = common (shared by revenue).
-  direction: BusinessDirection | null;
+  // The business direction it belongs to wholly; null = common (shared by the allocation base).
+  directionId: string | null;
+  directionName: string | null;
 }
 
 export interface CreateExpenseRequestDto {
@@ -283,7 +283,7 @@ export interface CreateExpenseRequestDto {
   paidImmediately?: boolean;
   // Required when paidImmediately is true — which account the money left.
   accountId?: string;
-  direction?: BusinessDirection | null;
+  directionId?: string | null;
 }
 
 export interface RecordExpensePaymentRequestDto {

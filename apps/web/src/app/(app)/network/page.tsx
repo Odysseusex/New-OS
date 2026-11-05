@@ -18,10 +18,11 @@ import { periodRange, type PeriodValue } from "@/lib/period";
 import { useAuth } from "@/lib/auth-context";
 import { formatMoney } from "@/lib/format";
 import { NewLocationModal } from "@/components/new-location-modal";
+import { DirectionsTab } from "@/components/directions-tab";
 import { ExcelButton, exportLocations } from "@/components/directory-export";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 
-type Tab = "registry" | "comparison";
+type Tab = "registry" | "directions" | "comparison";
 type Period = PeriodValue;
 
 const OWNERSHIP_STYLES: Record<LocationOwnership, string> = {
@@ -130,18 +131,19 @@ export default function NetworkPage() {
       )}
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        {canViewComparison ? (
-          <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
-            <TabButton active={tab === "registry"} onClick={() => setTab("registry")}>
-              Реестр
-            </TabButton>
+        <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
+          <TabButton active={tab === "registry"} onClick={() => setTab("registry")}>
+            Реестр
+          </TabButton>
+          <TabButton active={tab === "directions"} onClick={() => setTab("directions")}>
+            Направления
+          </TabButton>
+          {canViewComparison && (
             <TabButton active={tab === "comparison"} onClick={() => setTab("comparison")}>
               Сравнение
             </TabButton>
-          </div>
-        ) : (
-          <div />
-        )}
+          )}
+        </div>
 
         <div className="flex flex-wrap items-center gap-3">
           {tab === "registry" && canManage && (
@@ -212,6 +214,8 @@ export default function NetworkPage() {
           </table>
         </div>
       )}
+
+      {tab === "directions" && <DirectionsTab />}
 
       {tab === "comparison" && canViewComparison && (
         <div className="rounded-2xl border border-border bg-surface shadow-card">

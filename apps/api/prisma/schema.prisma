@@ -370,6 +370,7 @@ model Organization {
 
   regions   Region[]
   locations Location[]
+  directions Direction[]
   users     User[]
   invoices  Invoice[]
   employees Employee[]
@@ -453,6 +454,9 @@ model Location {
   // Where this point's card / Kaspi / transfer takings land (null = the default bank account).
   nonCashAccountId  String?
   nonCashAccount    CashAccount?  @relation("LocationNonCashAccount", fields: [nonCashAccountId], references: [id], onDelete: SetNull)
+  // The business direction this point's till sales belong to (null = «Розница»).
+  defaultDirectionId String?
+  defaultDirection   Direction?   @relation(fields: [defaultDirectionId], references: [id], onDelete: SetNull)
   employees         Employee[]
   plannedFixedCosts PlannedFixedCost[]
   productPrices     ProductLocationPrice[]
@@ -1929,6 +1933,31 @@ enum BusinessDirection {
   ORDERS
 }
 
+// Справочник направлений бизнеса (ТЗ §2). Three rows per organization carry a
+// systemKey and keep their automatic rule (a wholesale customer's sale → WHOLESALE,
+// a cake-order payment → ORDERS, anything else → the point's default direction,
+// else RETAIL); the rest are added by people and reached through a point's default.
+// A management dimension only: never in events or the ledger.
+model Direction {
+  id             String             @id @default(cuid())
+  organizationId String
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  responsible    String?
+  systemKey      BusinessDirection?
+  isActive       Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  locations Location[]
+  expenses  Expense[]
+
+  @@unique([organizationId, systemKey])
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("directions")
+}
+
 model Expense {
   id             String          @id @default(cuid())
   organizationId String
@@ -1941,9 +1970,12 @@ model Expense {
   amountPaid     Decimal         @default(0) @db.Decimal(12, 2)
   description    String?
   incurredOn     DateTime        @default(now())
-  // The business direction this cost belongs to wholly (management dimension
-  // only — never in the ledger). Null = common, shared by revenue.
+  // Legacy (before the directions directory): read only to back-fill directionId.
   direction      BusinessDirection?
+  // The business direction this cost belongs to wholly (management dimension
+  // only — never in the ledger). Null = common, shared by the allocation base.
+  directionId    String?
+  directionRef   Direction?      @relation(fields: [directionId], references: [id])
   createdById    String
   createdBy      User            @relation(fields: [createdById], references: [id])
   createdAt      DateTime        @default(now())
