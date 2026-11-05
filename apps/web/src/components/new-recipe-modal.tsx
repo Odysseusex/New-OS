@@ -470,6 +470,14 @@ export function NewRecipeModal({
             const compatibleUnits = ingredientUnit ? getCompatibleUnits(ingredientUnit) : [];
             const weightKg = rowWeightsKg[index];
             const percent = liveDoughWeightKg && weightKg !== null ? (weightKg / liveDoughWeightKg) * 100 : null;
+            // What this line costs at the grams typed: brutto × the ingredient's unit cost (the same figure
+            // «Экономика» adds up below).
+            const lineProduct = ingredientOptions.find((p) => p.id === row.ingredientProductId);
+            const lineQty = Number(row.quantity);
+            const lineCost =
+              lineProduct && row.quantity.trim() !== "" && Number.isFinite(lineQty)
+                ? convertUnitQuantity(lineQty, row.unit, lineProduct.unit) * unitCostOfIngredient(lineProduct)
+                : null;
             return (
               <div key={index}>
               <div className="flex items-center gap-2">
@@ -520,8 +528,9 @@ export function NewRecipeModal({
                   placeholder="% пот."
                   title="% потерь"
                 />
-                <span className="w-12 shrink-0 text-right text-xs text-muted">
-                  {percent !== null ? `${percent.toFixed(0)}%` : ""}
+                <span className="w-24 shrink-0 text-right leading-tight" title="Стоимость строки · доля в массе замеса">
+                  <span className="block text-sm font-medium text-foreground">{lineCost !== null ? formatMoneyPrecise(lineCost) : ""}</span>
+                  <span className="block text-xs text-muted">{percent !== null ? `${percent.toFixed(0)}%` : ""}</span>
                 </span>
                 <button
                   type="button"
