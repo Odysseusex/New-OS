@@ -945,6 +945,11 @@ unit cost by Almaty month (12, zero-filled, recharts line). The financiers' acce
   there, reason «… → точка»); everything else about the batch stays at its own point. «Акт выпуска»
   (`GET /production/batches/:id/document`, link on a completed batch): per ingredient norm / fact / stamped price / sum /
   deviation, batch cost (the norm, D1) and unit cost, «Прочее» = untracked ingredients; printable.
+- **«Приход / заказ»** (Закупки, `new-purchase-order-modal.tsx`): the window opens on «Товар привезли» — the order is
+  created and received in ONE step (`createOrder` then `receiveOrder` with no line changes, «Оплачено сразу» optional;
+  a failed receipt keeps the created order and a retry only receives it); «Заказать на будущее» = the order alone,
+  received later with «Принять». Same two documents as ever — no new data. The owner found order-then-receive clumsy
+  for goods that simply arrive.
 - **Заказ поставщику** (migration `20261117120000`): `supplierDocNumber` + `note` (at creation or receipt);
   `receive({ payNow: { accountId } })` = «Оплачено сразу»: checked first (SUPPLIER_PAYMENT_ROLES, cutover on, account),
   then the receipt, then `recordPayment` of the balance due (note «Оплачено при приёмке»).

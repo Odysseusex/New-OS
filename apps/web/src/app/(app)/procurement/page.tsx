@@ -217,7 +217,7 @@ export default function ProcurementPage() {
               className="flex items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
             >
               <Plus className="h-4 w-4" strokeWidth={1.75} />
-              Новый заказ
+              Приход / заказ
             </button>
           )}
 
@@ -486,6 +486,7 @@ export default function ProcurementPage() {
 
       {modal === "order" && (
         <NewPurchaseOrderModal
+          canPayNow={!!workflow?.activated && !!user && SUPPLIER_PAYMENT_ROLES.includes(user.role)}
           suppliers={suppliers.filter((s) => s.isActive)}
           locations={locations}
           products={products}

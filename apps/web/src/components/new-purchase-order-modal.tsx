@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Trash2 } from "lucide-react";
-import type { LocationDto, ProductDto, SupplierDto } from "@bakery-os/shared";
+import type { CashAccountDto, LocationDto, ProductDto, SupplierDto } from "@bakery-os/shared";
+import clsx from "clsx";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
 import { ProductSelect } from "@/components/product-select";
@@ -35,9 +36,12 @@ export function NewPurchaseOrderModal({
   locations,
   products,
   fixedLocationId,
+  canPayNow = false,
   onClose,
   onCreated,
 }: {
+  // The purchasing cutover is on and this user may pay suppliers («Оплачено сразу»).
+  canPayNow?: boolean;
   suppliers: SupplierDto[];
   locations: LocationDto[];
   products: ProductDto[];
@@ -52,6 +56,24 @@ export function NewPurchaseOrderModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [docNumber, setDocNumber] = useState("");
   const [note, setNote] = useState("");
+  // «Товар привезли»: the usual case — the order is created and received in one step (the same two
+  // documents as ever: an order and its receipt). «Заказать»: only the order, received later.
+  const [arrived, setArrived] = useState(true);
+  // An order already created by a first try whose receipt failed: a retry only receives it.
+  const [createdId, setCreatedId] = useState<string | null>(null);
+  const [payNow, setPayNow] = useState(false);
+  const [accountId, setAccountId] = useState("");
+  const [accounts, setAccounts] = useState<CashAccountDto[]>([]);
+  useEffect(() => {
+    if (!canPayNow) return;
+    api.finance.accounts
+      .list()
+      .then((list) => {
+        setAccounts(list);
+        setAccountId((cur) => cur || (list.find((a) => a.isDefault) ?? list[0])?.id || "");
+      })
+      .catch(() => {});
+  }, [canPayNow]);
 
   // suppliers/locations/products can still be loading when this modal opens,
   // so the first render may have nothing to default to. Backfill once the
@@ -100,8 +122,9 @@ export function NewPurchaseOrderModal({
       return;
     }
     setIsSubmitting(true);
+    let created: { id: string } | null = createdId ? { id: createdId } : null;
     try {
-      await api.procurement.createOrder({
+      created ??= await api.procurement.createOrder({
         supplierId,
         locationId: fixedLocationId ?? locationId,
         supplierDocNumber: docNumber.trim() || undefined,
@@ -112,9 +135,18 @@ export function NewPurchaseOrderModal({
           unitCost: Number(r.unitCost),
         })),
       });
+      if (arrived) {
+        await api.procurement.receiveOrder(created.id, {
+          items: [],
+          payNow: canPayNow && payNow && accountId ? { accountId } : undefined,
+        });
+      }
       onCreated();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Не удалось создать заказ");
+      const message = err instanceof ApiError ? err.message : arrived ? "Не удалось оприходовать" : "Не удалось создать заказ";
+      // The order exists but was not received: say so, it can be received from the list.
+      setError(created ? `Заказ создан, но не оприходован: ${message}` : message);
+      if (created) setCreatedId(created.id);
     } finally {
       setIsSubmitting(false);
     }
@@ -131,8 +163,23 @@ export function NewPurchaseOrderModal({
   }
 
   return (
-    <Modal title="Новый заказ поставщику" onClose={onClose} width="max-w-2xl">
+    <Modal title={arrived ? "Приход от поставщика" : "Новый заказ поставщику"} onClose={onClose} width="max-w-2xl">
       <form onSubmit={handleSubmit}>
+        <div className="mb-4 flex rounded-xl bg-surface-muted p-0.5">
+          {[
+            { v: true, label: "Товар привезли" },
+            { v: false, label: "Заказать на будущее" },
+          ].map((o) => (
+            <button
+              key={o.label}
+              type="button"
+              onClick={() => setArrived(o.v)}
+              className={clsx("flex-1 rounded-lg px-3 py-2 text-sm", arrived === o.v ? "bg-surface font-medium text-foreground shadow-sm" : "text-muted")}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
         <div className="mb-4 grid grid-cols-2 gap-3">
           <div>
             <label className="mb-1.5 block text-sm font-medium text-foreground">Поставщик</label>
@@ -242,6 +289,28 @@ export function NewPurchaseOrderModal({
           </label>
         </div>
 
+        {arrived && canPayNow && (
+          <div className="mb-5 flex flex-wrap items-center gap-3 text-sm">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={payNow} onChange={(e) => setPayNow(e.target.checked)} className="h-4 w-4 accent-accent" />
+              <span className="text-foreground">Оплачено сразу</span>
+            </label>
+            {payNow && (
+              <select
+                value={accountId}
+                onChange={(e) => setAccountId(e.target.value)}
+                className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+              >
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        )}
+
         <div className="mb-5 flex items-center justify-between rounded-xl bg-surface-muted px-4 py-3">
           <span className="text-sm text-muted">Итого</span>
           <span className="text-base font-semibold text-foreground">{formatMoney(total)}</span>
@@ -256,7 +325,7 @@ export function NewPurchaseOrderModal({
           disabled={isSubmitting}
           className="w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-60"
         >
-          {isSubmitting ? "Создание…" : "Создать заказ"}
+          {isSubmitting ? "Сохраняем…" : arrived ? "Оприходовать" : "Создать заказ"}
           {!isSubmitting && <SubmitShortcutHint />}
         </button>
       </form>
