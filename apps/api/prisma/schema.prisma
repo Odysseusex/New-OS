@@ -460,6 +460,10 @@ model Location {
   // The business direction this point's till sales belong to (null = «Розница»).
   defaultDirectionId String?
   defaultDirection   Direction?   @relation(fields: [defaultDirectionId], references: [id], onDelete: SetNull)
+  // This point charges another point's prices (one price list for several own shops; null = its own).
+  priceSourceLocationId String?
+  priceSource           Location?  @relation("LocationPriceSource", fields: [priceSourceLocationId], references: [id], onDelete: SetNull)
+  priceFollowers        Location[] @relation("LocationPriceSource")
   employees         Employee[]
   plannedFixedCosts PlannedFixedCost[]
   productPrices     ProductLocationPrice[]

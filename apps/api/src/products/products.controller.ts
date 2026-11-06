@@ -15,6 +15,7 @@ import { ProductsService } from "./products.service";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 import { SetLocationPriceDto } from "./dto/set-location-price.dto";
+import { SetPriceSourceDto } from "./dto/set-price-source.dto";
 import { SetProductPhotoDto } from "./dto/set-product-photo.dto";
 
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -43,6 +44,22 @@ export class ProductsController {
   @Get("location-prices/:locationId")
   locationPrices(@CurrentUser() user: AuthenticatedUser, @Param("locationId") locationId: string) {
     return this.productsService.locationPrices(user.organizationId, locationId);
+  }
+
+  @Get("location-prices/:locationId/source")
+  priceSource(@CurrentUser() user: AuthenticatedUser, @Param("locationId") locationId: string) {
+    return this.productsService.priceSource(user.organizationId, locationId);
+  }
+
+  // Declared before «:locationId/:productId» so «source» is never read as a product id.
+  @Put("location-prices/:locationId/source")
+  @Roles(...PRODUCT_MANAGE_ROLES)
+  setPriceSource(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("locationId") locationId: string,
+    @Body() dto: SetPriceSourceDto,
+  ) {
+    return this.productsService.setPriceSource(user.organizationId, locationId, dto.sourceLocationId || null, user.id);
   }
 
   @Put("location-prices/:locationId/:productId")

@@ -154,6 +154,7 @@ import type {
   ConsignmentDetailDto,
   CreateConsignmentPaymentRequestDto,
   LocationPriceRowDto,
+  LocationPriceSourceDto,
   ProductDto,
   ProductionBatchDto,
   ProductPnLDetailDto,
@@ -433,6 +434,13 @@ export const api = {
       request<LocationPriceRowDto>(`/products/location-prices/${locationId}/${productId}`, {
         method: "PUT",
         body: JSON.stringify({ price }),
+      }),
+    priceSource: (locationId: string) =>
+      request<LocationPriceSourceDto>(`/products/location-prices/${locationId}/source`),
+    setPriceSource: (locationId: string, sourceLocationId: string | null) =>
+      request<LocationPriceSourceDto>(`/products/location-prices/${locationId}/source`, {
+        method: "PUT",
+        body: JSON.stringify({ sourceLocationId }),
       }),
     clearLocationPrice: (locationId: string, productId: string) =>
       request<{ cleared: true }>(`/products/location-prices/${locationId}/${productId}`, {

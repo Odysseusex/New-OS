@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
-import type { LocationDto, LocationPriceRowDto } from "@bakery-os/shared";
+import { LocationType, type LocationDto, type LocationPriceRowDto, type LocationPriceSourceDto } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { formatMoney } from "@/lib/format";
 
@@ -30,6 +30,8 @@ export function LocationPricesTab({
   const [search, setSearch] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [source, setSource] = useState<LocationPriceSourceDto | null>(null);
+  const [linking, setLinking] = useState(false);
 
   useEffect(() => {
     if (!locationId && locations.length > 0) setLocationId(locations[0].id);
@@ -38,10 +40,10 @@ export function LocationPricesTab({
   const load = useCallback(() => {
     if (!locationId) return;
     setState("loading");
-    api.products
-      .locationPrices(locationId)
-      .then((data) => {
+    Promise.all([api.products.locationPrices(locationId), api.products.priceSource(locationId)])
+      .then(([data, src]) => {
         setRows(data);
+        setSource(src);
         setState("ready");
       })
       .catch(() => setState("error"));
@@ -61,6 +63,21 @@ export function LocationPricesTab({
   );
 
   const ownPriceCount = rows.filter((r) => r.locationPrice !== null).length;
+  const follows = source?.sourceLocationId ?? null;
+  const editable = canManage && !follows;
+
+  async function changeSource(next: string) {
+    setLinking(true);
+    setError(null);
+    try {
+      await api.products.setPriceSource(locationId, next || null);
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось сохранить");
+    } finally {
+      setLinking(false);
+    }
+  }
 
   async function save(productId: string, raw: string) {
     const trimmed = raw.trim();
@@ -117,8 +134,33 @@ export function LocationPricesTab({
           placeholder="Поиск товара…"
           className="min-w-[200px] flex-1 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
         />
+        {source && (canManage || follows) && (
+          <label className="flex items-center gap-2 text-sm text-muted">
+            Цены
+            <select
+              value={follows ?? ""}
+              disabled={!canManage || linking || source.followers.length > 0}
+              onChange={(e) => changeSource(e.target.value)}
+              className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            >
+              <option value="">Свои</option>
+              {locations
+                .filter((l) => l.id !== locationId && l.type === LocationType.STORE)
+                .map((l) => (
+                  <option key={l.id} value={l.id}>
+                    Как на точке «{l.name}»
+                  </option>
+                ))}
+            </select>
+          </label>
+        )}
         <span className="text-sm text-muted">Своя цена: {ownPriceCount} из {rows.length}</span>
       </div>
+      {source && source.followers.length > 0 && (
+        <p className="mb-3 text-sm text-muted">
+          По этим ценам продают также: {source.followers.map((f) => `«${f.name}»`).join(", ")}
+        </p>
+      )}
 
       {error && <div className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
       {state === "loading" && <p className="text-sm text-muted">Загрузка…</p>}
@@ -140,7 +182,7 @@ export function LocationPricesTab({
                 <PriceRow
                   key={row.productId}
                   row={row}
-                  canManage={canManage}
+                  canManage={editable}
                   saving={savingId === row.productId}
                   onSave={(raw) => save(row.productId, raw)}
                 />

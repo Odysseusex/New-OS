@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { priceListLocationMap } from "../common/price-source";
 import { DashboardFinanceDto, DashboardPeriodFiguresDto, DashboardTopProductDto, debtDateKey, directionIdOfSale, DirectionPnlRowDto, LocationType, ProductType, ProfitAndLossDto } from "@bakery-os/shared";
 import { loadDirectionContext } from "../directions/direction-context";
 import { OWN_ITEMS } from "../common/own-sales";
@@ -159,9 +160,10 @@ export class DashboardFinanceService {
       select: { locationId: true, productId: true, quantity: true, product: { select: { price: true } } },
     });
     const ids = [...new Set(levels.map((l) => l.productId))];
-    const [costs, pointPrices] = await Promise.all([
+    const [costs, pointPrices, sourceOf] = await Promise.all([
       this.costing.currentUnitCosts(organizationId, this.prisma, ids),
       this.prisma.productLocationPrice.findMany({ where: { organizationId, productId: { in: ids } }, select: { productId: true, locationId: true, price: true } }),
+      priceListLocationMap(this.prisma, organizationId),
     ]);
     const priceAt = new Map(pointPrices.map((p) => [`${p.locationId}:${p.productId}`, p.price.toNumber()]));
     let atCost = 0;
@@ -172,7 +174,7 @@ export class DashboardFinanceService {
       const cost = costs.get(l.productId)?.unitCost;
       if (cost === undefined || cost === null) unknownCostItems += 1;
       else atCost += cost * q;
-      atSalePrice += (priceAt.get(`${l.locationId}:${l.productId}`) ?? l.product.price.toNumber()) * q;
+      atSalePrice += (priceAt.get(`${sourceOf.get(l.locationId) ?? l.locationId}:${l.productId}`) ?? l.product.price.toNumber()) * q;
     }
     return { atCost: round2(atCost), atSalePrice: round2(atSalePrice), unknownCostItems };
   }

@@ -1008,6 +1008,18 @@ question): `BalanceService` adds the cash of every event dated before go-live to
 equity, so the days traded before «Запустить» are part of the opening position (spec: «launching finance after…»).
 Spec `inventory/negative-stock.spec.ts`.
 
+## One price list for several shops + no raw materials at a point of sale (built 06.11.2026)
+
+- **«Цены: как на точке …»** (Склад → «Цены по точкам», `Location.priceSourceLocationId`, migration
+  `20261123120000_location_price_source`, `GET|PUT /products/location-prices/:locationId/source`, PRODUCT_MANAGE_ROLES,
+  audited `location.priceSource`): a point linked to another STORE charges that point's `ProductLocationPrice` rows.
+  EVERY read of point prices goes through `common/price-source.ts` (`priceListLocationId` / `priceListLocationMap`):
+  catalogue `effectivePrice` (the till), `assertTillPrices`, coupon pricing, the dashboard shelf at sale price. The
+  follower's own prices stay stored and come back on unlinking; editing them while linked is refused; no chains (a
+  source cannot follow, a point followed by others cannot follow). A new reader of point prices must use the helper.
+- Склад → Приёмка / Списание / Корректировка at a STORE point hide raw materials from the product picker unless that
+  point already has some on its books (UI only — the server still accepts them, e.g. the Telegram bot).
+
 ## «Корректировка остатка» of a cash/bank account (built)
 
 Финансы → Банк и касса → «Корректировка остатка» on each active account (`CASH_ADJUSTMENT_ROLES` = OWNER/ADMIN/ACCOUNTANT,

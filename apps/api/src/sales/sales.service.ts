@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { priceListLocationId } from "../common/price-source";
 import { assertTillShiftOpen } from "../till-shifts/till-shift-guard";
 import { resolveTillApproval } from "../auth/till-pin";
 import { directionIdOfSale, FINANCE_VIEW_ROLES, isPointsRedeemableLine, manualDiscountTarget, TILL_ROLES } from "@bakery-os/shared";
@@ -1231,9 +1232,11 @@ export class SalesService {
         this.prisma.product.findMany({
           where: { id: { in: productIds }, organizationId: user.organizationId },
         }),
-        this.prisma.productLocationPrice.findMany({
-          where: { organizationId: user.organizationId, locationId, productId: { in: productIds } },
-        }),
+        priceListLocationId(this.prisma, user.organizationId, locationId).then((source) =>
+          this.prisma.productLocationPrice.findMany({
+            where: { organizationId: user.organizationId, locationId: source, productId: { in: productIds } },
+          }),
+        ),
       ]);
       categoryByProduct = new Map(products.map((p) => [p.id, p.categoryId]));
       // A coupon rule on a category also covers the subcategories under it.
@@ -1747,10 +1750,12 @@ export class SalesService {
         where: { id: { in: productIds }, organizationId },
         select: { id: true, name: true, price: true, isOpenPrice: true },
       }),
-      this.prisma.productLocationPrice.findMany({
-        where: { organizationId, locationId, productId: { in: productIds } },
-        select: { productId: true, price: true },
-      }),
+      priceListLocationId(this.prisma, organizationId, locationId).then((source) =>
+        this.prisma.productLocationPrice.findMany({
+          where: { organizationId, locationId: source, productId: { in: productIds } },
+          select: { productId: true, price: true },
+        }),
+      ),
     ]);
     const byId = new Map(products.map((p) => [p.id, p]));
     const pointPrice = new Map(overrides.map((o) => [o.productId, o.price.toNumber()]));

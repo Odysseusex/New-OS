@@ -2,10 +2,11 @@ import { loadRecipeIndex, recipeReaches } from "../recipes/recipe-tree";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { CATEGORY_WITH_PARENT, categoryLabel } from "../common/category-label";
-import { LocationPriceRowDto, PRODUCT_TYPE_LABELS_RU, ProductDto, ProductType, categoryAcceptsType } from "@bakery-os/shared";
+import { LocationPriceRowDto, LocationPriceSourceDto, PRODUCT_TYPE_LABELS_RU, ProductDto, ProductType, categoryAcceptsType } from "@bakery-os/shared";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 import { audited, auditFields, recordAudit } from "../audit/audit";
+import { priceListLocationId } from "../common/price-source";
 
 // Fields the audit log keeps for a product: everything that changes what a
 // product costs, sells for, or how it is counted.
@@ -84,7 +85,9 @@ export class ProductsService {
         orderBy: { name: "asc" },
       }),
       locationId
-        ? this.prisma.productLocationPrice.findMany({ where: { organizationId, locationId } })
+        ? priceListLocationId(this.prisma, organizationId, locationId).then((source) =>
+            this.prisma.productLocationPrice.findMany({ where: { organizationId, locationId: source } }),
+          )
         : Promise.resolve([]),
     ]);
 
@@ -112,7 +115,7 @@ export class ProductsService {
         include: PRODUCT_INCLUDE,
         orderBy: { name: "asc" },
       }),
-      this.prisma.productLocationPrice.findMany({ where: { organizationId, locationId } }),
+      this.prisma.productLocationPrice.findMany({ where: { organizationId, locationId: location.priceSourceLocationId ?? locationId } }),
     ]);
 
     const priceByProduct = new Map(overrides.map((o) => [o.productId, o.price.toNumber()]));
@@ -147,6 +150,7 @@ export class ProductsService {
     ]);
     if (!location) throw new NotFoundException("Точка не найдена");
     if (!product) throw new NotFoundException("Товар не найден");
+    await this.assertOwnPriceList(organizationId, location.priceSourceLocationId);
 
     await this.prisma.$transaction(async (tx) => {
       const previous = await tx.productLocationPrice.findUnique({
@@ -178,6 +182,58 @@ export class ProductsService {
     };
   }
 
+  private async assertOwnPriceList(organizationId: string, sourceId: string | null) {
+    if (!sourceId) return;
+    const source = await this.prisma.location.findFirst({ where: { id: sourceId, organizationId }, select: { name: true } });
+    throw new BadRequestException(`Цены этой точки берутся с точки «${source?.name ?? "—"}» — меняйте цены там`);
+  }
+
+  // Which point's prices this point charges, and who charges its own.
+  async priceSource(organizationId: string, locationId: string): Promise<LocationPriceSourceDto> {
+    const location = await this.prisma.location.findFirst({
+      where: { id: locationId, organizationId },
+      select: { priceSource: { select: { id: true, name: true } }, priceFollowers: { select: { id: true, name: true }, orderBy: { name: "asc" } } },
+    });
+    if (!location) throw new NotFoundException("Точка не найдена");
+    return {
+      sourceLocationId: location.priceSource?.id ?? null,
+      sourceLocationName: location.priceSource?.name ?? null,
+      followers: location.priceFollowers,
+    };
+  }
+
+  // Link a point to another point's price list (or back to its own). The point's own prices stay
+  // stored but unused while it follows another — unlinking brings them back as they were.
+  async setPriceSource(organizationId: string, locationId: string, sourceLocationId: string | null, actorId: string | null): Promise<LocationPriceSourceDto> {
+    const location = await this.prisma.location.findFirst({
+      where: { id: locationId, organizationId },
+      select: { id: true, priceSourceLocationId: true, _count: { select: { priceFollowers: true } } },
+    });
+    if (!location) throw new NotFoundException("Точка не найдена");
+    if (sourceLocationId) {
+      if (sourceLocationId === locationId) throw new BadRequestException("Точка не может брать цены сама у себя");
+      const source = await this.prisma.location.findFirst({ where: { id: sourceLocationId, organizationId }, select: { priceSourceLocationId: true, name: true } });
+      if (!source) throw new NotFoundException("Точка не найдена");
+      if (source.priceSourceLocationId) throw new BadRequestException(`Точка «${source.name}» сама берёт цены с другой точки — выберите ту`);
+      if (location._count.priceFollowers > 0) throw new BadRequestException("С этой точки берут цены другие точки — сначала отвяжите их");
+    }
+    if ((location.priceSourceLocationId ?? null) !== sourceLocationId) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.location.update({ where: { id: locationId }, data: { priceSourceLocationId: sourceLocationId } });
+        await recordAudit(tx, {
+          organizationId,
+          actorId,
+          action: "location.priceSource",
+          entityType: "Location",
+          entityId: locationId,
+          before: { priceSourceLocationId: location.priceSourceLocationId },
+          after: { priceSourceLocationId: sourceLocationId },
+        });
+      });
+    }
+    return this.priceSource(organizationId, locationId);
+  }
+
   // Removing the override is how a point goes back to charging the default —
   // there is no "same as base" price to type, and storing one would silently
   // stop tracking later changes to Product.price.
@@ -187,6 +243,9 @@ export class ProductsService {
     productId: string,
     actorId: string | null,
   ): Promise<{ cleared: true }> {
+    const location = await this.prisma.location.findFirst({ where: { id: locationId, organizationId } });
+    if (!location) throw new NotFoundException("Точка не найдена");
+    await this.assertOwnPriceList(organizationId, location.priceSourceLocationId);
     await this.prisma.$transaction(async (tx) => {
       const previous = await tx.productLocationPrice.findFirst({ where: { organizationId, locationId, productId } });
       await tx.productLocationPrice.deleteMany({ where: { organizationId, locationId, productId } });

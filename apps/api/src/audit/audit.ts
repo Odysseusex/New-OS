@@ -67,6 +67,7 @@ export const AUDIT_ACTION_GROUPS = {
   productPhotos: ["product.photo", "product.photoRemove"],
   productClassification: ["classification.apply", "classification.revert"],
   stockSettings: ["inventory.allowNegativeStock"],
+  priceSettings: ["location.priceSource"],
   stocktake: ["stocktake.create", "stocktake.submit", "stocktake.reopen", "stocktake.approve", "stocktake.cancel"],
   stockVoid: ["stockVoid.create"],
   dailyReconciliation: ["dailyReconciliation.save", "dailyReconciliation.apply"],

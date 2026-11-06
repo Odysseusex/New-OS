@@ -5,6 +5,7 @@ import { Trash2 } from "lucide-react";
 import type { LocationDto, ProductDto, StockLevelDto } from "@bakery-os/shared";
 import {
   PRICE_DEVIATION_WARNING,
+  LocationType,
   ProductType,
   rawMaterialUnitCost,
   STOCK_BATCH_MAX_LINES,
@@ -91,6 +92,13 @@ export function StockMovementModal({
   }, [locations, locationId, fixedLocationId]);
 
   const effectiveLocationId = fixedLocationId ?? locationId;
+  // A point of sale holds what it sells: raw materials stay out of its pickers — unless that
+  // point already has some of one on its books (it can still be written off or corrected).
+  const atStore = locations.find((l) => l.id === effectiveLocationId)?.type === LocationType.STORE;
+  const pickable = (selectedId: string) =>
+    atStore
+      ? products.filter((p) => p.type !== ProductType.RAW_MATERIAL || p.id === selectedId || (levelOf(p.id)?.quantity ?? 0) !== 0)
+      : products;
   const levelOf = (productId: string) => stockLevels.find((s) => s.locationId === effectiveLocationId && s.productId === productId);
 
   const chosen = rows.filter((r) => r.productId);
@@ -237,7 +245,7 @@ export function StockMovementModal({
               <div key={row.key}>
                 <div className="flex items-center gap-2">
                   <ProductSelect
-                    products={products}
+                    products={pickable(row.productId)}
                     value={row.productId}
                     onChange={(productId) => {
                       const picked = products.find((p) => p.id === productId);

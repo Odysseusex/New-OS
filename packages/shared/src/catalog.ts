@@ -218,6 +218,14 @@ export interface ProductDto {
 
 // One row of the «Цены по точке» screen: the organization's default price
 // next to what this one point of sale charges.
+// A point that charges another point's prices (one price list for several own shops).
+export interface LocationPriceSourceDto {
+  sourceLocationId: string | null;
+  sourceLocationName: string | null;
+  // Points that charge THIS point's prices.
+  followers: { id: string; name: string }[];
+}
+
 export interface LocationPriceRowDto {
   productId: string;
   productName: string;
