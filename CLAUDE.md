@@ -199,6 +199,13 @@ spacing and buttons scale together; viewport heights stay whole), kept in that b
 first paint by an inline script in the root layout (`<html suppressHydrationWarning>`; the public `/ar-amir` site is never
 scaled). The till's width cap is in px (`max-w-[1280px]`) so a smaller scale does not make the till narrower.
 
+**Till digit pad** (`components/numeric-keypad.tsx`): the till's monoblocks will have the system on-screen keyboard
+switched off, so every DIGIT entry on the till uses our own pad — no <input> behind it (nothing pops the system keyboard),
+a physical keyboard/scanner still types into it. `PhoneKeypadModal` (+7 and ten digits, mask «+7 (7__) ___ __ __», a
+leading 8 ignored), `PhoneField` (looks like an input, opens the pad), `NumberKeypadModal` (points to spend). Used by the
+till's «Клиент бонусной программы», the top «Клиент» panel (`LoyaltyLookupPanel keypad`) and registration from the till
+(`LoyaltyRegisterModal keypad`); Клиенты → Розница keeps plain inputs. A `Modal` opened over another answers Escape alone.
+
 **Product SKU** is optional; if blank, `ProductsService.generateSku()`
 atomically increments `Organization.productSkuSequence` (a single
 `UPDATE ... increment`, not a retry loop) and formats

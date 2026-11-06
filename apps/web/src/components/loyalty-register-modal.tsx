@@ -13,13 +13,17 @@ import {
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
 import { ConsentSourceSelect, inputClass } from "@/components/loyalty-shared";
+import { PhoneField } from "@/components/numeric-keypad";
 
 export function LoyaltyRegisterModal({
   initialPhone = "",
+  keypad = false,
   onClose,
   onSaved,
 }: {
   initialPhone?: string;
+  // The till: the phone is typed on the on-screen pad.
+  keypad?: boolean;
   onClose: () => void;
   onSaved: (member: LoyaltyMemberDto) => void;
 }) {
@@ -65,7 +69,11 @@ export function LoyaltyRegisterModal({
         <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label className="mb-1.5 block text-sm font-medium text-foreground">Телефон</label>
-            <input type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+7 701 123 45 67" className={inputClass} />
+            {keypad ? (
+              <PhoneField value={phone} onChange={setPhone} />
+            ) : (
+              <input type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+7 701 123 45 67" className={inputClass} />
+            )}
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-foreground">Имя</label>

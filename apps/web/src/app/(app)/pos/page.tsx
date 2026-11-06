@@ -1277,7 +1277,7 @@ export default function PosPage() {
           focusScan();
         }}
       >
-        <LoyaltyLookupPanel role={user.role} />
+        <LoyaltyLookupPanel role={user.role} keypad />
       </Modal>
     )}
     {historyOpen && (

@@ -17,6 +17,9 @@ export function Modal({
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      // A window opened over another (the till's digit pad over a form) answers alone.
+      const roots = document.querySelectorAll("[data-modal-root]");
+      if (roots.length > 1 && roots[roots.length - 1] !== rootRef.current) return;
       if (e.key === "Escape") onClose();
       // ⌘/Ctrl + Enter saves the window: its marked button (`data-submit`) if
       // it has one, otherwise its form — exactly as a click would.

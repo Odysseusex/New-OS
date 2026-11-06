@@ -8,26 +8,29 @@ import { api, ApiError } from "@/lib/api";
 import { inputClass, marketingLabel, MemberStatusBadge } from "@/components/loyalty-shared";
 import { LoyaltyRegisterModal } from "@/components/loyalty-register-modal";
 import { LoyaltyMemberModal } from "@/components/loyalty-member-modal";
+import { PhoneField } from "@/components/numeric-keypad";
 
 // Find a retail customer by phone, or register one. Used on Клиенты → Розница
 // and on the till, which is the only screen a cashier can reach.
-export function LoyaltyLookupPanel({ role, onChanged }: { role: Role; onChanged?: () => void }) {
+// `keypad`: the till — the phone is typed on the on-screen pad, not the system keyboard.
+export function LoyaltyLookupPanel({ role, onChanged, keypad = false }: { role: Role; onChanged?: () => void; keypad?: boolean }) {
   const [phone, setPhone] = useState("");
   const [lookup, setLookup] = useState<LoyaltyLookupDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [registerPhone, setRegisterPhone] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
 
-  async function handleLookup(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleLookup(e?: React.FormEvent, typed?: string) {
+    e?.preventDefault();
+    const number = typed ?? phone;
     setLookup(null);
     setError(null);
-    if (!normalizeKzPhone(phone)) {
+    if (!normalizeKzPhone(number)) {
       setError(KZ_PHONE_INVALID_MESSAGE);
       return;
     }
     try {
-      setLookup(await api.loyalty.lookup(phone));
+      setLookup(await api.loyalty.lookup(number));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось найти клиента");
     }
@@ -41,7 +44,11 @@ export function LoyaltyLookupPanel({ role, onChanged }: { role: Role; onChanged?
   return (
     <div>
       <form onSubmit={handleLookup} className="flex flex-wrap gap-2">
-        <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Телефон клиента" className={`${inputClass} max-w-xs`} />
+        {keypad ? (
+          <PhoneField value={phone} onChange={setPhone} submitLabel="Найти клиента" onSubmit={(full) => handleLookup(undefined, full)} className="max-w-xs" />
+        ) : (
+          <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Телефон клиента" className={`${inputClass} max-w-xs`} />
+        )}
         <button type="submit" className="flex items-center gap-1.5 rounded-xl border border-border px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted">
           <Search className="h-4 w-4" strokeWidth={1.75} />
           Найти
@@ -86,6 +93,7 @@ export function LoyaltyLookupPanel({ role, onChanged }: { role: Role; onChanged?
       {registerPhone !== null && (
         <LoyaltyRegisterModal
           initialPhone={registerPhone}
+          keypad={keypad}
           onClose={() => setRegisterPhone(null)}
           onSaved={(member) => {
             setRegisterPhone(null);
