@@ -151,6 +151,16 @@ describe("launching finance after the first days of trading", () => {
     await services.production.start(late.user, batch.id);
     await services.production.complete(late.user, batch.id, { actualQuantity: 10 });
     await services.sales.create(late.user, { locationId: late.storeId, paymentMethod: PaymentMethod.CASH, items: [{ productId: bread, quantity: 3, unitPrice: 300 }] } as never);
+    // A wholesale customer takes goods on credit before the launch — some of them not on the books at all.
+    const customerId = (await prisma.customer.create({ data: { organizationId: late.organizationId, name: "Оптовик", paymentTermDays: 7 } })).id;
+    const cakeL = (await prisma.product.create({ data: { organizationId: late.organizationId, name: "Торт", sku: "NL-3", type: ProductType.FINISHED_GOOD, price: 2000, unit: Unit.PCS } })).id;
+    await prisma.product.update({ where: { id: cakeL }, data: { averageUnitCost: 800 } });
+    const wholesale = await services.sales.create(late.user, {
+      locationId: late.storeId, customerId, amountPaid: 0, paymentMethod: PaymentMethod.TRANSFER,
+      items: [{ productId: bread, quantity: 2, unitPrice: 250 }, { productId: cakeL, quantity: 1, unitPrice: 1800 }],
+    } as never);
+    expect(wholesale.balanceDue).toBe(2300);
+    expect(await levelAt(cakeL)).toBe(-1);
     expect(await levelAt(flour)).toBe(-5);
 
     const st = await services.stocktake.create(late.user, { locationId: late.storeId } as never);
@@ -165,6 +175,9 @@ describe("launching finance after the first days of trading", () => {
 
     // Days later, with the banks sorted out: «Запустить».
     await new FinanceSetupService(prisma, services.finance).complete(late.user);
+    // …and pays after the launch.
+    await services.sales.recordPayment(late.user, wholesale.id, { amount: 2300, accountId: late.bankAccountId } as never);
+    expect(await services.finance.getAccountsReceivable(late.organizationId)).toBe(0);
     const sheet = await balance.getBalanceSheet(late.organizationId);
     expect(sheet.control.lines).toEqual([]);
     expect(sheet.status).toBe(BalanceStatus.BALANCED);
