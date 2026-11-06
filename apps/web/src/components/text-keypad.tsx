@@ -10,11 +10,12 @@ import { isInTopWindow } from "@/components/numeric-keypad";
 // is switched off — full-width keys, Russian ЙЦУКЕН plus the Kazakh letters. No <input> behind
 // it; a physical keyboard still types into it.
 
+// The standard Kazakh layout (as on Windows / iPad): Kazakh letters on the top row, then ЙЦУКЕН.
 const ROWS = [
+  ["ә", "і", "ң", "ғ", "ү", "ұ", "қ", "ө", "һ"],
   ["й", "ц", "у", "к", "е", "н", "г", "ш", "щ", "з", "х", "ъ"],
-  ["ф", "ы", "в", "а", "п", "р", "о", "л", "д", "ж", "э"],
-  ["я", "ч", "с", "м", "и", "т", "ь", "б", "ю", "ё"],
-  ["ә", "ғ", "қ", "ң", "ө", "ұ", "ү", "һ", "і"],
+  ["ф", "ы", "в", "а", "п", "р", "о", "л", "д", "ж", "э", "ё"],
+  ["я", "ч", "с", "м", "и", "т", "ь", "б", "ю"],
 ];
 
 const key =
@@ -94,7 +95,7 @@ export function TextKeypadModal({
           </div>
         )}
         {ROWS.map((row, i) => (
-          <div key={i} className={clsx("flex gap-1.5", i === 2 && "px-[4%]", i === 3 && "px-[12%]")}>
+          <div key={i} className={clsx("flex gap-1.5", i === 0 && "px-[12%]", i === 2 && "px-[2%]", i === 3 && "px-[12%]")}>
             {row.map((l) => (
               <button key={l} type="button" onClick={() => add(letter(l))} className={key}>
                 {letter(l)}
@@ -117,7 +118,7 @@ export function TextKeypadModal({
           <button type="button" onClick={() => add(" ")} className={clsx(key, "flex-[5] text-base text-muted")}>
             пробел
           </button>
-          <button type="button" onClick={() => setText("")} className={clsx(key, "max-w-[8rem] text-sm text-muted")}>
+          <button type="button" onClick={() => setText("")} className={clsx(key, "max-w-[8rem] !text-sm text-muted")}>
             Очистить
           </button>
           <button type="button" onClick={back} aria-label="Стереть" className={clsx(key, "max-w-[7rem]")}>
