@@ -79,9 +79,9 @@ describe("working before the first stock count", () => {
   it("the first count, approved as the opening, books what was there at the start as the opening stock", async () => {
     const st = await services.stocktake.create(org.user, { locationId: org.storeId } as never);
     const line = (productId: string) => st.lines.find((l) => l.productId === productId)!;
-    // Counted: 25 kg of flour (so 20 were there at the start), 7 loaves, 2 cakes (3 at the start).
+    // Counted: 25 kg of flour (so 20 were there at the start), 6 loaves (one short), 2 cakes (3 at the start).
     await services.stocktake.updateLine(org.user, st.id, line(flourId).id, { countedQuantity: 25 });
-    await services.stocktake.updateLine(org.user, st.id, line(breadId).id, { countedQuantity: 7 });
+    await services.stocktake.updateLine(org.user, st.id, line(breadId).id, { countedQuantity: 6 });
     await services.stocktake.updateLine(org.user, st.id, line(cakeId).id, { countedQuantity: 2 });
     await services.stocktake.submit(org.user, st.id);
     const approved = await services.stocktake.approve(org.user, st.id, { opening: true });
@@ -89,11 +89,14 @@ describe("working before the first stock count", () => {
     expect(await level(flourId)).toBe(25);
     expect(await level(cakeId)).toBe(2);
     const moves = await prisma.stockMovement.findMany({ where: { stocktakeId: st.id }, orderBy: { productId: "asc" } });
+    // A shortage is part of the opening too (a signed receipt), not a loss of these days.
     expect(moves.map((m) => [m.type, m.quantity.toNumber()]).sort()).toEqual([
+      ["RECEIPT", -1],
       ["RECEIPT", 20],
       ["RECEIPT", 3],
     ]);
-    // Not a gain: the P&L shows no inventory result for these days, only the real cost of what was sold.
+    expect(await level(breadId)).toBe(6);
+    // Not a gain or a loss: the P&L shows no inventory result for these days, only the real cost of what was sold.
     const pnl = await services.finance.getProfitAndLoss(org.organizationId, from, new Date(Date.now() + 60_000));
     expect(pnl.inventoryLosses).toBe(0);
     expect(pnl.netRevenue).toBe(1400);
@@ -101,9 +104,9 @@ describe("working before the first stock count", () => {
   });
 
   it("the found stock joins the opening position, so the books are balanced", async () => {
-    // 20 kg × 100 + 3 cakes × 200, added to what the launch declared (nothing).
+    // 20 kg × 100 + 3 cakes × 200 − 1 loaf × 50, added to what the launch declared (nothing).
     const org1 = await prisma.organization.findUniqueOrThrow({ where: { id: org.organizationId } });
-    expect(org1.openingInventoryValue?.toNumber()).toBe(2600);
+    expect(org1.openingInventoryValue?.toNumber()).toBe(2550);
     const sheet = await balance.getBalanceSheet(org.organizationId);
     expect(sheet.control.lines).toEqual([]);
     expect(sheet.status).toBe(BalanceStatus.BALANCED);
@@ -118,5 +121,52 @@ describe("working before the first stock count", () => {
     await services.stocktake.cancel(org.user, st.id, "Проверка");
     // Switching it on and off is in the audit log.
     expect(await prisma.auditLog.count({ where: { organizationId: org.organizationId, action: "inventory.allowNegativeStock" } })).toBe(2);
+  });
+});
+
+// The finance launch may also come LATER (the owner first sorts out banks and statements): the days
+// traded before it, their cash included, become part of the opening position.
+describe("launching finance after the first days of trading", () => {
+  let late: IsolatedOrg;
+  let flour: string;
+  let bread: string;
+  let recipe: string;
+  const levelAt = async (productId: string) =>
+    (await prisma.stockLevel.findUnique({ where: { locationId_productId: { locationId: late.storeId, productId } } }))?.quantity.toNumber() ?? 0;
+
+  beforeAll(async () => {
+    late = await createIsolatedOrg(prisma, "negative-late");
+    const id = late.organizationId;
+    flour = (await prisma.product.create({ data: { organizationId: id, name: "Мука", sku: "NL-1", type: ProductType.RAW_MATERIAL, price: 100, unit: Unit.KG } })).id;
+    bread = (await prisma.product.create({ data: { organizationId: id, name: "Хлеб", sku: "NL-2", type: ProductType.FINISHED_GOOD, price: 300, unit: Unit.PCS } })).id;
+    recipe = (await prisma.recipe.create({ data: { organizationId: id, productId: bread, yieldQuantity: 1, items: { create: [{ ingredientProductId: flour, quantity: 0.5 }] } } })).id;
+  });
+  afterAll(async () => {
+    expect(await destroyOrg(prisma, late.organizationId)).toEqual([]);
+  });
+
+  it("trades below zero, counts the opening, launches finance afterwards — and the balance agrees", async () => {
+    await services.inventory.setAllowNegativeStock(late.user, true);
+    const batch = await services.production.create(late.user, { locationId: late.storeId, recipeId: recipe, plannedQuantity: 10 });
+    await services.production.start(late.user, batch.id);
+    await services.production.complete(late.user, batch.id, { actualQuantity: 10 });
+    await services.sales.create(late.user, { locationId: late.storeId, paymentMethod: PaymentMethod.CASH, items: [{ productId: bread, quantity: 3, unitPrice: 300 }] } as never);
+    expect(await levelAt(flour)).toBe(-5);
+
+    const st = await services.stocktake.create(late.user, { locationId: late.storeId } as never);
+    const line = (productId: string) => st.lines.find((l) => l.productId === productId)!;
+    await services.stocktake.updateLine(late.user, st.id, line(flour).id, { countedQuantity: 15 });
+    await services.stocktake.updateLine(late.user, st.id, line(bread).id, { countedQuantity: 6 });
+    await services.stocktake.submit(late.user, st.id);
+    await services.stocktake.approve(late.user, st.id, { opening: true });
+    await services.inventory.setAllowNegativeStock(late.user, false);
+    expect(await levelAt(flour)).toBe(15);
+    expect(await levelAt(bread)).toBe(6);
+
+    // Days later, with the banks sorted out: «Запустить».
+    await new FinanceSetupService(prisma, services.finance).complete(late.user);
+    const sheet = await balance.getBalanceSheet(late.organizationId);
+    expect(sheet.control.lines).toEqual([]);
+    expect(sheet.status).toBe(BalanceStatus.BALANCED);
   });
 });

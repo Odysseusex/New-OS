@@ -998,12 +998,14 @@ audited `inventory.allowNegativeStock`): ONLY production consumption and till/«
 (`common/stock-guard.ts` `allowsNegativeStock` + `decrementStock`, which upserts a negative level); write-offs,
 transfers, supplier returns etc. stay strict. Everything is written as usual (consumption at the norm and the current
 cost). The first count is approved with «Начальные остатки» (`StocktakeService.approve(…, {opening: true})`, allowed only
-while the switch is on): a surplus becomes a RECEIPT «Начальный остаток (инвентаризация)», `Stocktake.opening = true`,
+while the switch is on): every difference — surplus AND shortage — becomes a signed RECEIPT «Начальный остаток
+(инвентаризация)» (a shortage is the opening being smaller, not a loss of these days), `Stocktake.opening = true`,
 skipped by the event projection, and — if Финансы → «Запустить» was already done — its value is ADDED to
 `Organization.openingInventoryValue` (as if counted at the start); before the launch the launch values it from the
 stock. A shortage stays an ordinary adjustment. Intended order: «Запустить» on the first morning (cash counted),
-switch on, work, count with «Начальные остатки», switch off. Launching AFTER days of trading instead leaves those days'
-cash outside the opening and the balance unbalanced — that is why the opening is folded in, not delayed.
+switch on, work, count with «Начальные остатки», switch off. Launching LATER is also fine (the owner waits for the bank
+question): `BalanceService` adds the cash of every event dated before go-live to «Денежные средства» and to opening
+equity, so the days traded before «Запустить» are part of the opening position (spec: «launching finance after…»).
 Spec `inventory/negative-stock.spec.ts`.
 
 ## «Корректировка остатка» of a cash/bank account (built)

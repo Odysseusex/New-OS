@@ -252,10 +252,12 @@ export class StocktakeService {
             organizationId: user.organizationId,
             locationId: stocktake.locationId,
             productId: line.productId,
-            // The opening stock found by the first count is a receipt; anything else a count adjustment.
-            type: opening && difference > 0 ? StockMovementType.RECEIPT : StockMovementType.ADJUSTMENT,
+            // The opening count sets the opening stock: what it finds above OR below the books (goods
+            // used in production nobody entered, a guess that was off) is a signed RECEIPT — the start
+            // position, never a gain or a loss. Any other count is an ordinary adjustment.
+            type: opening ? StockMovementType.RECEIPT : StockMovementType.ADJUSTMENT,
             quantity: difference,
-            reason: opening && difference > 0 ? "Начальный остаток (инвентаризация)" : "Инвентаризация",
+            reason: opening ? "Начальный остаток (инвентаризация)" : "Инвентаризация",
             stocktakeId: id,
             createdById: user.id,
             ...this.costing.fields(cost),
@@ -282,7 +284,8 @@ export class StocktakeService {
             { locationId: stocktake.locationId, productId: line.productId, quantity: -difference },
             `«${line.product.name}»: остаток стал меньше недостачи — пересчитайте позицию`,
           );
-          shortageValue += cost ? -difference * cost.unitCost : 0;
+          if (opening) openingValue += round2(difference * (movement.unitCost?.toNumber() ?? 0));
+          else shortageValue += cost ? -difference * cost.unitCost : 0;
         }
         await tx.stocktakeLine.update({ where: { id: line.id }, data: { movementId: movement.id } });
         movementIds.push(movement.id);
@@ -291,7 +294,7 @@ export class StocktakeService {
 
       // The opening stock joins the declared opening position, as if it had been counted at the start
       // (before the finance launch the launch itself values it from the stock).
-      if (opening && openingValue > 0) {
+      if (opening && openingValue !== 0) {
         const org = await tx.organization.findUniqueOrThrow({ where: { id: user.organizationId }, select: { financeInitializedAt: true } });
         if (org.financeInitializedAt) {
           await tx.organization.update({ where: { id: user.organizationId }, data: { openingInventoryValue: { increment: round2(openingValue) } } });

@@ -74,6 +74,18 @@ export class BalanceService implements OnModuleInit {
       for (const leg of e.balance) projected.set(leg.line, (projected.get(leg.line) ?? 0) + leg.delta);
       accumulatedResult += e.pnl.reduce((s, p) => s + p.amount, 0);
     }
+    // Money that came in or went out BEFORE the launch (a shop that traded for a few days before
+    // anyone pressed «Запустить») is in the accounts at the launch: it is part of the opening position
+    // like the declared stock, so its cash side counts, with the opening equity as the other side.
+    if (goLive) {
+      for (const e of allEvents) {
+        if (e.type === FinancialEventType.OPENING_BALANCE || e.occurredAt >= goLive.toISOString()) continue;
+        const cashDelta = e.balance.filter((l) => l.line === BalanceLine.CASH_AND_BANK).reduce((s, l) => s + l.delta, 0);
+        if (cashDelta === 0) continue;
+        projected.set(BalanceLine.CASH_AND_BANK, (projected.get(BalanceLine.CASH_AND_BANK) ?? 0) + cashDelta);
+        projected.set(BalanceLine.OPENING_EQUITY, (projected.get(BalanceLine.OPENING_EQUITY) ?? 0) + cashDelta);
+      }
+    }
     const proj = (line: BalanceLine) => round2(projected.get(line) ?? 0);
 
     // What the ledgers, registers and documents actually hold.
