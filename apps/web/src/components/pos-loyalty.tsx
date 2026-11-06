@@ -228,7 +228,7 @@ function PosBirthdaysModal({ memberId, onClose }: { memberId: string; onClose: (
     <Modal title="Дни рождения" onClose={onClose}>
       {error && <p className="text-sm text-red-700">{error}</p>}
       {!family && !error && <p className="text-sm text-muted">Загрузка…</p>}
-      {family && <LoyaltyFamilySection memberId={memberId} family={family} editable canRemove={false} onChanged={load} />}
+      {family && <LoyaltyFamilySection memberId={memberId} family={family} editable canRemove={false} onChanged={load} keypad />}
     </Modal>
   );
 }

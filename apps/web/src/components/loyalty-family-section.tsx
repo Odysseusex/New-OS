@@ -6,6 +6,11 @@ import { isValidBirthDate, LOYALTY_MAX_FAMILY_MEMBERS, MONTHS_GENITIVE_RU } from
 import { api, ApiError } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { inputClass } from "@/components/loyalty-shared";
+import { DigitsField } from "@/components/numeric-keypad";
+import { TextField } from "@/components/text-keypad";
+
+// Quick picks for «Кто это» on the till, where typing is on the on-screen keyboard.
+const RELATIONS = ["Сам клиент", "Жена", "Муж", "Сын", "Дочь", "Мама", "Папа"];
 
 const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 
@@ -20,7 +25,10 @@ export function LoyaltyFamilySection({
   editable,
   canRemove,
   onChanged,
+  keypad = false,
 }: {
+  // The till: names and the year are typed on the on-screen keyboards.
+  keypad?: boolean;
   memberId: string;
   family: LoyaltyFamilyMemberDto[];
   editable: boolean;
@@ -127,11 +135,33 @@ export function LoyaltyFamilySection({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1.5 block text-sm font-medium text-foreground">Имя</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} maxLength={100} className={inputClass} />
+              {keypad ? (
+                <TextField value={name} onChange={setName} title="Имя" placeholder="Имя" maxLength={100} />
+              ) : (
+                <input value={name} onChange={(e) => setName(e.target.value)} maxLength={100} className={inputClass} />
+              )}
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-foreground">Кто это</label>
-              <input value={relation} onChange={(e) => setRelation(e.target.value)} maxLength={50} placeholder="Сам клиент, сын, жена…" className={inputClass} />
+              {keypad ? (
+                <>
+                  <TextField value={relation} onChange={setRelation} title="Кто это" placeholder="Сам клиент, сын, жена…" maxLength={50} />
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {RELATIONS.map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setRelation(r)}
+                        className={`rounded-lg border px-2.5 py-1.5 text-sm transition ${relation === r ? "border-accent bg-accent/10 text-accent" : "border-border text-foreground hover:bg-surface"}`}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <input value={relation} onChange={(e) => setRelation(e.target.value)} maxLength={50} placeholder="Сам клиент, сын, жена…" className={inputClass} />
+              )}
             </div>
           </div>
           <div className="mt-3 grid grid-cols-[5rem_1fr_6rem] gap-3">
@@ -159,7 +189,11 @@ export function LoyaltyFamilySection({
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-foreground">Год</label>
-              <input inputMode="numeric" value={year} onChange={(e) => setYear(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="—" className={inputClass} aria-label="Год" />
+              {keypad ? (
+                <DigitsField value={year} onChange={setYear} title="Год рождения" maxDigits={4} />
+              ) : (
+                <input inputMode="numeric" value={year} onChange={(e) => setYear(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="—" className={inputClass} aria-label="Год" />
+              )}
             </div>
           </div>
           {day !== "" && month !== "" && !dateOk && <p className="mt-2 text-sm text-red-700">Такой даты нет</p>}

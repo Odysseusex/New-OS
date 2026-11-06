@@ -109,6 +109,7 @@ export function LoyaltyLookupPanel({ role, onChanged, keypad = false }: { role: 
           memberId={openId}
           canManage={LOYALTY_MANAGE_ROLES.includes(role)}
           canAdmin={LOYALTY_ADMIN_ROLES.includes(role)}
+          keypad={keypad}
           onClose={() => setOpenId(null)}
           onChanged={changed}
         />

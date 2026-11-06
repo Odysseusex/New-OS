@@ -21,6 +21,7 @@ import {
 import { api, ApiError } from "@/lib/api";
 import { formatDate, formatDateTime, formatPoints } from "@/lib/format";
 import { Modal } from "@/components/modal";
+import { TextField } from "@/components/text-keypad";
 import { LoyaltyFamilySection } from "@/components/loyalty-family-section";
 import { ConsentSourceSelect, inputClass, MemberStatusBadge } from "@/components/loyalty-shared";
 
@@ -32,10 +33,13 @@ export function LoyaltyMemberModal({
   canAdmin,
   onClose,
   onChanged,
+  keypad = false,
 }: {
   memberId: string;
   canManage: boolean;
   canAdmin: boolean;
+  // Opened from the till: names are typed on the on-screen keyboard.
+  keypad?: boolean;
   onClose: () => void;
   onChanged: () => void;
 }) {
@@ -204,7 +208,11 @@ export function LoyaltyMemberModal({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-foreground">Имя</label>
-                <input value={name} onChange={(e) => setName(e.target.value)} className={inputClass} />
+                {keypad ? (
+                  <TextField value={name} onChange={setName} title="Имя клиента" placeholder="Имя" maxLength={100} />
+                ) : (
+                  <input value={name} onChange={(e) => setName(e.target.value)} className={inputClass} />
+                )}
               </div>
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-foreground">Примечание</label>
@@ -356,6 +364,7 @@ export function LoyaltyMemberModal({
             family={member.family}
             editable={editable}
             canRemove={canManage}
+            keypad={keypad}
             onChanged={() => {
               load();
               onChanged();

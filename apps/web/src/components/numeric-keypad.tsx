@@ -137,19 +137,24 @@ export function PhoneKeypadModal({
   );
 }
 
-// A whole number typed on the pad (e.g. points to spend), with an upper limit.
+// A whole number typed on the pad (e.g. points to spend, a year), with an optional upper limit.
 export function NumberKeypadModal({
   title,
   initial,
-  max,
+  max = Number.MAX_SAFE_INTEGER,
   unit,
+  maxDigits = 9,
+  plain = false,
   onDone,
   onClose,
 }: {
   title: string;
   initial: number;
-  max: number;
+  max?: number;
   unit?: string;
+  maxDigits?: number;
+  // A code-like number (a year): no thousands separator, no «Макс.» key, no limit line.
+  plain?: boolean;
   onDone: (value: number) => void;
   onClose: () => void;
 }) {
@@ -158,7 +163,7 @@ export function NumberKeypadModal({
   const value = text === "" ? 0 : Number(text);
   const over = value > max;
   const add = (d: string) => {
-    if (text.length < 9) set(text + d);
+    if (text.length < maxDigits) set(text + d);
   };
   const back = () => set(text.slice(0, -1));
   const done = () => onDone(Math.min(value, max));
@@ -167,17 +172,21 @@ export function NumberKeypadModal({
   return (
     <Modal title={title} onClose={onClose} width="max-w-sm">
       <div className="mb-1 rounded-2xl border border-border bg-surface-muted px-4 py-4 text-center text-[1.65rem] font-semibold tabular-nums text-foreground">
-        {text === "" ? "0" : Number(text).toLocaleString("ru-RU")}
+        {text === "" ? (plain ? "—" : "0") : plain ? text : Number(text).toLocaleString("ru-RU")}
         {unit && <span className="ml-2 text-base font-medium text-muted">{unit}</span>}
       </div>
-      <p className={clsx("mb-3 text-center text-sm", over ? "text-red-600" : "text-muted")}>
-        Не больше {max.toLocaleString("ru-RU")}
-      </p>
+      {plain ? (
+        <div className="mb-3" />
+      ) : (
+        <p className={clsx("mb-3 text-center text-sm", over ? "text-red-600" : "text-muted")}>
+          Не больше {max.toLocaleString("ru-RU")}
+        </p>
+      )}
       <NumericKeypad
         onDigit={add}
         onBackspace={back}
         onClear={() => set("")}
-        extraKey={{ label: "Макс.", onPress: () => set(String(Math.floor(max))) }}
+        extraKey={plain ? undefined : { label: "Макс.", onPress: () => set(String(Math.floor(max))) }}
       />
       <button
         type="button"
@@ -245,6 +254,52 @@ export function PhoneField({
             onChange(full);
             setOpen(false);
             onSubmit?.(full);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+// A code-like number field for the till (a year): looks like an input, opens the digit pad.
+export function DigitsField({
+  value,
+  onChange,
+  title,
+  maxDigits,
+  placeholder = "—",
+  className,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  title: string;
+  maxDigits: number;
+  placeholder?: string;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={clsx(
+          "w-full rounded-xl border border-border bg-surface px-3 py-2 text-left text-sm tabular-nums transition hover:bg-surface-muted",
+          className,
+        )}
+      >
+        {value ? <span className="text-foreground">{value}</span> : <span className="text-muted">{placeholder}</span>}
+      </button>
+      {open && (
+        <NumberKeypadModal
+          title={title}
+          initial={value ? Number(value) : 0}
+          maxDigits={maxDigits}
+          plain
+          onClose={() => setOpen(false)}
+          onDone={(v) => {
+            onChange(v > 0 ? String(v) : "");
+            setOpen(false);
           }}
         />
       )}

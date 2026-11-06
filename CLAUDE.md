@@ -205,6 +205,9 @@ a physical keyboard/scanner still types into it. `PhoneKeypadModal` (+7 and ten 
 leading 8 ignored), `PhoneField` (looks like an input, opens the pad), `NumberKeypadModal` (points to spend). Used by the
 till's «Клиент бонусной программы», the top «Клиент» panel (`LoyaltyLookupPanel keypad`) and registration from the till
 (`LoyaltyRegisterModal keypad`); Клиенты → Розница keeps plain inputs. A `Modal` opened over another answers Escape alone.
+Letters: `components/text-keypad.tsx` (`TextKeypadModal`/`TextField`: full-width ЙЦУКЕН + a Kazakh row ӘҒҚҢӨҰҮҺІ, a capital at
+each word start, ⇧ flips it) for names on the till — registration, the member card and birthdays (`LoyaltyFamilySection
+keypad`: quick picks for «Кто это», the year on `DigitsField`). Deliberately big: small keys are missed on a touch screen.
 
 **Product SKU** is optional; if blank, `ProductsService.generateSku()`
 atomically increments `Organization.productSkuSequence` (a single

@@ -14,6 +14,7 @@ import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
 import { ConsentSourceSelect, inputClass } from "@/components/loyalty-shared";
 import { PhoneField } from "@/components/numeric-keypad";
+import { TextField } from "@/components/text-keypad";
 
 export function LoyaltyRegisterModal({
   initialPhone = "",
@@ -77,7 +78,11 @@ export function LoyaltyRegisterModal({
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-foreground">Имя</label>
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputClass} />
+            {keypad ? (
+              <TextField value={name} onChange={setName} title="Имя клиента" placeholder="Имя" maxLength={100} />
+            ) : (
+              <input type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputClass} />
+            )}
           </div>
         </div>
 
