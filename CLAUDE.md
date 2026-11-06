@@ -207,7 +207,16 @@ till's «Клиент бонусной программы», the top «Клие�
 (`LoyaltyRegisterModal keypad`); Клиенты → Розница keeps plain inputs. A `Modal` opened over another answers Escape alone.
 Letters: `components/text-keypad.tsx` (`TextKeypadModal`/`TextField`: full-width ЙЦУКЕН + a Kazakh row ӘҒҚҢӨҰҮҺІ, a capital at
 each word start, ⇧ flips it) for names on the till — registration, the member card and birthdays (`LoyaltyFamilySection
-keypad`: quick picks for «Кто это», the year on `DigitsField`). Deliberately big: small keys are missed on a touch screen.
+keypad`: quick picks for «Кто это»). Deliberately big: small keys are missed on a touch screen.
+Birthdays on the till: `components/birth-date-pad.tsx` — ДД.ММ(.ГГГГ) on the digit pad plus tappable month names
+(«07 июл»), always read back in words; also offered right in till registration (saved as a «Сам клиент» row, name
+«Клиент» when none). Every other till field is on a pad too: PIN (`PinPad`, dots), check discount, shift amounts
+(`AmountField`) and comments (`TextField withDigits`), the till's return (`SaleReturnModal keypad`) and its history
+search. Physical keys go to the TOP window's pad even while the till's scan field keeps focus (`isInTopWindow`); a real
+input inside that same window keeps its own typing. Elsewhere month selects read «05 — мая».
+CRM → client → «Изменить» (`components/crm/member-edit-dialog.tsx`): name, note, WhatsApp/Telegram consent (a new consent
+row each change, source OTHER «Изменено в CRM»), birthdays add / correct (PATCH keeps `dateSetAt` unless the date changes)
+/ remove; renaming the member renames its «Сам клиент» birthday named «Клиент». The phone is never edited.
 
 **Product SKU** is optional; if blank, `ProductsService.generateSku()`
 atomically increments `Organization.productSkuSequence` (a single

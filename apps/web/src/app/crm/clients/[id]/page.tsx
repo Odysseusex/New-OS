@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Cake, CircleDot, Gift, MessageCircle, MessageSquare, Phone, ShieldCheck, ShoppingBag, Sparkles, Undo2, UserPlus } from "lucide-react";
+import { Cake, CircleDot, Gift, MessageCircle, MessageSquare, Pencil, Phone, ShieldCheck, ShoppingBag, Sparkles, Undo2, UserPlus } from "lucide-react";
 import {
   CRM_ORDER_STAGE_LABELS_RU,
   CrmContactReason,
@@ -16,6 +16,7 @@ import { api, ApiError } from "@/lib/api";
 import { useCrm } from "@/components/crm/shell";
 import { ContactDialog } from "@/components/crm/contact-dialog";
 import { OrderDialog } from "@/components/crm/order-dialog";
+import { MemberEditDialog } from "@/components/crm/member-edit-dialog";
 import { Avatar, daysWord, ErrorBox, everyDays, fmtDayKey, fmtDayMonth, fmtMoney, fmtPhone, fmtWhen, plural, SegmentTag, Skeleton, Tag, telLink, Tone } from "@/components/crm/ui";
 
 const KIND: Record<CrmTimelineKind, { icon: React.ElementType; tone: Tone | "tx3" }> = {
@@ -36,6 +37,7 @@ export default function CrmClientPage() {
   const [error, setError] = useState<string | null>(null);
   const [writing, setWriting] = useState(false);
   const [ordering, setOrdering] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const load = useCallback(() => {
     setError(null);
@@ -88,6 +90,9 @@ export default function CrmClientPage() {
         <span className="muted">›</span>
         <span style={{ fontWeight: 500 }}>{name}</span>
         <span style={{ flex: 1 }} />
+        <button type="button" className="crm-btn" onClick={() => setEditing(true)} disabled={member.status === LoyaltyMemberStatus.MERGED}>
+          <Pencil size={15} /> Изменить
+        </button>
         <button type="button" className="crm-btn" onClick={() => setOrdering(true)}>
           <Cake size={15} /> Заказ торта
         </button>
@@ -245,6 +250,17 @@ export default function CrmClientPage() {
           onClose={() => setWriting(false)}
           onSaved={() => {
             setWriting(false);
+            load();
+            refreshCounts();
+          }}
+        />
+      )}
+      {editing && (
+        <MemberEditDialog
+          member={member}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
             load();
             refreshCounts();
           }}

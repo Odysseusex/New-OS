@@ -1,5 +1,7 @@
 "use client";
 
+import { AmountField } from "@/components/numeric-keypad";
+import { TextField } from "@/components/text-keypad";
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
 import { Printer, Wallet } from "lucide-react";
@@ -159,7 +161,7 @@ function ShiftModal({
         >
           {!state.tillAccount && <p className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">У точки нет кассы наличных — создайте счёт «Касса» с этой точкой в Финансах</p>}
           <label className="mb-1.5 block text-sm font-medium text-foreground">Наличные в кассе, ₸</label>
-          <input autoFocus inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className={input} />
+          <AmountField value={amount} onChange={setAmount} title="Сумма, ₸" unit="₸" />
           {state.tillAccount && state.tillAccount.balance !== null && (
             <p className="mt-1.5 text-xs text-muted">По учёту в кассе: {formatMoney(state.tillAccount.balance)}</p>
           )}
@@ -208,7 +210,7 @@ function ShiftModal({
         >
           <p className="mb-3 text-sm font-semibold text-foreground">{mode === "IN" ? "Внесение наличных в кассу" : "Выемка наличных из кассы"}</p>
           <label className="mb-1.5 block text-sm text-foreground">Сумма, ₸</label>
-          <input autoFocus inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className={input} />
+          <AmountField value={amount} onChange={setAmount} title="Сумма, ₸" unit="₸" />
           <label className="mb-1.5 mt-3 block text-sm text-foreground">{mode === "IN" ? "Откуда" : "Куда"}</label>
           <select value={accountId} onChange={(e) => setAccountId(e.target.value)} className={input}>
             {state.otherAccounts.map((a) => (
@@ -218,7 +220,14 @@ function ShiftModal({
             ))}
           </select>
           <label className="mb-1.5 mt-3 block text-sm text-foreground">Комментарий</label>
-          <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder={mode === "IN" ? "Размен" : "Инкассация"} className={input} />
+          <TextField value={comment} onChange={setComment} title="Комментарий" withDigits placeholder={mode === "IN" ? "Размен" : "Инкассация"} />
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {(mode === "IN" ? ["Размен"] : ["Инкассация", "Сдал руководителю"]).map((c) => (
+              <button key={c} type="button" onClick={() => setComment(c)} className="rounded-lg border border-border px-2.5 py-1.5 text-sm text-foreground hover:bg-surface-muted">
+                {c}
+              </button>
+            ))}
+          </div>
           {error && <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
           <div className="mt-4 flex gap-2">
             <button type="button" onClick={() => setMode("view")} className="flex-1 rounded-xl border border-border px-4 py-2.5 text-sm text-foreground hover:bg-surface-muted">
@@ -243,7 +252,7 @@ function ShiftModal({
         >
           {expected !== null && <ResultLine label="Должно быть в кассе" value={expected} />}
           <label className="mb-1.5 mt-3 block text-sm font-medium text-foreground">Посчитано наличных, ₸</label>
-          <input autoFocus inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className={input} />
+          <AmountField value={amount} onChange={setAmount} title="Сумма, ₸" unit="₸" />
           {expected !== null && amount.trim() !== "" && Number.isFinite(counted) && (
             <ResultLine
               label="Расхождение"
@@ -252,7 +261,7 @@ function ShiftModal({
             />
           )}
           <label className="mb-1.5 mt-3 block text-sm text-foreground">Комментарий</label>
-          <input value={comment} onChange={(e) => setComment(e.target.value)} className={input} />
+          <TextField value={comment} onChange={setComment} title="Комментарий" withDigits />
           {error && <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
           <div className="mt-4 flex gap-2">
             <button type="button" onClick={() => setMode("view")} className="flex-1 rounded-xl border border-border px-4 py-2.5 text-sm text-foreground hover:bg-surface-muted">

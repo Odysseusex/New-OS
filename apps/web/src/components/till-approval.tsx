@@ -7,25 +7,11 @@ import { TILL_APPROVAL_ACTION_LABELS_RU, manualDiscountTarget } from "@bakery-os
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
 import { formatMoney } from "@/lib/format";
+import { AmountField, PinPad } from "@/components/numeric-keypad";
 
-const input =
-  "w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-center text-lg tracking-widest text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
-
-function PinField({ value, onChange, autoFocus }: { value: string; onChange: (v: string) => void; autoFocus?: boolean }) {
-  return (
-    <input
-      type="password"
-      inputMode="numeric"
-      autoComplete="off"
-      autoFocus={autoFocus}
-      maxLength={6}
-      value={value}
-      onChange={(e) => onChange(e.target.value.replace(/\D/g, ""))}
-      placeholder="PIN"
-      aria-label="PIN"
-      className={input}
-    />
-  );
+// The till's own pad: the monoblock's system keyboard is switched off.
+function PinField({ value, onChange }: { value: string; onChange: (v: string) => void; autoFocus?: boolean }) {
+  return <PinPad value={value} onChange={onChange} />;
 }
 
 // A senior cashier types their PIN on a cashier's till to approve one action.
@@ -171,7 +157,15 @@ export function CheckDiscountModal({
             </button>
           ))}
         </div>
-        <input autoFocus inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} className={input} placeholder={kind === "percent" ? "%" : "₸"} />
+        <AmountField
+          value={value}
+          onChange={setValue}
+          title={kind === "percent" ? "Скидка, %" : "Скидка, ₸"}
+          unit={kind === "percent" ? "%" : "₸"}
+          decimal={kind === "percent"}
+          max={kind === "percent" ? 100 : undefined}
+          placeholder={kind === "percent" ? "%" : "₸"}
+        />
         {valid && <p className="mt-2 text-sm text-muted">Скидка: {formatMoney(preview)} из {formatMoney(base)}</p>}
         {needsApproval && (
           <div className="mt-4">

@@ -1,5 +1,6 @@
 "use client";
 
+import { TextField } from "@/components/text-keypad";
 import { useEffect, useMemo, useState } from "react";
 import { Printer, Search, Undo2, X } from "lucide-react";
 import type { ProductDto, SaleDetailDto, SaleDto, SaleReturnDto, SalesSummaryDto } from "@bakery-os/shared";
@@ -176,6 +177,7 @@ export function SaleHistoryModal({
             sale={openSale}
             previousReturns={returnsOf}
             needsApproval={!isApprover}
+            keypad
             onClose={() => setReturnsOf(null)}
             onReturned={() => setOpenSale(null)}
           />
@@ -214,14 +216,9 @@ export function SaleHistoryModal({
           </div>
         ) : (
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" strokeWidth={1.75} />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Товар или № чека"
-              className="w-full rounded-xl border border-border bg-surface py-2 pl-9 pr-3 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-            />
+            <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted" strokeWidth={1.75} />
+            {/* The till's own keyboard: the monoblock's system keyboard is switched off. */}
+            <TextField value={query} onChange={setQuery} title="Товар или № чека" withDigits placeholder="Товар или № чека" className="pl-9" />
           </div>
         )}
         {/* Inline, not a floating dropdown: nothing here needs to intercept

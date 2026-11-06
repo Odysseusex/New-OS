@@ -6,7 +6,7 @@ import { isValidBirthDate, LOYALTY_MAX_FAMILY_MEMBERS, MONTHS_GENITIVE_RU } from
 import { api, ApiError } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { inputClass } from "@/components/loyalty-shared";
-import { DigitsField } from "@/components/numeric-keypad";
+import { BirthDateField } from "@/components/birth-date-pad";
 import { TextField } from "@/components/text-keypad";
 
 // Quick picks for «Кто это» on the till, where typing is on the on-screen keyboard.
@@ -164,38 +164,48 @@ export function LoyaltyFamilySection({
               )}
             </div>
           </div>
-          <div className="mt-3 grid grid-cols-[5rem_1fr_6rem] gap-3">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-foreground">День</label>
-              <select value={day} onChange={(e) => setDay(e.target.value)} className={inputClass} aria-label="День">
-                <option value="" />
-                {DAYS.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
+          {keypad ? (
+            <div className="mt-3">
+              <label className="mb-1.5 block text-sm font-medium text-foreground">Дата рождения</label>
+              <BirthDateField
+                value={{ day, month, year }}
+                onChange={(v) => {
+                  setDay(v.day);
+                  setMonth(v.month);
+                  setYear(v.year);
+                }}
+              />
             </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-foreground">Месяц</label>
-              <select value={month} onChange={(e) => setMonth(e.target.value)} className={inputClass} aria-label="Месяц">
-                <option value="" />
-                {MONTHS_GENITIVE_RU.map((m, i) => (
-                  <option key={m} value={i + 1}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-foreground">Год</label>
-              {keypad ? (
-                <DigitsField value={year} onChange={setYear} title="Год рождения" maxDigits={4} />
-              ) : (
+          ) : (
+            <div className="mt-3 grid grid-cols-[5rem_1fr_6rem] gap-3">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-foreground">День</label>
+                <select value={day} onChange={(e) => setDay(e.target.value)} className={inputClass} aria-label="День">
+                  <option value="" />
+                  {DAYS.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-foreground">Месяц</label>
+                <select value={month} onChange={(e) => setMonth(e.target.value)} className={inputClass} aria-label="Месяц">
+                  <option value="" />
+                  {MONTHS_GENITIVE_RU.map((m, i) => (
+                    <option key={m} value={i + 1}>
+                      {String(i + 1).padStart(2, "0")} — {m}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-foreground">Год</label>
                 <input inputMode="numeric" value={year} onChange={(e) => setYear(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="—" className={inputClass} aria-label="Год" />
-              )}
+              </div>
             </div>
-          </div>
+          )}
           {day !== "" && month !== "" && !dateOk && <p className="mt-2 text-sm text-red-700">Такой даты нет</p>}
           <div className="mt-3 flex justify-end gap-2">
             <button type="button" onClick={reset} className="rounded-xl border border-border px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface">

@@ -1,5 +1,7 @@
 "use client";
 
+import { AmountField, PinPad } from "@/components/numeric-keypad";
+import { TextField } from "@/components/text-keypad";
 import { useMemo, useState } from "react";
 import { splitSaleReturn, type SaleDetailDto, type SaleReturnDto } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
@@ -12,7 +14,10 @@ export function SaleReturnModal({
   onClose,
   onReturned,
   needsApproval = false,
+  keypad = false,
 }: {
+  // Opened from the till: quantities, reason and PIN on the on-screen keyboards.
+  keypad?: boolean;
   sale: SaleDetailDto;
   previousReturns: SaleReturnDto[];
   onClose: () => void;
@@ -100,18 +105,30 @@ export function SaleReturnModal({
                       </td>
                       <td className="px-4 py-2.5 text-right text-muted">{formatQuantity(max)}</td>
                       <td className="px-4 py-2.5 text-right">
-                        <input
-                          type="number"
-                          min={0}
-                          max={max}
-                          step="any"
-                          value={quantities[item.productId] ?? ""}
-                          onChange={(e) =>
-                            setQuantities((current) => ({ ...current, [item.productId]: e.target.value }))
-                          }
-                          placeholder="0"
-                          className="w-24 rounded-lg border border-border bg-surface px-2 py-1.5 text-right text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-                        />
+                        {keypad ? (
+                          <AmountField
+                            value={quantities[item.productId] ?? ""}
+                            onChange={(v) => setQuantities((current) => ({ ...current, [item.productId]: v }))}
+                            title={item.productName}
+                            decimal
+                            max={max}
+                            placeholder="0"
+                            className="ml-auto w-24 py-1.5 text-right text-sm"
+                          />
+                        ) : (
+                          <input
+                            type="number"
+                            min={0}
+                            max={max}
+                            step="any"
+                            value={quantities[item.productId] ?? ""}
+                            onChange={(e) =>
+                              setQuantities((current) => ({ ...current, [item.productId]: e.target.value }))
+                            }
+                            placeholder="0"
+                            className="w-24 rounded-lg border border-border bg-surface px-2 py-1.5 text-right text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                          />
+                        )}
                       </td>
                     </tr>
                   );
@@ -140,13 +157,17 @@ export function SaleReturnModal({
             <label className="mb-1.5 block text-sm font-medium text-foreground">
               Причина <span className="text-muted">(необязательно)</span>
             </label>
-            <input
-              type="text"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Например: не подошёл товар"
-              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-            />
+            {keypad ? (
+              <TextField value={reason} onChange={setReason} title="Причина возврата" withDigits placeholder="Например: не подошёл товар" />
+            ) : (
+              <input
+                type="text"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Например: не подошёл товар"
+                className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+              />
+            )}
           </div>
 
           <div className="mb-5 rounded-xl bg-surface-muted px-4 py-3">
@@ -171,15 +192,7 @@ export function SaleReturnModal({
           {needsApproval && (
             <div className="mb-4">
               <label className="mb-1.5 block text-sm font-medium text-foreground">PIN старшего кассира</label>
-              <input
-                type="password"
-                inputMode="numeric"
-                autoComplete="off"
-                maxLength={6}
-                value={pin}
-                onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
-                className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-center text-lg tracking-widest text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-              />
+              <PinPad value={pin} onChange={setPin} />
             </div>
           )}
 

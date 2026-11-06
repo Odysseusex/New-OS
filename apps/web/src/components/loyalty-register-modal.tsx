@@ -15,6 +15,7 @@ import { Modal } from "@/components/modal";
 import { ConsentSourceSelect, inputClass } from "@/components/loyalty-shared";
 import { PhoneField } from "@/components/numeric-keypad";
 import { TextField } from "@/components/text-keypad";
+import { BirthDateField, type BirthDateValue } from "@/components/birth-date-pad";
 
 export function LoyaltyRegisterModal({
   initialPhone = "",
@@ -30,6 +31,8 @@ export function LoyaltyRegisterModal({
 }) {
   const [phone, setPhone] = useState(initialPhone);
   const [name, setName] = useState("");
+  // The holder's own birthday, recorded right away (till only; optional).
+  const [birth, setBirth] = useState<BirthDateValue>({ day: "", month: "", year: "" });
   const [personalData, setPersonalData] = useState(false);
   const [channels, setChannels] = useState<LoyaltyConsentChannel[]>([]);
   const [source, setSource] = useState<LoyaltyConsentSource>(LoyaltyConsentSource.AT_TILL);
@@ -56,6 +59,20 @@ export function LoyaltyRegisterModal({
         marketingChannels: personalData ? channels : [],
         source,
       });
+      if (birth.day && birth.month) {
+        try {
+          await api.loyalty.addFamily(member.id, {
+            name: name.trim() || "Клиент",
+            relation: "Сам клиент",
+            birthDay: Number(birth.day),
+            birthMonth: Number(birth.month),
+            birthYear: birth.year ? Number(birth.year) : null,
+          });
+        } catch (err) {
+          // The member is registered; the birthday can be added from the cake icon.
+          window.alert(`Клиент зарегистрирован, но день рождения не сохранился: ${err instanceof ApiError ? err.message : "ошибка"}`);
+        }
+      }
       onSaved(member);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось зарегистрировать клиента");
@@ -85,6 +102,13 @@ export function LoyaltyRegisterModal({
             )}
           </div>
         </div>
+
+        {keypad && (
+          <div className="mb-4">
+            <label className="mb-1.5 block text-sm font-medium text-foreground">День рождения</label>
+            <BirthDateField value={birth} onChange={setBirth} />
+          </div>
+        )}
 
         <label className="mb-3 flex items-start gap-2 text-sm text-foreground">
           <input

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { ArrowBigUp, Delete } from "lucide-react";
 import { Modal } from "@/components/modal";
+import { isInTopWindow } from "@/components/numeric-keypad";
 
 // The till's own letter keyboard (names, relations) for a touch monoblock whose system keyboard
 // is switched off — full-width keys, Russian ЙЦУКЕН plus the Kazakh letters. No <input> behind
@@ -27,10 +28,13 @@ export function TextKeypadModal({
   initial = "",
   maxLength = 100,
   placeholder,
+  withDigits = false,
   onDone,
   onClose,
 }: {
   title: string;
+  // A row of digits on top (comments: «Инкассация 2»), not needed for names.
+  withDigits?: boolean;
   initial?: string;
   maxLength?: number;
   placeholder?: string;
@@ -39,7 +43,8 @@ export function TextKeypadModal({
 }) {
   const [text, setText] = useState(initial);
   const [shift, setShift] = useState(false);
-  const upper = startsWord(text) !== shift;
+  // Names start each word with a capital; free text only the first word.
+  const upper = (withDigits ? text === "" : startsWord(text)) !== shift;
 
   const add = (ch: string) => {
     setText((t) => (t.length >= maxLength ? t : t + ch));
@@ -50,9 +55,11 @@ export function TextKeypadModal({
 
   const handlers = useRef({ add, back, done });
   handlers.current = { add, back, done };
+  const scope = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (!isInTopWindow(scope.current)) return;
       if (e.key === "Backspace") {
         e.preventDefault();
         handlers.current.back();
@@ -72,11 +79,20 @@ export function TextKeypadModal({
 
   return (
     <Modal title={title} onClose={onClose} width="max-w-4xl">
-      <div className="mb-4 flex min-h-[3.75rem] items-center rounded-2xl border border-border bg-surface-muted px-4 py-3 text-2xl font-semibold text-foreground">
+      <div ref={scope} className="mb-4 flex min-h-[3.75rem] items-center rounded-2xl border border-border bg-surface-muted px-4 py-3 text-2xl font-semibold text-foreground">
         {text ? <span className="break-all">{text}</span> : <span className="text-muted">{placeholder}</span>}
         <span className="ml-0.5 inline-block h-7 w-0.5 animate-pulse bg-accent" />
       </div>
       <div className="space-y-2">
+        {withDigits && (
+          <div className="flex gap-1.5">
+            {["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"].map((d) => (
+              <button key={d} type="button" onClick={() => add(d)} className={clsx(key, "h-12 text-lg")}>
+                {d}
+              </button>
+            ))}
+          </div>
+        )}
         {ROWS.map((row, i) => (
           <div key={i} className={clsx("flex gap-1.5", i === 2 && "px-[4%]", i === 3 && "px-[12%]")}>
             {row.map((l) => (
@@ -128,11 +144,13 @@ export function TextField({
   title,
   placeholder,
   maxLength,
+  withDigits,
   className,
 }: {
   value: string;
   onChange: (value: string) => void;
   title: string;
+  withDigits?: boolean;
   placeholder?: string;
   maxLength?: number;
   className?: string;
@@ -156,6 +174,7 @@ export function TextField({
           initial={value}
           maxLength={maxLength}
           placeholder={placeholder}
+          withDigits={withDigits}
           onClose={() => setOpen(false)}
           onDone={(v) => {
             onChange(v);

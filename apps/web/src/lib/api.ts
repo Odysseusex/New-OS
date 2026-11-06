@@ -731,6 +731,8 @@ export const api = {
       request<SendLoyaltyTelegramResultDto>("/loyalty/telegram/send", { method: "POST", body: JSON.stringify({ memberIds, text }) }),
     addFamily: (memberId: string, dto: SaveLoyaltyFamilyMemberRequestDto) =>
       request<LoyaltyFamilyMemberDto>(`/loyalty/members/${memberId}/family`, { method: "POST", body: JSON.stringify(dto) }),
+    updateFamily: (familyId: string, dto: SaveLoyaltyFamilyMemberRequestDto) =>
+      request<LoyaltyFamilyMemberDto>(`/loyalty/members/family/${familyId}`, { method: "PATCH", body: JSON.stringify(dto) }),
     removeFamily: (familyId: string) => request<{ removed: true }>(`/loyalty/members/family/${familyId}`, { method: "DELETE" }),
     settings: () => request<LoyaltySettingsDto>("/loyalty/settings"),
     updateSettings: (dto: UpdateLoyaltySettingsRequestDto) =>

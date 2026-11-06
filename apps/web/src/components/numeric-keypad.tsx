@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type RefObject, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { Delete } from "lucide-react";
 import { Modal } from "@/components/modal";
@@ -11,12 +11,27 @@ import { Modal } from "@/components/modal";
 
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
 
-function usePhysicalKeys(onDigit: (d: string) => void, onBackspace: () => void, onEnter: () => void) {
+// True when the element sits in the window on top (a pad opened over a form answers alone).
+export function isInTopWindow(el: HTMLElement | null): boolean {
+  const roots = document.querySelectorAll("[data-modal-root]");
+  if (!el || roots.length === 0) return true;
+  return roots[roots.length - 1].contains(el);
+}
+
+export function usePhysicalKeys(onDigit: (d: string) => void, onBackspace: () => void, onEnter: () => void, scope?: RefObject<HTMLElement>) {
   const handlers = useRef({ onDigit, onBackspace, onEnter });
   handlers.current = { onDigit, onBackspace, onEnter };
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (scope && !isInTopWindow(scope.current)) return;
+      // A real field in the same window keeps its own typing; one behind the window (the till's
+      // scan field keeps focus) does not.
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA") && scope?.current) {
+        const roots = document.querySelectorAll("[data-modal-root]");
+        if (roots.length && roots[roots.length - 1].contains(t)) return;
+      }
       if (/^[0-9]$/.test(e.key)) {
         e.preventDefault();
         handlers.current.onDigit(e.key);
@@ -30,7 +45,7 @@ function usePhysicalKeys(onDigit: (d: string) => void, onBackspace: () => void, 
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [scope]);
 }
 
 const keyClass =
@@ -109,11 +124,13 @@ export function PhoneKeypadModal({
   const submit = () => {
     if (complete && !busy) onSubmit();
   };
-  usePhysicalKeys(add, back, submit);
+  const scope = useRef<HTMLDivElement>(null);
+  usePhysicalKeys(add, back, submit, scope);
 
   return (
     <Modal title={title} onClose={onClose} width="max-w-sm">
       <div
+        ref={scope}
         className={clsx(
           "mb-4 rounded-2xl border bg-surface-muted px-4 py-4 text-center text-[1.75rem] font-semibold tracking-wide tabular-nums",
           error ? "border-red-300 text-red-700" : "border-border text-foreground",
@@ -137,6 +154,13 @@ export function PhoneKeypadModal({
   );
 }
 
+// «1234.5» → «1 234,5» while typed (a trailing comma stays visible).
+function shownNumber(text: string) {
+  const [whole, frac] = text.split(".");
+  const w = Number(whole || "0").toLocaleString("ru-RU");
+  return frac === undefined ? w : `${w},${frac}`;
+}
+
 // A whole number typed on the pad (e.g. points to spend, a year), with an optional upper limit.
 export function NumberKeypadModal({
   title,
@@ -145,9 +169,12 @@ export function NumberKeypadModal({
   unit,
   maxDigits = 9,
   plain = false,
+  decimal = false,
   onDone,
   onClose,
 }: {
+  // A comma key for parts (кг, %, тиын); two places after it at most.
+  decimal?: boolean;
   title: string;
   initial: number;
   max?: number;
@@ -158,24 +185,30 @@ export function NumberKeypadModal({
   onDone: (value: number) => void;
   onClose: () => void;
 }) {
-  const [text, setText] = useState(initial > 0 ? String(Math.floor(initial)) : "");
+  const [text, setText] = useState(initial > 0 ? String(decimal ? initial : Math.floor(initial)) : "");
   const set = (next: string) => setText(next.replace(/^0+(?=\d)/, ""));
-  const value = text === "" ? 0 : Number(text);
+  const value = text === "" || text === "." ? 0 : Number(text);
   const over = value > max;
   const add = (d: string) => {
-    if (text.length < maxDigits) set(text + d);
+    if (d === "." || d === ",") {
+      if (decimal && !text.includes(".")) set((text || "0") + ".");
+      return;
+    }
+    const [whole, frac] = text.split(".");
+    if (frac !== undefined ? frac.length < 2 : whole.length < maxDigits) set(text + d);
   };
   const back = () => set(text.slice(0, -1));
   const done = () => onDone(Math.min(value, max));
-  usePhysicalKeys(add, back, done);
+  const scope = useRef<HTMLDivElement>(null);
+  usePhysicalKeys(add, back, done, scope);
 
   return (
     <Modal title={title} onClose={onClose} width="max-w-sm">
-      <div className="mb-1 rounded-2xl border border-border bg-surface-muted px-4 py-4 text-center text-[1.65rem] font-semibold tabular-nums text-foreground">
-        {text === "" ? (plain ? "—" : "0") : plain ? text : Number(text).toLocaleString("ru-RU")}
+      <div ref={scope} className="mb-1 rounded-2xl border border-border bg-surface-muted px-4 py-4 text-center text-[1.65rem] font-semibold tabular-nums text-foreground">
+        {text === "" ? (plain ? "—" : "0") : plain ? text : shownNumber(text)}
         {unit && <span className="ml-2 text-base font-medium text-muted">{unit}</span>}
       </div>
-      {plain ? (
+      {plain || max === Number.MAX_SAFE_INTEGER ? (
         <div className="mb-3" />
       ) : (
         <p className={clsx("mb-3 text-center text-sm", over ? "text-red-600" : "text-muted")}>
@@ -186,7 +219,13 @@ export function NumberKeypadModal({
         onDigit={add}
         onBackspace={back}
         onClear={() => set("")}
-        extraKey={plain ? undefined : { label: "Макс.", onPress: () => set(String(Math.floor(max))) }}
+        extraKey={
+          decimal
+            ? { label: ",", onPress: () => add(".") }
+            : plain || max === Number.MAX_SAFE_INTEGER
+              ? undefined
+              : { label: "Макс.", onPress: () => set(String(Math.floor(max))) }
+        }
       />
       <button
         type="button"
@@ -304,5 +343,90 @@ export function DigitsField({
         />
       )}
     </>
+  );
+}
+
+// An amount field for the till (money, a percent, a quantity): looks like an input, opens the pad.
+// `value` is the typed text («1500», «2.5»); empty = nothing typed.
+export function AmountField({
+  value,
+  onChange,
+  title,
+  unit,
+  decimal = false,
+  max,
+  placeholder,
+  className,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  title: string;
+  unit?: string;
+  decimal?: boolean;
+  max?: number;
+  placeholder?: string;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const n = Number(value.replace(",", "."));
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={clsx(
+          "w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-left text-lg tabular-nums transition hover:bg-surface-muted",
+          className,
+        )}
+      >
+        {value !== "" && Number.isFinite(n) ? (
+          <span className="text-foreground">
+            {shownNumber(String(n))}
+            {unit ? ` ${unit}` : ""}
+          </span>
+        ) : (
+          <span className="text-muted">{placeholder ?? "Нажмите, чтобы ввести"}</span>
+        )}
+      </button>
+      {open && (
+        <NumberKeypadModal
+          title={title}
+          initial={Number.isFinite(n) ? n : 0}
+          unit={unit}
+          decimal={decimal}
+          max={max}
+          onClose={() => setOpen(false)}
+          onDone={(v) => {
+            onChange(String(v));
+            setOpen(false);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+// A PIN typed on the till's pad, shown as dots. Enter (a physical keyboard) submits its form.
+export function PinPad({ value, onChange, maxLength = 6 }: { value: string; onChange: (v: string) => void; maxLength?: number }) {
+  const scope = useRef<HTMLDivElement>(null);
+  usePhysicalKeys(
+    (d) => {
+      if (value.length < maxLength) onChange(value + d);
+    },
+    () => onChange(value.slice(0, -1)),
+    () => scope.current?.closest("form")?.requestSubmit(),
+    scope,
+  );
+  return (
+    <div ref={scope} className="mx-auto max-w-xs">
+      <div className="mb-3 flex h-12 items-center justify-center gap-3 rounded-2xl border border-border bg-surface-muted" aria-label="PIN">
+        {value.length === 0 ? (
+          <span className="text-sm text-muted">PIN</span>
+        ) : (
+          Array.from({ length: value.length }, (_, i) => <span key={i} className="h-3 w-3 rounded-full bg-foreground" />)
+        )}
+      </div>
+      <NumericKeypad onDigit={(d) => value.length < maxLength && onChange(value + d)} onBackspace={() => onChange(value.slice(0, -1))} onClear={() => onChange("")} />
+    </div>
   );
 }
