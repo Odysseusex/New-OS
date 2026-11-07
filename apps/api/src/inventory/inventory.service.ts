@@ -1,3 +1,4 @@
+import { assertConsignmentAt } from "../common/consignment-location";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { CostingService } from "../costing/costing.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -227,6 +228,7 @@ export class InventoryService {
   async receive(user: AuthenticatedUser, dto: ReceiveStockDto): Promise<StockMovementDto> {
     const locationId = requireLocationScope(user, dto.locationId);
     await this.assertTrackable(user.organizationId, dto.productId);
+    await assertConsignmentAt(this.prisma, user.organizationId, locationId, [dto.productId]);
     const received = await this.prisma.product.findFirst({ where: { id: dto.productId, organizationId: user.organizationId }, select: { type: true } });
     if (received?.type === "SEMI_FINISHED") {
       throw new BadRequestException("Полуфабрикат появляется на складе только из производства — приход вручную невозможен");
@@ -327,6 +329,7 @@ export class InventoryService {
       throw new BadRequestException(`Эти товары не учитываются на складе: ${untracked.join(", ")}`);
     }
     if (kind === "receive") {
+      await assertConsignmentAt(this.prisma, organizationId, locationId, ids);
       const semi = products.filter((p) => p.type === "SEMI_FINISHED").map((p) => p.name);
       if (semi.length > 0) {
         throw new BadRequestException(`Полуфабрикат появляется на складе только из производства — приход вручную невозможен: ${semi.join(", ")}`);

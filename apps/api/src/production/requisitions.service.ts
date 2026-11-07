@@ -1,3 +1,4 @@
+import { assertConsignmentAt } from "../common/consignment-location";
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { MaterialRequisitionKind, Prisma, ProductionBatchStatus, StockMovementType } from "@prisma/client";
 import {
@@ -459,6 +460,7 @@ export class MaterialRequisitionsService {
     user: AuthenticatedUser,
     dto: { fromLocationId: string; toLocationId: string; note?: string; lines: MaterialRequisitionLineInputDto[] },
   ): Promise<MaterialRequisitionDto> {
+    await assertConsignmentAt(this.prisma, user.organizationId, dto.toLocationId, dto.lines.map((l) => l.productId));
     const draft = await this.create(user, { ...dto, planDate: debtDateKey(new Date()) }, MaterialRequisitionKind.TRANSFER);
     try {
       return await this.post(user, draft.id);

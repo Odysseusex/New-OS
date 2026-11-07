@@ -200,6 +200,9 @@ export interface ProductDto {
   consignmentSupplierId: string | null;
   consignmentSupplierName: string | null;
   consignmentPrice: number | null;
+  // The one point of sale such goods may be on (null = any point).
+  consignmentLocationId: string | null;
+  consignmentLocationName: string | null;
   // What this product costs at the point of sale the list was requested for
   // (`GET /products?locationId=…`). Equal to `price` unless that location has
   // its own price, and always equal to `price` when no location was asked
@@ -255,6 +258,7 @@ export interface CreateProductRequestDto {
   minQuantity?: number;
   consignmentSupplierId?: string | null;
   consignmentPrice?: number | null;
+  consignmentLocationId?: string | null;
 }
 
 export interface UpdateProductRequestDto {
@@ -273,4 +277,5 @@ export interface UpdateProductRequestDto {
   // again. Already-recorded debt is unaffected: it lives on the sale lines.
   consignmentSupplierId?: string | null;
   consignmentPrice?: number | null;
+  consignmentLocationId?: string | null;
 }

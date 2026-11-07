@@ -63,4 +63,9 @@ export class UpdateProductDto {
   @IsNumber()
   @Min(0)
   consignmentPrice?: number | null;
+
+  // The one point of sale consignment goods may be on (null = any point).
+  @IsOptional()
+  @IsString()
+  consignmentLocationId?: string | null;
 }

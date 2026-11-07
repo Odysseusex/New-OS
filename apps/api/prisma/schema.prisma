@@ -464,6 +464,7 @@ model Location {
   priceSourceLocationId String?
   priceSource           Location?  @relation("LocationPriceSource", fields: [priceSourceLocationId], references: [id], onDelete: SetNull)
   priceFollowers        Location[] @relation("LocationPriceSource")
+  consignmentProducts   Product[]  @relation("ConsignmentLocation")
   employees         Employee[]
   plannedFixedCosts PlannedFixedCost[]
   productPrices     ProductLocationPrice[]
@@ -678,6 +679,10 @@ model Product {
   consignmentSupplierId String?
   consignmentSupplier   Supplier?   @relation(fields: [consignmentSupplierId], references: [id])
   consignmentPrice      Decimal?    @db.Decimal(12, 2)
+  // The ONE point of sale such goods may be on (owner, 07.11.2026): sold, received and moved in only there.
+  // Null = any point (as before). Cleared when the product stops being consignment.
+  consignmentLocationId String?
+  consignmentLocation   Location?   @relation("ConsignmentLocation", fields: [consignmentLocationId], references: [id], onDelete: SetNull)
   // The till's "произвольная сумма" line: a product whose price is typed by
   // the cashier at the moment of sale instead of coming from `price`. Exists
   // so an item that has not been received into the catalogue yet cannot stop

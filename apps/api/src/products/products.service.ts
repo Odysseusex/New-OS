@@ -32,7 +32,7 @@ const PRODUCT_AUDIT_FIELDS = [
 // A till tile needs a few dozen KB; the browser resizes before sending.
 const PRODUCT_PHOTO_MAX_BYTES = 400 * 1024;
 
-const PRODUCT_INCLUDE = { categoryRef: CATEGORY_WITH_PARENT, consignmentSupplier: true, photo: { select: { updatedAt: true } } };
+const PRODUCT_INCLUDE = { categoryRef: CATEGORY_WITH_PARENT, consignmentSupplier: true, consignmentLocation: { select: { name: true } }, photo: { select: { updatedAt: true } } };
 
 const SKU_PREFIX_BY_TYPE: Record<ProductType, string> = {
   [ProductType.RAW_MATERIAL]: "ING",
@@ -92,7 +92,10 @@ export class ProductsService {
     ]);
 
     const priceByProduct = new Map(overrides.map((o) => [o.productId, o.price.toNumber()]));
-    return products.map((product) => ({
+    // Somebody else's goods tied to another point are not offered at this one (till, pickers).
+    return products
+      .filter((product) => !locationId || !product.consignmentSupplierId || !product.consignmentLocationId || product.consignmentLocationId === locationId)
+      .map((product) => ({
       ...this.toDto(product),
       effectivePrice: priceByProduct.get(product.id) ?? product.price.toNumber(),
     }));
@@ -328,6 +331,8 @@ export class ProductsService {
       await this.assertCategoryFits(organizationId, dto.categoryId, dto.type, true);
     }
     await this.assertConsignmentValid(organizationId, dto.consignmentSupplierId, dto.consignmentPrice);
+    await this.assertConsignmentLocation(organizationId, dto.consignmentSupplierId ? dto.consignmentLocationId : null);
+    if (!dto.consignmentSupplierId) dto.consignmentLocationId = null;
     if (dto.type === ProductType.SEMI_FINISHED && dto.consignmentSupplierId) {
       throw new BadRequestException("Полуфабрикат не может быть товаром под реализацию");
     }
@@ -410,6 +415,14 @@ export class ProductsService {
       dto.consignmentSupplierId !== undefined ? dto.consignmentSupplierId : product.consignmentSupplierId,
       dto.consignmentPrice !== undefined ? dto.consignmentPrice : product.consignmentPrice?.toNumber() ?? null,
     );
+    const finalSupplier = dto.consignmentSupplierId !== undefined ? dto.consignmentSupplierId : product.consignmentSupplierId;
+    // Our own goods have no consignment point: clearing the supplier clears it too.
+    const finalConsignmentLocation = finalSupplier
+      ? dto.consignmentLocationId !== undefined
+        ? dto.consignmentLocationId
+        : product.consignmentLocationId
+      : null;
+    if (dto.consignmentLocationId !== undefined) await this.assertConsignmentLocation(organizationId, finalConsignmentLocation);
 
     const finalType = dto.type ?? (product.type as ProductType);
     if (dto.type !== undefined && dto.type !== product.type) {
@@ -470,6 +483,7 @@ export class ProductsService {
             ? { consignmentSupplierId: dto.consignmentSupplierId }
             : {}),
           ...(dto.consignmentPrice !== undefined ? { consignmentPrice: dto.consignmentPrice } : {}),
+          ...(finalConsignmentLocation !== product.consignmentLocationId ? { consignmentLocationId: finalConsignmentLocation } : {}),
         },
         include: PRODUCT_INCLUDE,
       });
@@ -664,6 +678,14 @@ export class ProductsService {
     }
   }
 
+  // The point consignment goods are tied to must be one of our points of sale.
+  private async assertConsignmentLocation(organizationId: string, locationId: string | null | undefined): Promise<void> {
+    if (!locationId) return;
+    const location = await this.prisma.location.findFirst({ where: { id: locationId, organizationId }, select: { type: true } });
+    if (!location) throw new NotFoundException("Точка не найдена");
+    if (location.type !== "STORE") throw new BadRequestException("Товар под реализацию можно закрепить только за точкой продаж");
+  }
+
   // ── Photo for the till tile ──
   async setPhoto(organizationId: string, productId: string, dataUrl: string, actorId: string | null): Promise<ProductDto> {
     const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl ?? "");
@@ -727,6 +749,8 @@ export class ProductsService {
     consignmentSupplierId: string | null;
     consignmentSupplier: { name: string } | null;
     consignmentPrice: { toNumber: () => number } | null;
+    consignmentLocationId?: string | null;
+    consignmentLocation?: { name: string } | null;
     minQuantity: { toNumber: () => number };
     photo?: { updatedAt: Date } | null;
   }): ProductDto {
@@ -750,6 +774,8 @@ export class ProductsService {
       consignmentSupplierId: product.consignmentSupplierId,
       consignmentSupplierName: product.consignmentSupplier?.name ?? null,
       consignmentPrice: product.consignmentPrice?.toNumber() ?? null,
+      consignmentLocationId: product.consignmentLocationId ?? null,
+      consignmentLocationName: product.consignmentLocation?.name ?? null,
       // No location in scope here, so the default price IS the effective one.
       // findAllForOrganization overwrites this when asked about a location.
       effectivePrice: product.price.toNumber(),

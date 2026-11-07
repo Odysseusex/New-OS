@@ -826,6 +826,11 @@ consignment by `consignmentSupplierId` alone; `consignmentPrice` is retired).
   inventory event for those lines; a return reverses the payable, not revenue.
   The debt (`getConsignmentOwed`, `ConsignmentService`) is Σ line `subtotal` −
   returns − payments. The general ledger follows from the events automatically.
+- **One point of sale per consignment product** (owner, 07.11.2026; migration `20261124120000_consignment_location`):
+  `Product.consignmentLocationId` (STORE only, «Точка продажи» in the product form, null = any point; cleared when the
+  supplier is cleared). `common/consignment-location.ts` `assertConsignmentAt` refuses the sale (`SalesService.create`),
+  the stock receipt (single + batch) and «Перемещение» INTO another point; `GET /products?locationId=` leaves such goods
+  out at other points (the till, pickers). Stock already sitting elsewhere is not moved — write it off / transfer it back.
 - Rolling this out on a ledger that is already ON: consignment sales posted
   before the change keep their old entries, and diagnostics show SOURCE_DRIFT
   (a WARNING) for them — reverse and repost those, never edit.

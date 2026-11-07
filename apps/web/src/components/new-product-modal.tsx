@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Image as ImageIcon } from "lucide-react";
-import type { CategoryDto, ProductDto, SupplierDto } from "@bakery-os/shared";
+import type { CategoryDto, LocationDto, ProductDto, SupplierDto } from "@bakery-os/shared";
+import { LocationType } from "@bakery-os/shared";
 import { PRODUCT_TYPE_LABELS_RU, PRODUCT_TYPE_ORDER, ProductType, Unit, UNIT_LABELS_RU, categoryAcceptsType } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { productPhotoUrl, resizeProductPhoto } from "@/lib/product-photo";
@@ -50,6 +51,15 @@ export function NewProductModal({
   const [isConsignment, setIsConsignment] = useState(Boolean(product?.consignmentSupplierId));
   const [consignmentSupplierId, setConsignmentSupplierId] = useState(product?.consignmentSupplierId ?? "");
   const [suppliers, setSuppliers] = useState<SupplierDto[]>([]);
+  // The one point of sale somebody else's goods may stand on ("" = any point).
+  const [consignmentLocationId, setConsignmentLocationId] = useState(product?.consignmentLocationId ?? "");
+  const [stores, setStores] = useState<LocationDto[]>([]);
+  useEffect(() => {
+    api.locations
+      .list()
+      .then((all) => setStores(all.filter((l) => l.type === LocationType.STORE && (l.isActive || l.id === product?.consignmentLocationId))))
+      .catch(() => setStores([]));
+  }, [product?.consignmentLocationId]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -104,6 +114,7 @@ export function NewProductModal({
         // actually clears the link rather than leaving the old one in place.
         consignmentSupplierId: isConsignment ? consignmentSupplierId : null,
         consignmentPrice: null,
+        consignmentLocationId: isConsignment ? consignmentLocationId || null : null,
       };
       const trimmedBarcode = barcode.trim();
       const trimmedNtin = ntin.trim();
@@ -327,6 +338,24 @@ export function NewProductModal({
                       </option>
                     ))}
                   </select>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-foreground">Точка продажи</label>
+                  <select
+                    value={consignmentLocationId}
+                    onChange={(e) => setConsignmentLocationId(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                  >
+                    <option value="">Все точки</option>
+                    {stores.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.name}
+                      </option>
+                    ))}
+                  </select>
+                  {consignmentLocationId && (
+                    <p className="mt-1 text-xs text-muted">На других точках товар не продаётся и не принимается на остаток</p>
+                  )}
                 </div>
               </div>
             )}

@@ -68,6 +68,7 @@ import { applyCustomerPayment } from "./customer-payment";
 import { LoyaltyPointsService, PreparedSaleLoyalty } from "../loyalty/loyalty-points.service";
 import { CustomerBotService } from "../loyalty/customer-bot.service";
 import { startOfZonedDay } from "../common/zoned-day";
+import { assertConsignmentAt } from "../common/consignment-location";
 import { dueDateFor, dueKeyOf } from "../debts/due-date";
 
 // Calendar days in reports are the owner's days, not the server's. Render runs
@@ -1192,6 +1193,7 @@ export class SalesService {
     }
 
     const productIds = dto.items.map((i) => i.productId);
+    await assertConsignmentAt(this.prisma, user.organizationId, locationId, productIds);
 
     if (TILL_ROLES.includes(user.role)) {
       await assertTillShiftOpen(this.prisma, user, locationId);
