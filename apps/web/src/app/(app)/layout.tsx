@@ -59,22 +59,29 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // The till draws its own rail and header (logout, «В систему»), edge to edge.
+  const isTill = pathname === CASHIER_ONLY_ROUTE;
+
   return (
     <div className="flex h-screen h-[100dvh] bg-background">
       <MobileEnhancer />
-      {!isCashier && (
+      {!isCashier && !isTill && (
         <div className="print:hidden">
           <Sidebar open={navOpen} onClose={() => setNavOpen(false)} />
         </div>
       )}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="print:hidden">
-          <Topbar onMenu={isCashier ? undefined : () => setNavOpen(true)} phoneMenu={!showMobileNav} />
-        </div>
+        {!isTill && (
+          <div className="print:hidden">
+            <Topbar onMenu={isCashier ? undefined : () => setNavOpen(true)} phoneMenu={!showMobileNav} />
+          </div>
+        )}
         <main
           className={
-            // Room for the phone's bottom bar (not on the till, which has its own).
-            `flex-1 overflow-y-auto px-3 py-4 sm:px-6 md:py-5 lg:px-8 lg:py-8 ${showMobileNav ? "pb-20 md:pb-5" : ""}`
+            isTill
+              ? "flex-1 overflow-y-auto lg:overflow-hidden"
+              : // Room for the phone's bottom bar (not on the till, which has its own).
+                `flex-1 overflow-y-auto px-3 py-4 sm:px-6 md:py-5 lg:px-8 lg:py-8 ${showMobileNav ? "pb-20 md:pb-5" : ""}`
           }
         >
           {children}
