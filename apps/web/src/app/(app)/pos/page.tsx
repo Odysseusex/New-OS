@@ -77,6 +77,7 @@ import { PosLoyaltyBlock } from "@/components/pos-loyalty";
 import { PosOrderBlock } from "@/components/pos-order";
 import { formatMoney, formatPoints, formatQuantity } from "@/lib/format";
 import { productPhotoUrl } from "@/lib/product-photo";
+import { ScrollButtons, useTapGuard } from "@/components/pos-scroll";
 
 // A cart line carries its own price rather than reading it off the product,
 // because an open-price line's amount is typed by the cashier and two such
@@ -207,6 +208,8 @@ export default function PosPage() {
   const [couponLoading, setCouponLoading] = useState(false);
 
   const scanRef = useRef<HTMLInputElement>(null);
+  // A drag across the tiles scrolls; only a clean press adds a product (touch monoblock).
+  const gridTap = useTapGuard<HTMLDivElement>();
 
   // The scan box must own the keyboard: a USB scanner is just a keyboard that
   // types very fast and presses Enter, so whatever is focused receives the
@@ -917,7 +920,11 @@ export default function PosPage() {
               five columns into 646px and wrapped every name onto three
               lines. auto-fill just fits as many ~150px tiles as there is
               room for, on both. */}
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2.5">
+          <div
+            ref={gridTap.ref}
+            {...gridTap.handlers}
+            className="grid touch-pan-y select-none grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2.5"
+          >
             {/* Pinned quick-add buttons (e.g. Пакет) — always first, regardless
                 of category/search, so a cashier reaches them in one tap. */}
             {locationId &&
@@ -952,7 +959,7 @@ export default function PosPage() {
                 {/* A photo only where one was uploaded: tiles without stay compact. */}
                 {p.photoVersion ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={productPhotoUrl(p) ?? undefined} alt="" loading="lazy" className="aspect-[4/3] w-full rounded-xl object-cover" />
+                  <img src={productPhotoUrl(p) ?? undefined} alt="" loading="lazy" draggable={false} className="aspect-[4/3] w-full rounded-xl object-cover" />
                 ) : null}
                 <span className="line-clamp-3 text-base font-semibold text-foreground">{p.name}</span>
                 <span className="text-lg font-bold text-accent">{formatMoney(p.effectivePrice)}</span>
@@ -964,6 +971,7 @@ export default function PosPage() {
               </p>
             )}
           </div>
+          <ScrollButtons targetRef={gridTap.ref} />
         </div>
 
         <div id="pos-check" className="flex h-fit scroll-mt-4 flex-col rounded-2xl border border-border bg-surface shadow-card lg:sticky lg:top-4">
