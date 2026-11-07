@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Cake, UserRound, X } from "lucide-react";
+import clsx from "clsx";
+import { Cake, Plus, UserRound, X } from "lucide-react";
 import type { LoyaltyFamilyMemberDto, LoyaltyMemberDto } from "@bakery-os/shared";
 import { formatKzPhone, KZ_PHONE_INVALID_MESSAGE, LoyaltyMemberStatus, normalizeKzPhone } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
-import { formatMoneyPrecise, formatPoints } from "@/lib/format";
+import { formatMoney, formatPoints } from "@/lib/format";
 import { LoyaltyRegisterModal } from "@/components/loyalty-register-modal";
 import { LoyaltyFamilySection } from "@/components/loyalty-family-section";
 import { Modal } from "@/components/modal";
@@ -76,63 +77,72 @@ export function PosLoyaltyBlock({
   }
 
   if (member) {
+    const on = pointsToRedeem > 0;
+    const pending = member.pointsPending
+      ? `ещё ${formatPoints(member.pointsPending.points)} с ${new Date(member.pointsPending.from).toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "2-digit", month: "2-digit" })}`
+      : null;
     return (
-      <div className="rounded-xl border border-border px-3 py-2">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-foreground">
-              {formatKzPhone(member.phone)}
-              {member.name ? ` · ${member.name}` : ""}
-            </p>
-            <p className="text-xs text-muted">
-              Баллов: {formatPoints(member.pointsBalance)}
-              {member.pointsPending &&
-                ` · ещё ${formatPoints(member.pointsPending.points)} с ${new Date(member.pointsPending.from).toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "2-digit", month: "2-digit" })}`}
-            </p>
+      <div className="rounded-[1.125rem] border border-border p-3.5">
+        <div className="flex items-center gap-3">
+          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[var(--accent-soft)] text-base font-semibold text-accent">
+            {(member.name ?? "К").charAt(0).toUpperCase()}
           </div>
-          <button
-            onClick={() => setBirthdaysOpen(true)}
-            aria-label="Дни рождения"
-            title="Дни рождения"
-            className="ml-auto shrink-0 text-muted transition hover:text-accent"
-          >
-            <Cake className="h-4 w-4" strokeWidth={1.75} />
-          </button>
-          <button
-            onClick={() => {
-              onMemberChange(null);
-              onPointsChange(0);
-            }}
-            aria-label="Убрать клиента"
-            className="shrink-0 text-muted transition hover:text-red-600"
-          >
-            <X className="h-4 w-4" strokeWidth={1.75} />
-          </button>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-base font-semibold text-foreground">{member.name || "Клиент"}</p>
+            <p className="truncate text-[0.8125rem] text-muted">{formatKzPhone(member.phone)}</p>
+          </div>
+          <div className="shrink-0 text-right leading-tight">
+            <p className="text-lg font-semibold text-accent">{formatPoints(member.pointsBalance)}</p>
+            <p className="text-xs text-muted">баллов</p>
+          </div>
+          <div className="flex shrink-0 flex-col gap-1 border-l border-border pl-2">
+            <button onClick={() => setBirthdaysOpen(true)} aria-label="Дни рождения" title="Дни рождения" className="rounded-lg p-1 text-muted transition hover:text-accent">
+              <Cake className="h-4 w-4" strokeWidth={1.75} />
+            </button>
+            <button
+              onClick={() => {
+                onMemberChange(null);
+                onPointsChange(0);
+              }}
+              aria-label="Убрать клиента"
+              title="Убрать клиента"
+              className="rounded-lg p-1 text-muted transition hover:text-red-600"
+            >
+              <X className="h-4 w-4" strokeWidth={1.75} />
+            </button>
+          </div>
         </div>
         {member.pointsBalance > 0 && (
-          <div className="mt-2 flex items-center gap-2">
+          <div className="mt-3 flex items-center gap-3 rounded-xl bg-background px-3.5 py-2.5">
             <button
               type="button"
               onClick={() => setPointsPad(true)}
               disabled={cap <= 0}
-              className="min-w-0 flex-1 rounded-xl border border-border bg-surface px-3 py-1.5 text-left text-sm transition hover:bg-surface-muted disabled:opacity-40"
+              className="min-w-0 flex-1 text-left text-[0.9375rem] text-foreground disabled:opacity-40"
             >
-              {pointsToRedeem > 0 ? (
-                <span className="font-medium text-foreground">Списать {formatPoints(pointsToRedeem)}</span>
+              {cap <= 0 ? (
+                <span className="text-muted">Списать баллами нельзя: в чеке нет товаров по полной цене</span>
               ) : (
-                <span className="text-muted">Списать баллов</span>
+                <>
+                  Списать баллами <b className="font-semibold">{formatMoney(on ? discount || pointsToRedeem : cap)}</b>
+                  {on && pointsToRedeem < cap && <span className="ml-1.5 text-xs text-muted">из {formatPoints(cap)}</span>}
+                </>
               )}
             </button>
             <button
-              onClick={() => setPoints(cap)}
+              type="button"
+              role="switch"
+              aria-checked={on}
+              aria-label="Списать баллами"
               disabled={cap <= 0}
-              className="shrink-0 rounded-xl border border-border px-3 py-1.5 text-sm font-medium text-foreground transition hover:bg-surface-muted disabled:opacity-40"
+              onClick={() => setPoints(on ? 0 : cap)}
+              className={clsx("relative h-7 w-12 shrink-0 rounded-full transition disabled:opacity-40", on ? "bg-accent" : "bg-[var(--border-strong,#d1d5db)]")}
             >
-              Макс. {formatPoints(cap)}
+              <span className={clsx("absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all", on ? "left-[1.375rem]" : "left-0.5")} />
             </button>
           </div>
         )}
-        {discount > 0 && <p className="mt-1.5 text-xs font-medium text-accent">Оплата баллами: −{formatMoneyPrecise(discount)}</p>}
+        {pending && <p className="mt-2 px-1 text-xs text-muted">Бонус ждёт: {pending}</p>}
         {pointsPad && (
           <NumberKeypadModal
             title="Списать баллов"
@@ -160,10 +170,16 @@ export function PosLoyaltyBlock({
           setNotFound(null);
           setOpen(true);
         }}
-        className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+        className="flex w-full items-center gap-3 rounded-[1.125rem] border border-dashed border-[var(--border-strong,#d1d5db)] px-3.5 py-3 text-left transition hover:bg-surface-muted"
       >
-        <UserRound className="h-4 w-4" strokeWidth={1.75} />
-        Клиент бонусной программы
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[var(--accent-soft)] text-accent">
+          <UserRound className="h-5 w-5" strokeWidth={1.75} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[0.9375rem] font-semibold text-foreground">Бонусный клиент</span>
+          <span className="block text-[0.8125rem] text-muted">Добавить по номеру телефона</span>
+        </span>
+        <Plus className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} />
       </button>
       {open && (
         <PhoneKeypadModal

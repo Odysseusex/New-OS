@@ -56,18 +56,23 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // The till draws its own rail and header (logout, «В систему»), edge to edge.
+  const isTill = pathname === CASHIER_ONLY_ROUTE;
+
   return (
     <div className="flex h-screen bg-background">
-      {!isCashier && (
+      {!isCashier && !isTill && (
         <div className="print:hidden">
           <Sidebar open={navOpen} onClose={() => setNavOpen(false)} />
         </div>
       )}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="print:hidden">
-          <Topbar onMenu={isCashier ? undefined : () => setNavOpen(true)} />
-        </div>
-        <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 lg:px-8 lg:py-8">{children}</main>
+        {!isTill && (
+          <div className="print:hidden">
+            <Topbar onMenu={isCashier ? undefined : () => setNavOpen(true)} />
+          </div>
+        )}
+        <main className={isTill ? "flex-1 overflow-y-auto lg:overflow-hidden" : "flex-1 overflow-y-auto px-4 py-5 sm:px-6 lg:px-8 lg:py-8"}>{children}</main>
       </div>
     </div>
   );

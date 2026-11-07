@@ -22,6 +22,37 @@
   --muted: #57534e;
 }
 
+/* The till (/pos) has its own look, chosen by the owner from a reference: white cards on a cool
+   grey page, one coral accent. Scoped to the till's root, so every window opened over it (payment,
+   keypads, shift, history) follows while the rest of ArAmir OS keeps its own colours. Opacity
+   modifiers (bg-accent/10) do not work with these var() colours, hence the explicit soft tones. */
+.till-theme {
+  --background: #f5f6f8;
+  --foreground: #15171c;
+  --surface: #ffffff;
+  --surface-muted: #f2f3f6;
+  --border: #e4e6ec;
+  --border-strong: #c9cdd6;
+  --accent: #eb5833;
+  --accent-foreground: #ffffff;
+  --accent-soft: #fff1ec;
+  --accent-line: #f4b39f;
+  --muted: #6b7180;
+  color: var(--foreground);
+  background: var(--background);
+}
+/* Windows over the till: rounder, softer, a heading that reads like the till's own. */
+.till-theme [data-modal-root] {
+  border-radius: 1.75rem;
+  border-color: transparent;
+  padding: 1.75rem;
+  box-shadow: 0 30px 80px rgba(16, 24, 40, 0.22);
+}
+.till-theme [data-modal-root] > div:first-child > h2 {
+  font-size: 1.25rem;
+  letter-spacing: -0.01em;
+}
+
 body {
   color: var(--foreground);
   background: var(--background);
