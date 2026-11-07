@@ -205,6 +205,12 @@ Don't redo a till restyle without a fresh request. Learned on the way: Tailwind 
 (`bg-accent/10`, `border-accent/40`, `text-muted/70`) generate NOTHING here — the colours are plain `var()` without
 `<alpha-value>` — so such classes in existing screens are silent no-ops.
 
+**Scrolling the till's grid on the monoblock** (cashier's complaint: scrolling by dragging over tiles added products):
+`components/pos-scroll.tsx` — `useTapGuard` on the grid counts a press as a tap only if the finger moved < 12 px and the
+page did not scroll (a browser-taken pan = `pointercancel` = no tap); a MOUSE drag over the grid scrolls the page by hand
+(cheap touch panels report the finger as a mouse and have no native drag-scroll); `select-none`, images not draggable.
+`ScrollButtons` = big sticky «вверх / вниз» under the grid (lg and up).
+
 **Till digit pad** (`components/numeric-keypad.tsx`): the till's monoblocks will have the system on-screen keyboard
 switched off, so every DIGIT entry on the till uses our own pad — no <input> behind it (nothing pops the system keyboard),
 a physical keyboard/scanner still types into it. `PhoneKeypadModal` (+7 and ten digits, mask «+7 (7__) ___ __ __», a
