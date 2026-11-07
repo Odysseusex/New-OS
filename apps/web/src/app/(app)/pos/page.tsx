@@ -51,6 +51,8 @@ import {
   TILL_APPROVER_ROLES,
   isPointsRedeemableLine,
   manualDiscountTarget,
+  parseCardPayload,
+  LoyaltyMemberStatus,
 } from "@bakery-os/shared";
 import { CheckDiscountModal, PinLoginModal, SeniorPinModal, type AppliedDiscount } from "@/components/till-approval";
 import { Modal } from "@/components/modal";
@@ -557,6 +559,31 @@ export default function PosPage() {
     if (byCode.length > 1) {
       setError(`Штрихкод ${raw} привязан к нескольким товарам — исправьте в номенклатуре`);
       setQuery("");
+      return;
+    }
+
+    // The bonus card from the customer app (ar-amir.com/app): its rotating QR is
+    // digits only, the phone then a code. The server checks the code.
+    if (byCode.length === 0 && parseCardPayload(raw)) {
+      setQuery("");
+      if (!loyaltySettings?.enabled) {
+        setError("Бонусная программа выключена");
+        return;
+      }
+      api.loyalty
+        .card(raw)
+        .then((found) => {
+          if (!found.member) {
+            setError("Клиент не найден");
+          } else if (found.member.status !== LoyaltyMemberStatus.ACTIVE) {
+            setError("Клиент не участвует в программе: нет согласия на обработку персональных данных");
+          } else {
+            setLoyaltyMember(found.member);
+            setPointsToRedeem(0);
+            setError(null);
+          }
+        })
+        .catch((err) => setError(err instanceof ApiError ? err.message : "Не удалось прочитать карту клиента"));
       return;
     }
 

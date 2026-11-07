@@ -50,6 +50,8 @@ export enum LoyaltyConsentSource {
   TELEGRAM_BOT = "TELEGRAM_BOT",
   // The customer wrote СТОП / СТАРТ to our WhatsApp number (or blocked marketing there).
   WHATSAPP = "WHATSAPP",
+  // The customer signed up / signed in to the customer app themselves.
+  CUSTOMER_APP = "CUSTOMER_APP",
 }
 
 export const LOYALTY_CONSENT_SOURCE_LABELS_RU: Record<LoyaltyConsentSource, string> = {
@@ -59,6 +61,7 @@ export const LOYALTY_CONSENT_SOURCE_LABELS_RU: Record<LoyaltyConsentSource, stri
   [LoyaltyConsentSource.OTHER]: "Другое",
   [LoyaltyConsentSource.TELEGRAM_BOT]: "Telegram-бот",
   [LoyaltyConsentSource.WHATSAPP]: "WhatsApp",
+  [LoyaltyConsentSource.CUSTOMER_APP]: "Приложение клиента",
 };
 
 // ── Kazakhstan phone numbers ────────────────────────────────────────────────

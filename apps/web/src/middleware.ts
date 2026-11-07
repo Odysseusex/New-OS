@@ -11,6 +11,8 @@ export function middleware(req: NextRequest) {
   if (!PUBLIC_SITE_HOSTS.has(host)) return NextResponse.next();
 
   const { pathname } = req.nextUrl;
+  // The customer app lives at ar-amir.com/app as it is (not inside the site).
+  if (pathname === "/app" || pathname.startsWith("/app/")) return NextResponse.next();
   // Verification files at the root (Meta's «Upload an HTML file») are served as they are.
   if (/^\/[a-z0-9]+\.html$/.test(pathname)) return NextResponse.next();
   // Links inside the site point at /ar-amir…; on the domain the clean path is used.

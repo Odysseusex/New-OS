@@ -26,4 +26,4 @@ export function applyUiScale(percent: number) {
 
 // Runs before the first paint (root layout), so a scaled device never flashes
 // at full size. The public bakery site is never scaled.
-export const UI_SCALE_BOOT_SCRIPT = `try{var s=Number(localStorage.getItem("${KEY}"));if(s&&s!==100&&location.pathname.indexOf("/ar-amir")!==0)document.documentElement.style.fontSize=s+"%"}catch(e){}`;
+export const UI_SCALE_BOOT_SCRIPT = `try{var s=Number(localStorage.getItem("${KEY}"));if(s&&s!==100&&location.pathname.indexOf("/ar-amir")!==0&&location.pathname.indexOf("/app")!==0)document.documentElement.style.fontSize=s+"%"}catch(e){}`;

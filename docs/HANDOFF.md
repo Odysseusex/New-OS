@@ -27,6 +27,14 @@ simple Russian (see CLAUDE.md conventions).
   paid plan (free keeps only 6 h of history), Render Starter ($7, free sleeps after 15 min), a password manager,
   2FA recovery codes, a weekly data download and a monthly ZIP of the code.
 
+## Customer app (2026-11-07) — ar-amir.com/app
+
+Step 1 shipped: sign-in by a WhatsApp/Telegram message, card with rotating QR, balance, history, profile; the till's
+scan box reads the card QR. Waiting on the owner: set the WhatsApp webhook in Meta (sign-in needs inbound messages),
+buy a 2D USB scanner for the till, give the go-ahead on levels (step 2). Note: `site-info.ts` BONUS still says 5 %/30 %
+(the real settings are a 5 000 ₸ welcome bonus and 20 %) — the site mirrors them by hand. Flaky: `whatsapp.spec`
+«points about to expire: one reminder» counts a GLOBAL sweep, so another suite's leftovers can make it fail once.
+
 ## Open items / decisions waiting for the owner
 * FIXED 2026-10-16: «today»/rolling day boundaries now start at Almaty midnight (`common/zoned-day.ts`) — Sales summary, Network overview, Finance today, period comparisons, Telegram reports. (AI-центр buckets left as they were — module deferred.)
 * Mass flagging of goods «под реализацию» by SKU file (the village's goods): proposed, NOT built. The owner saw a

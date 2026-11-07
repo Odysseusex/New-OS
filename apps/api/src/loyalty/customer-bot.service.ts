@@ -19,6 +19,7 @@ import { recordChannelConsent } from "./channel-consent";
 import { LoyaltyPointsService } from "./loyalty-points.service";
 import { consentState } from "./loyalty.service";
 import { pointsPosition } from "./points-ledger";
+import { confirmClubLogin } from "../club/club-confirm";
 import { WhatsAppService, WhatsAppTemplateKey } from "./whatsapp.service";
 
 // The CUSTOMER bot — a separate bot from the staff one (its own token,
@@ -65,6 +66,8 @@ export class CustomerBotService implements OnModuleInit {
   private bot: Telegraf | null = null;
   private transport: BotTransport | null = null;
   private username: string | null = null;
+  // Customer-app sign-ins started from the bot's deep link, by chat (minutes-long).
+  private pendingLogins = new Map<string, { code: string; at: number }>();
   // Why the bot is not connected, in words the owner can act on (never the token).
   private problem: string | null = null;
   private lastAttempt = 0;
@@ -156,7 +159,9 @@ export class CustomerBotService implements OnModuleInit {
         .then(reply)
         .catch((err) => this.logger.error("Customer bot handler failed", err instanceof Error ? err.stack : String(err)));
 
-    bot.start((ctx) => safe(async () => this.onStart(String(ctx.chat.id)), (r) => ctx.reply(r.text, { parse_mode: "HTML", ...(r.extra ?? {}) })));
+    bot.start((ctx) =>
+      safe(async () => this.onStart(String(ctx.chat.id), ctx.startPayload), (r) => ctx.reply(r.text, { parse_mode: "HTML", ...(r.extra ?? {}) })),
+    );
     bot.on("contact", (ctx) =>
       safe(
         async () => this.onContact(String(ctx.chat.id), String(ctx.from.id), ctx.message.contact),
@@ -189,7 +194,14 @@ export class CustomerBotService implements OnModuleInit {
 
   // ── conversation (plain methods, so they are testable without Telegram) ────
 
-  async onStart(chatId: string): Promise<BotReply> {
+  async onStart(chatId: string, payload?: string): Promise<BotReply> {
+    // Opened from the customer app's «Войти через Telegram»: the code waits for the
+    // customer's own contact, which is what proves the number.
+    const login = /^in_(\d{6})$/.exec(payload ?? "");
+    if (login) {
+      this.pendingLogins.set(chatId, { code: login[1], at: Date.now() });
+      return { text: "Чтобы войти в приложение Ар Амир, нажмите кнопку ниже и отправьте свой номер.", extra: ASK_PHONE };
+    }
     const links = await this.linksForChat(chatId);
     if (links.length > 0) {
       return { text: "Вы подключены к бонусной программе. Нажмите «💰 Мои баллы», чтобы узнать баланс.", extra: MENU };
@@ -208,6 +220,16 @@ export class CustomerBotService implements OnModuleInit {
     const phone = normalizeKzPhone(contact.phone_number);
     if (!phone) {
       return { text: "Бонусная программа работает с казахстанскими номерами. Этот номер не подходит." };
+    }
+    const pending = this.pendingLogins.get(chatId);
+    this.pendingLogins.delete(chatId);
+    if (pending && Date.now() - pending.at < 15 * 60_000) {
+      const login = await confirmClubLogin(this.prisma, { phone, text: pending.code, channel: "TELEGRAM" });
+      if (login.matched && !login.ok) return { text: login.message, extra: Markup.removeKeyboard() };
+      if (login.matched) {
+        const linked = await this.onContact(chatId, fromUserId, contact);
+        return { text: `${login.message}\n\n${linked.text}`, extra: linked.extra };
+      }
     }
     const found = await this.prisma.loyaltyMember.findMany({ where: { phone, organizationId: { notIn: await demoOrganizationIds(this.prisma) } } });
     const members = (await Promise.all(found.map((m) => this.finalMember(m.id)))).filter(
@@ -426,6 +448,11 @@ export class CustomerBotService implements OnModuleInit {
       this.logger.error(`WhatsApp notice for ${memberId} failed`, err instanceof Error ? err.stack : String(err));
       return false;
     }
+  }
+
+  // The bot's @username for the app's deep link (null while it is not running).
+  botUsername(): string | null {
+    return this.isEnabled() ? this.username : null;
   }
 
   async status(organizationId: string): Promise<LoyaltyTelegramStatusDto> {

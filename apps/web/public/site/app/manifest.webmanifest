@@ -1,0 +1,15 @@
+{
+  "name": "Ар Амир — бонусная карта",
+  "short_name": "Ар Амир",
+  "description": "Бонусная карта пекарни Ар Амир",
+  "start_url": "/app",
+  "scope": "/app",
+  "display": "standalone",
+  "background_color": "#fbf7f0",
+  "theme_color": "#fbf7f0",
+  "icons": [
+    { "src": "/site/app/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/site/app/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/site/app/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

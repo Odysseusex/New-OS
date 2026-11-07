@@ -29,6 +29,7 @@ import { HrModule } from "./hr/hr.module";
 import { CustomersModule } from "./customers/customers.module";
 import { LoyaltyModule } from "./loyalty/loyalty.module";
 import { CrmModule } from "./crm/crm.module";
+import { ClubModule } from "./club/club.module";
 import { DebtsModule } from "./debts/debts.module";
 import { UsersModule } from "./users/users.module";
 import { InvoicesModule } from "./invoices/invoices.module";
@@ -79,6 +80,7 @@ import { DemoCompanyModule } from "./demo/demo-company.module";
     CustomersModule,
     LoyaltyModule,
     CrmModule,
+    ClubModule,
     DebtsModule,
     UsersModule,
     InvoicesModule,

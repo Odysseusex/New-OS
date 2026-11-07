@@ -20,11 +20,13 @@ import {
   LoyaltyMemberStatus,
   LoyaltyMessageStatus,
   normalizeKzPhone,
+  parseCardPayload,
 } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { auditFields, recordAudit, recordAuditMany } from "../audit/audit";
 import { PrismaService } from "../prisma/prisma.service";
 import { LoyaltyPointsService } from "./loyalty-points.service";
+import { cardCodeValid, finalMemberByPhone } from "../club/club-confirm";
 import { PointsPosition } from "./points-ledger";
 import { toFamilyDto } from "./birthdays";
 import {
@@ -111,6 +113,17 @@ export class LoyaltyService {
       });
     }
     return { phone, member: member ? await this.withBalance(organizationId, member) : null };
+  }
+
+  // A card shown in the customer app, as the till's scanner read it.
+  async lookupCard(organizationId: string, raw: string): Promise<LoyaltyLookupDto> {
+    const parsed = parseCardPayload(raw);
+    if (!parsed) throw new BadRequestException("Это не карта клиента Ар Амир");
+    const member = await finalMemberByPhone(this.prisma, organizationId, parsed.phone);
+    if (!member?.cardSecret || !cardCodeValid(member.cardSecret, parsed.code)) {
+      throw new BadRequestException("Код карты устарел — попросите клиента открыть карту заново и сканируйте ещё раз");
+    }
+    return this.lookup(organizationId, parsed.phone);
   }
 
   async register(user: AuthenticatedUser, dto: RegisterLoyaltyMemberDto): Promise<LoyaltyMemberDto> {
@@ -466,6 +479,9 @@ export class LoyaltyService {
   private refuseImportSource(source: LoyaltyConsentSource) {
     if (source === LoyaltyConsentSource.IMPORT) {
       throw new BadRequestException("Источник «Импорт» ставится только при загрузке файла");
+    }
+    if (source === LoyaltyConsentSource.CUSTOMER_APP) {
+      throw new BadRequestException("Источник «Приложение клиента» ставит только само приложение");
     }
   }
 

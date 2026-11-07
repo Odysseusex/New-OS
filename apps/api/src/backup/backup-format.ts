@@ -14,11 +14,15 @@ export const EXPORT_VERSION = 1;
 // Never exported at all.
 //  * _prisma_migrations: belongs to the schema, not to the data.
 //  * telegram_link_tokens: one-time codes that expire in minutes.
-export const EXCLUDED_TABLES: ReadonlySet<string> = new Set(["_prisma_migrations", "telegram_link_tokens"]);
+//  * club_login_requests: customer-app sign-ins and sessions; after a restore
+//    customers simply sign in again.
+export const EXCLUDED_TABLES: ReadonlySet<string> = new Set(["_prisma_migrations", "telegram_link_tokens", "club_login_requests"]);
 
 // Columns left out of the rows. A restore asks for a temporary password instead.
 export const REDACTED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
   users: ["passwordHash", "pinDigest"],
+  // The key of a member's rotating card QR: a new one is issued when the app next opens.
+  loyalty_members: ["cardSecret"],
 };
 
 // A column whose name looks like a secret must be accounted for above; a spec scans the

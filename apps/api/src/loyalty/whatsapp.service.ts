@@ -15,6 +15,7 @@ import { demoOrganizationIds } from "../common/demo-guard";
 import { recordChannelConsent } from "./channel-consent";
 import { consentState } from "./loyalty.service";
 import { pointsPosition } from "./points-ledger";
+import { confirmClubLogin } from "../club/club-confirm";
 
 // WhatsApp through Meta's own Cloud API (no intermediary). Everything we send
 // first is a pre-approved template — Meta refuses free text outside the 24 hours
@@ -357,6 +358,12 @@ export class WhatsAppService {
     const waId = String(message?.from ?? "");
     if (!waId) return;
     const body: string = message?.text?.body ?? message?.button?.text ?? message?.interactive?.button_reply?.title ?? "";
+    // Signing in to the customer app: the message itself, from this number, is the proof.
+    const login = await confirmClubLogin(this.prisma, { phone: normalizeKzPhone(`+${waId.replace(/\D/g, "")}`), text: body, channel: "WHATSAPP" });
+    if (login.matched) {
+      await this.reply(waId, login.message);
+      return;
+    }
     const memberIds = await this.membersByWaId(waId);
     if (memberIds.length === 0) {
       await this.reply(waId, "Этот номер не зарегистрирован в бонусной программе. Попросите кассира зарегистрировать вас — это займёт минуту.");
@@ -509,6 +516,13 @@ export class WhatsAppService {
         rejectedReason: state?.rejectedReason ?? null,
       };
     });
+  }
+
+  // Our WhatsApp number as digits, for the app's wa.me link (null while not connected).
+  async businessPhoneDigits(): Promise<string | null> {
+    const info = await this.readPhoneInfo();
+    const digits = (info?.phone ?? "").replace(/\D/g, "");
+    return digits || null;
   }
 
   private async readPhoneInfo() {

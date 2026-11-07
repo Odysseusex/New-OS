@@ -1632,6 +1632,36 @@ key — the first real send happens when the owner's account is approved; check 
   `main.ts` — never re-serialise the JSON). A customer's message gets their balance as a free reply (24 h window, no
   consent needed); «СТОП»/«СТАРТ» record their consent; `user_preferences` stop = withdrawal.
 
+## Customer app — `ar-amir.com/app` (built, step 1 of 4)
+
+A web app (PWA) customers add to their home screen: bonus card with a rotating QR, balance, history, profile.
+Route `apps/web/src/app/app/` (own layout, `club.css` scoped under `.aa`, the site's bakery palette; icons and
+manifest in `public/site/app/`); `src/middleware.ts` lets `/app` through as is on ar-amir.com. API `apps/api/src/club/`,
+shared `packages/shared/src/club.ts`, migration `20261107120000_club_app` (additive). CORS always allows
+`https://ar-amir.com` + `www` (`main.ts`). Which organization: `CLUB_ORGANIZATION_ID` env, else the one non-sandbox org
+with the programme on (else the oldest non-sandbox org).
+- **No passwords, no SMS** (owner's decision after discussing it): the app shows a 6-digit code; the customer SENDS it to
+  our WhatsApp number (a wa.me link with the text prefilled) or opens the customer Telegram bot via `?start=in_<code>` and
+  shares their own contact. A message from the number typed in is the proof (`club/club-confirm.ts`
+  `confirmClubLogin`, called from `WhatsAppService.onMessage` BEFORE everything else and from the bot's `onContact`).
+  A code from another number is refused. Inbound messages cost nothing. **The WhatsApp webhook must be set in Meta**
+  for this to work (Клиенты → Розница → «Webhook для Meta»).
+- `ClubLoginRequest`: PENDING (10 min, code unique among live ones, secret held by the starting browser as sha256)
+  → CONFIRMED → USED (= the session, collected once by `POST /club/login/:id/status` with the secret) → REVOKED (logout).
+  Rate limit 5 starts per number per 15 min. Club token = JWT signed with `${JWT_SECRET}:club` naming the session
+  row (`club-token.ts`): never valid on staff routes, and a staff token is not valid on `/club/me`.
+- A first sign-in REGISTERS the member with consent source `CUSTOMER_APP` («Клиент (приложение)», personal data +
+  WhatsApp marketing if ticked); a WITHDRAWN member who agrees again is reactivated. Staff endpoints refuse the
+  `CUSTOMER_APP` source. A merged record leads to its primary; withdrawn consent → 401 with the reason.
+- **Card QR** = digits only (`cardPayload`: 10-digit phone + 6-digit TOTP from `LoyaltyMember.cardSecret`, 30 s steps,
+  ±2 accepted, the phone corrects its clock by `serverTime`) — a USB scanner types letters wrong under RU/KZ layouts.
+  The till's scan box tries it after product barcodes (`parseCardPayload` → `GET /loyalty/members/card`).
+- Backup: `club_login_requests` excluded, `loyalty_members.cardSecret` redacted (re-issued at next app open).
+  «Чистый лист» keeps the sessions (members are kept).
+- Next steps agreed with the owner: (2) levels 1 % → 2 % → 3 % by own spend over a ROLLING 90 days, a level held at
+  least a month, thresholds set from the real sales distribution (~top 20 % silver, ~5 % gold), settings editable;
+  (3) a 2D USB scanner at the till (code done; hardware not bought); (4) web push. Not built yet.
+
 ## CRM — `/crm` (built, stage 1)
 
 A separate-looking app inside the same Next.js project and the same API/database: `apps/web/src/app/crm/`

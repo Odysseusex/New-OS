@@ -3071,6 +3071,51 @@ enum LoyaltyConsentSource {
   TELEGRAM_BOT
   // The customer wrote СТОП / СТАРТ to our WhatsApp number, or stopped marketing there.
   WHATSAPP
+  // The customer signed up in the customer app (ar-amir.com/app) themselves.
+  CUSTOMER_APP
+}
+
+// ── Customer app (ar-amir.com/app): sign-in by a message from the customer ────
+// The app shows a one-off code; the customer sends it to our WhatsApp number (or
+// the customer Telegram bot with their own contact). A message from the number
+// typed in proves the phone is theirs — no password, no paid SMS. A CONFIRMED
+// request is collected once by the browser that holds its secret and becomes
+// that browser's session (USED); signing out revokes it (REVOKED).
+
+enum ClubLoginStatus {
+  PENDING
+  CONFIRMED
+  USED
+  REVOKED
+}
+
+model ClubLoginRequest {
+  id               String          @id @default(cuid())
+  organizationId   String
+  // "+77XXXXXXXXX", as typed in the app.
+  phone            String
+  // Six digits shown in the app; unique among live PENDING requests.
+  code             String
+  // sha256 of the secret only the starting browser holds.
+  secretHash       String
+  // What the app form said, used only if this sign-in registers a new member.
+  name             String?
+  marketing        Boolean         @default(false)
+  status           ClubLoginStatus @default(PENDING)
+  // WHATSAPP / TELEGRAM: where the confirming message came from.
+  channel          String?
+  memberId         String?
+  member           LoyaltyMember?  @relation(fields: [memberId], references: [id])
+  createdAt        DateTime        @default(now())
+  expiresAt        DateTime
+  confirmedAt      DateTime?
+  usedAt           DateTime?
+  lastSeenAt       DateTime?
+
+  @@index([code, status])
+  @@index([phone, createdAt])
+  @@index([memberId])
+  @@map("club_login_requests")
 }
 
 model LoyaltyMember {
@@ -3086,11 +3131,16 @@ model LoyaltyMember {
   mergedInto     LoyaltyMember?      @relation("LoyaltyMemberMerge", fields: [mergedIntoId], references: [id])
   mergedFrom     LoyaltyMember[]     @relation("LoyaltyMemberMerge")
   mergedAt       DateTime?
+  // Key of the rotating QR in the customer app (set at the first app sign-in).
+  // The till checks a scanned code against it; it never leaves the server
+  // except to the member's own signed-in app.
+  cardSecret     String?
   createdById    String?
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 
   consents      LoyaltyConsent[]
+  clubLogins    ClubLoginRequest[]
   sales         Sale[]
   pointsEntries LoyaltyPointsEntry[]
   telegramLink  LoyaltyTelegramLink?

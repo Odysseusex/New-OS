@@ -38,6 +38,12 @@ export class LoyaltyController {
     return this.loyaltyService.lookup(user.organizationId, phone);
   }
 
+  // The rotating QR from the customer app (a scanner at the till types it in).
+  @Get("card")
+  lookupCard(@CurrentUser() user: AuthenticatedUser, @Query("code") code: string) {
+    return this.loyaltyService.lookupCard(user.organizationId, code);
+  }
+
   @Get()
   @Roles(...LOYALTY_MANAGE_ROLES)
   list(@CurrentUser() user: AuthenticatedUser, @Query("q") q?: string, @Query("status") status?: string) {

@@ -706,6 +706,8 @@ export const api = {
 
   loyalty: {
     lookup: (phone: string) => request<LoyaltyLookupDto>(withQuery("/loyalty/members/lookup", { phone })),
+    // The rotating QR from the customer app, as the till's scanner read it.
+    card: (code: string) => request<LoyaltyLookupDto>(withQuery("/loyalty/members/card", { code })),
     list: (q?: string, status?: string) =>
       request<LoyaltyMemberListDto>(withQuery("/loyalty/members", { q, status })),
     findOne: (id: string) => request<LoyaltyMemberDetailDto>(`/loyalty/members/${id}`),
