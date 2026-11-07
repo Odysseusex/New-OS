@@ -60,6 +60,21 @@ describe("consignment goods tied to one point", () => {
     expect((await sell(shopId)).totalAmount).toBe(2400);
   });
 
+  it("one click ties every consignment product to one point, own goods untouched", async () => {
+    const id = org.organizationId;
+    const supplierId = (await prisma.supplier.create({ data: { organizationId: id, name: "Молочка" } })).id;
+    const milk = await products.create(id, { name: "Сметана", type: ProductType.FINISHED_GOOD, unit: Unit.PCS, price: 900, consignmentSupplierId: supplierId });
+    const bread = await products.create(id, { name: "Батон свой", type: ProductType.FINISHED_GOOD, unit: Unit.PCS, price: 300 });
+    await expect(products.setConsignmentLocationForAll(id, org.warehouseId, org.user.id)).rejects.toThrow(/точкой продаж/);
+    expect((await products.setConsignmentLocationForAll(id, org.storeId, org.user.id)).updated).toBe(2);
+    expect((await products.setConsignmentLocationForAll(id, org.storeId, org.user.id)).updated).toBe(0);
+    const cards = await products.findAllForOrganization(id);
+    expect(cards.find((p) => p.id === milk.id)!.consignmentLocationId).toBe(org.storeId);
+    expect(cards.find((p) => p.id === honeyId)!.consignmentLocationId).toBe(org.storeId);
+    expect(cards.find((p) => p.id === bread.id)!.consignmentLocationId).toBeNull();
+    expect((await products.setConsignmentLocationForAll(id, shopId, org.user.id)).updated).toBe(2);
+  });
+
   it("only a point of sale can hold them, and our own goods have no such point", async () => {
     await expect(products.update(org.organizationId, honeyId, { consignmentLocationId: org.warehouseId }, org.user.id)).rejects.toThrow(/точкой продаж/);
     const own = await products.update(org.organizationId, honeyId, { consignmentSupplierId: null }, org.user.id);

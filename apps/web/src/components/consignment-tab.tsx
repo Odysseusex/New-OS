@@ -7,6 +7,7 @@ import { CONSIGNMENT_PAY_ROLES } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { Modal } from "@/components/modal";
+import { ConsignmentProductsCard } from "@/components/consignment-products-card";
 import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
 
 // Расчёты по товарам под реализацию — what we owe the people whose goods we
@@ -45,6 +46,8 @@ export function ConsignmentTab() {
 
   if (balances.length === 0) {
     return (
+      <div>
+      <ConsignmentProductsCard />
       <div className="rounded-2xl border border-border bg-surface p-8 text-center">
         <p className="text-sm text-muted">
           Пока нет товаров под реализацию. Отметьте товар как «Товар под реализацию» в его карточке
@@ -52,11 +55,13 @@ export function ConsignmentTab() {
           первой продажи.
         </p>
       </div>
+      </div>
     );
   }
 
   return (
     <div>
+      <ConsignmentProductsCard />
       <div className="mb-4 rounded-2xl border border-border bg-surface p-5">
         <p className="text-sm text-muted">Итого к выплате</p>
         <p className="mt-1 text-2xl font-semibold text-foreground">{formatMoney(totalOwed)}</p>

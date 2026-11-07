@@ -679,6 +679,32 @@ export class ProductsService {
   }
 
   // The point consignment goods are tied to must be one of our points of sale.
+  // One point of sale for EVERY consignment product at once (Финансы → «Товары под реализацию»).
+  // null = any point. Archived ones too, so a restored product is not left at an old point.
+  async setConsignmentLocationForAll(organizationId: string, locationId: string | null, actorId: string | null): Promise<{ updated: number }> {
+    await this.assertConsignmentLocation(organizationId, locationId);
+    return this.prisma.$transaction(async (tx) => {
+      const all = (
+        await tx.product.findMany({
+          where: { organizationId, consignmentSupplierId: { not: null } },
+          select: { id: true, consignmentLocationId: true },
+        })
+      ).filter((p) => p.consignmentLocationId !== locationId);
+      if (all.length === 0) return { updated: 0 };
+      await tx.product.updateMany({ where: { id: { in: all.map((p) => p.id) } }, data: { consignmentLocationId: locationId } });
+      await recordAudit(tx, {
+        organizationId,
+        actorId,
+        action: "product.consignmentLocationAll",
+        entityType: "Product",
+        entityId: locationId ?? "any",
+        before: { products: all.map((p) => ({ id: p.id, consignmentLocationId: p.consignmentLocationId })) },
+        after: { consignmentLocationId: locationId, count: all.length },
+      });
+      return { updated: all.length };
+    });
+  }
+
   private async assertConsignmentLocation(organizationId: string, locationId: string | null | undefined): Promise<void> {
     if (!locationId) return;
     const location = await this.prisma.location.findFirst({ where: { id: locationId, organizationId }, select: { type: true } });

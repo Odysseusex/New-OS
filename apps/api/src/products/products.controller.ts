@@ -17,6 +17,7 @@ import { UpdateProductDto } from "./dto/update-product.dto";
 import { SetLocationPriceDto } from "./dto/set-location-price.dto";
 import { SetPriceSourceDto } from "./dto/set-price-source.dto";
 import { SetProductPhotoDto } from "./dto/set-product-photo.dto";
+import { SetConsignmentLocationDto } from "./dto/set-consignment-location.dto";
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("products")
@@ -49,6 +50,13 @@ export class ProductsController {
   @Get("location-prices/:locationId/source")
   priceSource(@CurrentUser() user: AuthenticatedUser, @Param("locationId") locationId: string) {
     return this.productsService.priceSource(user.organizationId, locationId);
+  }
+
+  // One point of sale for all consignment goods at once.
+  @Put("consignment-location")
+  @Roles(...PRODUCT_MANAGE_ROLES)
+  setConsignmentLocationForAll(@CurrentUser() user: AuthenticatedUser, @Body() dto: SetConsignmentLocationDto) {
+    return this.productsService.setConsignmentLocationForAll(user.organizationId, dto.locationId || null, user.id);
   }
 
   // Declared before «:locationId/:productId» so «source» is never read as a product id.

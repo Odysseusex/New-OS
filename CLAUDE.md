@@ -831,6 +831,9 @@ consignment by `consignmentSupplierId` alone; `consignmentPrice` is retired).
   supplier is cleared). `common/consignment-location.ts` `assertConsignmentAt` refuses the sale (`SalesService.create`),
   the stock receipt (single + batch) and «Перемещение» INTO another point; `GET /products?locationId=` leaves such goods
   out at other points (the till, pickers). Stock already sitting elsewhere is not moved — write it off / transfer it back.
+  Финансы → «Под реализацию» lists every such product (supplier, point, price; Excel/PDF) with «Поставить всем» =
+  `PUT /products/consignment-location {locationId|null}` (PRODUCT_MANAGE_ROLES, one transaction, audited
+  `product.consignmentLocationAll`; `components/consignment-products-card.tsx`).
 - Rolling this out on a ledger that is already ON: consignment sales posted
   before the change keep their old entries, and diagnostics show SOURCE_DRIFT
   (a WARNING) for them — reverse and repost those, never edit.

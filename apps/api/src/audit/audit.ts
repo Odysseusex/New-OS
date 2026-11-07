@@ -68,6 +68,7 @@ export const AUDIT_ACTION_GROUPS = {
   productClassification: ["classification.apply", "classification.revert"],
   stockSettings: ["inventory.allowNegativeStock"],
   priceSettings: ["location.priceSource"],
+  consignmentLocation: ["product.consignmentLocationAll"],
   stocktake: ["stocktake.create", "stocktake.submit", "stocktake.reopen", "stocktake.approve", "stocktake.cancel"],
   stockVoid: ["stockVoid.create"],
   dailyReconciliation: ["dailyReconciliation.save", "dailyReconciliation.apply"],

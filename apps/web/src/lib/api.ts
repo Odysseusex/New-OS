@@ -450,6 +450,11 @@ export const api = {
       request<ProductDto>("/products", { method: "POST", body: JSON.stringify(dto) }),
     update: (id: string, dto: UpdateProductRequestDto) =>
       request<ProductDto>(`/products/${id}`, { method: "PATCH", body: JSON.stringify(dto) }),
+    setConsignmentLocationForAll: (locationId: string | null) =>
+      request<{ updated: number }>("/products/consignment-location", {
+        method: "PUT",
+        body: JSON.stringify({ locationId }),
+      }),
     archive: (id: string) => request<ProductDto>(`/products/${id}/archive`, { method: "POST" }),
     restore: (id: string) => request<ProductDto>(`/products/${id}/restore`, { method: "POST" }),
     remove: (id: string) => request<{ deleted: true }>(`/products/${id}`, { method: "DELETE" }),
