@@ -199,27 +199,11 @@ spacing and buttons scale together; viewport heights stay whole), kept in that b
 first paint by an inline script in the root layout (`<html suppressHydrationWarning>`; the public `/ar-amir` site is never
 scaled). The till's width cap is in px (`max-w-[1280px]`) so a smaller scale does not make the till narrower.
 
-**The till's own look (/pos, 07.11.2026)** — the owner picked a Dribbble POS reference and asked for it
-adapted «строго»: white cards on a cool grey page, ONE coral accent, big product photos. Built from
-`components/till/till-ui.tsx` (rail, category cards, product card, check line, qty stepper, pay-method
-cards); the page logic (cart, coupon, markdown, points, payments, terminal) is unchanged. Rules:
-- Colours come from `.till-theme` in `globals.css` (root of /pos), so every window over the till follows;
-  the rest of ArAmir OS keeps its own palette. **Tailwind opacity modifiers (`bg-accent/10`,
-  `border-accent/40`, `text-muted/70`) generate NOTHING in this project** (colours are plain `var()`
-  without `<alpha-value>`) — use `bg-[var(--accent-soft)]` / `border-[var(--accent-line)]`. Older screens
-  still carry such no-op classes; don't rely on them.
-- The till is edge to edge: `(app)/layout.tsx` drops the Topbar and Sidebar on /pos for everyone; the
-  till's rail has «Выйти», and «В систему» for non-cashiers. Rare buttons (scale, re-pick customer
-  screen) live under «Ещё». Short screens (≤ 820 px high, the 1366×768 monoblock) compact the check via
-  `[@media(max-height:820px)]:` variants.
-- Cards: photo only once ANY product has one (`anyPhoto`) — then every card keeps the picture slot (an
-  emoji by category name until its photo is uploaded); with no photos at all the cards stay compact
-  (owner: no empty squares). «Ходовые сверху» = by quantity sold at the point in 30 days, or «По
-  алфавиту» (per device). `GET /sales/till-stats?locationId` (SALE_CREATE_ROLES): sold today / 30 days
-  and the shelf — `stock` is null for TILL_ROLES (they count blind in «Сверка дня»), quantities only.
-- Payment: pick «Наличные / Карта · Kaspi / Нал + карта», then «Провести оплату · сумма» opens the same
-  three payment windows as before (the terminal decides card vs Kaspi QR). Coupon, check discount and
-  «Оплата заказа» are icon buttons by «Чек»; what is attached shows as a soft row above the lines.
+**A till redesign was tried and rolled back (07.11.2026).** After a Dribbble-style rebuild of /pos (coral accent,
+photo cards, own rail, commit 8936c4b) the owner asked for the previous till back the same day; it was reverted whole.
+Don't redo a till restyle without a fresh request. Learned on the way: Tailwind opacity modifiers on the theme colours
+(`bg-accent/10`, `border-accent/40`, `text-muted/70`) generate NOTHING here — the colours are plain `var()` without
+`<alpha-value>` — so such classes in existing screens are silent no-ops.
 
 **Till digit pad** (`components/numeric-keypad.tsx`): the till's monoblocks will have the system on-screen keyboard
 switched off, so every DIGIT entry on the till uses our own pad — no <input> behind it (nothing pops the system keyboard),

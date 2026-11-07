@@ -167,7 +167,6 @@ import type {
   UploadBankStatementRequestDto,
   DirectionPnlDto,
   OpenCrmOrderDto,
-  TillProductStatsDto,
   CashFlowDto,
   BusinessContextDto,
   BusinessContextLevel,
@@ -621,7 +620,6 @@ export const api = {
         }),
       ),
     openOrders: () => request<OpenCrmOrderDto[]>("/sales/open-orders"),
-    tillStats: (locationId: string) => request<TillProductStatsDto[]>(withQuery("/sales/till-stats", { locationId })),
     cashiers: (locationId?: string) => request<{ id: string; name: string }[]>(withQuery("/sales/cashiers", { locationId })),
     summary: (locationId?: string) =>
       request<SalesSummaryDto>(withQuery("/sales/summary", { locationId })),

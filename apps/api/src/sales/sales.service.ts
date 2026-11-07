@@ -23,7 +23,6 @@ import {
   applyDiscountPercent,
   SaleDetailDto,
   SaleDto,
-  TillProductStatsDto,
   SalesDynamicsDto,
   SalesDynamicsPointDto,
   SalesDemandAnalysisDto,
@@ -259,34 +258,6 @@ export class SalesService {
     });
     const users = await this.prisma.user.findMany({ where: { id: { in: rows.map((r) => r.createdById) } }, select: { id: true, fullName: true } });
     return users.map((u) => ({ id: u.id, name: u.fullName })).sort((a, b) => a.name.localeCompare(b.name, "ru"));
-  }
-
-  // The till's cards: how many of each product went today and in the last 30 days at this point
-  // (gross, before returns), plus what is on its shelf — withheld from the till's own staff.
-  async tillStats(user: AuthenticatedUser, requestedLocationId?: string): Promise<TillProductStatsDto[]> {
-    const locationId = requireLocationScope(user, requestedLocationId);
-    const sold = (from: Date) =>
-      this.prisma.saleItem.groupBy({
-        by: ["productId"],
-        where: { sale: { organizationId: user.organizationId, locationId, soldAt: { gte: from } } },
-        _sum: { quantity: true },
-      });
-    const blind = TILL_ROLES.includes(user.role);
-    const [today, month, levels] = await Promise.all([
-      sold(startOfZonedDay(new Date())),
-      sold(startOfZonedDay(new Date(), 30)),
-      blind ? Promise.resolve([]) : this.prisma.stockLevel.findMany({ where: { locationId, product: { organizationId: user.organizationId } }, select: { productId: true, quantity: true } }),
-    ]);
-    const stats = new Map<string, TillProductStatsDto>();
-    const row = (productId: string) => {
-      let r = stats.get(productId);
-      if (!r) stats.set(productId, (r = { productId, soldToday: 0, sold30Days: 0, stock: null }));
-      return r;
-    };
-    for (const r of month) row(r.productId).sold30Days = Number(r._sum.quantity ?? 0);
-    for (const r of today) row(r.productId).soldToday = Number(r._sum.quantity ?? 0);
-    for (const l of levels) row(l.productId).stock = Number(l.quantity);
-    return [...stats.values()];
   }
 
   async summary(user: AuthenticatedUser, requestedLocationId?: string): Promise<SalesSummaryDto> {

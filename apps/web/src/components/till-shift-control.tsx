@@ -26,13 +26,10 @@ export function TillShiftControl({
   locationId,
   reloadKey,
   onState,
-  pill = false,
 }: {
   locationId: string;
   reloadKey?: unknown;
   onState?: (state: TillShiftStateDto) => void;
-  // The till's header: a soft green / red pill instead of a bordered button.
-  pill?: boolean;
 }) {
   const [state, setState] = useState<TillShiftStateDto | null>(null);
   const [open, setOpen] = useState(false);
@@ -65,19 +62,11 @@ export function TillShiftControl({
           load();
         }}
         className={clsx(
-          pill
-            ? "flex h-10 shrink-0 items-center gap-2 rounded-full px-4 text-sm font-semibold transition"
-            : "flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition",
-          pill
-            ? shift
-              ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-              : "bg-red-50 text-red-700 hover:bg-red-100"
-            : blocked
-              ? "border-red-300 bg-red-50 text-red-700 hover:bg-red-100"
-              : "border-border bg-surface text-foreground hover:bg-surface-muted",
+          "flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition",
+          blocked ? "border-red-300 bg-red-50 text-red-700 hover:bg-red-100" : "border-border bg-surface text-foreground hover:bg-surface-muted",
         )}
       >
-        {!pill && <Wallet className="h-4 w-4" strokeWidth={1.75} />}
+        <Wallet className="h-4 w-4" strokeWidth={1.75} />
         {shift ? `Смена №${shift.number}` : "Открыть смену"}
         <span className={clsx("h-2 w-2 rounded-full", shift ? "bg-emerald-500" : "bg-red-400")} aria-hidden />
       </button>

@@ -3,20 +3,21 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import {
-  Cake,
+  Banknote,
   CreditCard,
   History,
+  Minus,
   MonitorSmartphone,
-  MoreHorizontal,
-  Percent,
+  Plus,
   Printer,
   RotateCcw,
-  Search,
-  SlidersHorizontal,
+  ScanLine,
+  Split,
   Tag,
-  Ticket,
   Trash2,
   UserRound,
+  Users,
+  Percent,
   X,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
@@ -26,7 +27,6 @@ import type {
   LocationDto,
   ProductDto,
   PromotionCouponPreviewDto,
-  TillProductStatsDto,
   SaleDetailDto,
   SaleFiscalReceiptDto,
   LoyaltyMemberDto,
@@ -49,7 +49,6 @@ import {
   loyaltyRedeemCap,
   UNIT_LABELS_RU,
   TILL_APPROVER_ROLES,
-  TILL_ROLES,
   isPointsRedeemableLine,
   manualDiscountTarget,
 } from "@bakery-os/shared";
@@ -75,23 +74,8 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { LoyaltyLookupPanel } from "@/components/loyalty-lookup-panel";
 import { PosLoyaltyBlock } from "@/components/pos-loyalty";
-import { PosOrderPickerModal } from "@/components/pos-order";
-import {
-  CategoryCard,
-  categoryEmoji,
-  CheckLine,
-  LineChip,
-  PayMethodCards,
-  ProductCard,
-  TillPopover,
-  TillRail,
-  TillRailButton,
-  ToolButton,
-  useLocalPreference,
-  type TillPayMode,
-} from "@/components/till/till-ui";
-import { serverNow } from "@/lib/server-clock";
-import { formatDate, formatMoney, formatPoints, formatQuantity } from "@/lib/format";
+import { PosOrderBlock } from "@/components/pos-order";
+import { formatMoney, formatPoints, formatQuantity } from "@/lib/format";
 import { productPhotoUrl } from "@/lib/product-photo";
 
 // A cart line carries its own price rather than reading it off the product,
@@ -133,9 +117,14 @@ interface PayArgs {
   terminalPayment?: { method: string; transactionId: string; cardMask?: string };
 }
 
+const PAYMENT_BUTTONS: { mode: PayMode; label: string; icon: typeof Banknote }[] = [
+  { mode: "cash", label: "Наличные", icon: Banknote },
+  { mode: "card", label: "Карта", icon: CreditCard },
+  { mode: "mixed", label: "Картой и наличными", icon: Split },
+];
 
 export default function PosPage() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const canSell = user ? SALE_CREATE_ROLES.includes(user.role) : false;
   const isOrgWide = user ? ORG_WIDE_ROLES.includes(user.role) : false;
 
@@ -216,10 +205,6 @@ export default function PosPage() {
   const [appliedCoupon, setAppliedCoupon] = useState<PromotionCouponPreviewDto | null>(null);
   const [couponError, setCouponError] = useState<string | null>(null);
   const [couponLoading, setCouponLoading] = useState(false);
-  const [payMethod, setPayMethod] = useState<TillPayMode>("cash");
-  const [moreOpen, setMoreOpen] = useState(false);
-  const [couponOpen, setCouponOpen] = useState(false);
-  const [orderPickerOpen, setOrderPickerOpen] = useState(false);
 
   const scanRef = useRef<HTMLInputElement>(null);
 
@@ -300,7 +285,7 @@ export default function PosPage() {
     // otherwise type into the search box behind the dialog and quietly drop
     // a product into the cart nobody asked for. The customer-by-phone dialog
     // is excluded for the same reason.
-    if (historyOpen || loyaltyOpen || payMode !== null || couponOpen || orderPickerOpen) return;
+    if (historyOpen || loyaltyOpen || payMode !== null) return;
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target && ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
@@ -308,7 +293,7 @@ export default function PosPage() {
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [focusScan, historyOpen, loyaltyOpen, payMode, couponOpen, orderPickerOpen]);
+  }, [focusScan, historyOpen, loyaltyOpen, payMode]);
 
   // Only categories that actually hold something sellable. Without this the
   // till offers chips like «Сырьё», which can only ever show an empty grid,
@@ -678,111 +663,83 @@ export default function PosPage() {
     return () => clearTimeout(timer);
   }, [reprintSale]);
 
-  // The till's cards: sold today / in 30 days and, for managers, what is on the shelf.
-  const [tillStats, setTillStats] = useState<TillProductStatsDto[]>([]);
-  useEffect(() => {
-    if (!locationId) return;
-    api.sales
-      .tillStats(locationId)
-      .then(setTillStats)
-      .catch(() => setTillStats([]));
-  }, [locationId, lastSale]);
-  const statsByProduct = useMemo(() => new Map(tillStats.map((s) => [s.productId, s])), [tillStats]);
-  // The till's own staff count the shelf blind in «Сверка дня», so the book stock is not shown to them.
-  const isCashier = !!user && TILL_ROLES.includes(user.role);
-  const isBlindTill = isCashier;
-  const [sortMode, setSortMode] = useLocalPreference<"popular" | "name">("till.sort", "popular");
-  const sortedProducts = useMemo(() => {
-    const list = visibleProducts.filter((p) => !p.isPosQuickItem);
-    if (sortMode === "name") return [...list].sort((a, b) => a.name.localeCompare(b.name, "ru"));
-    return [...list].sort(
-      (a, b) =>
-        (statsByProduct.get(b.id)?.sold30Days ?? 0) - (statsByProduct.get(a.id)?.sold30Days ?? 0) || a.name.localeCompare(b.name, "ru"),
-    );
-  }, [visibleProducts, sortMode, statsByProduct]);
-  // Pictures only once the shop has any: until then the cards stay compact.
-  const anyPhoto = useMemo(() => products.some((p) => p.photoVersion), [products]);
-  const categoryCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const c of sellableCategories) {
-      const ids = new Set(categoryIdsWithDescendants(categories, c.id));
-      counts.set(c.id, products.filter((p) => p.categoryId !== null && ids.has(p.categoryId)).length);
-    }
-    return counts;
-  }, [sellableCategories, categories, products]);
-  const topCategoryName = useCallback(
-    (categoryId: string | null) => {
-      if (!categoryId) return null;
-      const cat = categories.find((c) => c.id === categoryId);
-      if (!cat) return null;
-      return cat.parentId ? (categories.find((c) => c.id === cat.parentId)?.name ?? cat.name) : cat.name;
-    },
-    [categories],
-  );
-  const categoryNameOf = (p: ProductDto) => topCategoryName(p.categoryId) ?? p.categoryName;
-  const inCartLabel = (p: ProductDto) => {
-    const q = cart.filter((l) => l.product.id === p.id).reduce((sum, l) => sum + l.quantity, 0);
-    return q > 0 ? `${formatQuantity(q)}${p.unit === "PCS" ? "" : ` ${UNIT_LABELS_RU[p.unit]}`} в чеке` : null;
-  };
-  // «Продано сегодня 12 · Осталось 30»: only what is worth reading; the stock never for the till's staff.
-  const cardMeta = (p: ProductDto, stats: TillProductStatsDto | undefined) => {
-    const sold = stats?.soldToday ?? 0;
-    const stock = !isBlindTill && p.trackInventory ? (stats?.stock ?? null) : null;
-    if (sold <= 0 && stock === null) return null;
-    return (
-      <span>
-        {sold > 0 && `Сегодня ${formatQuantity(sold)}`}
-        {sold > 0 && stock !== null && " · "}
-        {stock !== null && <span className={stock <= 0 ? "text-red-600" : undefined}>Остаток {formatQuantity(stock)}</span>}
-      </span>
-    );
-  };
-  const couponPercentForProduct = (p: ProductDto): number | null => {
-    if (!couponRuleByCategory || !p.categoryId) return null;
-    return resolveCategoryRule(couponRuleByCategory, p.categoryId, (id) => categories.find((c) => c.id === id)?.parentId) ?? null;
-  };
-  const todayLabel = useMemo(() => {
-    const s = serverNow().toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", weekday: "long", day: "numeric", month: "long" });
-    return s.charAt(0).toUpperCase() + s.slice(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastSale]);
-  // Сумма → what came off it, so «Итого» reads as a sum the cashier can follow.
-  const markdownTotal = cart.reduce((sum, l) => sum + (l.markedDown ? (l.product.effectivePrice - l.unitPrice) * l.quantity : 0), 0);
-  const couponTotal = cart.reduce((sum, l) => sum + (l.unitPrice - displayUnitPrice(l)) * l.quantity, 0);
-  const grossTotal = cartTotal + markdownTotal + couponTotal;
-  const summaryRows: { label: string; value: string; negative?: boolean }[] = [];
-  if (markdownTotal > 0 || couponTotal > 0 || pointsDiscount || checkDiscountSpread) {
-    summaryRows.push({ label: `Сумма · ${formatQuantity(itemCount)} шт`, value: formatMoney(grossTotal) });
-    if (markdownTotal > 0) summaryRows.push({ label: "Уценка", value: `− ${formatMoney(markdownTotal)}`, negative: true });
-    if (couponTotal > 0) summaryRows.push({ label: "Купон", value: `− ${formatMoney(couponTotal)}`, negative: true });
-    if (pointsDiscount && pointsDiscount.total > 0) summaryRows.push({ label: "Баллами", value: `− ${formatMoney(pointsDiscount.total)}`, negative: true });
-    if (checkDiscountSpread && checkDiscountSpread.total > 0) summaryRows.push({ label: "Скидка на чек", value: `− ${formatMoney(checkDiscountSpread.total)}`, negative: true });
-  }
-
   if (user && !canSell) {
     return <p className="mx-auto max-w-6xl text-sm text-muted">У вас нет прав на оформление продаж.</p>;
   }
 
   return (
-    <div className="till-theme min-h-full lg:h-full">
-    <div className="flex min-h-full flex-col print:hidden lg:h-full lg:flex-row">
-      <TillRail onLogout={logout} homeHref={isCashier ? null : "/dashboard"}
-        footer={
-          <TillRailButton icon={MoreHorizontal} label="Ещё" active={moreOpen} onClick={() => setMoreOpen((v) => !v)} />
-        }
-      >
-        {/* The till is the only screen a cashier can reach, so checking what was already sold,
-            printing a sticker and pairing the terminal all live here. */}
-        <TillRailButton icon={History} label="История" onClick={() => setHistoryOpen(true)} />
+    <>
+    {/* The width cap is in pixels, not rem: a smaller screen scale (UiScaleControl)
+        makes text and buttons smaller, not the till narrower. */}
+    <div className="mx-auto max-w-[1280px] print:hidden">
+      {/* No «Касса» heading and no strapline. On a 768px-tall monoblock the
+          title, its subtitle and their margins cost 72px — half a row of
+          products — to tell a cashier, whose screen has nothing else on it,
+          which screen they are on. The controls that did earn their place
+          move onto the scan row instead. */}
+      <div className="mb-3 flex items-center gap-3">
+        <div className="relative flex-1">
+          <ScanLine
+            className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted"
+            strokeWidth={1.75}
+          />
+          <input
+            ref={scanRef}
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleScanSubmit();
+              }
+            }}
+            placeholder="Отсканируйте товар или начните вводить название…"
+            className="w-full rounded-2xl border border-border bg-surface py-3 pl-12 pr-4 text-lg text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+          />
+        </div>
+
+        {/* The till is the only screen a cashier can reach, so checking what
+            was already sold has to live here — the Продажи module is closed
+            to them by design. */}
+        <button
+          onClick={() => setHistoryOpen(true)}
+          className="flex shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+        >
+          <History className="h-4 w-4" strokeWidth={1.75} />
+          История
+        </button>
+        {/* Loyalty stage 1: find or register a retail customer by phone and
+            record their consent. It does not attach the customer to the
+            cart — that comes with the points (stage 3). */}
         {user && LOYALTY_TILL_ROLES.includes(user.role) && (
-          <TillRailButton icon={UserRound} label="Клиенты" onClick={() => setLoyaltyOpen(true)} />
+          <button
+            onClick={() => setLoyaltyOpen(true)}
+            className="flex shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+          >
+            <UserRound className="h-4 w-4" strokeWidth={1.75} />
+            Клиент
+          </button>
         )}
-        <TillRailButton icon={Tag} label="Этикетки" onClick={() => setLabelsOpen(true)} />
-        {/* The buyer's screen on the monoblock's second display: once per boot, then it follows the
-            cart. Which monitor is picked once and remembered (customer-display.ts). */}
-        <TillRailButton
-          icon={MonitorSmartphone}
-          label="Экран покупателя"
+        {/* Same reason as История: the printer hangs off the monoblock, so
+            printing a sticker for a cake means standing at this screen. It
+            prints — it does not touch stock, money or the cart — so it needs
+            no role of its own. */}
+        <button
+          onClick={() => setLabelsOpen(true)}
+          className="flex shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+        >
+          <Tag className="h-4 w-4" strokeWidth={1.75} />
+          Этикетки
+        </button>
+        {/* Opens the buyer's screen on the monoblock's second display. Once
+            per boot — the window then just sits there and follows the cart.
+            Which physical monitor that is gets picked once and remembered
+            (see customer-display.ts); it does not re-derive it from Windows'
+            own "primary display" setting on every open, because that setting
+            is exactly what moved on its own and sent the window to the wrong
+            screen. */}
+        <button
           onClick={async () => {
             const result = await openCustomerDisplay();
             if (result.kind === "blocked") {
@@ -793,19 +750,27 @@ export default function PosPage() {
               setFlash("Экран покупателя открыт. Перетащите окно на второй экран пальцем за верхний край.");
             }
           }}
-        />
-        {/* Pairing the terminal has to happen on this machine, next to the terminal — so a cashier
-            whose terminal dropped overnight can fix it without the owner. */}
-        <TillRailButton icon={CreditCard} label="Терминал" dot={terminalPaired ? "ok" : "bad"} onClick={() => setTerminalSettingsOpen(true)} />
-      </TillRail>
-      <TillPopover open={moreOpen} onClose={() => setMoreOpen(false)}>
-        <p className="mb-2 text-sm font-semibold text-foreground">Масштаб экрана</p>
+          className="flex shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+        >
+          <MonitorSmartphone className="h-4 w-4" strokeWidth={1.75} />
+          Экран покупателя
+        </button>
+        {locationId && <TillShiftControl locationId={locationId} reloadKey={lastSale} onState={(st) => setLineRemovalApproval(st.lineRemovalApproval)} />}
+        <button
+          onClick={() => setPinLoginOpen(true)}
+          title="Сменить кассира"
+          className="flex shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+        >
+          <Users className="h-4 w-4" strokeWidth={1.75} />
+          {user?.fullName.split(" ")[0] ?? "Кассир"}
+        </button>
         <UiScaleControl />
-        {/* For when Windows decided another monitor is «главный»: forget the remembered screen
-            and ask again. */}
+        {/* Escape hatch for exactly what the owner hit: Windows decided a
+            different physical monitor is now "главный", or a cable got
+            swapped. Forgetting the remembered screen makes the next open show
+            the picker again instead of guessing. */}
         <button
           onClick={async () => {
-            setMoreOpen(false);
             forgetRememberedCustomerScreen();
             const result = await openCustomerDisplay();
             if (result.kind === "needs-pick") {
@@ -814,339 +779,382 @@ export default function PosPage() {
               setError("Браузер заблокировал новое окно. Разрешите всплывающие окна для этого сайта.");
             }
           }}
-          className="mt-4 flex w-full items-center gap-2 rounded-xl border border-border px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+          title="Сменить экран покупателя"
+          className="flex shrink-0 items-center justify-center rounded-xl border border-border bg-surface px-2.5 py-2.5 text-sm font-medium text-muted transition hover:bg-surface-muted hover:text-foreground"
         >
           <RotateCcw className="h-4 w-4" strokeWidth={1.75} />
-          Сменить экран покупателя
         </button>
-      </TillPopover>
-
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border bg-surface px-4 py-3 lg:h-[5.5rem] lg:flex-nowrap lg:px-8 lg:py-0">
-          <div className="relative min-w-[13rem] flex-1 lg:max-w-[34rem]">
-            <input
-              ref={scanRef}
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleScanSubmit();
-                }
-              }}
-              placeholder="Поиск товара или сканер"
-              className="h-[3.25rem] w-full rounded-2xl border border-border bg-surface pl-5 pr-12 text-base text-foreground shadow-[0_1px_2px_rgba(16,24,40,0.04)] outline-none placeholder:text-muted focus:border-accent"
-            />
-            {query ? (
-              <button onClick={() => setQuery("")} aria-label="Очистить поиск" className="absolute right-4 top-1/2 -translate-y-1/2 text-muted hover:text-foreground">
-                <X className="h-5 w-5" strokeWidth={1.75} />
-              </button>
-            ) : (
-              <Search className="pointer-events-none absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-foreground" strokeWidth={1.75} />
-            )}
-          </div>
-          <div className="ml-auto flex items-center gap-3">
-            {locationId && (
-              <TillShiftControl pill locationId={locationId} reloadKey={lastSale} onState={(st) => setLineRemovalApproval(st.lineRemovalApproval)} />
-            )}
-            {/* The point is shown to everyone: prices differ per point, and a cashier who cannot
-                see it cannot tell the prices are another shop's. */}
-            {isOrgWide && (
-              <select
-                value={locationId}
-                onChange={(e) => setLocationId(e.target.value)}
-                className="h-10 rounded-full border border-border bg-surface px-3 text-sm font-medium text-foreground outline-none focus:border-accent"
-              >
-                {locations.map((loc) => (
-                  <option key={loc.id} value={loc.id}>
-                    {loc.name}
-                  </option>
-                ))}
-              </select>
-            )}
-            <div className="hidden max-w-[13rem] text-right leading-tight sm:block">
-              <p className="truncate whitespace-nowrap text-base font-semibold text-foreground">{user?.fullName.split(" ")[0] ?? "Кассир"}</p>
-              <p className="mt-0.5 hidden truncate whitespace-nowrap text-[0.8125rem] text-muted xl:block">
-                {todayLabel}
-                {!isOrgWide && activeLocationName ? ` · ${activeLocationName}` : ""}
-              </p>
+        {/* Connecting the terminal used to live only in Настройки, behind
+            OWNER/ADMIN — fine for the one-time first setup, but a terminal
+            that drops overnight (network blip, a reboot, an expired token)
+            leaves a cashier stuck with no owner in the room. The pairing
+            itself still has to happen on this exact machine, standing next
+            to this exact terminal, so it belongs on the one screen a cashier
+            can actually reach — this button, not a role change. */}
+        <button
+          onClick={() => setTerminalSettingsOpen(true)}
+          title="Терминал Kaspi"
+          className="flex shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+        >
+          <CreditCard className="h-4 w-4" strokeWidth={1.75} />
+          <span
+            className={clsx("h-2 w-2 rounded-full", terminalPaired ? "bg-emerald-500" : "bg-red-400")}
+            aria-hidden
+          />
+        </button>
+        {/* Which point this till is selling at is shown to EVERYONE, not just
+            to whoever may switch it. Prices differ per point, so a cashier
+            who cannot see the point cannot tell the prices are the wrong
+            ones — which is exactly how a till ended up quietly selling at
+            another shop's prices. */}
+        {isOrgWide ? (
+          <select
+            value={locationId}
+            onChange={(e) => setLocationId(e.target.value)}
+            className="shrink-0 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+          >
+            {locations.map((loc) => (
+              <option key={loc.id} value={loc.id}>
+                {loc.name}
+              </option>
+            ))}
+          </select>
+        ) : (
+          activeLocationName && (
+            <div className="shrink-0 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm">
+              <span className="text-muted">Точка: </span>
+              <span className="font-medium text-foreground">{activeLocationName}</span>
             </div>
-            <button
-              onClick={() => setPinLoginOpen(true)}
-              title="Сменить кассира"
-              className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[var(--accent-soft)] text-lg font-semibold text-accent transition hover:ring-2 hover:ring-[var(--accent-line)]"
-            >
-              {(user?.fullName ?? "К").charAt(0).toUpperCase()}
-            </button>
-          </div>
-        </header>
-
-        <div className="flex-1 overflow-y-auto px-4 pb-24 pt-5 lg:px-8 lg:pb-8 lg:pt-6">
-          {missingLocation && (
-            <div className="mb-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              Вам не назначена точка продаж, поэтому касса не знает, по каким ценам продавать. Обратитесь к
-              владельцу — точка указывается в Настройках, в карточке сотрудника.
-            </div>
-          )}
-          {/* No timeout: the cashier asks the buyer whether they want a slip, and that conversation
-              outlasts any timer. Cleared by the next order or «Без чека». */}
-          {flash && (
-            <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-emerald-50 px-5 py-4 text-base font-semibold text-emerald-900 ring-1 ring-emerald-200">
-              <span>{flash}</span>
-              {lastSale && (
-                <div className="flex shrink-0 items-center gap-2">
-                  <button
-                    onClick={() => window.print()}
-                    className="flex h-10 items-center gap-1.5 rounded-xl bg-white px-4 text-sm font-semibold text-emerald-900 ring-1 ring-emerald-200 transition hover:bg-emerald-50"
-                  >
-                    <Printer className="h-4 w-4" strokeWidth={1.75} />
-                    Печать
-                  </button>
-                  <button
-                    onClick={() => {
-                      setFlash(null);
-                      focusScan();
-                    }}
-                    className="h-10 rounded-xl px-4 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-100"
-                  >
-                    Без чека
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-          {receipt && (
-            <ReceiptPanel amount={receipt.amount} fiscal={receipt.fiscal} onClose={() => setReceipt(null)} onPrint={() => window.print()} />
-          )}
-          {error && (
-            <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-red-50 px-5 py-3.5 text-sm font-medium text-red-700 ring-1 ring-red-200">
-              <span>{error}</span>
-              <button onClick={() => setError(null)} aria-label="Скрыть ошибку" className="shrink-0">
-                <X className="h-4 w-4" strokeWidth={1.75} />
-              </button>
-            </div>
-          )}
-
-          {!normalizedQuery && (
-            <>
-              <h2 className="text-xl font-semibold tracking-tight text-foreground">Категории</h2>
-              <div className="-mx-1 mt-4 flex gap-3.5 overflow-x-auto px-1 pb-2">
-                <CategoryCard emoji="🧺" name="Все товары" count={products.length} active={categoryId === ""} onClick={() => setCategoryId("")} />
-                {sellableCategories.map((c) => (
-                  <CategoryCard
-                    key={c.id}
-                    emoji={categoryEmoji(c.name)}
-                    name={c.name}
-                    count={categoryCounts.get(c.id) ?? 0}
-                    active={categoryId === c.id}
-                    onClick={() => setCategoryId(c.id)}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-
-          <div className={clsx("flex items-center justify-between gap-3", normalizedQuery ? "" : "mt-6")}>
-            <h2 className="text-xl font-semibold tracking-tight text-foreground">
-              {normalizedQuery ? `Найдено: ${visibleProducts.length}` : "Выберите товар"}
-            </h2>
-            <button
-              onClick={() => setSortMode(sortMode === "popular" ? "name" : "popular")}
-              className="flex items-center gap-2 rounded-xl px-2 py-1.5 text-[0.9375rem] font-semibold text-foreground transition hover:bg-surface-muted"
-            >
-              <SlidersHorizontal className="h-[1.125rem] w-[1.125rem]" strokeWidth={1.75} />
-              {sortMode === "popular" ? "Ходовые сверху" : "По алфавиту"}
-            </button>
-          </div>
-
-          {/* Column count follows the width of this column, not the window: as many ~14rem cards
-              as fit, on the tablet and on the shop's monoblock alike. */}
-          <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(13.5rem,1fr))] gap-4">
-            {/* Pinned quick items (e.g. Пакет) are always first, whatever the category or search. */}
-            {locationId &&
-              quickItems.map((p) => (
-                <ProductCard
-                  key={`quick-${p.id}`}
-                  pinned
-                  name={p.name}
-                  photo={productPhotoUrl(p)}
-                  photoSlot={anyPhoto}
-                  emoji={categoryEmoji(categoryNameOf(p))}
-                  price={formatMoney(p.effectivePrice)}
-                  unit={UNIT_LABELS_RU[p.unit]}
-                  inCart={inCartLabel(p)}
-                  meta={cardMeta(p, statsByProduct.get(p.id))}
-                  onClick={() => {
-                    addToCart(p);
-                    focusScan();
-                  }}
-                />
-              ))}
-            {sortedProducts.map((p) => {
-              const coupon = couponPercentForProduct(p);
-              const stats = statsByProduct.get(p.id);
-              return (
-                <ProductCard
-                  key={p.id}
-                  name={p.name}
-                  photo={productPhotoUrl(p)}
-                  photoSlot={anyPhoto}
-                  emoji={categoryEmoji(categoryNameOf(p))}
-                  price={formatMoney(coupon !== null ? applyDiscountPercent(p.effectivePrice, coupon) : p.effectivePrice)}
-                  oldPrice={coupon !== null ? formatMoney(p.effectivePrice) : null}
-                  badge={coupon !== null ? `Купон −${coupon}%` : null}
-                  unit={UNIT_LABELS_RU[p.unit]}
-                  inCart={inCartLabel(p)}
-                  meta={cardMeta(p, stats)}
-                  onClick={() => {
-                    addToCart(p);
-                    focusScan();
-                  }}
-                />
-              );
-            })}
-            {sortedProducts.length === 0 && quickItems.length === 0 && (
-              <p className="col-span-full py-16 text-center text-base text-muted">
-                {normalizedQuery ? "Ничего не найдено" : "Нет товаров для продажи"}
-              </p>
-            )}
-          </div>
-        </div>
+          )
+        )}
       </div>
 
-      {/* On a phone the check sits under the products: a bar at the bottom jumps to it. */}
+      {missingLocation && (
+        <div className="mb-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Вам не назначена точка продаж, поэтому касса не знает, по каким ценам продавать. Обратитесь к
+          владельцу — точка указывается в Настройках, в карточке сотрудника.
+        </div>
+      )}
+
+      {/* Deliberately has no timeout. The cashier asks the buyer whether they
+          want a slip, and that conversation routinely outlasts any timer — a
+          confirmation that disappears mid-question is the one thing this bar
+          must not do. It clears when the next order is started, or when the
+          cashier presses «Без чека». Printing does not clear it, so a jammed
+          or empty printer can simply be printed to again. */}
+      {flash && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-emerald-300 bg-emerald-100 px-4 py-3 text-base font-semibold text-emerald-900">
+          <span>{flash}</span>
+          {lastSale && (
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                onClick={() => window.print()}
+                className="flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-50"
+              >
+                <Printer className="h-4 w-4" strokeWidth={1.75} />
+                Печать
+              </button>
+              <button
+                onClick={() => {
+                  setFlash(null);
+                  focusScan();
+                }}
+                className="rounded-lg px-3 py-2 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-200"
+              >
+                Без чека
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      {receipt && (
+        <ReceiptPanel
+          amount={receipt.amount}
+          fiscal={receipt.fiscal}
+          onClose={() => setReceipt(null)}
+          onPrint={() => window.print()}
+        />
+      )}
+      {error && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} aria-label="Скрыть ошибку" className="shrink-0">
+            <X className="h-4 w-4" strokeWidth={1.75} />
+          </button>
+        </div>
+      )}
+
+      {/* 340, not 380: the receipt column is mostly empty most of the time,
+          and every pixel it gives back is a pixel of product grid on a
+          screen that has none to spare. */}
+      {/* On a phone the check sits under the product grid: a bar at the bottom jumps to it. */}
       {cart.length > 0 && !checkInView && (
         <button
           onClick={() => document.getElementById("pos-check")?.scrollIntoView({ behavior: "smooth" })}
-          className="fixed inset-x-4 bottom-4 z-30 flex h-14 items-center justify-between rounded-2xl bg-accent px-5 text-base font-semibold text-accent-foreground shadow-[0_10px_24px_rgba(235,88,51,0.3)] lg:hidden"
+          className="fixed inset-x-4 bottom-4 z-30 flex items-center justify-between rounded-2xl bg-accent px-5 py-3.5 text-sm font-medium text-accent-foreground shadow-card lg:hidden"
         >
           <span>Чек · {cart.length} поз.</span>
           <span>{formatMoney(total)}</span>
         </button>
       )}
+      <div className="grid gap-5 pb-20 lg:grid-cols-[1fr_340px] lg:pb-0">
+        <div>
+          <div className="mb-3 flex flex-wrap items-center gap-1 rounded-xl bg-surface-muted p-1">
+            <CategoryChip active={categoryId === ""} onClick={() => setCategoryId("")}>
+              Все
+            </CategoryChip>
+            {sellableCategories.map((c) => (
+              <CategoryChip key={c.id} active={categoryId === c.id} onClick={() => setCategoryId(c.id)}>
+                {c.name}
+              </CategoryChip>
+            ))}
+          </div>
 
-      <aside
-        id="pos-check"
-        className="flex shrink-0 scroll-mt-4 flex-col border-t border-border bg-surface lg:h-full lg:w-[23.5rem] lg:overflow-y-auto lg:border-l lg:border-t-0 xl:w-[26rem] 2xl:w-[29rem]"
-      >
-        <div className="flex items-center justify-between gap-3 px-6 pb-2 pt-6 [@media(max-height:820px)]:pt-4">
-          <h2 className="text-2xl font-semibold tracking-tight text-foreground">
-            Чек
-            {itemCount > 0 && <span className="ml-2 text-base font-normal text-muted">{formatQuantity(itemCount)} шт</span>}
-          </h2>
-          <div className="flex gap-2">
-            <ToolButton icon={Ticket} label="Купон" on={!!appliedCoupon} disabled={cart.length === 0 && !appliedCoupon} onClick={() => setCouponOpen(true)} />
-            <ToolButton
-              icon={Percent}
-              label="Скидка на чек"
-              on={!!checkDiscount}
-              disabled={!checkDiscount && (cart.length === 0 || !!appliedCoupon || pointsRequested > 0)}
-              onClick={() => (checkDiscount ? setCheckDiscount(null) : setDiscountOpen(true))}
-            />
-            <ToolButton icon={Cake} label="Оплата заказа" on={!!crmOrder} onClick={() => (crmOrder ? setCrmOrder(null) : setOrderPickerOpen(true))} />
-            <ToolButton
-              icon={Trash2}
-              label="Очистить чек"
-              disabled={cart.length === 0}
-              onClick={() => {
-                setCart([]);
-                removeCoupon();
-                setLoyaltyMember(null);
-                setCrmOrder(null);
-                setPointsToRedeem(0);
-                setCheckDiscount(null);
-                focusScan();
-              }}
-            />
+          {/* Column count follows the width of THIS column, not the width of
+              the window. Breakpoints answered the wrong question: on the
+              tablet the grid stayed at four wide columns with room for six,
+              and on the shop's monoblock the same rule would have squeezed
+              five columns into 646px and wrapped every name onto three
+              lines. auto-fill just fits as many ~150px tiles as there is
+              room for, on both. */}
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2.5">
+            {/* Pinned quick-add buttons (e.g. Пакет) — always first, regardless
+                of category/search, so a cashier reaches them in one tap. */}
+            {locationId &&
+              quickItems.map((p) => (
+                <button
+                  key={`quick-${p.id}`}
+                  onClick={() => {
+                    addToCart(p);
+                    focusScan();
+                  }}
+                  className="flex min-h-[5.5rem] flex-col justify-between gap-2 rounded-2xl border border-accent bg-accent/5 p-2.5 text-left transition hover:shadow-card active:scale-[0.98]"
+                >
+                  <span className="line-clamp-3 text-base font-semibold text-foreground">{p.name}</span>
+                  <span className="text-lg font-bold text-accent">{formatMoney(p.effectivePrice)}</span>
+                </button>
+              ))}
+            {visibleProducts.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => {
+                  addToCart(p);
+                  focusScan();
+                }}
+                // Bigger and heavier than the rest of the app on purpose: this
+                // grid is read at arm's length, off-axis, on a glossy panel.
+                // Height follows the name instead of being fixed at three
+                // lines for everyone — most names are one line, and the
+                // reserved space for the other two was pushing whole rows of
+                // products below the fold.
+                className="flex min-h-[5.5rem] flex-col justify-between gap-2 rounded-2xl border border-border bg-surface p-2.5 text-left transition hover:border-accent hover:shadow-card active:scale-[0.98]"
+              >
+                {/* A photo only where one was uploaded: tiles without stay compact. */}
+                {p.photoVersion ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={productPhotoUrl(p) ?? undefined} alt="" loading="lazy" className="aspect-[4/3] w-full rounded-xl object-cover" />
+                ) : null}
+                <span className="line-clamp-3 text-base font-semibold text-foreground">{p.name}</span>
+                <span className="text-lg font-bold text-accent">{formatMoney(p.effectivePrice)}</span>
+              </button>
+            ))}
+            {visibleProducts.length === 0 && (
+              <p className="col-span-full py-12 text-center text-sm text-muted">
+                {normalizedQuery ? "Ничего не найдено" : "Нет товаров для продажи"}
+              </p>
+            )}
           </div>
         </div>
 
-        {(appliedCoupon || crmOrder || (checkDiscount && checkDiscountSpread)) && (
-          <div className="space-y-2 px-6 pt-2">
-            {appliedCoupon && (
-              <AttachedRow
-                title={`Купон «${couponCode.trim().toUpperCase()}»`}
-                detail={appliedCoupon.promotionName}
-                onRemove={removeCoupon}
-              />
-            )}
-            {crmOrder && (
-              <AttachedRow
-                title={`Заказ №${crmOrder.number} · ${crmOrder.title}`}
-                detail={`${crmOrder.customerName} · к ${formatDate(crmOrder.dueAt)}${crmOrder.price !== null ? ` · ${formatMoney(crmOrder.price)}` : ""}`}
-                onRemove={() => setCrmOrder(null)}
-              />
-            )}
-            {checkDiscount && checkDiscountSpread && (
-              <AttachedRow
-                title={`Скидка ${checkDiscount.percent !== undefined ? `${checkDiscount.percent}%` : formatMoney(checkDiscount.amount ?? 0)}`}
-                detail={checkDiscount.approverName ? `Разрешил(а): ${checkDiscount.approverName}` : "Скидка на чек"}
-                onRemove={() => setCheckDiscount(null)}
-              />
+        <div id="pos-check" className="flex h-fit scroll-mt-4 flex-col rounded-2xl border border-border bg-surface shadow-card lg:sticky lg:top-4">
+          <div className="flex items-center justify-between border-b border-border px-5 py-4">
+            <h2 className="text-sm font-semibold text-foreground">Чек</h2>
+            {cart.length > 0 && (
+              <button
+                onClick={() => {
+                  setCart([]);
+                  removeCoupon();
+                  setLoyaltyMember(null);
+                  setCrmOrder(null);
+                  setPointsToRedeem(0);
+                  focusScan();
+                }}
+                className="text-xs font-medium text-muted transition hover:text-foreground"
+              >
+                Очистить
+              </button>
             )}
           </div>
-        )}
 
-        <div className="min-h-[9rem] flex-1 px-6 lg:overflow-y-auto">
-          {cart.length === 0 ? (
-            <div className="flex h-full min-h-[9rem] flex-col items-center justify-center text-center">
-              <span className="text-4xl" aria-hidden>
-                🧺
-              </span>
-              <p className="mt-3 text-base font-semibold text-foreground">Чек пуст</p>
-              <p className="mt-1 text-sm text-muted">Нажмите на товар или отсканируйте</p>
-            </div>
-          ) : (
-            cart.map((line) => {
-              const couponPercent = couponPercentFor(line);
-              const unit = displayUnitPrice(line);
-              const old = line.markedDown ? line.product.effectivePrice : couponPercent !== null ? line.unitPrice : null;
-              const qtyLabel = `${formatQuantity(line.quantity)}${line.product.unit === "PCS" ? "" : ` ${UNIT_LABELS_RU[line.product.unit]}`}`;
-              return (
-                <CheckLine
-                  key={line.key}
-                  name={line.product.name}
-                  photo={productPhotoUrl(line.product)}
-                  emoji={categoryEmoji(categoryNameOf(line.product))}
-                  sub={categoryNameOf(line.product)}
-                  chips={
-                    <>
-                      {/* Full price needs no action; the chip is only for stale goods. Not on a line the
-                          coupon already discounts — the two never stack. */}
-                      {!line.product.isOpenPrice && couponPercent === null && (
-                        <LineChip
-                          on={line.markedDown}
-                          onClick={() => {
-                            toggleMarkdown(line.key);
-                            focusScan();
-                          }}
-                        >
-                          Уценка −{MARKDOWN_PERCENT}%
-                        </LineChip>
+          <div className="max-h-[45vh] overflow-y-auto">
+            {cart.length === 0 ? (
+              <p className="px-5 py-12 text-center text-sm text-muted">Отсканируйте или выберите товар</p>
+            ) : (
+              cart.map((line) => {
+                const couponPercent = couponPercentFor(line);
+                return (
+                <div key={line.key} className="border-b border-border px-5 py-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-base font-semibold text-foreground">
+                      {line.product.name}
+                      {line.product.isOpenPrice && (
+                        <span className="ml-1 text-muted">· {formatMoney(line.unitPrice)}</span>
                       )}
-                      {couponPercent !== null && (
-                        <LineChip on tone="accent">
-                          {appliedCoupon?.promotionName} −{couponPercent}%
-                        </LineChip>
+                    </span>
+                    <button
+                      onClick={() => changeLine(line.key, 0)}
+                      aria-label={`Убрать ${line.product.name}`}
+                      className="shrink-0 text-muted transition hover:text-red-600"
+                    >
+                      <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+                    </button>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <QtyButton
+                        onClick={() => changeLine(line.key, line.quantity - 1)}
+                        label={`Меньше ${line.product.name}`}
+                      >
+                        <Minus className="h-3.5 w-3.5" strokeWidth={2} />
+                      </QtyButton>
+                      <span className="min-w-[3rem] text-center text-base font-semibold text-foreground">
+                        {formatQuantity(line.quantity)} {UNIT_LABELS_RU[line.product.unit]}
+                      </span>
+                      <QtyButton
+                        onClick={() => setLineQuantity(line.key, line.quantity + 1)}
+                        label={`Больше ${line.product.name}`}
+                      >
+                        <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+                      </QtyButton>
+                    </div>
+                    <div className="text-right">
+                      {(line.markedDown || couponPercent !== null) && (
+                        // The old price crossed out, so the cashier can see at
+                        // a glance that this line really is discounted.
+                        <span className="mr-2 text-xs text-muted line-through">
+                          {formatMoney((line.markedDown ? line.product.effectivePrice : line.unitPrice) * line.quantity)}
+                        </span>
                       )}
-                    </>
-                  }
-                  qty={qtyLabel}
-                  price={line.quantity === 1 || line.product.unit !== "PCS" ? formatMoney(unit * line.quantity) : `${formatQuantity(line.quantity)} × ${formatMoney(unit)}`}
-                  oldPrice={old !== null ? formatMoney(old * line.quantity) : null}
-                  onMinus={() => changeLine(line.key, line.quantity - 1)}
-                  onPlus={() => setLineQuantity(line.key, line.quantity + 1)}
-                  onRemove={() => changeLine(line.key, 0)}
+                      <span
+                        className={clsx(
+                          "text-base font-bold",
+                          line.markedDown ? "text-amber-800" : couponPercent !== null ? "text-accent" : "text-foreground",
+                        )}
+                      >
+                        {formatMoney(displayUnitPrice(line) * line.quantity)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Full price needs no action at all — this is the only
+                      button, and it is only for stale goods. An open-price
+                      line has no full price to halve, so it is not offered.
+                      Not offered either on a line the applied coupon already
+                      discounts by category — the two never stack, and there
+                      is nothing for the cashier to toggle: the coupon's
+                      discount is automatic. */}
+                  {!line.product.isOpenPrice && couponPercent === null && (
+                    <button
+                      onClick={() => {
+                        toggleMarkdown(line.key);
+                        focusScan();
+                      }}
+                      className={clsx(
+                        "mt-2 rounded-lg border px-2.5 py-1 text-xs font-medium transition",
+                        line.markedDown
+                          ? "border-amber-300 bg-amber-50 text-amber-800"
+                          : "border-border text-muted hover:bg-surface-muted hover:text-foreground",
+                      )}
+                    >
+                      {line.markedDown ? `Уценка −${MARKDOWN_PERCENT}% ✓` : `Уценка −${MARKDOWN_PERCENT}%`}
+                    </button>
+                  )}
+                  {couponPercent !== null && (
+                    <span className="mt-2 inline-block rounded-lg border border-accent/30 bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent">
+                      {appliedCoupon?.promotionName} −{couponPercent}%
+                    </span>
+                  )}
+                </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* A coupon is applied once per sale, not per line — matching it
+              here rather than in the payment dialogs keeps the discount
+              visible on the cart itself while the cashier is still building
+              the order, same as the markdown toggle above. */}
+          <div className="border-t border-border px-5 py-3">
+            {appliedCoupon ? (
+              <div className="flex items-center justify-between gap-2 rounded-xl border border-accent/30 bg-accent/10 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-accent">{appliedCoupon.promotionName}</p>
+                  <p className="text-xs text-muted">Купон «{couponCode.trim().toUpperCase()}» применён</p>
+                </div>
+                <button
+                  onClick={removeCoupon}
+                  aria-label="Отменить купон"
+                  className="shrink-0 text-muted transition hover:text-red-600"
+                >
+                  <X className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      applyCoupon();
+                    }
+                  }}
+                  placeholder="Код купона"
+                  className="min-w-0 flex-1 rounded-xl border border-border bg-surface px-3 py-2 text-sm uppercase text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
                 />
-              );
-            })
-          )}
-        </div>
+                <button
+                  onClick={applyCoupon}
+                  disabled={!couponCode.trim() || couponLoading}
+                  className="shrink-0 rounded-xl border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted disabled:opacity-40"
+                >
+                  {couponLoading ? "…" : "Применить"}
+                </button>
+              </div>
+            )}
+            {couponError && <p className="mt-1.5 text-xs text-red-600">{couponError}</p>}
+          </div>
 
-        <div className="shrink-0 px-6 pb-6">
+          <div className="border-t border-border px-5 py-3">
+            <PosOrderBlock order={crmOrder} onChange={setCrmOrder} />
+          </div>
+
+          <div className="border-t border-border px-5 py-3">
+            {checkDiscount && checkDiscountSpread ? (
+              <div className="flex items-center justify-between gap-2 text-sm">
+                <span className="text-foreground">
+                  Скидка {checkDiscount.percent !== undefined ? `${checkDiscount.percent}%` : formatMoney(checkDiscount.amount ?? 0)} · −{formatMoney(checkDiscountSpread.total)}
+                  {checkDiscount.approverName && <span className="ml-1 text-xs text-muted">({checkDiscount.approverName})</span>}
+                </span>
+                <button onClick={() => setCheckDiscount(null)} aria-label="Убрать скидку" className="text-muted hover:text-red-600">
+                  <X className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setDiscountOpen(true)}
+                disabled={cart.length === 0 || !!appliedCoupon || pointsRequested > 0}
+                className="flex items-center gap-2 text-sm font-medium text-foreground transition hover:text-accent disabled:opacity-40"
+              >
+                <Percent className="h-4 w-4" strokeWidth={1.75} />
+                Скидка на чек
+              </button>
+            )}
+          </div>
+
           {loyaltySettings?.enabled && (
-            <div className="pt-3">
+            <div className="border-t border-border px-5 py-3">
               <PosLoyaltyBlock
                 member={loyaltyMember}
                 onMemberChange={setLoyaltyMember}
@@ -1158,135 +1166,58 @@ export default function PosPage() {
             </div>
           )}
 
-          {summaryRows.length > 0 && (
-            <div className="mt-4 space-y-2 text-[0.9375rem]">
-              {summaryRows.map((row) => (
-                <div key={row.label} className="flex justify-between gap-3">
-                  <span className="text-muted">{row.label}</span>
-                  <span className={clsx("font-semibold", row.negative ? "text-accent" : "text-foreground")}>{row.value}</span>
-                </div>
+          <div className="border-t border-border px-5 py-4">
+            <div className="mb-4 flex items-end justify-between">
+              <span className="text-base text-muted">Итого{itemCount > 0 ? ` · ${formatQuantity(itemCount)} шт` : ""}</span>
+              <span className="text-3xl font-bold text-foreground">{formatMoney(total)}</span>
+            </div>
+            {/* The card has been charged but the sale did not record. Every
+                payment button is blocked while this stands, because each one
+                would run a SECOND payment — the only way out is to record the
+                same transaction again. */}
+            {chargedButUnrecorded && (
+              <div className="mb-3 rounded-xl bg-amber-50 px-4 py-3">
+                <p className="text-sm font-medium text-amber-900">
+                  Оплата на терминале прошла, но продажа не записалась
+                </p>
+                <p className="mt-1 text-sm text-amber-800">
+                  Деньги с покупателя уже списаны. <strong>Не проводите оплату заново.</strong>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => handlePay(chargedButUnrecorded)}
+                  disabled={isSubmitting}
+                  className="mt-2 w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-40"
+                >
+                  {isSubmitting ? "…" : "Записать продажу ещё раз"}
+                </button>
+              </div>
+            )}
+            {/* Every button opens a dialog rather than settling on the spot:
+                a stray tap must never be a completed sale, and the cashier
+                gets one place to change their mind. */}
+            <div className="grid grid-cols-2 gap-2">
+              {PAYMENT_BUTTONS.map(({ mode, label, icon: Icon }) => (
+                <button
+                  key={mode}
+                  onClick={() => setPayMode(mode)}
+                  disabled={cart.length === 0 || isSubmitting || !locationId || chargedButUnrecorded !== null}
+                  className={clsx(
+                    "flex items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-base font-semibold transition hover:opacity-90 disabled:opacity-40",
+                    mode === "mixed"
+                      ? "col-span-2 border border-border bg-surface text-foreground hover:bg-surface-muted"
+                      : "bg-accent text-accent-foreground",
+                  )}
+                >
+                  <Icon className="h-5 w-5" strokeWidth={1.75} />
+                  {isSubmitting ? "…" : label}
+                </button>
               ))}
             </div>
-          )}
-          <div className="my-4 border-t-[1.5px] border-dashed border-[var(--border-strong)] [@media(max-height:820px)]:my-3" />
-          <div className="flex items-baseline justify-between">
-            <span className="text-xl font-semibold text-foreground">Итого</span>
-            <span className="whitespace-nowrap text-[2rem] font-semibold leading-none tracking-tight text-foreground [@media(max-height:820px)]:text-[1.75rem]">{formatMoney(total)}</span>
           </div>
-
-          {/* The card has been charged but the sale did not record. Every payment button is blocked:
-              each one would run a SECOND payment — the only way out is to record the same one again. */}
-          {chargedButUnrecorded && (
-            <div className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 ring-1 ring-amber-200">
-              <p className="text-sm font-semibold text-amber-900">Оплата на терминале прошла, но продажа не записалась</p>
-              <p className="mt-1 text-sm text-amber-800">
-                Деньги с покупателя уже списаны. <strong>Не проводите оплату заново.</strong>
-              </p>
-              <button
-                type="button"
-                onClick={() => handlePay(chargedButUnrecorded)}
-                disabled={isSubmitting}
-                className="mt-2 h-11 w-full rounded-xl bg-accent px-4 text-sm font-semibold text-accent-foreground transition hover:opacity-90 disabled:opacity-40"
-              >
-                {isSubmitting ? "…" : "Записать продажу ещё раз"}
-              </button>
-            </div>
-          )}
-
-          <p className="mb-3 mt-5 text-base font-semibold text-foreground [@media(max-height:820px)]:hidden">Способ оплаты</p>
-          <div className="hidden h-3 [@media(max-height:820px)]:block" />
-          <PayMethodCards value={payMethod} onChange={setPayMethod} disabled={chargedButUnrecorded !== null} />
-          {/* Opens the payment window rather than settling on the spot: a stray tap must never be
-              a completed sale, and the cashier gets one place to change their mind. */}
-          <button
-            type="button"
-            data-submit
-            onClick={() => setPayMode(payMethod)}
-            disabled={cart.length === 0 || isSubmitting || !locationId || chargedButUnrecorded !== null}
-            className="mt-4 h-[3.75rem] w-full rounded-2xl bg-accent [@media(max-height:820px)]:mt-3 [@media(max-height:820px)]:h-14 text-lg font-semibold text-accent-foreground shadow-[0_10px_24px_rgba(235,88,51,0.28)] transition hover:opacity-95 active:scale-[0.99] disabled:opacity-40 disabled:shadow-none"
-          >
-            {isSubmitting ? "…" : cart.length === 0 ? "Провести оплату" : `Провести оплату · ${formatMoney(total)}`}
-          </button>
         </div>
-      </aside>
+      </div>
     </div>
-    {couponOpen && (
-      <Modal
-        title="Купон"
-        width="max-w-md"
-        onClose={() => {
-          setCouponOpen(false);
-          focusScan();
-        }}
-      >
-        {appliedCoupon ? (
-          <>
-            <div className="rounded-2xl bg-[var(--accent-soft)] px-4 py-3">
-              <p className="text-base font-semibold text-accent">{appliedCoupon.promotionName}</p>
-              <p className="mt-0.5 text-sm text-muted">Купон «{couponCode.trim().toUpperCase()}» применён</p>
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <button
-                onClick={() => {
-                  removeCoupon();
-                }}
-                className="h-12 rounded-xl border border-border text-sm font-semibold text-foreground transition hover:bg-surface-muted"
-              >
-                Отменить купон
-              </button>
-              <button
-                data-submit
-                onClick={() => {
-                  setCouponOpen(false);
-                  focusScan();
-                }}
-                className="h-12 rounded-xl bg-accent text-sm font-semibold text-accent-foreground transition hover:opacity-90"
-              >
-                Готово
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <input
-              autoFocus
-              value={couponCode}
-              onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  applyCoupon();
-                }
-              }}
-              placeholder="Код купона"
-              className="h-14 w-full rounded-2xl border border-border bg-surface px-4 text-xl font-semibold uppercase tracking-wider text-foreground outline-none focus:border-accent"
-            />
-            {couponError && <p className="mt-2 text-sm text-red-700">{couponError}</p>}
-            <button
-              data-submit
-              onClick={applyCoupon}
-              disabled={!couponCode.trim() || couponLoading}
-              className="mt-4 h-14 w-full rounded-2xl bg-accent text-base font-semibold text-accent-foreground transition hover:opacity-90 disabled:opacity-40"
-            >
-              {couponLoading ? "Проверяем…" : "Применить"}
-            </button>
-          </>
-        )}
-      </Modal>
-    )}
-    {orderPickerOpen && (
-      <PosOrderPickerModal
-        onPick={(o) => {
-          setCrmOrder(o);
-          setOrderPickerOpen(false);
-          focusScan();
-        }}
-        onClose={() => {
-          setOrderPickerOpen(false);
-          focusScan();
-        }}
-      />
-    )}
     {payMode === "cash" && (
       <CashPaymentModal
         total={total}
@@ -1438,7 +1369,7 @@ export default function PosPage() {
         orgName={user?.organization.name ?? ""}
       />
     )}
-    </div>
+    </>
   );
 }
 
@@ -1468,7 +1399,7 @@ function CashPaymentModal({
   };
 
   return (
-    <Modal title="Оплата наличными" onClose={onClose} width="max-w-md">
+    <Modal title="Оплата наличными" onClose={onClose} width="max-w-sm">
       <div className="mb-3 flex items-baseline justify-between">
         <span className="text-sm text-muted">К оплате</span>
         <span className="text-xl font-semibold text-foreground">{formatMoney(total)}</span>
@@ -1508,7 +1439,7 @@ function CashPaymentModal({
             key={amount}
             type="button"
             onClick={() => setValue(String(amount))}
-            className="h-12 whitespace-nowrap rounded-xl border border-border px-1 text-[0.9375rem] font-semibold text-foreground transition hover:bg-surface-muted"
+            className="rounded-xl border border-border px-2 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
           >
             {amount === total ? "Без сдачи" : amount.toLocaleString("ru-RU")}
           </button>
@@ -1523,7 +1454,7 @@ function CashPaymentModal({
         type="button"
         onClick={submit}
         disabled={!valid || isSubmitting}
-        className="mt-4 h-14 w-full rounded-2xl bg-accent px-4 text-base font-semibold text-accent-foreground transition hover:opacity-90 disabled:opacity-40"
+        className="mt-3 w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-40"
       >
         {isSubmitting ? "…" : "Провести продажу"}
       </button>
@@ -1559,7 +1490,7 @@ function CardPaymentModal({
   return (
     // A live payment on the terminal pins the dialog open — closing it would
     // leave the card being charged with nothing watching the result.
-    <Modal title="Оплата картой" onClose={busy ? () => {} : onClose} width="max-w-md">
+    <Modal title="Оплата картой" onClose={busy ? () => {} : onClose} width="max-w-sm">
       <div className="rounded-xl border border-border bg-surface-muted px-4 py-5 text-center">
         <p className="text-sm text-muted">К оплате</p>
         <p className="mt-1 text-3xl font-semibold tabular-nums text-foreground">{formatMoney(total)}</p>
@@ -1584,7 +1515,7 @@ function CardPaymentModal({
             type="button"
             onClick={() => onSubmit()}
             disabled={isSubmitting}
-            className="mt-4 h-14 w-full rounded-2xl bg-accent px-4 text-base font-semibold text-accent-foreground transition hover:opacity-90 disabled:opacity-40"
+            className="mt-3 w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-40"
           >
             {isSubmitting ? "…" : "Оплата прошла — провести продажу"}
           </button>
@@ -1710,7 +1641,7 @@ function MixedPaymentModal({
   );
 
   return (
-    <Modal title="Картой и наличными" onClose={busy ? () => {} : onClose} width="max-w-md">
+    <Modal title="Картой и наличными" onClose={busy ? () => {} : onClose} width="max-w-sm">
       <div className="mb-3 flex items-baseline justify-between">
         <span className="text-sm text-muted">К оплате</span>
         <span className="text-xl font-semibold text-foreground">{formatMoney(total)}</span>
@@ -1790,7 +1721,7 @@ function MixedPaymentModal({
             type="button"
             onClick={paired ? lockSplit : submit}
             disabled={!valid}
-            className="mt-4 h-14 w-full rounded-2xl bg-accent px-4 text-base font-semibold text-accent-foreground transition hover:opacity-90 disabled:opacity-40"
+            className="mt-3 w-full rounded-xl bg-accent px-4 py-3 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-40"
           >
             {isSubmitting ? "…" : paired ? `Оплатить картой ${formatMoney(cardPart)}` : "Провести продажу"}
           </button>
@@ -2031,17 +1962,44 @@ function ReceiptPanel({
   );
 }
 
-// Something attached to the whole check (a coupon, a cake order, a check discount), removable.
-function AttachedRow({ title, detail, onRemove }: { title: string; detail: string; onRemove: () => void }) {
+function CategoryChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl bg-[var(--accent-soft)] px-4 py-2.5">
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-accent">{title}</p>
-        <p className="truncate text-xs text-muted">{detail}</p>
-      </div>
-      <button onClick={onRemove} aria-label="Убрать" className="shrink-0 rounded-lg p-1 text-muted transition hover:text-red-600">
-        <X className="h-4 w-4" strokeWidth={1.75} />
-      </button>
-    </div>
+    <button
+      onClick={onClick}
+      className={clsx(
+        "rounded-lg px-3.5 py-1.5 text-sm font-medium transition",
+        active ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function QtyButton({
+  onClick,
+  label,
+  children,
+}: {
+  onClick: () => void;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-foreground transition hover:bg-surface-muted"
+    >
+      {children}
+    </button>
   );
 }
