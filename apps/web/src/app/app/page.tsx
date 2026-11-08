@@ -68,7 +68,7 @@ export default function ClubApp() {
   if (phase === "loading") {
     return (
       <div className="aa-splash">
-        <img src="/site/logo-256.png" alt="Ар Амир" />
+        <img src="/site/app/logo.png" alt="Ар Амир" />
       </div>
     );
   }
@@ -99,7 +99,7 @@ export default function ClubApp() {
     <>
       <main className="aa-frame aa-fade" key={tab}>
         <header className="aa-top">
-          <img src="/site/logo-256.png" alt="" />
+          <img src="/site/app/logo.png" alt="" />
           <span className="brand">Ар Амир</span>
           <span className="hello">
             {greeting()}

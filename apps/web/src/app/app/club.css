@@ -105,7 +105,7 @@ body:has(.aa) {
 .aa-top img {
   width: 36px;
   height: 36px;
-  border-radius: 50%;
+  border-radius: 10px;
   box-shadow: 0 0 0 1px var(--aa-line);
 }
 .aa-top .brand {
@@ -748,9 +748,9 @@ body:has(.aa) {
 /* ── misc ────────────────────────────────────────────────────────────── */
 
 .aa-hero-logo {
-  width: 84px;
-  height: 84px;
-  border-radius: 50%;
+  width: 92px;
+  height: 92px;
+  border-radius: 22px;
   box-shadow: 0 0 0 1px var(--aa-line), var(--aa-shadow);
 }
 .aa-gift {
@@ -818,7 +818,7 @@ body:has(.aa) {
 .aa-splash img {
   width: 96px;
   height: 96px;
-  border-radius: 50%;
+  border-radius: 22px;
   animation: aa-pulse 1.6s ease-in-out infinite;
 }
 .aa-fade {

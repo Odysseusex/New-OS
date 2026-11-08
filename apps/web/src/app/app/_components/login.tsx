@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, MessageCircle, Send, Sparkles } from "lucide-react";
+import { ArrowLeft, MessageCircle, Send } from "lucide-react";
 import type { ClubInfoDto } from "@bakery-os/shared";
 import { ClubApiError, clubApi, clubToken, pendingLogin, type PendingLogin } from "@/lib/club-api";
 import { displayNational, fmtPoints, nationalDigits, privacyHref } from "./format";
@@ -61,7 +61,7 @@ function Start({ info, onStarted }: { info: ClubInfoDto | null; onStarted: (p: P
   return (
     <main className="aa-frame no-tabs aa-fade">
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, textAlign: "center", paddingTop: 18 }}>
-        <img src="/site/logo-256.png" alt="Ар Амир" className="aa-hero-logo" />
+        <img src="/site/app/logo.png" alt="Ар Амир" className="aa-hero-logo" />
         <span className="aa-eyebrow">Бонусная карта</span>
         <h1 className="aa-h1">Ар Амир</h1>
         {programme && (
@@ -69,13 +69,6 @@ function Start({ info, onStarted }: { info: ClubInfoDto | null; onStarted: (p: P
             {fmtPoints(programme.earnPercent)}% бонусами с каждой покупки. Оплачивайте ими до {fmtPoints(programme.maxRedeemPercent)}% чека.
           </p>
         )}
-      </div>
-
-      <div className="aa-chip">
-        <Sparkles size={18} />
-        <span>
-          Уже копите бонусы у нас? Войдите по своему номеру — баланс и история появятся сами.
-        </span>
       </div>
 
       <section className="aa-panel" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
