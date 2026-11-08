@@ -20,11 +20,11 @@ const sans = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "Ар Амир — бонусная карта",
-  description: "Бонусная карта пекарни Ар Амир: баланс, история покупок и QR-код для кассы.",
+  title: "Ar Amir — бонусная карта",
+  description: "Бонусная карта пекарни Ar Amir: баланс, история покупок и QR-код для кассы.",
   manifest: "/site/app/manifest.webmanifest",
   icons: { icon: "/site/app/icon-192.png", apple: "/site/app/icon-180.png" },
-  appleWebApp: { capable: true, title: "Ар Амир", statusBarStyle: "default" },
+  appleWebApp: { capable: true, title: "Ar Amir", statusBarStyle: "default" },
   robots: { index: false },
 };
 

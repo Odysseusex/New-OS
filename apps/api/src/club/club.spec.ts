@@ -107,7 +107,7 @@ describe("customer app sign-in and card (database)", () => {
     expect(await club.loginStatus(started.requestId, started.secret)).toEqual({ status: "PENDING" });
     await expect(club.loginStatus(started.requestId, "wrong-secret")).rejects.toThrow(/не найден/);
 
-    const owner = await confirmClubLogin(prisma, { phone: "+77071230002", text: `Код входа в приложение Ар Амир: ${started.code}`, channel: "WHATSAPP" });
+    const owner = await confirmClubLogin(prisma, { phone: "+77071230002", text: `Код входа в приложение Ar Amir: ${started.code}`, channel: "WHATSAPP" });
     expect(owner).toMatchObject({ matched: true, ok: true });
     const first = await club.loginStatus(started.requestId, started.secret);
     expect(first.status).toBe("CONFIRMED");
@@ -129,7 +129,7 @@ describe("customer app sign-in and card (database)", () => {
 
   it("an unrelated message is not taken for a sign-in; a stale code gets a plain answer", async () => {
     expect(await confirmClubLogin(prisma, { phone: "+77071230002", text: "Сколько у меня баллов?", channel: "WHATSAPP" })).toEqual({ matched: false });
-    expect(await confirmClubLogin(prisma, { phone: "+77071230002", text: "Код входа в приложение Ар Амир: 000000", channel: "WHATSAPP" })).toMatchObject({
+    expect(await confirmClubLogin(prisma, { phone: "+77071230002", text: "Код входа в приложение Ar Amir: 000000", channel: "WHATSAPP" })).toMatchObject({
       matched: true,
       ok: false,
     });
@@ -187,7 +187,7 @@ describe("customer app sign-in and card (database)", () => {
   it("WhatsApp: the customer's message to our number signs them in", async () => {
     const started = await start("+77071230007");
     await whatsapp.handleWebhook({
-      entry: [{ changes: [{ field: "messages", value: { messages: [{ id: "wamid.club1", from: "77071230007", text: { body: `Код входа в приложение Ар Амир: ${started.code}` } }] } }] }],
+      entry: [{ changes: [{ field: "messages", value: { messages: [{ id: "wamid.club1", from: "77071230007", text: { body: `Код входа в приложение Ar Amir: ${started.code}` } }] } }] }],
     });
     expect((await club.loginStatus(started.requestId, started.secret)).status).toBe("CONFIRMED");
   });

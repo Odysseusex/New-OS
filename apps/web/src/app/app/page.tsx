@@ -68,7 +68,7 @@ export default function ClubApp() {
   if (phase === "loading") {
     return (
       <div className="aa-splash">
-        <img src="/site/app/logo.png" alt="Ар Амир" />
+        <img src="/site/app/logo.png" alt="Ar Amir" />
       </div>
     );
   }
@@ -100,7 +100,7 @@ export default function ClubApp() {
       <main className="aa-frame aa-fade" key={tab}>
         <header className="aa-top">
           <img src="/site/app/logo.png" alt="" />
-          <span className="brand">Ар Амир</span>
+          <span className="brand">Ar Amir</span>
           <span className="hello">
             {greeting()}
             {profile.name ? (
@@ -159,7 +159,7 @@ function CardTab({ profile, offsetMs }: { profile: ClubProfileDto; offsetMs: num
       <section className="aa-card" aria-label="Бонусная карта" style={cardStyle(color)}>
         <WheatArt />
         <div className="row">
-          <span className="mark">Ар Амир</span>
+          <span className="mark">Ar Amir</span>
           <span className="kind">Бонусная карта</span>
         </div>
         <div className="balance">
@@ -224,7 +224,7 @@ function CardTab({ profile, offsetMs }: { profile: ClubProfileDto; offsetMs: num
         </div>
       </section>
       <p className="aa-muted" style={{ textAlign: "center", fontSize: 12.5, margin: 0 }}>
-        1 бонус = 1 ₸. Тратить можно только в пекарнях Ар Амир.
+        1 бонус = 1 ₸. Тратить можно только в пекарнях Ar Amir.
       </p>
 
       <InstallHint />

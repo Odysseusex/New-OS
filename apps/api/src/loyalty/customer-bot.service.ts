@@ -200,7 +200,7 @@ export class CustomerBotService implements OnModuleInit {
     const login = /^in_(\d{6})$/.exec(payload ?? "");
     if (login) {
       this.pendingLogins.set(chatId, { code: login[1], at: Date.now() });
-      return { text: "Чтобы войти в приложение Ар Амир, нажмите кнопку ниже и отправьте свой номер.", extra: ASK_PHONE };
+      return { text: "Чтобы войти в приложение Ar Amir, нажмите кнопку ниже и отправьте свой номер.", extra: ASK_PHONE };
     }
     const links = await this.linksForChat(chatId);
     if (links.length > 0) {

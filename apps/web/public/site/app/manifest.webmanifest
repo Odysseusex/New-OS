@@ -1,7 +1,7 @@
 {
-  "name": "Ар Амир — бонусная карта",
-  "short_name": "Ар Амир",
-  "description": "Бонусная карта пекарни Ар Амир",
+  "name": "Ar Amir — бонусная карта",
+  "short_name": "Ar Amir",
+  "description": "Бонусная карта пекарни Ar Amir",
   "start_url": "/app",
   "scope": "/app",
   "display": "standalone",

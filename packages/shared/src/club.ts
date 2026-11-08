@@ -10,7 +10,7 @@ export const CLUB_LOGIN_TTL_MINUTES = 10;
 // The text the app pre-fills in WhatsApp. The server finds the six digits in
 // whatever the customer actually sends, so an edited message still works.
 export function clubLoginMessage(code: string): string {
-  return `Код входа в приложение Ар Амир: ${code}`;
+  return `Код входа в приложение Ar Amir: ${code}`;
 }
 
 // ── Rotating card code ──────────────────────────────────────────────────────

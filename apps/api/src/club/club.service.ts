@@ -21,7 +21,7 @@ import { CustomerBotService } from "../loyalty/customer-bot.service";
 import { newCardSecret } from "./club-confirm";
 import { signClubToken } from "./club-token";
 
-export const BRAND = "Ар Амир";
+export const BRAND = "Ar Amir";
 
 // A signed-in customer, as the guard resolves it.
 export interface ClubSession {

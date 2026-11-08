@@ -118,7 +118,7 @@ export class LoyaltyService {
   // A card shown in the customer app, as the till's scanner read it.
   async lookupCard(organizationId: string, raw: string): Promise<LoyaltyLookupDto> {
     const parsed = parseCardPayload(raw);
-    if (!parsed) throw new BadRequestException("Это не карта клиента Ар Амир");
+    if (!parsed) throw new BadRequestException("Это не карта клиента Ar Amir");
     const member = await finalMemberByPhone(this.prisma, organizationId, parsed.phone);
     if (!member?.cardSecret || !cardCodeValid(member.cardSecret, parsed.code)) {
       throw new BadRequestException("Код карты устарел — попросите клиента открыть карту заново и сканируйте ещё раз");

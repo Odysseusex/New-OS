@@ -61,9 +61,9 @@ function Start({ info, onStarted }: { info: ClubInfoDto | null; onStarted: (p: P
   return (
     <main className="aa-frame no-tabs aa-fade">
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, textAlign: "center", paddingTop: 18 }}>
-        <img src="/site/app/logo.png" alt="Ар Амир" className="aa-hero-logo" />
+        <img src="/site/app/logo.png" alt="Ar Amir" className="aa-hero-logo" />
         <span className="aa-eyebrow">Бонусная карта</span>
-        <h1 className="aa-h1">Ар Амир</h1>
+        <h1 className="aa-h1">Ar Amir</h1>
         {programme && (
           <p className="aa-sub" style={{ maxWidth: 340 }}>
             {fmtPoints(programme.earnPercent)}% бонусами с каждой покупки. Оплачивайте ими до {fmtPoints(programme.maxRedeemPercent)}% чека.
