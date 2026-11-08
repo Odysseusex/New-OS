@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
-import { Calculator, CheckCircle2, Copy, FileDown, Pencil, Play, Plus, Search, Trash2, XCircle } from "lucide-react";
+import { Calculator, Copy, FileDown, Plus, Search, Trash2, XCircle } from "lucide-react";
 import type { LocationDto, ProductDto, ProductionBatchDto, RecipeDto } from "@bakery-os/shared";
 import {
   HARD_DELETE_ROLES,
@@ -18,10 +18,8 @@ import {
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatDate, formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
-import { NewBatchModal } from "@/components/new-batch-modal";
-import { EditBatchModal } from "@/components/edit-batch-modal";
 import { AbortBatchModal } from "@/components/abort-batch-modal";
-import { CompleteBatchModal } from "@/components/complete-batch-modal";
+import { ProductionReleaseModal } from "@/components/production-release-modal";
 import { ProductionDeviationsTab } from "@/components/production-deviations-tab";
 import { ProductionOutputTab } from "@/components/production-output-tab";
 import { RequisitionsTab } from "@/components/requisitions-tab";
@@ -32,15 +30,6 @@ import { RecipeScaleModal } from "@/components/recipe-scale-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 
 type Tab = "batches" | "recipes" | "requisitions" | "output" | "deviations";
-type BatchFilter = "ACTIVE" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "ALL";
-
-const BATCH_FILTER_LABELS_RU: Record<BatchFilter, string> = {
-  ACTIVE: "Активные",
-  IN_PROGRESS: "В процессе",
-  COMPLETED: "Завершённые",
-  CANCELLED: "Отменённые",
-  ALL: "Все",
-};
 
 export default function ProductionPage() {
   const { user } = useAuth();
@@ -55,14 +44,12 @@ export default function ProductionPage() {
   const [recipes, setRecipes] = useState<RecipeDto[]>([]);
   const [batches, setBatches] = useState<ProductionBatchDto[]>([]);
   const [locationFilter, setLocationFilter] = useState("");
-  const [batchFilter, setBatchFilter] = useState<BatchFilter>("ACTIVE");
   const [showArchivedRecipes, setShowArchivedRecipes] = useState(false);
   const [recipeSearch, setRecipeSearch] = useState("");
-  const [modal, setModal] = useState<"batch" | "recipe" | null>(null);
+  const [modal, setModal] = useState<"release" | "recipe" | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [editingRecipe, setEditingRecipe] = useState<RecipeDto | undefined>(undefined);
   const [duplicateFromRecipe, setDuplicateFromRecipe] = useState<RecipeDto | undefined>(undefined);
-  const [editingBatch, setEditingBatch] = useState<ProductionBatchDto | null>(null);
-  const [completingBatch, setCompletingBatch] = useState<ProductionBatchDto | null>(null);
   const [abortingBatch, setAbortingBatch] = useState<ProductionBatchDto | null>(null);
   const [documentBatchId, setDocumentBatchId] = useState<string | null>(null);
   const [selectedRecipeIds, setSelectedRecipeIds] = useState<Set<string>>(new Set());
@@ -100,25 +87,6 @@ export default function ProductionPage() {
   }, [loadBatches]);
 
   const fixedLocationId = isOrgWide ? null : (user?.locationId ?? null);
-
-  async function handleStart(batch: ProductionBatchDto) {
-    try {
-      await api.production.startBatch(batch.id);
-      loadBatches();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Не удалось начать производство");
-    }
-  }
-
-  async function handleCancel(batch: ProductionBatchDto) {
-    if (!confirm(`Отменить задание «${batch.productName}»?`)) return;
-    try {
-      await api.production.cancelBatch(batch.id);
-      loadBatches();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Не удалось отменить задание");
-    }
-  }
 
   async function handleDelete(batch: ProductionBatchDto) {
     if (!confirm(`Удалить задание «${batch.productName}»? Это действие нельзя отменить.`)) return;
@@ -177,38 +145,27 @@ export default function ProductionPage() {
 
   const selectedRecipes = recipes.filter((r) => selectedRecipeIds.has(r.id));
 
-  const visibleBatches = batches.filter((b) => {
-    switch (batchFilter) {
-      case "ACTIVE":
-        return b.status === ProductionBatchStatus.PLANNED || b.status === ProductionBatchStatus.IN_PROGRESS;
-      case "IN_PROGRESS":
-        return b.status === ProductionBatchStatus.IN_PROGRESS;
-      case "COMPLETED":
-        return b.status === ProductionBatchStatus.COMPLETED;
-      case "CANCELLED":
-        return b.status === ProductionBatchStatus.CANCELLED;
-      case "ALL":
-        return true;
-    }
-  });
+  // Newest output first; a batch left from the old plan → start → finish flow sits by its plan date.
+  const visibleBatches = [...batches].sort((a, b) => (b.completedAt ?? b.scheduledFor).localeCompare(a.completedAt ?? a.scheduledFor));
 
   return (
     <div className="mx-auto max-w-6xl">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-foreground">Производство</h1>
-          <p className="mt-1 text-sm text-muted">Рецептуры и производственные задания</p>
+          <p className="mt-1 text-sm text-muted">Выпуск продукции и рецептуры</p>
         </div>
       </div>
 
       {error && (
         <div className="mb-6 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
+      {notice && <div className="mb-6 rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700">{notice}</div>}
 
       <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
           <TabButton active={tab === "batches"} onClick={() => setTab("batches")}>
-            Задания
+            Журнал выпуска
           </TabButton>
           <TabButton active={tab === "recipes"} onClick={() => setTab("recipes")}>
             Рецептуры
@@ -225,20 +182,6 @@ export default function ProductionPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          {tab === "batches" && (
-            <select
-              value={batchFilter}
-              onChange={(e) => setBatchFilter(e.target.value as BatchFilter)}
-              className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-            >
-              {(Object.keys(BATCH_FILTER_LABELS_RU) as BatchFilter[]).map((f) => (
-                <option key={f} value={f}>
-                  {BATCH_FILTER_LABELS_RU[f]}
-                </option>
-              ))}
-            </select>
-          )}
-
           {tab === "batches" && isOrgWide && (
             <select
               value={locationFilter}
@@ -258,11 +201,14 @@ export default function ProductionPage() {
 
           {tab === "batches" && canManageProduction && (
             <button
-              onClick={() => setModal("batch")}
+              onClick={() => {
+                setNotice(null);
+                setModal("release");
+              }}
               className="flex items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90"
             >
               <Plus className="h-4 w-4" strokeWidth={1.75} />
-              Новое задание
+              Выпуск за день
             </button>
           )}
 
@@ -317,18 +263,17 @@ export default function ProductionPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
-                <th className="px-5 py-3 font-medium">Товар</th>
-                {isOrgWide && <th className="px-5 py-3 font-medium">Производство</th>}
-                <th className="px-5 py-3 text-right font-medium">План</th>
-                <th className="px-5 py-3 text-right font-medium">Факт</th>
-                <th className="px-5 py-3 font-medium">Статус</th>
                 <th className="px-5 py-3 font-medium">Дата</th>
-                {canManageProduction && <th className="px-5 py-3 font-medium">Действия</th>}
+                <th className="px-5 py-3 font-medium">Продукция</th>
+                {isOrgWide && <th className="px-5 py-3 font-medium">Цех</th>}
+                <th className="px-5 py-3 text-right font-medium">Вышло</th>
+                <th className="px-5 py-3 font-medium">Документ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {visibleBatches.map((batch) => (
                 <tr key={batch.id}>
+                  <td className="px-5 py-3 text-muted">{formatDateTime(batch.completedAt ?? batch.scheduledFor)}</td>
                   <td className="px-5 py-3 font-medium text-foreground">
                     <span className="flex items-center gap-1.5">
                       {batch.productName}
@@ -347,92 +292,53 @@ export default function ProductionPage() {
                     </span>
                   </td>
                   {isOrgWide && <td className="px-5 py-3 text-muted">{batch.locationName}</td>}
-                  <td className="px-5 py-3 text-right text-muted">
-                    {formatQuantity(batch.plannedQuantity)} {UNIT_LABELS_RU[batch.unit]}
-                  </td>
                   <td className="px-5 py-3 text-right text-foreground">
-                    {batch.actualQuantity !== null
-                      ? `${formatQuantity(batch.actualQuantity)} ${UNIT_LABELS_RU[batch.unit]}`
-                      : "—"}
+                    {batch.actualQuantity !== null ? `${formatQuantity(batch.actualQuantity)} ${UNIT_LABELS_RU[batch.unit]}` : "—"}
                   </td>
                   <td className="px-5 py-3">
-                    <StatusBadge status={batch.status} />
-                    {batch.recipeVersionNumber !== null && (
-                      <p className="mt-1 text-xs text-muted">по версии техкарты {batch.recipeVersionNumber}</p>
-                    )}
                     {batch.status === ProductionBatchStatus.COMPLETED && (
-                      <button onClick={() => setDocumentBatchId(batch.id)} className="mt-1 block text-xs font-medium text-accent hover:underline">
-                        Акт выпуска
-                      </button>
+                      <>
+                        <button onClick={() => setDocumentBatchId(batch.id)} className="text-sm font-medium text-accent hover:underline">
+                          Акт выпуска
+                        </button>
+                        {batch.recipeVersionNumber !== null && (
+                          <p className="mt-0.5 text-xs text-muted">по версии техкарты {batch.recipeVersionNumber}</p>
+                        )}
+                      </>
                     )}
-                    {batch.status === ProductionBatchStatus.CANCELLED && batch.cancelReason && (
-                      <p className="mt-1 text-xs text-muted">
-                        {PRODUCTION_CANCEL_REASON_LABELS_RU[batch.cancelReason]}
+                    {batch.status === ProductionBatchStatus.CANCELLED && (
+                      <p className="text-xs text-muted">
+                        <StatusBadge status={batch.status} />
+                        {batch.cancelReason && ` ${PRODUCTION_CANCEL_REASON_LABELS_RU[batch.cancelReason]}`}
                         {batch.cancelNote ? ` — ${batch.cancelNote}` : ""}
                       </p>
                     )}
+                    {/* Left over from the old plan → start → finish flow: only removing it is offered. */}
+                    {(batch.status === ProductionBatchStatus.PLANNED || batch.status === ProductionBatchStatus.IN_PROGRESS) && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted">Не проведено (план {formatQuantity(batch.plannedQuantity)})</span>
+                        {canManageProduction && (
+                          <button
+                            onClick={() => (batch.status === ProductionBatchStatus.PLANNED ? handleDelete(batch) : setAbortingBatch(batch))}
+                            title={batch.status === ProductionBatchStatus.PLANNED ? "Удалить" : "Прервать"}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-red-600"
+                          >
+                            {batch.status === ProductionBatchStatus.PLANNED ? (
+                              <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+                            ) : (
+                              <XCircle className="h-4 w-4" strokeWidth={1.75} />
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </td>
-                  <td className="px-5 py-3 text-muted">{formatDateTime(batch.scheduledFor)}</td>
-                  {canManageProduction && (
-                    <td className="px-5 py-3">
-                      {batch.status === ProductionBatchStatus.PLANNED && (
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => handleStart(batch)}
-                            title="Начать производство"
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-green-600"
-                          >
-                            <Play className="h-4 w-4" strokeWidth={1.75} />
-                          </button>
-                          <button
-                            onClick={() => setEditingBatch(batch)}
-                            title="Изменить"
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-foreground"
-                          >
-                            <Pencil className="h-4 w-4" strokeWidth={1.75} />
-                          </button>
-                          <button
-                            onClick={() => handleCancel(batch)}
-                            title="Отменить"
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-red-600"
-                          >
-                            <XCircle className="h-4 w-4" strokeWidth={1.75} />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(batch)}
-                            title="Удалить"
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-red-600"
-                          >
-                            <Trash2 className="h-4 w-4" strokeWidth={1.75} />
-                          </button>
-                        </div>
-                      )}
-                      {batch.status === ProductionBatchStatus.IN_PROGRESS && (
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => setCompletingBatch(batch)}
-                            title="Завершить"
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-green-600"
-                          >
-                            <CheckCircle2 className="h-4 w-4" strokeWidth={1.75} />
-                          </button>
-                          <button
-                            onClick={() => setAbortingBatch(batch)}
-                            title="Прервать производство"
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-red-600"
-                          >
-                            <XCircle className="h-4 w-4" strokeWidth={1.75} />
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  )}
                 </tr>
               ))}
               {visibleBatches.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-5 py-8 text-center text-sm text-muted">
-                    {batches.length === 0 ? "Заданий пока нет" : "Нет заданий с таким статусом"}
+                  <td colSpan={5} className="px-5 py-8 text-center text-sm text-muted">
+                    Выпусков пока нет
                   </td>
                 </tr>
               )}
@@ -570,15 +476,16 @@ export default function ProductionPage() {
         </div>
       )}
 
-      {modal === "batch" && (
-        <NewBatchModal
+      {modal === "release" && (
+        <ProductionReleaseModal
           locations={locations}
-          // A semi-finished product is made on its own only when it is held as stock; otherwise it is part of a finished product's recipe.
-          recipes={recipes.filter((r) => r.isActive && (r.productType !== ProductType.SEMI_FINISHED || r.productStocked))}
+          products={products}
+          recipes={recipes}
           fixedLocationId={fixedLocationId}
           onClose={() => setModal(null)}
-          onCreated={() => {
+          onDone={(message) => {
             setModal(null);
+            setNotice(message);
             loadBatches();
           }}
         />
@@ -599,29 +506,6 @@ export default function ProductionPage() {
             setModal(null);
             setDuplicateFromRecipe(undefined);
             loadRecipes();
-          }}
-        />
-      )}
-
-      {editingBatch && (
-        <EditBatchModal
-          batch={editingBatch}
-          onClose={() => setEditingBatch(null)}
-          onSaved={() => {
-            setEditingBatch(null);
-            loadBatches();
-          }}
-        />
-      )}
-
-      {completingBatch && (
-        <CompleteBatchModal
-          batch={completingBatch}
-          locations={locations}
-          onClose={() => setCompletingBatch(null)}
-          onCompleted={() => {
-            setCompletingBatch(null);
-            loadBatches();
           }}
         />
       )}

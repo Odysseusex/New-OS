@@ -14,6 +14,10 @@ import {
   ProductionOutputReportDto,
   ProductionOutputRowDto,
   ProductionUnitCostTrendDto,
+  ProductionReleasePreviewDto,
+  ProductionReleaseRequestDto,
+  ProductionReleaseResultDto,
+  PRODUCTION_RELEASE_MAX_LINES,
   debtDateKey,
   ProductionCancelReason,
   ProductionCostComponent,
@@ -295,7 +299,19 @@ export class ProductionService {
       if (batch.status !== PrismaProductionBatchStatus.IN_PROGRESS) {
         throw new BadRequestException("Задание уже обработано");
       }
+      return this.completeLoadedBatch(tx, user, batch, dto);
+    });
+  }
 
+  // The completion itself, on a batch already loaded and checked inside the caller's transaction:
+  // «Завершить» of one batch and every line of «Выпуск за день» run exactly this.
+  private async completeLoadedBatch(
+    tx: Prisma.TransactionClient,
+    user: AuthenticatedUser,
+    batch: LoadedBatch,
+    dto: CompleteBatchDto,
+  ): Promise<ProductionBatchDto> {
+    {
       // A STOCKED semi-finished product (cream, filling) consumes what the plan
       // said and outputs what was actually weighed: the raw materials are gone
       // either way, so a smaller yield makes each kilo dearer. Every other
@@ -533,7 +549,179 @@ export class ProductionService {
       });
 
       return this.toDto(updated);
+    }
+  }
+
+  // ── «Выпуск за день» ──
+  // The bakers make what they make; the operator enters the day's output in ONE document and it
+  // becomes one completed batch per product (no plan, no «Начать»). The preview writes nothing:
+  // it is the «проверьте ещё раз» screen — the raw materials that will go and what is missing.
+  async previewRelease(user: AuthenticatedUser, dto: ProductionReleaseRequestDto): Promise<ProductionReleasePreviewDto> {
+    const plan = await this.planRelease(this.prisma, user, dto);
+    const totals = new Map<string, { name: string; quantity: number; unitCost: number; fromStock: boolean }>();
+    for (const line of plan.lines) {
+      for (const [productId, n] of line.norms) {
+        const prev = totals.get(productId);
+        totals.set(productId, {
+          name: n.name,
+          quantity: round3((prev?.quantity ?? 0) + n.quantity),
+          unitCost: n.unitCost,
+          fromStock: n.costBasis === CostBasis.PRODUCTION_AVERAGE,
+        });
+      }
+    }
+    const ids = [...totals.keys()];
+    const [levels, units, allowNegative] = await Promise.all([
+      this.prisma.stockLevel.findMany({ where: { locationId: plan.locationId, productId: { in: ids } }, select: { productId: true, quantity: true } }),
+      this.prisma.product.findMany({ where: { id: { in: ids } }, select: { id: true, unit: true } }),
+      allowsNegativeStock(this.prisma, user.organizationId),
+    ]);
+    const onHand = new Map(levels.map((l) => [l.productId, l.quantity.toNumber()]));
+    // A filling made in this same release (and put on the workshop's shelf) is there for the lines after it.
+    if (plan.outputLocationId === plan.locationId) {
+      for (const line of plan.lines) {
+        if (line.stockedSemiFinished) onHand.set(line.productId, (onHand.get(line.productId) ?? 0) + line.quantity);
+      }
+    }
+    const unitOf = new Map(units.map((u) => [u.id, u.unit as Unit]));
+    const materials = [...totals]
+      .map(([productId, m]) => {
+        const have = round3(onHand.get(productId) ?? 0);
+        return {
+          productId,
+          name: m.name,
+          unit: unitOf.get(productId) ?? Unit.KG,
+          quantity: m.quantity,
+          onHand: have,
+          shortage: round3(Math.max(0, m.quantity - Math.max(have, 0))),
+          unitCost: m.unitCost,
+          fromStock: m.fromStock,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, "ru"));
+    return {
+      lines: plan.lines.map((l) => ({ productId: l.productId, productName: l.productName, unit: l.unit, quantity: l.quantity, cost: l.cost })),
+      materials,
+      totalCost: round2(plan.lines.reduce((s, l) => s + l.cost, 0)),
+      allowNegativeStock: allowNegative,
+    };
+  }
+
+  // One transaction: every line is a batch created and completed at once by the same code as
+  // «Завершить»; one line short of raw material stops the whole release and names the product.
+  async release(user: AuthenticatedUser, dto: ProductionReleaseRequestDto): Promise<ProductionReleaseResultDto> {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const plan = await this.planRelease(tx, user, dto);
+        const consumption = splitReleaseConsumption(plan.lines.map((l) => l.norms), dto.consumption ?? []);
+        const now = new Date();
+        const batchIds: string[] = [];
+        for (const [i, line] of plan.lines.entries()) {
+          const created = await tx.productionBatch.create({
+            data: {
+              organizationId: user.organizationId,
+              locationId: plan.locationId,
+              recipeId: line.recipeId,
+              plannedQuantity: line.quantity,
+              scheduledFor: now,
+              startedAt: now,
+              status: PrismaProductionBatchStatus.IN_PROGRESS,
+              createdById: user.id,
+            },
+            include: { recipe: { include: { items: { include: { ingredientProduct: true } }, product: true } } },
+          });
+          try {
+            const done = await this.completeLoadedBatch(tx, user, created, {
+              actualQuantity: line.quantity,
+              outputLocationId: plan.outputLocationId !== plan.locationId ? plan.outputLocationId : undefined,
+              consumption: consumption[i],
+            });
+            batchIds.push(done.id);
+          } catch (err) {
+            if (err instanceof BadRequestException) throw new BadRequestException(`«${line.productName}»: ${err.message}`);
+            throw err;
+          }
+        }
+        const totalCost = round2(plan.lines.reduce((s, l) => s + l.cost, 0));
+        await recordAudit(tx, {
+          organizationId: user.organizationId,
+          actorId: user.id,
+          action: "production.release",
+          entityType: "ProductionBatch",
+          entityId: batchIds[0],
+          after: {
+            locationId: plan.locationId,
+            outputLocationId: plan.outputLocationId,
+            lines: plan.lines.map((l) => ({ productId: l.productId, quantity: l.quantity })),
+            consumption: dto.consumption ?? [],
+            batchIds,
+          },
+        });
+        return { batchIds, totalCost };
+      },
+      // A day's output can be dozens of batches; on the hosted database each takes a moment.
+      { timeout: 180_000 },
+    );
+  }
+
+  private async planRelease(db: Prisma.TransactionClient | PrismaService, user: AuthenticatedUser, dto: ProductionReleaseRequestDto) {
+    const locationId = requireLocationScope(user, dto.locationId);
+    const location = await db.location.findFirst({ where: { id: locationId, organizationId: user.organizationId }, select: { id: true } });
+    if (!location) throw new NotFoundException("Цех не найден");
+    let outputLocationId = locationId;
+    if (dto.outputLocationId && dto.outputLocationId !== locationId) {
+      const target = await db.location.findFirst({ where: { id: dto.outputLocationId, organizationId: user.organizationId, isActive: true }, select: { id: true } });
+      if (!target) throw new BadRequestException("Точка для выпуска не найдена");
+      outputLocationId = target.id;
+    }
+    const lines = dto.lines ?? [];
+    if (lines.length === 0) throw new BadRequestException("Добавьте хотя бы один товар");
+    if (lines.length > PRODUCTION_RELEASE_MAX_LINES) throw new BadRequestException(`Не больше ${PRODUCTION_RELEASE_MAX_LINES} строк в одном выпуске`);
+    if (new Set(lines.map((l) => l.productId)).size !== lines.length) throw new BadRequestException("Один и тот же товар указан дважды — объедините строки");
+    if (lines.some((l) => !(l.quantity > 0))) throw new BadRequestException("Количество должно быть больше нуля");
+
+    const recipes = await db.recipe.findMany({
+      where: { organizationId: user.organizationId, productId: { in: lines.map((l) => l.productId) }, isActive: true },
+      include: { items: { include: { ingredientProduct: true } }, product: true },
     });
+    const byProduct = new Map(recipes.map((r) => [r.productId, r]));
+    const noRecipe = lines.filter((l) => !byProduct.has(l.productId)).map((l) => l.productId);
+    if (noRecipe.length > 0) {
+      const names = await db.product.findMany({ where: { id: { in: noRecipe }, organizationId: user.organizationId }, select: { name: true } });
+      throw new BadRequestException(`Нет действующей техкарты: ${names.map((n) => n.name).join(", ") || "товар не найден"}`);
+    }
+    const index = await loadRecipeIndex(db, user.organizationId, lines.map((l) => l.productId));
+
+    const planned = lines.map((line) => {
+      const recipe = byProduct.get(line.productId)!;
+      const stockedSemiFinished = recipe.product.type === ProductType.SEMI_FINISHED && recipe.product.trackInventory;
+      if (recipe.product.type === ProductType.SEMI_FINISHED && !stockedSemiFinished) {
+        throw new BadRequestException(`«${recipe.product.name}»: полуфабрикат без учёта склада не производится отдельно — он входит в техкарту готового изделия`);
+      }
+      const quantity = round3(line.quantity);
+      const expanded = expandRecipe(index.get(line.productId)!, quantity / recipe.yieldQuantity.toNumber(), index);
+      if (expanded.missing.length > 0) {
+        throw new BadRequestException(`«${recipe.product.name}»: у полуфабриката нет активной техкарты: ${expanded.missing.join(", ")}`);
+      }
+      const unpriced = expanded.lines.filter((l) => l.unitCost === null).map((l) => l.ingredient.name);
+      if (unpriced.length > 0) throw new BadRequestException(`«${recipe.product.name}»: нет себестоимости у: ${unpriced.join(", ")}`);
+      const tracked = expanded.lines
+        .map((l) => ({ ...l, quantity: round3(l.quantity) }))
+        .filter((l) => l.ingredient.trackInventory && l.quantity > 0);
+      return {
+        recipeId: recipe.id,
+        productId: recipe.productId,
+        productName: recipe.product.name,
+        unit: recipe.product.unit as Unit,
+        quantity,
+        stockedSemiFinished,
+        norms: normByProduct(tracked),
+        cost: round2(expanded.lines.reduce((sum, l) => sum + round2(l.quantity * (l.unitCost as number)), 0)),
+      };
+    });
+    // A filling held as stock is made before what is made from it.
+    planned.sort((a, b) => Number(b.stockedSemiFinished) - Number(a.stockedSemiFinished));
+    return { locationId, outputLocationId, lines: planned };
   }
 
   private async recipeTreeOf(
@@ -1004,6 +1192,34 @@ export function normByProduct(lines: ConsumedLine[]): Map<string, { name: string
       quantity: round3((prev?.quantity ?? 0) + line.quantity),
       unitCost: line.unitCost ?? 0,
       costBasis: consumptionBasis(line.ingredient),
+    });
+  }
+  return out;
+}
+
+// A batch as `complete` loads it: the recipe with its lines and output product.
+type LoadedBatch = Prisma.ProductionBatchGetPayload<{
+  include: { recipe: { include: { items: { include: { ingredientProduct: true } }; product: true } } };
+}>;
+
+// What was really used for the whole release, shared over its batches in proportion to each one's
+// norm (the last batch takes the rounding), as each batch's «Факт». Unmentioned material = the norm.
+export function splitReleaseConsumption(
+  norms: Map<string, { quantity: number }>[],
+  totals: { productId: string; quantity: number }[],
+): { productId: string; quantity: number }[][] {
+  const out = norms.map(() => [] as { productId: string; quantity: number }[]);
+  for (const total of totals) {
+    if (!(total.quantity >= 0)) throw new BadRequestException("Фактический расход не может быть отрицательным");
+    const holders = norms.map((n, i) => ({ i, norm: n.get(total.productId)?.quantity ?? 0 })).filter((h) => h.norm > 0);
+    if (holders.length === 0) throw new BadRequestException("В техкартах этого выпуска нет такого сырья");
+    const normTotal = holders.reduce((s, h) => s + h.norm, 0);
+    const diff = total.quantity - normTotal;
+    let given = 0;
+    holders.forEach((h, k) => {
+      const share = k === holders.length - 1 ? round3(diff - given) : round3((diff * h.norm) / normTotal);
+      given = round3(given + share);
+      out[h.i].push({ productId: total.productId, quantity: Math.max(0, round3(h.norm + share)) });
     });
   }
   return out;

@@ -87,7 +87,6 @@ import type {
   CategoryDto,
   ClockInForRequestDto,
   ClockInRequestDto,
-  CompleteProductionBatchRequestDto,
   CostBehavior,
   CreateCashAccountRequestDto,
   CreateCategoryRequestDto,
@@ -105,7 +104,6 @@ import type {
   CreateFinanceCategoryRequestDto,
   CreateInvoiceRequestDto,
   CreatePlannedFixedCostRequestDto,
-  CreateProductionBatchRequestDto,
   CreateProductRequestDto,
   CreatePurchaseOrderRequestDto,
   CreateRecipeRequestDto,
@@ -246,7 +244,6 @@ import type {
   UpdateEmployeeRequestDto,
   UpdateFinanceCategoryRequestDto,
   UpdateLocationRequestDto,
-  UpdateProductionBatchRequestDto,
   UpdateProductRequestDto,
   UpdateRecipeRequestDto,
   UpdateSupplierRequestDto,
@@ -254,10 +251,12 @@ import type {
   UpdateVehicleRequestDto,
   UserAccountDto,
   VehicleDto,
-  ProductionBatchNormDto,
   ProductionDeviationReportDto,
   MaterialRequisitionDto,
   ProductionBatchDocumentDto,
+  ProductionReleasePreviewDto,
+  ProductionReleaseRequestDto,
+  ProductionReleaseResultDto,
   CreateStockTransferRequestDto,
   RequisitionNeedDto,
   CreateMaterialRequisitionRequestDto,
@@ -773,31 +772,17 @@ export const api = {
   production: {
     batches: (locationId?: string) =>
       request<ProductionBatchDto[]>(withQuery("/production/batches", { locationId })),
-    createBatch: (dto: CreateProductionBatchRequestDto) =>
-      request<ProductionBatchDto>("/production/batches", {
-        method: "POST",
-        body: JSON.stringify(dto),
-      }),
-    updateBatch: (id: string, dto: UpdateProductionBatchRequestDto) =>
-      request<ProductionBatchDto>(`/production/batches/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify(dto),
-      }),
     deleteBatch: (id: string) =>
       request<{ deleted: true }>(`/production/batches/${id}`, { method: "DELETE" }),
-    startBatch: (id: string) =>
-      request<ProductionBatchDto>(`/production/batches/${id}/start`, { method: "POST" }),
-    completeBatch: (id: string, dto: CompleteProductionBatchRequestDto) =>
-      request<ProductionBatchDto>(`/production/batches/${id}/complete`, {
-        method: "POST",
-        body: JSON.stringify(dto),
-      }),
+    previewRelease: (dto: ProductionReleaseRequestDto) =>
+      request<ProductionReleasePreviewDto>("/production/batches/release/preview", { method: "POST", body: JSON.stringify(dto) }),
+    release: (dto: ProductionReleaseRequestDto) =>
+      request<ProductionReleaseResultDto>("/production/batches/release", { method: "POST", body: JSON.stringify(dto) }),
     cancelBatch: (id: string, dto: CancelProductionBatchRequestDto = {}) =>
       request<ProductionBatchDto>(`/production/batches/${id}/cancel`, {
         method: "POST",
         body: JSON.stringify(dto),
       }),
-    batchNorm: (id: string) => request<ProductionBatchNormDto>(`/production/batches/${id}/norm`),
     batchDocument: (id: string) => request<ProductionBatchDocumentDto>(`/production/batches/${id}/document`),
     deviations: (params: { from: string; to: string; locationId?: string }) =>
       request<ProductionDeviationReportDto>(withQuery("/production/batches/deviations", params)),

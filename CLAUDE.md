@@ -900,6 +900,21 @@ Full write-up: `docs/SEMI-FINISHED-DESIGN.md`. A recipe ingredient may now be `R
 - Packaging is still NOT a recipe ingredient (pending the owner's decision); no «Полуфабрикаты» category
   was created without his approval.
 
+## «Выпуск за день» — production is ONE step (owner, 08.11.2026)
+
+The bakers have no tablets and bake by experience; the operator enters the day's output afterwards. The web's
+plan → «Начать» → «Завершить» flow was REMOVED from the screen (owner: «удалить, чтобы не мешало»; add back only on a
+fresh request): Производство → «Журнал выпуска» + «Выпуск за день» (`components/production-release-modal.tsx`): цех,
+«Куда оприходовать», lines product + «Вышло» (only products with an active recipe; a filling only if stocked) →
+«Проверить» = `POST /production/batches/release/preview` (writes nothing: products with cost, raw materials norm /
+on hand / shortage, optional «Факт» per material for the WHOLE release) → «Провести выпуск» = `POST …/release`
+(PRODUCTION_MANAGE_ROLES): ONE transaction (timeout 180 s), each line = a batch created IN_PROGRESS and completed by the
+same `completeLoadedBatch` as `complete()` (stocked fillings first); one shortage stops all, message «Товар»: …; a
+material's «Факт» is split over the batches by their norm (`splitReleaseConsumption`, rounding on the last); audited
+`production.release`. Leftover PLANNED/IN_PROGRESS batches only offer delete / «Прервать». The API's create/start/
+complete stay (the Telegram bot still uses them). Требование-накладная's «need» reads PLANNED tasks, so it is empty
+now — its lines are typed by hand. Spec `production/production-release.spec.ts`.
+
 ## Actual raw material in production + «Отклонения» (built)
 
 «Завершить» shows the norm per ingredient (`GET /production/batches/:id/norm`: the recipe expanded to stocked items,

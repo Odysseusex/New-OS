@@ -10,6 +10,7 @@ import { CreateBatchDto } from "./dto/create-batch.dto";
 import { UpdateBatchDto } from "./dto/update-batch.dto";
 import { CancelBatchDto } from "./dto/cancel-batch.dto";
 import { CompleteBatchDto } from "./dto/complete-batch.dto";
+import { ReleaseDto } from "./dto/release.dto";
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("production/batches")
@@ -74,6 +75,19 @@ export class ProductionController {
   @Get(":id/norm")
   norm(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
     return this.productionService.norm(user, id);
+  }
+
+  // «Выпуск за день»: «Проверить» (writes nothing) and «Провести».
+  @Post("release/preview")
+  @Roles(...PRODUCTION_MANAGE_ROLES)
+  previewRelease(@CurrentUser() user: AuthenticatedUser, @Body() dto: ReleaseDto) {
+    return this.productionService.previewRelease(user, dto);
+  }
+
+  @Post("release")
+  @Roles(...PRODUCTION_MANAGE_ROLES)
+  release(@CurrentUser() user: AuthenticatedUser, @Body() dto: ReleaseDto) {
+    return this.productionService.release(user, dto);
   }
 
   @Post()

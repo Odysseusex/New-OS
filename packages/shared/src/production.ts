@@ -431,3 +431,40 @@ export interface ProductionBatchDocumentDto {
   unitCost: number | null;
   deviationValue: number;
 }
+
+// «Выпуск за день»: what the bakers made, entered by the operator in one document —
+// each line becomes a completed batch (raw materials off at the norm, output on the shelf).
+export const PRODUCTION_RELEASE_MAX_LINES = 100;
+
+export interface ProductionReleaseRequestDto {
+  // The workshop the raw materials come from.
+  locationId: string;
+  // Where the finished goods go; left out = the workshop.
+  outputLocationId?: string;
+  lines: { productId: string; quantity: number }[];
+  // Raw material really used, for the whole release, where it differs from the norm.
+  consumption?: { productId: string; quantity: number }[];
+}
+
+export interface ProductionReleasePreviewDto {
+  lines: { productId: string; productName: string; unit: Unit; quantity: number; cost: number }[];
+  materials: {
+    productId: string;
+    name: string;
+    unit: Unit;
+    // The norm for the whole release.
+    quantity: number;
+    onHand: number;
+    // How much is missing at the workshop (0 = enough).
+    shortage: number;
+    unitCost: number;
+    fromStock: boolean;
+  }[];
+  totalCost: number;
+  allowNegativeStock: boolean;
+}
+
+export interface ProductionReleaseResultDto {
+  batchIds: string[];
+  totalCost: number;
+}
