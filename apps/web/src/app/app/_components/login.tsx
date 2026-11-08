@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Gift, MessageCircle, Send } from "lucide-react";
+import { ArrowLeft, MessageCircle, Send, Sparkles } from "lucide-react";
 import type { ClubInfoDto } from "@bakery-os/shared";
 import { ClubApiError, clubApi, clubToken, pendingLogin, type PendingLogin } from "@/lib/club-api";
-import { bonusWord, displayNational, fmtPoints, nationalDigits, privacyHref } from "./format";
+import { displayNational, fmtPoints, nationalDigits, privacyHref } from "./format";
 
 const POLL_MS = 2500;
 
@@ -71,19 +71,12 @@ function Start({ info, onStarted }: { info: ClubInfoDto | null; onStarted: (p: P
         )}
       </div>
 
-      {programme && programme.welcomeBonusPoints > 0 && (
-        <div className="aa-gift">
-          <span className="medal">
-            <Gift size={22} strokeWidth={1.8} />
-          </span>
-          <div>
-            <strong>
-              {fmtPoints(programme.welcomeBonusPoints)} {bonusWord(programme.welcomeBonusPoints)}
-            </strong>
-            <span>за первую покупку — действуют {programme.welcomeBonusDays} дней со следующего дня</span>
-          </div>
-        </div>
-      )}
+      <div className="aa-chip">
+        <Sparkles size={18} />
+        <span>
+          Уже копите бонусы у нас? Войдите по своему номеру — баланс и история появятся сами.
+        </span>
+      </div>
 
       <section className="aa-panel" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <div className="aa-field">

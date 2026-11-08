@@ -7,6 +7,7 @@ import { CARD_CODE_STEP_SECONDS, type ClubHistoryItemDto, type ClubInfoDto, type
 import { ClubApiError, clubApi, clubToken } from "@/lib/club-api";
 import { Login } from "./_components/login";
 import { useCardCode } from "./_components/card-code";
+import { CARD_COLORS, cardStyle, useCardColor, type CardColor } from "./_components/card-colors";
 import { bonusWord, fmtDay, fmtDayTime, fmtMoney, fmtMonth, fmtPoints, greeting, prettyPhone, privacyHref } from "./_components/format";
 
 type Tab = "card" | "history" | "profile";
@@ -149,12 +150,13 @@ export default function ClubApp() {
 
 function CardTab({ profile, offsetMs }: { profile: ClubProfileDto; offsetMs: number }) {
   const code = useCardCode(profile.card.secret, profile.phone, offsetMs);
+  const [color] = useCardColor();
   const p = profile.programme;
   const last4 = profile.phone.replace(/\D/g, "").slice(-4);
 
   return (
     <>
-      <section className="aa-card" aria-label="Бонусная карта">
+      <section className="aa-card" aria-label="Бонусная карта" style={cardStyle(color)}>
         <WheatArt />
         <div className="row">
           <span className="mark">Ар Амир</span>
@@ -172,7 +174,7 @@ function CardTab({ profile, offsetMs }: { profile: ClubProfileDto; offsetMs: num
         </div>
       </section>
 
-      {(profile.pending || profile.expiring || (profile.visits === 0 && p.welcomeBonusPoints > 0)) && (
+      {(profile.pending || profile.expiring) && (
         <div className="aa-chips">
           {profile.pending && (
             <div className="aa-chip">
@@ -187,14 +189,6 @@ function CardTab({ profile, offsetMs }: { profile: ClubProfileDto; offsetMs: num
               <Hourglass size={18} />
               <span>
                 {fmtPoints(profile.expiring.points)} {bonusWord(profile.expiring.points)} сгорят {fmtDay(profile.expiring.at)}
-              </span>
-            </div>
-          )}
-          {profile.visits === 0 && p.welcomeBonusPoints > 0 && !profile.pending && (
-            <div className="aa-chip">
-              <Gift size={18} />
-              <span>
-                Первая покупка — и вам <b>{fmtPoints(p.welcomeBonusPoints)}</b> {bonusWord(p.welcomeBonusPoints)} в подарок
               </span>
             </div>
           )}
@@ -381,6 +375,7 @@ function ProfileTab({ profile, onRenamed, onLogout }: { profile: ClubProfileDto;
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const changed = name.trim() !== (profile.name ?? "");
+  const [color, setColor] = useCardColor();
 
   const save = async () => {
     setSaving(true);
@@ -418,6 +413,24 @@ function ProfileTab({ profile, onRenamed, onLogout }: { profile: ClubProfileDto;
         <button type="button" className="aa-btn primary" disabled={!changed || saving} onClick={save}>
           {saved && !changed ? "Сохранено" : saving ? "Сохраняем…" : "Сохранить"}
         </button>
+      </section>
+      <section className="aa-panel" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--aa-ink2)" }}>Цвет карты</span>
+        <div className="aa-swatches" role="radiogroup" aria-label="Цвет карты">
+          {(Object.keys(CARD_COLORS) as CardColor[]).map((key) => (
+            <button
+              key={key}
+              type="button"
+              role="radio"
+              aria-checked={color === key}
+              className={`aa-swatch${color === key ? " on" : ""}`}
+              onClick={() => setColor(key)}
+            >
+              <span style={{ background: CARD_COLORS[key].vars["--c-bg"] }} />
+              {CARD_COLORS[key].label}
+            </button>
+          ))}
+        </div>
       </section>
       <section className="aa-panel" style={{ paddingTop: 4, paddingBottom: 4 }}>
         <div className="aa-row">

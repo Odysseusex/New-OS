@@ -171,19 +171,27 @@ body:has(.aa) {
 /* ── the card ────────────────────────────────────────────────────────── */
 
 .aa-card {
+  /* The card's own palette, in one place. */
+  --c-bg: linear-gradient(140deg, #6f8b72 0%, #48644e 52%, #2f4535 100%);
+  --c-ink: #f6f3e8;
+  --c-soft: rgba(246, 243, 232, 0.74);
+  --c-mark: #ead7a6;
+  --c-art: #ead7a6;
+  --c-sheen: rgba(255, 255, 235, 0.18);
+  --c-shadow: rgba(47, 69, 53, 0.7);
+
   position: relative;
   aspect-ratio: 1.586;
   border-radius: 22px;
   padding: 20px 22px;
-  color: #f6ead6;
+  color: var(--c-ink);
   overflow: hidden;
   isolation: isolate;
-  background:
-    radial-gradient(130% 110% at 0% 0%, #6b4127 0%, #3a2414 46%, #1f130a 100%);
+  background: var(--c-bg);
   box-shadow:
-    0 28px 50px -28px rgba(43, 26, 14, 0.75),
-    0 2px 6px rgba(43, 26, 14, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.09);
+    0 28px 50px -28px var(--c-shadow),
+    0 2px 6px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
   display: flex;
   flex-direction: column;
 }
@@ -194,7 +202,7 @@ body:has(.aa) {
   inset: -40% -20% auto auto;
   width: 90%;
   height: 120%;
-  background: radial-gradient(closest-side, rgba(255, 228, 180, 0.14), transparent 70%);
+  background: radial-gradient(closest-side, var(--c-sheen), transparent 70%);
   z-index: -1;
 }
 .aa-card .wheat {
@@ -202,9 +210,9 @@ body:has(.aa) {
   right: -18px;
   bottom: -26px;
   width: 58%;
-  opacity: 0.11;
+  opacity: 0.14;
   z-index: -1;
-  color: #e2c48f;
+  color: var(--c-art);
 }
 .aa-card .row {
   display: flex;
@@ -217,14 +225,14 @@ body:has(.aa) {
   font-size: 21px;
   font-weight: 600;
   letter-spacing: 0.02em;
-  color: #f3dfb9;
+  color: var(--c-mark);
 }
 .aa-card .kind {
   font-size: 10.5px;
   font-weight: 600;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: rgba(243, 223, 185, 0.7);
+  color: var(--c-soft);
   padding-top: 6px;
 }
 .aa-card .balance {
@@ -240,11 +248,11 @@ body:has(.aa) {
   line-height: 0.95;
   letter-spacing: -0.01em;
   font-variant-numeric: lining-nums;
-  color: #fbf1df;
+  color: var(--c-ink);
 }
 .aa-card .balance span {
   font-size: 14px;
-  color: rgba(246, 234, 214, 0.75);
+  color: var(--c-soft);
 }
 .aa-card .foot {
   margin-top: 12px;
@@ -254,11 +262,11 @@ body:has(.aa) {
   font-size: 12px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(246, 234, 214, 0.72);
+  color: var(--c-soft);
 }
 .aa-card .foot b {
   font-weight: 600;
-  color: rgba(251, 241, 223, 0.92);
+  color: var(--c-ink);
 }
 
 .aa-chips {
@@ -703,6 +711,38 @@ body:has(.aa) {
 .aa-tab.on {
   background: var(--aa-wheat-soft);
   color: var(--aa-brown);
+}
+
+.aa-swatches {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+.aa-swatch {
+  border: 0;
+  background: none;
+  padding: 4px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 10.5px;
+  color: var(--aa-muted);
+}
+.aa-swatch span {
+  width: 100%;
+  max-width: 44px;
+  height: 30px;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px var(--aa-line);
+}
+.aa-swatch.on {
+  color: var(--aa-ink);
+  font-weight: 600;
+}
+.aa-swatch.on span {
+  box-shadow: 0 0 0 2px var(--aa-bg), 0 0 0 4px var(--aa-wheat);
 }
 
 /* ── misc ────────────────────────────────────────────────────────────── */
