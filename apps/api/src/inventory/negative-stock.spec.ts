@@ -112,6 +112,23 @@ describe("working before the first stock count", () => {
     expect(sheet.status).toBe(BalanceStatus.BALANCED);
   });
 
+  it("with «непосчитанные = 0», a product nobody found on the shelf leaves the minus at zero", async () => {
+    const bunId = (await prisma.product.create({ data: { organizationId: org.organizationId, name: "Булка", sku: "NS-4", type: ProductType.FINISHED_GOOD, price: 200, unit: Unit.PCS, averageUnitCost: 80 } })).id;
+    await services.sales.create(org.user, { locationId: org.storeId, paymentMethod: PaymentMethod.CASH, items: [{ productId: bunId, quantity: 2, unitPrice: 200 }] } as never);
+    expect(await level(bunId)).toBe(-2);
+    const st = await services.stocktake.create(org.user, { locationId: org.storeId } as never);
+    // Everything else counted as it stands; the bun is left blank.
+    for (const l of st.lines) if (l.productId !== bunId) await services.stocktake.updateLine(org.user, st.id, l.id, { countedQuantity: l.systemQuantity });
+    await services.stocktake.submit(org.user, st.id);
+    await expect(services.stocktake.approve(org.user, st.id, { uncountedAsZero: true })).rejects.toThrow(/начальных остатков/);
+    const approved = await services.stocktake.approve(org.user, st.id, { opening: true, uncountedAsZero: true });
+    expect(await level(bunId)).toBe(0);
+    expect(approved.lines.find((l) => l.productId === bunId)!.countedQuantity).toBe(0);
+    const move = await prisma.stockMovement.findFirstOrThrow({ where: { stocktakeId: st.id } });
+    expect([move.productId, move.type, move.quantity.toNumber()]).toEqual([bunId, "RECEIPT", 2]);
+    expect(await level(flourId)).toBe(25);
+  });
+
   it("once the switch is off, an «opening» count is refused: the start-up phase is over", async () => {
     await services.inventory.setAllowNegativeStock(org.user, false);
     const st = await services.stocktake.create(org.user, { locationId: org.storeId } as never);

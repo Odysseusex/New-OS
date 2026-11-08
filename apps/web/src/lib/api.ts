@@ -575,7 +575,7 @@ export const api = {
       request<StocktakeLineDto>(`/stocktakes/${id}/lines/${lineId}`, { method: "PUT", body: JSON.stringify(dto) }),
     submit: (id: string) => request<StocktakeDto>(`/stocktakes/${id}/submit`, { method: "POST" }),
     reopen: (id: string) => request<StocktakeDto>(`/stocktakes/${id}/reopen`, { method: "POST" }),
-    approve: (id: string, opts: { opening?: boolean } = {}) =>
+    approve: (id: string, opts: { opening?: boolean; uncountedAsZero?: boolean } = {}) =>
       request<StocktakeDto>(`/stocktakes/${id}/approve`, { method: "POST", body: JSON.stringify(opts) }),
     cancel: (id: string, reason: string) =>
       request<StocktakeDto>(`/stocktakes/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }),

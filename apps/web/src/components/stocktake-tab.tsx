@@ -227,11 +227,15 @@ function StocktakeDetail({
   // The first count after working «в минус»: what is found is the opening stock, not a surplus.
   const [negativeMode, setNegativeMode] = useState(false);
   const [opening, setOpening] = useState(false);
+  // Opening count: lines nobody counted = not on the shelf = 0 (else a product below zero stays there).
+  const [uncountedAsZero, setUncountedAsZero] = useState(true);
   useEffect(() => {
     api.inventory
       .stockSettings()
       .then((s) => {
         setNegativeMode(s.allowNegativeStock);
+        // While the start-up switch is on, a count is the opening one unless unticked.
+        setOpening(s.allowNegativeStock);
         setOpening(s.allowNegativeStock);
       })
       .catch(() => {});
@@ -307,6 +311,7 @@ function StocktakeDetail({
   const counting = st.status === StocktakeStatus.COUNTING;
   const review = st.status === StocktakeStatus.REVIEW;
   const open = counting || review;
+  const uncountedLines = st.lines.filter((l) => l.countedQuantity === null).length;
   const uncostedDiffs = st.lines.filter((l) => l.difference !== null && l.difference !== 0 && l.unitCost === null).length;
 
   return (
@@ -457,7 +462,15 @@ function StocktakeDetail({
                   <input type="checkbox" className="mt-0.5" checked={opening} onChange={(e) => setOpening(e.target.checked)} />
                   <span>
                     <b>Начальные остатки</b> — найденное сверх учёта записывается как остаток на начало работы, а не как излишек.
-                    Непосчитанные позиции останутся в минусе.
+                  </span>
+                </label>
+              )}
+              {negativeMode && opening && uncountedLines > 0 && (
+                <label className="flex w-full items-start gap-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  <input type="checkbox" className="mt-0.5" checked={uncountedAsZero} onChange={(e) => setUncountedAsZero(e.target.checked)} />
+                  <span>
+                    <b>Непосчитанные считать нулём</b> — {uncountedLines} поз. без подсчёта. Если выключить, их остаток (в т.ч. минус) не
+                    изменится.
                   </span>
                 </label>
               )}
@@ -468,7 +481,10 @@ function StocktakeDetail({
               </span>
               <button
                 disabled={busy}
-                onClick={() => run(() => api.stocktakes.approve(st.id, { opening: opening && negativeMode }))}
+                onClick={() => run(() => api.stocktakes.approve(st.id, {
+                      opening: opening && negativeMode,
+                      uncountedAsZero: opening && negativeMode && uncountedAsZero && uncountedLines > 0,
+                    }))}
                 className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground transition hover:opacity-90 disabled:opacity-50"
               >
                 Подтвердить проведение

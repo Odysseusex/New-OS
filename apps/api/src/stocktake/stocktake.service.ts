@@ -214,7 +214,9 @@ export class StocktakeService {
   // till went below zero, Organization.allowNegativeStock): what was found ON TOP of the books is the
   // opening stock — booked as a RECEIPT (balance only, inside the opening position declared by
   // Финансы → «Запустить»), not as a gain in the P&L. Only before that launch.
-  async approve(user: AuthenticatedUser, id: string, opts: { opening?: boolean } = {}): Promise<StocktakeDto> {
+  // `uncountedAsZero` (opening count only): a line nobody counted is what is NOT on the shelf — it is set to 0, so a
+  // product that went below zero before the count does not stay there.
+  async approve(user: AuthenticatedUser, id: string, opts: { opening?: boolean; uncountedAsZero?: boolean } = {}): Promise<StocktakeDto> {
     const stocktake = await this.load(user, id);
     if (stocktake.status !== PrismaStocktakeStatus.REVIEW) {
       throw new BadRequestException("Провести можно только инвентаризацию на проверке");
@@ -225,6 +227,10 @@ export class StocktakeService {
       if (!org.allowNegativeStock) {
         throw new BadRequestException("Начальные остатки проводятся, пока включён «Уход в минус» — до первой ревизии");
       }
+    }
+    const uncountedAsZero = opts.uncountedAsZero === true;
+    if (uncountedAsZero && !opening) {
+      throw new BadRequestException("Непосчитанное считается нулём только при проведении начальных остатков");
     }
 
     await this.prisma.$transaction(async (tx) => {
@@ -239,11 +245,18 @@ export class StocktakeService {
       let surplusValue = 0;
       let openingValue = 0;
       let adjustedLines = 0;
+      let zeroedLines = 0;
       const movementIds: string[] = [];
 
       for (const line of stocktake.lines) {
-        if (line.countedQuantity === null) continue;
-        const difference = round3(line.countedQuantity.toNumber() - line.systemQuantity.toNumber());
+        let counted = line.countedQuantity?.toNumber() ?? null;
+        if (counted === null) {
+          if (!uncountedAsZero) continue;
+          counted = 0;
+          zeroedLines += 1;
+          await tx.stocktakeLine.update({ where: { id: line.id }, data: { countedQuantity: 0 } });
+        }
+        const difference = round3(counted - line.systemQuantity.toNumber());
         if (difference === 0) continue;
 
         const cost = costs.get(line.productId) ?? null;
@@ -318,6 +331,8 @@ export class StocktakeService {
           surplusValue: round2(surplusValue),
           opening,
           openingValue: round2(openingValue),
+          uncountedAsZero,
+          zeroedLines,
         },
       });
     });

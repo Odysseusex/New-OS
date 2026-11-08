@@ -1061,7 +1061,11 @@ while the switch is on): every difference — surplus AND shortage — becomes a
 (инвентаризация)» (a shortage is the opening being smaller, not a loss of these days), `Stocktake.opening = true`,
 skipped by the event projection, and — if Финансы → «Запустить» was already done — its value is ADDED to
 `Organization.openingInventoryValue` (as if counted at the start); before the launch the launch values it from the
-stock. A shortage stays an ordinary adjustment. Intended order: «Запустить» on the first morning (cash counted),
+stock. With «Непосчитанные считать нулём» (`approve(…, {opening: true, uncountedAsZero: true})`, opening only, ticked by
+default; «Начальные остатки» is ticked by default too while the switch is on) every line left blank is set to 0 (the
+line's count is stored as 0), so a product nobody found on the shelf leaves its minus at zero (owner, 08.11.2026: the
+first weeks were chaos — nothing received or transferred — and the count must clean it up without deleting history).
+A shortage stays an ordinary adjustment. Intended order: «Запустить» on the first morning (cash counted),
 switch on, work, count with «Начальные остатки», switch off. Launching LATER is also fine (the owner waits for the bank
 question): `BalanceService` adds the cash of every event dated before go-live to «Денежные средства» and to opening
 equity, so the days traded before «Запустить» are part of the opening position (spec: «launching finance after…»).
