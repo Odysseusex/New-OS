@@ -17,13 +17,16 @@ import {
   LoyaltyMemberStatus,
   LoyaltyMessageStatus,
   normalizeKzPhone,
+  TILL_APPROVER_ROLES,
 } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import { formatDate, formatDateTime, formatPoints } from "@/lib/format";
 import { Modal } from "@/components/modal";
 import { TextField } from "@/components/text-keypad";
 import { LoyaltyFamilySection } from "@/components/loyalty-family-section";
 import { ConsentSourceSelect, inputClass, MemberStatusBadge } from "@/components/loyalty-shared";
+import { SeniorPinModal } from "@/components/till-approval";
 
 type PendingChange = { purpose: LoyaltyConsentPurpose; channel?: LoyaltyConsentChannel; granted: boolean };
 
@@ -59,6 +62,12 @@ export function LoyaltyMemberModal({
   const [mergePhone, setMergePhone] = useState("");
   const [mergeCandidate, setMergeCandidate] = useState<LoyaltyMemberDto | null>(null);
   const [mergeReason, setMergeReason] = useState("");
+
+  const { user } = useAuth();
+  // A cashier gives the welcome bonus only with a senior cashier's PIN.
+  const welcomeNeedsPin = !canManage && !(user && TILL_APPROVER_ROLES.includes(user.role));
+  const [welcomeConfirm, setWelcomeConfirm] = useState(false);
+  const [welcomePin, setWelcomePin] = useState(false);
 
   const [adjustPoints, setAdjustPoints] = useState("");
   const [adjustReason, setAdjustReason] = useState("");
@@ -146,6 +155,11 @@ export function LoyaltyMemberModal({
     }
   }
 
+  async function activateWelcome(approvalToken?: string) {
+    const ok = await run(() => api.loyalty.activateWelcomeBonus(currentId, approvalToken), "Не удалось начислить бонус");
+    if (ok) setWelcomeConfirm(false);
+  }
+
   const isMerged = member?.status === LoyaltyMemberStatus.MERGED;
   const editable = member !== null && !isMerged;
 
@@ -173,6 +187,17 @@ export function LoyaltyMemberModal({
 
   return (
     <Modal title="Розничный клиент" onClose={onClose} width="max-w-2xl">
+      {welcomePin && (
+        <SeniorPinModal
+          action="WELCOME_BONUS"
+          detail={member ? `Клиент ${formatKzPhone(member.phone)}` : undefined}
+          onClose={() => setWelcomePin(false)}
+          onApproved={(token) => {
+            setWelcomePin(false);
+            void activateWelcome(token);
+          }}
+        />
+      )}
       {loadError && <div className="mb-4 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{loadError}</div>}
       {!member && !loadError && <p className="text-sm text-muted">Загрузка…</p>}
 
@@ -298,6 +323,44 @@ export function LoyaltyMemberModal({
               <p className="mb-2 text-right text-xs text-muted">
                 Ещё {formatPoints(member.pointsPending.points)} — доступны с {formatDate(member.pointsPending.from)}
               </p>
+            )}
+            {editable && member.welcomeBonusAvailable !== null && (
+              <div className="mb-3 rounded-xl border border-border bg-surface-muted px-4 py-3">
+                {!welcomeConfirm ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setWelcomeConfirm(true)}
+                    className="w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-60"
+                  >
+                    Активировать приветственный бонус · {formatPoints(member.welcomeBonusAvailable)}
+                  </button>
+                ) : (
+                  <>
+                    <p className="mb-3 text-sm text-foreground">
+                      Начислить {formatPoints(member.welcomeBonusAvailable)} баллов за первую покупку? Только если клиент действительно
+                      купил. Следующая покупка начислит баллы как обычно, без бонуса.
+                    </p>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setWelcomeConfirm(false)}
+                        className="rounded-xl border border-border px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface"
+                      >
+                        Отмена
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => (welcomeNeedsPin ? setWelcomePin(true) : activateWelcome())}
+                        className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-60"
+                      >
+                        {welcomeNeedsPin ? "Подтвердить PIN старшего кассира" : "Начислить"}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             )}
             {member.pointsHistory.length > 0 ? (
               <div className="max-h-64 overflow-auto rounded-xl border border-border">

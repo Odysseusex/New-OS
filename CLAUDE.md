@@ -1586,6 +1586,13 @@ earning on consignment, markdown/coupon lines or the part paid by points — all
   `pointsPending` on the card and till). It needs some own goods at normal price in the basket (like the percent). A
   return of the first purchase reverses it proportionally — even while it is still waiting (EARN_REVERSAL and MERGE_OUT
   consume waiting lots); a merge carries it over still waiting.
+- **Welcome bonus by hand** (owner, 09.11.2026: customers registered at the till bought goods not yet in the system, so no
+  check carried them): «Активировать приветственный бонус» on the member card (till, Клиенты → Розница) and
+  «Активировать бонус» in CRM. `LoyaltyPointsService.activateWelcomeBonus`, `POST /loyalty/members/:id/points/welcome`:
+  the same lot a first purchase gives (EARN, `saleId` null, reason `MANUAL_WELCOME_BONUS_REASON`), only while no sale is
+  attached (merged duplicates included) and none was given by hand; LOYALTY_MANAGE_ROLES give it themselves, anyone else at
+  the till needs a senior cashier's PIN (till approval `WELCOME_BONUS`). A manual welcome lot makes the next real sale
+  earn like a later one. Fixed bonus only (`welcomeBonusPoints` > 0). Audited `loyaltyPoints.welcome`.
 - «First purchase» = the first sale the member is attached to. Sales attach a member via `Sale.loyaltyMemberId`
   (till: «Клиент бонусной программы» in the cart). `SalesService`/`SaleReturnsService` take
   `LoyaltyPointsService` as their LAST constructor argument (defaulted) so hand-wired specs keep working.

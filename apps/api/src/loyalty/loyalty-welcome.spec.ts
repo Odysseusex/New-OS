@@ -1,4 +1,8 @@
-import { LoyaltyConsentSource as S, LoyaltyPointsEntryType as T, PaymentMethod, ProductType, Unit } from "@bakery-os/shared";
+import { JwtService } from "@nestjs/jwt";
+import { LoyaltyConsentSource as S, LoyaltyPointsEntryType as T, MANUAL_WELCOME_BONUS_REASON, PaymentMethod, ProductType, Role, Unit } from "@bakery-os/shared";
+import { AuthService } from "../auth/auth.service";
+import { resetPinThrottle } from "../auth/till-pin";
+import { UsersService } from "../users/users.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { createIsolatedOrg, destroyOrg, IsolatedOrg } from "../../test/support/isolated-org";
 import { buildServices } from "../../test/support/services";
@@ -122,10 +126,82 @@ describe("welcome bonus on real sales (database)", () => {
     expect(card.pointsPending?.points).toBe(5000);
   });
 
+  describe("given by hand (the first purchase was of goods not in the system)", () => {
+    const auth = new AuthService(prisma, new JwtService({ secret: process.env.JWT_SECRET ?? "dev-secret-change-me", signOptions: { expiresIn: "8h" } }));
+    const person = async (role: Role, name: string) => {
+      const u = await prisma.user.create({
+        data: { organizationId: org.organizationId, fullName: name, email: `${role}-${Math.random()}@iso.test`, passwordHash: "x", role, locationId: org.storeId },
+      });
+      return { ...org.user, id: u.id, fullName: name, role, locationId: org.storeId };
+    };
+
+    it("a manager gives the same bonus once; the next real purchase earns the ordinary 1 %", async () => {
+      const memberId = await register("+77071000201");
+      expect((await loyalty.findOne(org.organizationId, memberId)).welcomeBonusAvailable).toBe(5000);
+
+      expect(await points.activateWelcomeBonus(org.user, memberId)).toBe(5000);
+      const entry = await prisma.loyaltyPointsEntry.findFirstOrThrow({ where: { memberId, type: T.EARN } });
+      expect(entry).toMatchObject({ saleId: null, reason: MANUAL_WELCOME_BONUS_REASON, ratePercent: null });
+      expect(entry.availableAt).toEqual(startOfZonedDay(entry.createdAt, -1));
+      expect(entry.expiresAt).toEqual(startOfZonedDay(entry.createdAt, -11));
+
+      const card = await loyalty.findOne(org.organizationId, memberId);
+      expect(card.welcomeBonusAvailable).toBeNull();
+      expect(card.pointsPending?.points).toBe(5000);
+      await expect(points.activateWelcomeBonus(org.user, memberId)).rejects.toThrow(/уже получен/);
+
+      const sale = await sell([{ productId: bread, quantity: 10, unitPrice: 590 }], { loyaltyMemberId: memberId });
+      expect(sale.loyalty?.pointsEarned).toBe(59);
+      const audit = await prisma.auditLog.findFirst({ where: { organizationId: org.organizationId, action: "loyaltyPoints.welcome", entityId: memberId } });
+      expect(audit).not.toBeNull();
+    });
+
+    it("refused once a purchase is on record", async () => {
+      const memberId = await register("+77071000202");
+      await sell([{ productId: bread, quantity: 1, unitPrice: 590 }], { loyaltyMemberId: memberId });
+      expect((await loyalty.findOne(org.organizationId, memberId)).welcomeBonusAvailable).toBeNull();
+      await expect(points.activateWelcomeBonus(org.user, memberId)).rejects.toThrow(/уже получен/);
+    });
+
+    it("a cashier needs a senior cashier's PIN; a senior cashier gives it directly", async () => {
+      resetPinThrottle();
+      const users = new UsersService(prisma);
+      const cashier = await person(Role.CASHIER, "Кассир Айгуль");
+      const senior = await person(Role.SENIOR_CASHIER, "Старшая Мадина");
+      await users.setPin(org.user, senior.id, "4826");
+
+      const a = await register("+77071000203");
+      await expect(points.activateWelcomeBonus(cashier, a)).rejects.toThrow(/старшего кассира/);
+      const discountOk = await auth.tillApproval(cashier, "4826", "DISCOUNT");
+      await expect(points.activateWelcomeBonus(cashier, a, discountOk.approvalToken)).rejects.toThrow(/не подходит/);
+      const { approvalToken } = await auth.tillApproval(cashier, "4826", "WELCOME_BONUS");
+      expect(await points.activateWelcomeBonus(cashier, a, approvalToken)).toBe(5000);
+      const entry = await prisma.loyaltyPointsEntry.findFirstOrThrow({ where: { memberId: a, type: T.EARN } });
+      expect(entry.reason).toContain("Старшая Мадина");
+
+      const b = await register("+77071000204");
+      expect(await points.activateWelcomeBonus(senior, b)).toBe(5000);
+    });
+
+    it("a member merged with one who already got it by hand cannot get it again", async () => {
+      const a = await register("+77071000205");
+      const b = await register("+77071000206");
+      await points.activateWelcomeBonus(org.user, b);
+      await loyalty.merge(org.user, { primaryId: a, duplicateId: b, reason: "Один и тот же человек" } as never);
+      expect((await loyalty.findOne(org.organizationId, a)).welcomeBonusAvailable).toBeNull();
+      const sale = await sell([{ productId: bread, quantity: 10, unitPrice: 590 }], { loyaltyMemberId: a });
+      expect(sale.loyalty?.pointsEarned).toBe(59);
+    });
+  });
+
   it("with the bonus at 0 the first-purchase percent applies again", async () => {
     await points.updateSettings(org.user, { welcomeBonusPoints: 0 });
     const memberId = await register("+77071000106");
     const sale = await sell([{ productId: bread, quantity: 2, unitPrice: 590 }], { loyaltyMemberId: memberId });
     expect(sale.loyalty?.pointsEarned).toBe(59);
+    // Nothing to give by hand when the welcome bonus is a percent.
+    const other = await register("+77071000207");
+    expect((await loyalty.findOne(org.organizationId, other)).welcomeBonusAvailable).toBeNull();
+    await expect(points.activateWelcomeBonus(org.user, other)).rejects.toThrow(/не задан/);
   });
 });

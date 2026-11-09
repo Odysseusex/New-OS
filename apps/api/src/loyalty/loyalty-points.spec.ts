@@ -254,6 +254,10 @@ describe("points on real sales (database)", () => {
   });
 
   it("settings changes and corrections are audited", async () => {
+    // A welcome bonus given by hand is audited too.
+    await points.updateSettings(org.user, { welcomeBonusPoints: 300 });
+    await points.activateWelcomeBonus(org.user, await register("+77071000009"));
+    await points.updateSettings(org.user, { welcomeBonusPoints: 0 });
     const logged = new Set(
       (await prisma.auditLog.findMany({ where: { organizationId: org.organizationId }, select: { action: true } })).map((a) => a.action),
     );

@@ -264,17 +264,19 @@ export class LoyaltyService {
       },
     });
     if (!member) throw new NotFoundException("Клиент не найден");
-    const [positions, pointsHistory, lastWhatsApp] = await Promise.all([
+    const [positions, pointsHistory, lastWhatsApp, welcomeBonusAvailable] = await Promise.all([
       this.points.positions(organizationId, [member.id]),
       this.points.history(organizationId, member.id),
       this.prisma.loyaltyMessageLog.findFirst({
         where: { memberId: member.id, channel: LoyaltyConsentChannel.WHATSAPP, status: { not: null } },
         orderBy: { sentAt: "desc" },
       }),
+      this.points.welcomeBonusAvailable(organizationId, member.id),
     ]);
     return {
       ...this.toDto(member, positions.get(member.id)),
       pointsHistory,
+      welcomeBonusAvailable,
       family: member.family.map((f) => toFamilyDto(f)),
       whatsappLastMessage: lastWhatsApp?.status
         ? { status: lastWhatsApp.status as LoyaltyMessageStatus, at: (lastWhatsApp.statusAt ?? lastWhatsApp.sentAt).toISOString(), error: lastWhatsApp.error }

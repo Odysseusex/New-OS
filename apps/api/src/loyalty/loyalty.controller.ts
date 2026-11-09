@@ -10,6 +10,7 @@ import { LoyaltyPointsService } from "./loyalty-points.service";
 import { LoyaltyAnalyticsService } from "./loyalty-analytics.service";
 import { LoyaltyBirthdayService } from "./loyalty-birthday.service";
 import {
+  ActivateWelcomeBonusDto,
   AdjustLoyaltyPointsDto,
   UpdateLoyaltySettingsDto,
   LoyaltyImportApplyRequestDto,
@@ -103,6 +104,12 @@ export class LoyaltyController {
   @Post(":id/consents")
   recordConsent(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: RecordLoyaltyConsentDto) {
     return this.loyaltyService.recordConsent(user, id, dto);
+  }
+
+  // Open to the till; a cashier brings a senior cashier's approval (checked in the service).
+  @Post(":id/points/welcome")
+  async activateWelcomeBonus(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: ActivateWelcomeBonusDto) {
+    return { points: await this.pointsService.activateWelcomeBonus(user, id, dto.approvalToken) };
   }
 
   @Post(":id/points/adjust")

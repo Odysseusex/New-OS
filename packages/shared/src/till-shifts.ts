@@ -101,12 +101,13 @@ export interface CloseTillShiftRequestDto {
 
 export const TILL_PIN_PATTERN = /^\d{4,6}$/;
 
-export type TillApprovalAction = "DISCOUNT" | "RETURN" | "LINE_REMOVAL";
+export type TillApprovalAction = "DISCOUNT" | "RETURN" | "LINE_REMOVAL" | "WELCOME_BONUS";
 
 export const TILL_APPROVAL_ACTION_LABELS_RU: Record<TillApprovalAction, string> = {
   DISCOUNT: "Скидка на чек",
   RETURN: "Возврат",
   LINE_REMOVAL: "Удаление позиции из чека",
+  WELCOME_BONUS: "Приветственный бонус",
 };
 
 export interface TillApprovalRequestDto {

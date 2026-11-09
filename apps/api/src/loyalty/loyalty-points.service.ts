@@ -5,14 +5,17 @@ import {
   floorToTiyn,
   isPointsEarningLine,
   loyaltyEarnPoints,
+  LOYALTY_MANAGE_ROLES,
   LoyaltyMemberStatus,
   LoyaltyPointsEntryDto,
+  MANUAL_WELCOME_BONUS_REASON,
   LoyaltyPointsEntryType as T,
   LoyaltySettingsDto,
   LoyaltySummaryDto,
 } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { recordAudit } from "../audit/audit";
+import { resolveTillApproval } from "../auth/till-pin";
 import { startOfZonedDay } from "../common/zoned-day";
 import { PrismaService } from "../prisma/prisma.service";
 import { addMonths, PointsPosition, pointsPosition, PointsRow } from "./points-ledger";
@@ -218,8 +221,12 @@ export class LoyaltyPointsService {
       });
     }
 
-    // «First purchase» = the first sale this member was attached to.
-    const earlier = await tx.sale.count({ where: { loyaltyMemberId: memberId, id: { not: saleId } } });
+    // «First purchase» = the first sale this member was attached to — unless the
+    // welcome bonus was already given by hand (that purchase was of goods not in the
+    // system), in which case this sale earns like any later one.
+    const earlier =
+      (await tx.sale.count({ where: { loyaltyMemberId: memberId, id: { not: saleId } } })) +
+      ((await this.manualWelcomeGiven(tx, user.organizationId, memberId)) ? 1 : 0);
     const base = round2(input.lines.filter((l) => isPointsEarningLine({ ...l, quantity: l.quantity, unitPrice: 0 })).reduce((s, l) => s + l.subtotal, 0));
     // A fixed welcome bonus replaces the first-purchase percent. It still needs
     // some of our own goods bought at their normal price (a basket of consignment
@@ -385,6 +392,96 @@ export class LoyaltyPointsService {
         reason,
       });
       return after;
+    });
+  }
+
+  // ── welcome bonus by hand ─────────────────────────────────────────────────
+  // A customer registered at the till but bought goods that are not in the system,
+  // so no check carried them and the welcome bonus never came. Exactly the bonus a
+  // first purchase gives (same size, same wait, same lifetime), once, and only while
+  // no purchase is on record; the next real purchase then earns like a later one.
+
+  // Members merged into this one count as this one (their bonus moved here).
+  private async withMerged(db: Db, organizationId: string, memberId: string): Promise<string[]> {
+    const merged = await db.loyaltyMember.findMany({ where: { organizationId, mergedIntoId: memberId }, select: { id: true } });
+    return [memberId, ...merged.map((m) => m.id)];
+  }
+
+  private async manualWelcomeGiven(db: Db, organizationId: string, memberId: string): Promise<boolean> {
+    const ids = await this.withMerged(db, organizationId, memberId);
+    const found = await db.loyaltyPointsEntry.findFirst({
+      where: { organizationId, memberId: { in: ids }, type: T.EARN, saleId: null },
+      select: { id: true },
+    });
+    return found !== null;
+  }
+
+  // The size of the bonus that can be given now, or null.
+  async welcomeBonusAvailable(organizationId: string, memberId: string, db: Db = this.prisma): Promise<number | null> {
+    const settings = await this.getSettings(organizationId, db);
+    if (!settings.enabled || settings.welcomeBonusPoints <= 0) return null;
+    const member = await db.loyaltyMember.findFirst({ where: { id: memberId, organizationId }, select: { status: true } });
+    if (!member || member.status !== LoyaltyMemberStatus.ACTIVE) return null;
+    const ids = await this.withMerged(db, organizationId, memberId);
+    const sales = await db.sale.count({ where: { organizationId, loyaltyMemberId: { in: ids } } });
+    if (sales > 0) return null;
+    if (await this.manualWelcomeGiven(db, organizationId, memberId)) return null;
+    return round2(settings.welcomeBonusPoints);
+  }
+
+  async activateWelcomeBonus(user: AuthenticatedUser, memberId: string, approvalToken?: string): Promise<number> {
+    // A manager / client manager gives it themselves; anyone else at the till needs a
+    // senior cashier's PIN (a senior cashier approves themselves).
+    const approver = LOYALTY_MANAGE_ROLES.includes(user.role)
+      ? { id: user.id, fullName: user.fullName }
+      : await resolveTillApproval(this.prisma, user, "WELCOME_BONUS", approvalToken);
+    const member = await this.prisma.loyaltyMember.findFirst({ where: { id: memberId, organizationId: user.organizationId } });
+    if (!member) throw new NotFoundException("Клиент не найден");
+    return this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+      // Locks the member row: a sale or a second click waits for this one.
+      const before = await this.settle(tx, user.organizationId, memberId, now);
+      const settings = await this.getSettings(user.organizationId, tx);
+      if (!settings.enabled) throw new BadRequestException("Бонусная программа выключена");
+      if (settings.welcomeBonusPoints <= 0) {
+        throw new BadRequestException("Приветственный бонус не задан в настройках программы — начислять нечего");
+      }
+      const points = await this.welcomeBonusAvailable(user.organizationId, memberId, tx);
+      if (points === null) {
+        throw new BadRequestException(
+          member.status !== LoyaltyMemberStatus.ACTIVE
+            ? "Клиент не участвует в программе (нет согласия или запись объединена)"
+            : "Приветственный бонус уже получен: у клиента есть покупка или бонус уже активирован",
+        );
+      }
+      const delay = settings.welcomeBonusDelayDays;
+      const reason = approver.id === user.id ? MANUAL_WELCOME_BONUS_REASON : `${MANUAL_WELCOME_BONUS_REASON} · подтвердил(а) ${approver.fullName}`;
+      await tx.loyaltyPointsEntry.create({
+        data: {
+          organizationId: user.organizationId,
+          memberId,
+          type: T.EARN,
+          points,
+          expiresAt: startOfZonedDay(now, -(delay + settings.welcomeBonusDays)),
+          availableAt: delay > 0 ? startOfZonedDay(now, -delay) : null,
+          ratePercent: null,
+          reason,
+          createdById: user.id,
+          createdByName: user.fullName,
+          createdAt: now,
+        },
+      });
+      await recordAudit(tx, {
+        organizationId: user.organizationId,
+        actorId: user.id,
+        action: "loyaltyPoints.welcome",
+        entityType: "LoyaltyMember",
+        entityId: memberId,
+        before: { balance: before.available },
+        after: { points, approvedBy: approver.fullName },
+        reason: MANUAL_WELCOME_BONUS_REASON,
+      });
+      return points;
     });
   }
 

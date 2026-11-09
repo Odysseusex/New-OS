@@ -10,14 +10,16 @@ import {
   CrmMemberProfileDto,
   CrmOrderStage,
   CrmTimelineKind,
+  LOYALTY_MANAGE_ROLES,
   LoyaltyMemberStatus,
 } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import { useCrm } from "@/components/crm/shell";
 import { ContactDialog } from "@/components/crm/contact-dialog";
 import { OrderDialog } from "@/components/crm/order-dialog";
 import { MemberEditDialog } from "@/components/crm/member-edit-dialog";
-import { Avatar, daysWord, ErrorBox, everyDays, fmtDayKey, fmtDayMonth, fmtMoney, fmtPhone, fmtWhen, plural, SegmentTag, Skeleton, Tag, telLink, Tone } from "@/components/crm/ui";
+import { Avatar, CrmModal, daysWord, ErrorBox, everyDays, fmtDayKey, fmtDayMonth, fmtMoney, fmtPhone, fmtWhen, plural, SegmentTag, Skeleton, Tag, telLink, Tone } from "@/components/crm/ui";
 
 const KIND: Record<CrmTimelineKind, { icon: React.ElementType; tone: Tone | "tx3" }> = {
   SALE: { icon: ShoppingBag, tone: "tx3" },
@@ -38,6 +40,11 @@ export default function CrmClientPage() {
   const [writing, setWriting] = useState(false);
   const [ordering, setOrdering] = useState(false);
   const [editing, setEditing] = useState(false);
+  const { user } = useAuth();
+  const canGiveWelcome = !!user && LOYALTY_MANAGE_ROLES.includes(user.role);
+  const [welcoming, setWelcoming] = useState(false);
+  const [welcomeBusy, setWelcomeBusy] = useState(false);
+  const [welcomeError, setWelcomeError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setError(null);
@@ -93,6 +100,18 @@ export default function CrmClientPage() {
         <button type="button" className="crm-btn" onClick={() => setEditing(true)} disabled={member.status === LoyaltyMemberStatus.MERGED}>
           <Pencil size={15} /> Изменить
         </button>
+        {canGiveWelcome && member.welcomeBonusAvailable !== null && (
+          <button
+            type="button"
+            className="crm-btn"
+            onClick={() => {
+              setWelcomeError(null);
+              setWelcoming(true);
+            }}
+          >
+            <Gift size={15} /> Активировать бонус
+          </button>
+        )}
         <button type="button" className="crm-btn" onClick={() => setOrdering(true)}>
           <Cake size={15} /> Заказ торта
         </button>
@@ -265,6 +284,46 @@ export default function CrmClientPage() {
             refreshCounts();
           }}
         />
+      )}
+      {welcoming && member.welcomeBonusAvailable !== null && (
+        <CrmModal
+          title="Приветственный бонус"
+          onClose={() => setWelcoming(false)}
+          footer={
+            <>
+              <button type="button" className="crm-btn" onClick={() => setWelcoming(false)}>
+                Отмена
+              </button>
+              <button
+                type="button"
+                className="crm-btn primary"
+                disabled={welcomeBusy}
+                onClick={async () => {
+                  setWelcomeBusy(true);
+                  setWelcomeError(null);
+                  try {
+                    await api.loyalty.activateWelcomeBonus(member.id);
+                    setWelcoming(false);
+                    load();
+                    refreshCounts();
+                  } catch (err) {
+                    setWelcomeError(err instanceof ApiError ? err.message : "Не удалось начислить бонус");
+                  } finally {
+                    setWelcomeBusy(false);
+                  }
+                }}
+              >
+                {`Начислить ${Math.floor(member.welcomeBonusAvailable)} ${plural(Math.floor(member.welcomeBonusAvailable), "балл", "балла", "баллов")}`}
+              </button>
+            </>
+          }
+        >
+          <p style={{ margin: 0, lineHeight: 1.55 }}>
+            Бонус за первую покупку для {fmtPhone(member.phone)}. Только если клиент действительно купил. Следующая покупка начислит баллы как
+            обычно, без бонуса.
+          </p>
+          {welcomeError && <p style={{ margin: "12px 0 0", color: "var(--red)" }}>{welcomeError}</p>}
+        </CrmModal>
       )}
       {ordering && (
         <OrderDialog

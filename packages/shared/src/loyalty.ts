@@ -131,6 +131,10 @@ export interface LoyaltyMemberDetailDto extends LoyaltyMemberDto {
   whatsappLastMessage: { status: LoyaltyMessageStatus; at: string; error: string | null } | null;
   // Records merged into this one, so their phones are still findable here.
   mergedFrom: { id: string; phone: string; name: string | null; mergedAt: string | null }[];
+  // The welcome bonus can be given by hand (the first purchase was of goods not in
+  // the system, so no check carried the member): its size, or null when it cannot —
+  // already given, a purchase already on record, or no fixed welcome bonus set.
+  welcomeBonusAvailable: number | null;
 }
 
 export interface LoyaltyLookupDto {
@@ -306,6 +310,14 @@ export interface LoyaltyPointsEntryDto {
   reason: string | null;
   createdByName: string | null;
   createdAt: string;
+}
+
+// The reason on a welcome bonus given by hand (no sale behind it).
+export const MANUAL_WELCOME_BONUS_REASON = "Бонус за первую покупку (активирован вручную)";
+
+export interface ActivateWelcomeBonusRequestDto {
+  // A cashier needs a senior cashier's PIN (till approval WELCOME_BONUS).
+  approvalToken?: string;
 }
 
 export interface AdjustLoyaltyPointsRequestDto {

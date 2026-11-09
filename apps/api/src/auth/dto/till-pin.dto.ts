@@ -12,7 +12,7 @@ export class TillApprovalBodyDto {
   @MaxLength(12)
   pin!: string;
 
-  @IsIn(["DISCOUNT", "RETURN", "LINE_REMOVAL"])
+  @IsIn(["DISCOUNT", "RETURN", "LINE_REMOVAL", "WELCOME_BONUS"])
   action!: TillApprovalAction;
 
   @IsOptional()

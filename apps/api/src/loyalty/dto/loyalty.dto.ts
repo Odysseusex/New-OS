@@ -250,3 +250,10 @@ export class AdjustLoyaltyPointsDto {
   @MaxLength(500)
   reason!: string;
 }
+
+export class ActivateWelcomeBonusDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  approvalToken?: string;
+}
