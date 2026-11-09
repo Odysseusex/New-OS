@@ -20,6 +20,7 @@ import { useAuth } from "@/lib/auth-context";
 import { formatDate, formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
 import { AbortBatchModal } from "@/components/abort-batch-modal";
 import { ProductionReleaseModal } from "@/components/production-release-modal";
+import { DistributionTab } from "@/components/distribution-tab";
 import { ProductionDeviationsTab } from "@/components/production-deviations-tab";
 import { ProductionOutputTab } from "@/components/production-output-tab";
 import { RequisitionsTab } from "@/components/requisitions-tab";
@@ -29,7 +30,7 @@ import { ExportRecipesPdfModal } from "@/components/export-recipes-pdf-modal";
 import { RecipeScaleModal } from "@/components/recipe-scale-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 
-type Tab = "batches" | "recipes" | "requisitions" | "output" | "deviations";
+type Tab = "batches" | "distribution" | "recipes" | "requisitions" | "output" | "deviations";
 
 export default function ProductionPage() {
   const { user } = useAuth();
@@ -167,6 +168,9 @@ export default function ProductionPage() {
           <TabButton active={tab === "batches"} onClick={() => setTab("batches")}>
             Журнал выпуска
           </TabButton>
+          <TabButton active={tab === "distribution"} onClick={() => setTab("distribution")}>
+            Распределение
+          </TabButton>
           <TabButton active={tab === "recipes"} onClick={() => setTab("recipes")}>
             Рецептуры
           </TabButton>
@@ -254,6 +258,7 @@ export default function ProductionPage() {
         </div>
       </div>
 
+      {tab === "distribution" && <DistributionTab locations={locations} />}
       {tab === "requisitions" && <RequisitionsTab locations={locations} products={products} />}
       {tab === "output" && <ProductionOutputTab locations={locations} isOrgWide={isOrgWide} />}
       {tab === "deviations" && <ProductionDeviationsTab locations={locations} isOrgWide={isOrgWide} />}

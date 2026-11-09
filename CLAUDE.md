@@ -915,6 +915,21 @@ material's «Факт» is split over the batches by their norm (`splitReleaseCo
 complete stay (the Telegram bot still uses them). Требование-накладная's «need» reads PLANNED tasks, so it is empty
 now — its lines are typed by hand. Spec `production/production-release.spec.ts`.
 
+## «Распределение» + «Постоянный заказ» (built 09.11.2026)
+
+Производство → «Распределение» (`components/distribution-tab.tsx`): the day's output shared out from one point («Откуда»,
+default the first BAKERY_PRODUCTION) in ONE grid — rows = own tracked finished goods (on hand at the source, in an order,
+or added), columns = STORE points (each → one «Перемещение», `api.inventory.transfer`) and wholesale customers (each → one
+sale on account at the source, `amountPaid: 0`, price = the customer's agreed price else the product's — i.e. the
+накладная). «Провести распределение» makes the documents ONE BY ONE through the ordinary endpoints (each keeps its own
+checks/transaction; a failed column is reported, done columns get ✓ and are never re-sent), then «Печать всех документов»
+prints them together (`printSheets`). No new accounting: only the existing documents.
+«Постоянный заказ» = `StandingOrderLine` (migration `20261125130000_standing_orders`, additive; exactly one of
+`customerId`/`locationId` by CHECK; cascades with product/customer/location; KEPT by clean start): the grid opens
+prefilled from it; «Сохранить как постоянный заказ» replaces every visible column's set (`PUT
+/distribution/standing-orders`, INVENTORY_MANAGE_ROLES, audited `standingOrder.update`; a 0-quantity line is kept only
+when it carries a price). Customer prices: «цены» under the column header. Spec `distribution/standing-orders.spec.ts`.
+
 ## Actual raw material in production + «Отклонения» (built)
 
 «Завершить» shows the norm per ingredient (`GET /production/batches/:id/norm`: the recipe expanded to stocked items,
@@ -1671,7 +1686,10 @@ with the programme on (else the oldest non-sandbox org).
   shares their own contact. A message from the number typed in is the proof (`club/club-confirm.ts`
   `confirmClubLogin`, called from `WhatsAppService.onMessage` BEFORE everything else and from the bot's `onContact`).
   A code from another number is refused. Inbound messages cost nothing. **The WhatsApp webhook must be set in Meta**
-  for this to work (Клиенты → Розница → «Webhook для Meta»).
+  for this to work (Клиенты → Розница → «Webhook для Meta»), so WhatsApp sign-in is offered only when
+  `LoyaltySettings.clubWhatsappLogin` is on (checkbox «вход в приложение клиента» on the programme card, default OFF,
+  migration `20261125120000`); until then the app offers Telegram only (owner, 09.11.2026: the webhook hit Meta's
+  unmet requirements).
 - `ClubLoginRequest`: PENDING (10 min, code unique among live ones, secret held by the starting browser as sha256)
   → CONFIRMED → USED (= the session, collected once by `POST /club/login/:id/status` with the secret) → REVOKED (logout).
   Rate limit 5 starts per number per 15 min. Club token = JWT signed with `${JWT_SECRET}:club` naming the session

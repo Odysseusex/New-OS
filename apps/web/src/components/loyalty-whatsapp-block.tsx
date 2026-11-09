@@ -91,6 +91,15 @@ export function LoyaltyWhatsAppBlock({
               {label}
             </label>
           ))}
+          <label className="flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={settings.clubWhatsappLogin}
+              disabled={!canEdit || busy}
+              onChange={(e) => onSave({ clubWhatsappLogin: e.target.checked })}
+            />
+            вход в приложение клиента
+          </label>
         </div>
       )}
 

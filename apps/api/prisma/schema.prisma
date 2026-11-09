@@ -479,6 +479,7 @@ model Location {
   @@index([organizationId])
   @@index([regionId])
   @@map("locations")
+  standingOrderLines StandingOrderLine[] @relation("StandingOrderLocation")
 }
 
 // A platform user. Access scope is derived from role + organization + optional
@@ -733,6 +734,7 @@ model Product {
   photo          ProductPhoto?
 
   @@map("products")
+  standingOrderLines StandingOrderLine[]
 }
 
 // The product's picture for the till tile. Stored in the database (no file storage
@@ -780,6 +782,28 @@ model ProductLocationPrice {
   @@unique([productId, locationId])
   @@index([organizationId, locationId])
   @@map("product_location_prices")
+}
+
+// «Постоянный заказ»: what a point or a wholesale customer usually gets from the day's output, prefilled in
+// Производство → «Распределение». Exactly one of customerId / locationId is set (CHECK in the migration).
+// unitPrice = the agreed wholesale price (customers only; null = the product's price).
+model StandingOrderLine {
+  id             String    @id @default(cuid())
+  organizationId String
+  customerId     String?
+  customer       Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  locationId     String?
+  location       Location? @relation("StandingOrderLocation", fields: [locationId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity       Decimal   @db.Decimal(12, 3)
+  unitPrice      Decimal?  @db.Decimal(12, 2)
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([customerId, productId])
+  @@unique([locationId, productId])
+  @@index([organizationId])
+  @@map("standing_order_lines")
 }
 
 model StockLevel {
@@ -2133,6 +2157,7 @@ model Customer {
 
   @@index([organizationId])
   @@map("customers")
+  standingOrderLines StandingOrderLine[]
 }
 
 // Notifications are never stored themselves — they're computed live from the
@@ -3209,6 +3234,9 @@ model LoyaltySettings {
   whatsappSaleNotices      Boolean  @default(false)
   whatsappExpiryNotices    Boolean  @default(true)
   whatsappBirthdayNotices  Boolean  @default(true)
+  // Customer app sign-in by a WhatsApp message: off until the webhook in Meta works
+  // (without it the message never reaches us and the sign-in would just wait).
+  clubWhatsappLogin        Boolean  @default(false)
   updatedAt                DateTime @updatedAt
   updatedById              String?
 

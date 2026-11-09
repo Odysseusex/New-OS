@@ -85,7 +85,7 @@ export const CLEAN_START_KEPT_TABLES = [
   "finance_categories", "financial_model_scenarios", "ledger_accounts", "locations", "loyalty_birthday_grants",
   "loyalty_consents", "loyalty_family_members", "loyalty_members", "loyalty_message_logs", "loyalty_settings",
   "loyalty_telegram_links", "management_plan_lines", "planned_fixed_costs", "product_location_prices", "product_photos",
-  "products", "promotion_coupons", "promotions", "recipe_stage_types", "recipe_versions", "recipes", "regions",
+  "products", "promotion_coupons", "promotions", "recipe_stage_types", "recipe_versions", "recipes", "regions", "standing_order_lines",
   "suppliers", "users", "vehicles",
 ];
 
