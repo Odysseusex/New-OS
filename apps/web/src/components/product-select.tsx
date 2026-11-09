@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import type { ProductDto } from "@bakery-os/shared";
 import { UNIT_LABELS_RU } from "@bakery-os/shared";
@@ -40,6 +40,46 @@ export function ProductSelect({
   const searchRef = useRef<HTMLInputElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  // The list is placed on the screen itself (position: fixed), not inside the form: a short window (one line in
+  // «Выпуск за день») or a scrolling table used to clip it so that no product was visible. It opens below the
+  // field, or above it when there is more room there, and follows the field while the page scrolls.
+  const [place, setPlace] = useState<{ left: number; width: number; top?: number; bottom?: number; listMax: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const measure = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const viewHeight = window.visualViewport?.height ?? window.innerHeight;
+      const below = viewHeight - rect.bottom - 8;
+      const above = rect.top - 8;
+      const up = below < 260 && above > below;
+      const room = up ? above : below;
+      const listMax = Math.max(120, Math.min(240, room - 64));
+      setPlace(
+        up
+          ? { left: rect.left, width: rect.width, bottom: viewHeight - rect.top + 4, listMax }
+          : { left: rect.left, width: rect.width, top: rect.bottom + 4, listMax },
+      );
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, true);
+    window.visualViewport?.addEventListener("resize", measure);
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+      window.visualViewport?.removeEventListener("resize", measure);
+    };
+  }, [isOpen]);
+
+  // Focus the search box the moment the list is on screen, so the user can type straight away.
+  const placed = place !== null;
+  useEffect(() => {
+    if (isOpen && placed) searchRef.current?.focus();
+  }, [isOpen, placed]);
+  useEffect(() => {
+    if (!isOpen) setPlace(null);
+  }, [isOpen]);
 
   const selected = products.find((p) => p.id === value);
   // Matches anywhere in the name, not just the start: "шок" finds
@@ -49,11 +89,7 @@ export function ProductSelect({
     ? products.filter((p) => p.name.toLowerCase().includes(normalizedQuery))
     : products;
 
-  // Focus the search box the moment the list opens, so the user can type
-  // straight away instead of clicking into it.
-  useEffect(() => {
-    if (isOpen) searchRef.current?.focus();
-  }, [isOpen]);
+
 
   useEffect(() => {
     if (!isOpen) return;
@@ -114,7 +150,10 @@ export function ProductSelect({
       </button>
 
       {isOpen && (
-        <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-border bg-surface shadow-card">
+        <div
+          className="fixed z-[60] overflow-hidden rounded-xl border border-border bg-surface shadow-card"
+          style={place ? { left: place.left, width: place.width, top: place.top, bottom: place.bottom } : { visibility: "hidden" }}
+        >
           <div className="border-b border-border p-2">
             <input
               ref={searchRef}
@@ -142,7 +181,7 @@ export function ProductSelect({
               className="w-full rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-foreground outline-none focus:border-accent"
             />
           </div>
-          <ul ref={listRef} role="listbox" className="max-h-60 overflow-y-auto py-1">
+          <ul ref={listRef} role="listbox" className="overflow-y-auto py-1" style={{ maxHeight: place?.listMax ?? 240 }}>
             {filtered.map((p, index) => (
               <li key={p.id} data-index={index}>
                 <button

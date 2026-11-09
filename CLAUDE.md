@@ -357,7 +357,9 @@ for endpoints that take an arbitrary `from`/`to` instead of a day count).
 case-insensitive substring match (`name.toLowerCase().includes(query)`) —
 matching anywhere in the string, not just a prefix — with **no debounce and
 no new request**. Reuse this pattern for the next searchable list rather than
-reaching for a library or a backend search endpoint. A custom dropdown
+reaching for a library or a backend search endpoint. The list is `position: fixed` at the trigger's
+screen rectangle (opens upward when there is more room above, follows scrolling) — inside a short modal or a
+scrolling table an absolutely placed list was clipped so that no product could be seen (owner's iPad, 09.11.2026). A custom dropdown
 rendered inside a `Modal` must intercept `Escape` in the **capture phase**
 (`document.addEventListener("keydown", handler, true)`), not a plain React
 `onKeyDown` — Next.js App Router hydrates React's own event delegation on
