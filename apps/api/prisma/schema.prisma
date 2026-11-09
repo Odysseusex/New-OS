@@ -3209,6 +3209,9 @@ model LoyaltySettings {
   whatsappSaleNotices      Boolean  @default(false)
   whatsappExpiryNotices    Boolean  @default(true)
   whatsappBirthdayNotices  Boolean  @default(true)
+  // Customer app sign-in by a WhatsApp message: off until the webhook in Meta works
+  // (without it the message never reaches us and the sign-in would just wait).
+  clubWhatsappLogin        Boolean  @default(false)
   updatedAt                DateTime @updatedAt
   updatedById              String?
 

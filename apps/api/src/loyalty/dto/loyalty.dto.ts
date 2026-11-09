@@ -211,6 +211,10 @@ export class UpdateLoyaltySettingsDto {
   @IsOptional()
   @IsBoolean()
   whatsappBirthdayNotices?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  clubWhatsappLogin?: boolean;
 }
 
 export class SaveLoyaltyFamilyMemberDto {

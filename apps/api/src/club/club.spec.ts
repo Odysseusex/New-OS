@@ -90,6 +90,13 @@ describe("customer app sign-in and card (database)", () => {
   it("sign-in is refused while the programme is off, without consent, or for a non-Kazakh number", async () => {
     await expect(start("+77071230001")).rejects.toThrow(/недоступен/);
     await points.updateSettings(org.user, { enabled: true });
+    // WhatsApp sign-in stays hidden until the owner switches it on (the webhook must work first).
+    const telegramOnly = await start("+77071230009");
+    expect(telegramOnly.whatsappUrl).toBeNull();
+    expect(telegramOnly.telegramUrl).toContain("t.me/ArAmirBonusBot");
+    expect((await club.info()).whatsapp).toBe(false);
+    await points.updateSettings(org.user, { clubWhatsappLogin: true });
+    expect((await club.info()).whatsapp).toBe(true);
     await expect(start("+77071230001", { consent: false })).rejects.toThrow(/согласия/);
     await expect(start("+79161234567")).rejects.toThrow(/казахстанский/);
   });

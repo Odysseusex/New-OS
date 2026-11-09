@@ -64,6 +64,7 @@ export class LoyaltyPointsService {
       whatsappSaleNotices: row.whatsappSaleNotices,
       whatsappExpiryNotices: row.whatsappExpiryNotices,
       whatsappBirthdayNotices: row.whatsappBirthdayNotices,
+      clubWhatsappLogin: row.clubWhatsappLogin,
     };
   }
 

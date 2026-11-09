@@ -69,7 +69,7 @@ export class ClubService {
   async info(): Promise<ClubInfoDto> {
     const organizationId = await this.organizationId();
     const settings = await this.points.getSettings(organizationId);
-    const whatsapp = (await this.whatsapp.businessPhoneDigits()) !== null;
+    const whatsapp = settings.clubWhatsappLogin && (await this.whatsapp.businessPhoneDigits()) !== null;
     const telegram = this.bot.botUsername() !== null;
     return { brand: BRAND, ready: settings.enabled && (whatsapp || telegram), whatsapp, telegram, programme: this.programme(settings) };
   }
@@ -84,7 +84,8 @@ export class ClubService {
 
     const organizationId = await this.organizationId();
     const settings = await this.points.getSettings(organizationId);
-    const waDigits = await this.whatsapp.businessPhoneDigits();
+    // WhatsApp only once the owner switched it on (the webhook in Meta must work).
+    const waDigits = settings.clubWhatsappLogin ? await this.whatsapp.businessPhoneDigits() : null;
     const botName = this.bot.botUsername();
     if (!settings.enabled || (!waDigits && !botName)) throw new BadRequestException("Вход временно недоступен. Попробуйте позже.");
 

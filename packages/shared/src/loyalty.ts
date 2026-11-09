@@ -250,6 +250,8 @@ export interface LoyaltySettingsDto {
   whatsappSaleNotices: boolean;
   whatsappExpiryNotices: boolean;
   whatsappBirthdayNotices: boolean;
+  // Customer app: offer sign-in by a WhatsApp message (needs the webhook set in Meta).
+  clubWhatsappLogin: boolean;
 }
 
 export type UpdateLoyaltySettingsRequestDto = Partial<LoyaltySettingsDto>;
@@ -268,6 +270,7 @@ export const DEFAULT_LOYALTY_SETTINGS: LoyaltySettingsDto = {
   whatsappSaleNotices: false,
   whatsappExpiryNotices: true,
   whatsappBirthdayNotices: true,
+  clubWhatsappLogin: false,
 };
 
 export enum LoyaltyPointsEntryType {

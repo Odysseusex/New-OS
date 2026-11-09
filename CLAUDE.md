@@ -1664,7 +1664,10 @@ with the programme on (else the oldest non-sandbox org).
   shares their own contact. A message from the number typed in is the proof (`club/club-confirm.ts`
   `confirmClubLogin`, called from `WhatsAppService.onMessage` BEFORE everything else and from the bot's `onContact`).
   A code from another number is refused. Inbound messages cost nothing. **The WhatsApp webhook must be set in Meta**
-  for this to work (Клиенты → Розница → «Webhook для Meta»).
+  for this to work (Клиенты → Розница → «Webhook для Meta»), so WhatsApp sign-in is offered only when
+  `LoyaltySettings.clubWhatsappLogin` is on (checkbox «вход в приложение клиента» on the programme card, default OFF,
+  migration `20261125120000`); until then the app offers Telegram only (owner, 09.11.2026: the webhook hit Meta's
+  unmet requirements).
 - `ClubLoginRequest`: PENDING (10 min, code unique among live ones, secret held by the starting browser as sha256)
   → CONFIRMED → USED (= the session, collected once by `POST /club/login/:id/status` with the secret) → REVOKED (logout).
   Rate limit 5 starts per number per 15 min. Club token = JWT signed with `${JWT_SECRET}:club` naming the session
