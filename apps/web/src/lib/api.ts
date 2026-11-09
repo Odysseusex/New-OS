@@ -257,6 +257,8 @@ import type {
   ProductionReleasePreviewDto,
   ProductionReleaseRequestDto,
   ProductionReleaseResultDto,
+  SaveStandingOrderRequestDto,
+  StandingOrderLineDto,
   CreateStockTransferRequestDto,
   RequisitionNeedDto,
   CreateMaterialRequisitionRequestDto,
@@ -505,6 +507,12 @@ export const api = {
       request<ReferenceImportPreviewDto>(`/reference-data/${kind}/preview`, { method: "POST", body: JSON.stringify({ grid }) }),
     apply: (kind: ReferenceKind, grid: ReferenceCell[][]) =>
       request<ReferenceImportResultDto>(`/reference-data/${kind}/apply`, { method: "POST", body: JSON.stringify({ grid }) }),
+  },
+
+  distribution: {
+    standingOrders: () => request<StandingOrderLineDto[]>("/distribution/standing-orders"),
+    saveStandingOrder: (dto: SaveStandingOrderRequestDto) =>
+      request<StandingOrderLineDto[]>("/distribution/standing-orders", { method: "PUT", body: JSON.stringify(dto) }),
   },
 
   inventory: {

@@ -70,6 +70,7 @@ export const AUDIT_ACTION_GROUPS = {
   priceSettings: ["location.priceSource"],
   consignmentLocation: ["product.consignmentLocationAll"],
   productionRelease: ["production.release"],
+  standingOrders: ["standingOrder.update"],
   stocktake: ["stocktake.create", "stocktake.submit", "stocktake.reopen", "stocktake.approve", "stocktake.cancel"],
   stockVoid: ["stockVoid.create"],
   dailyReconciliation: ["dailyReconciliation.save", "dailyReconciliation.apply"],
