@@ -217,7 +217,7 @@ describe("7. existing (legacy) data keeps working", () => {
     const loaf2 = await product(FIN);
     await expect(
       recipes.create(org.user, { productId: loaf2.id, yieldQuantity: 10, items: [{ ingredientProductId: box.id, quantity: 1 }] } as never),
-    ).rejects.toThrow(/только сырьё/);
+    ).rejects.toThrow(/сырьё, полуфабрикаты и готовую продукцию/);
     // Somebody else's goods «под реализацию» are not produced, so they get no recipe.
     const supplier = await prisma.supplier.create({ data: { organizationId: org.organizationId, name: uniq("Деревня") } });
     const village = await product(FIN, undefined, { consignmentSupplierId: supplier.id });

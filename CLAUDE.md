@@ -899,6 +899,13 @@ Full write-up: `docs/SEMI-FINISHED-DESIGN.md`. A recipe ingredient may now be `R
   invent the amount of filling per pie; it is entered after it is measured.
 - Packaging is still NOT a recipe ingredient (pending the owner's decision); no «Полуфабрикаты» category
   was created without his approval.
+- **A finished good can be a recipe ingredient** (owner, 09.11.2026: a plain croissant goes into «Сытный круассан»):
+  own (not consignment), `trackInventory`, with an active recipe. `recipe-tree.ts` `hasOwnRecipe` (SEMI_FINISHED or
+  FINISHED_GOOD) / `isStockedComponent` (= such a product with `trackInventory`, formerly `isStockedSemiFinished`):
+  a stocked component is a LEAF taken from stock at its batches' average (`PRODUCTION_AVERAGE`; before the first batch
+  its recipe cost) — never its sale price, never expanded again; loops/depth are checked through finished goods too.
+  «Выпуск за день» orders lines so a product used by another line is made first (`orderReleaseLines`), and the preview
+  counts it as on hand. The picker labels it «(готовая продукция)». Spec `recipes/finished-ingredient.spec.ts`.
 
 ## «Выпуск за день» — production is ONE step (owner, 08.11.2026)
 

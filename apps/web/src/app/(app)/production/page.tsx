@@ -441,6 +441,7 @@ export default function ProductionPage() {
                     <span className="text-muted">
                       {item.ingredientProductName}
                       {item.ingredientType === ProductType.SEMI_FINISHED && " (полуфабрикат)"}
+                      {item.ingredientType === ProductType.FINISHED_GOOD && " (готовая продукция)"}
                     </span>
                     <span className="text-foreground">
                       {formatQuantity(item.quantity)} {UNIT_LABELS_RU[item.unit]}

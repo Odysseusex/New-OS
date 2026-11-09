@@ -4,7 +4,7 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { ProductType, rawMaterialUnitCost, RecipeBreakdownDto, RecipeDto, RecipeParameterKind, recipeNetQuantity, Unit } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
-import { expandRecipe, findRecipeProblem, isStockedSemiFinished, loadRecipeIndex, semiFinishedUnitCosts } from "./recipe-tree";
+import { expandRecipe, findRecipeProblem, hasOwnRecipe, isStockedComponent, loadRecipeIndex, semiFinishedUnitCosts } from "./recipe-tree";
 import { CreateRecipeDto } from "./dto/create-recipe.dto";
 import { UpdateRecipeDto } from "./dto/update-recipe.dto";
 
@@ -79,7 +79,7 @@ export class RecipesService {
 
   // Unit cost of every semi-finished ingredient used by these recipes.
   private semiCostsFor(organizationId: string, recipes: { items: { ingredientProduct: { id?: string; type: string } ; ingredientProductId: string }[] }[]) {
-    const ids = recipes.flatMap((r) => r.items.filter((i) => i.ingredientProduct.type === ProductType.SEMI_FINISHED).map((i) => i.ingredientProductId));
+    const ids = recipes.flatMap((r) => r.items.filter((i) => hasOwnRecipe(i.ingredientProduct.type as ProductType)).map((i) => i.ingredientProductId));
     return semiFinishedUnitCosts(this.prisma, organizationId, ids);
   }
 
@@ -117,7 +117,7 @@ export class RecipesService {
         productId: line.ingredient.productId,
         name: line.ingredient.name,
         type: line.ingredient.type,
-        fromStock: isStockedSemiFinished(line.ingredient),
+        fromStock: isStockedComponent(line.ingredient),
         unit: units.get(line.ingredient.productId) ?? Unit.KG,
         quantity: Math.round(line.quantity * 1e6) / 1e6,
       })),
@@ -485,11 +485,17 @@ export class RecipesService {
     if (ingredients.length !== new Set(ingredientIds).size) {
       throw new BadRequestException("Один или несколько ингредиентов не найдены");
     }
-    if (ingredients.some((i) => i.type !== ProductType.RAW_MATERIAL && i.type !== ProductType.SEMI_FINISHED)) {
-      throw new BadRequestException("В качестве ингредиентов можно использовать только сырьё и полуфабрикаты");
+    if (ingredients.some((i) => i.type !== ProductType.RAW_MATERIAL && !hasOwnRecipe(i.type as ProductType))) {
+      throw new BadRequestException("В качестве ингредиентов можно использовать сырьё, полуфабрикаты и готовую продукцию");
     }
-    // A semi-finished product is priced by its own recipe, so it needs one.
-    const semi = ingredients.filter((i) => i.type === ProductType.SEMI_FINISHED);
+    // A finished good goes in from the shelf (a plain croissant into a filled one): our own, counted in stock.
+    const finished = ingredients.filter((i) => i.type === ProductType.FINISHED_GOOD);
+    const notStock = finished.filter((i) => !i.trackInventory || i.consignmentSupplierId).map((i) => i.name);
+    if (notStock.length > 0) {
+      throw new BadRequestException(`Готовая продукция в техкарте должна быть своей и учитываться на складе: ${notStock.join(", ")}`);
+    }
+    // A semi-finished product or a finished good is priced by its own recipe, so it needs one.
+    const semi = ingredients.filter((i) => hasOwnRecipe(i.type as ProductType));
     if (semi.length > 0) {
       const withRecipe = await this.prisma.recipe.findMany({
         where: { organizationId, isActive: true, productId: { in: semi.map((p) => p.id) } },
@@ -498,7 +504,7 @@ export class RecipesService {
       const have = new Set(withRecipe.map((r) => r.productId));
       const missing = semi.filter((p) => !have.has(p.id)).map((p) => p.name);
       if (missing.length > 0) {
-        throw new BadRequestException(`У полуфабриката нет техкарты: ${missing.join(", ")}. Сначала создайте её.`);
+        throw new BadRequestException(`Нет действующей техкарты у: ${missing.join(", ")}. Сначала создайте её.`);
       }
     }
   }
@@ -509,7 +515,7 @@ export class RecipesService {
     const semiIds = new Set(
       (
         await this.prisma.product.findMany({
-          where: { organizationId, type: ProductType.SEMI_FINISHED },
+          where: { organizationId, type: { in: [ProductType.SEMI_FINISHED, ProductType.FINISHED_GOOD] } },
           select: { id: true },
         })
       ).map((p) => p.id),
@@ -518,7 +524,7 @@ export class RecipesService {
     const index = await loadRecipeIndex(this.prisma, organizationId);
     const problem = findRecipeProblem(productId, items, index, semiIds);
     if (problem?.kind === "CYCLE") {
-      throw new BadRequestException("Техкарта ссылается сама на себя через полуфабрикаты");
+      throw new BadRequestException("Техкарта ссылается сама на себя через свои составные части");
     }
     if (problem?.kind === "TOO_DEEP") {
       throw new BadRequestException("Слишком глубокая вложенность полуфабрикатов (не более 4 уровней)");
@@ -592,7 +598,7 @@ export class RecipesService {
       ingredientProductId: string;
       ingredientProduct: { type: string; price: { toNumber: () => number }; averageUnitCost: { toNumber: () => number } | null };
     }): number | null =>
-      item.ingredientProduct.type === ProductType.SEMI_FINISHED
+      hasOwnRecipe(item.ingredientProduct.type as ProductType)
         ? (semiCosts.get(item.ingredientProductId) ?? null)
         : rawMaterialUnitCost(item.ingredientProduct.price.toNumber(), item.ingredientProduct.averageUnitCost?.toNumber() ?? null);
     const costComplete = recipe.items.every((item) => unitCostOf(item) !== null);

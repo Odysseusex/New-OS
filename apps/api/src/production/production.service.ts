@@ -33,7 +33,7 @@ const previousMonthKey = (key: string): string => {
   const [y, m] = key.split("-").map(Number);
   return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
 };
-import { expandRecipe, isStockedSemiFinished, loadRecipeIndex, recipeUnitCost, TreeRecipe } from "../recipes/recipe-tree";
+import { expandRecipe, isStockedComponent, loadRecipeIndex, recipeUnitCost, TreeRecipe } from "../recipes/recipe-tree";
 import { CostingService } from "../costing/costing.service";
 import { Prisma, ProductionBatchStatus as PrismaProductionBatchStatus, StockMovementType } from "@prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
@@ -355,7 +355,7 @@ export class ProductionService {
       // A stocked semi-finished product's average cost moves when a batch of it is
       // made, so whoever reads or changes it first takes the row lock.
       const lockIds = [
-        ...trackedItems.filter((l) => isStockedSemiFinished(l.ingredient)).map((l) => l.ingredient.productId),
+        ...trackedItems.filter((l) => isStockedComponent(l.ingredient)).map((l) => l.ingredient.productId),
         ...(averagedOutput ? [batch.recipe.productId] : []),
       ];
       await lockProductRows(tx, lockIds);
@@ -580,7 +580,7 @@ export class ProductionService {
     // A filling made in this same release (and put on the workshop's shelf) is there for the lines after it.
     if (plan.outputLocationId === plan.locationId) {
       for (const line of plan.lines) {
-        if (line.stockedSemiFinished) onHand.set(line.productId, (onHand.get(line.productId) ?? 0) + line.quantity);
+        if (line.usedByOthers) onHand.set(line.productId, (onHand.get(line.productId) ?? 0) + line.quantity);
       }
     }
     const unitOf = new Map(units.map((u) => [u.id, u.unit as Unit]));
@@ -719,9 +719,9 @@ export class ProductionService {
         cost: round2(expanded.lines.reduce((sum, l) => sum + round2(l.quantity * (l.unitCost as number)), 0)),
       };
     });
-    // A filling held as stock is made before what is made from it.
-    planned.sort((a, b) => Number(b.stockedSemiFinished) - Number(a.stockedSemiFinished));
-    return { locationId, outputLocationId, lines: planned };
+    // What goes into another line (a stocked filling, a plain croissant for a filled one) is made first.
+    const ordered = orderReleaseLines(planned);
+    return { locationId, outputLocationId, lines: ordered };
   }
 
   private async recipeTreeOf(
@@ -776,7 +776,7 @@ export class ProductionService {
       perUnit.set(line.ingredient.productId, {
         name: line.ingredient.name,
         quantity: (prev?.quantity ?? 0) + line.quantity,
-        fromStock: isStockedSemiFinished(line.ingredient),
+        fromStock: isStockedComponent(line.ingredient),
       });
     }
     const units = new Map(
@@ -1175,7 +1175,7 @@ type ConsumedLine = {
 };
 
 function consumptionBasis(ingredient: ConsumedLine["ingredient"]): CostBasis {
-  return isStockedSemiFinished(ingredient)
+  return isStockedComponent(ingredient)
     ? CostBasis.PRODUCTION_AVERAGE
     : ingredient.averageUnitCost !== null
       ? CostBasis.RAW_MATERIAL_AVERAGE
@@ -1222,5 +1222,27 @@ export function splitReleaseConsumption(
       out[h.i].push({ productId: total.productId, quantity: Math.max(0, round3(h.norm + share)) });
     });
   }
+  return out;
+}
+
+// Lines of a release in the order they must be made: a line whose product is an ingredient of another
+// line comes before it (depth-first), the rest keep their order. `usedByOthers` marks the first kind.
+export function orderReleaseLines<T extends { productId: string; norms: Map<string, unknown> }>(lines: T[]): (T & { usedByOthers: boolean })[] {
+  const byProduct = new Map(lines.map((l) => [l.productId, l]));
+  const used = new Set(lines.flatMap((l) => [...l.norms.keys()].filter((id) => id !== l.productId && byProduct.has(id))));
+  const out: (T & { usedByOthers: boolean })[] = [];
+  const placed = new Set<string>();
+  const visit = (line: T, path: Set<string>) => {
+    if (placed.has(line.productId) || path.has(line.productId)) return;
+    path.add(line.productId);
+    for (const id of line.norms.keys()) {
+      const dep = byProduct.get(id);
+      if (dep && dep !== line) visit(dep, path);
+    }
+    path.delete(line.productId);
+    placed.add(line.productId);
+    out.push({ ...line, usedByOthers: used.has(line.productId) });
+  };
+  for (const line of lines) visit(line, new Set());
   return out;
 }

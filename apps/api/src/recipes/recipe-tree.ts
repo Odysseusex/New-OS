@@ -31,11 +31,15 @@ export interface TreeIngredient {
 export const rawIngredientCost = (ingredient: Pick<TreeIngredient, "price" | "averageUnitCost">): number =>
   rawMaterialUnitCost(ingredient.price, ingredient.averageUnitCost);
 
-// A semi-finished product held as stock is a leaf, not a recipe to expand: it is
-// consumed from stock at its average cost, and its raw materials were already
-// consumed when its own batch was made. Without stock it is virtual, as before.
-export const isStockedSemiFinished = (ingredient: Pick<TreeIngredient, "type" | "trackInventory">): boolean =>
-  ingredient.type === ProductType.SEMI_FINISHED && ingredient.trackInventory;
+// A product made by its own recipe (semi-finished, or a finished good such as a plain croissant that goes
+// into a filled one — owner, 09.11.2026).
+export const hasOwnRecipe = (type: ProductType): boolean => type === ProductType.SEMI_FINISHED || type === ProductType.FINISHED_GOOD;
+
+// Such a product held as stock is a leaf, not a recipe to expand: it is consumed from stock at its
+// average cost, and its raw materials were already consumed when its own batch was made. Without stock
+// it is virtual, as before (expanded into its recipe).
+export const isStockedComponent = (ingredient: Pick<TreeIngredient, "type" | "trackInventory">): boolean =>
+  hasOwnRecipe(ingredient.type) && ingredient.trackInventory;
 
 export interface TreeRecipe {
   productId: string;
@@ -94,7 +98,7 @@ export async function loadRecipeIndex(db: Db, organizationId: string, productIds
     for (const recipe of recipes) {
       for (const item of recipe.items) {
         const id = item.ingredientProduct.id;
-        if (item.ingredientProduct.type === ProductType.SEMI_FINISHED && !index.has(id)) next.add(id);
+        if (hasOwnRecipe(item.ingredientProduct.type as ProductType) && !index.has(id)) next.add(id);
       }
     }
     if (next.size === 0) break;
@@ -118,10 +122,10 @@ export function recipeUnitCost(
   let known = true;
   for (const item of recipe.items) {
     let unit: number | null;
-    if (isStockedSemiFinished(item.ingredient) && item.ingredient.averageUnitCost !== null) {
+    if (isStockedComponent(item.ingredient) && item.ingredient.averageUnitCost !== null) {
       // What is actually on the shelf costs what it was made for.
       unit = item.ingredient.averageUnitCost;
-    } else if (item.ingredient.type === ProductType.SEMI_FINISHED) {
+    } else if (hasOwnRecipe(item.ingredient.type)) {
       const sub = index.get(item.ingredient.productId);
       unit = sub ? recipeUnitCost(sub, index, memo, path) : null;
     } else {
@@ -186,7 +190,7 @@ export function expandRecipe(
     for (const item of current.items) {
       const needed = item.quantity * factor;
       const ingredient = item.ingredient;
-      if (ingredient.type === ProductType.SEMI_FINISHED && !isStockedSemiFinished(ingredient)) {
+      if (hasOwnRecipe(ingredient.type) && !isStockedComponent(ingredient)) {
         const sub = index.get(ingredient.productId);
         if (!sub || sub.yieldQuantity <= 0 || path.includes(sub.productId) || path.length >= MAX_RECIPE_DEPTH) {
           missing.add(ingredient.name);
@@ -196,7 +200,7 @@ export function expandRecipe(
         continue;
       }
       let unitCost: number | null = rawIngredientCost(ingredient);
-      if (isStockedSemiFinished(ingredient)) {
+      if (isStockedComponent(ingredient)) {
         const sub = index.get(ingredient.productId);
         unitCost = ingredient.averageUnitCost ?? (sub ? recipeUnitCost(sub, index, memo) : null);
       }
@@ -245,7 +249,7 @@ export function recipeReaches(index: RecipeIndex, rootId: string, targetId: stri
     if (id === targetId) return true;
     if (seen.has(id)) return false;
     seen.add(id);
-    return (index.get(id)?.items ?? []).some((item) => item.ingredient.type === ProductType.SEMI_FINISHED && visit(item.ingredient.productId));
+    return (index.get(id)?.items ?? []).some((item) => hasOwnRecipe(item.ingredient.type) && visit(item.ingredient.productId));
   };
   return visit(rootId);
 }

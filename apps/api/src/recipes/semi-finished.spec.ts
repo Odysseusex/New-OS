@@ -144,15 +144,15 @@ describe("cost through nested recipes", () => {
 });
 
 describe("rules on saving", () => {
-  it("a semi-finished ingredient needs its own recipe first; packaging and finished goods are still not ingredients", async () => {
+  it("a semi-finished or finished ingredient needs its own recipe first; packaging is still not an ingredient", async () => {
     const flour = await product("Мука-р", ProductType.RAW_MATERIAL, 100);
     const bare = await product("Крем без рецепта", ProductType.SEMI_FINISHED);
     const cake = await product("Торт-р", ProductType.FINISHED_GOOD, 1000, Unit.PCS);
-    await expect(recipeOf(cake.id, 1, [[bare.id, 0.2]])).rejects.toThrow(/нет техкарты: Крем без рецепта/);
+    await expect(recipeOf(cake.id, 1, [[bare.id, 0.2]])).rejects.toThrow(/Нет действующей техкарты у: Крем без рецепта/);
     const box = await product("Коробка-р", ProductType.PACKAGING, 50, Unit.PCS);
-    await expect(recipeOf(cake.id, 1, [[box.id, 1]])).rejects.toThrow(/только сырьё и полуфабрикаты/);
+    await expect(recipeOf(cake.id, 1, [[box.id, 1]])).rejects.toThrow(/сырьё, полуфабрикаты и готовую продукцию/);
     const other = await product("Готовое-р", ProductType.FINISHED_GOOD, 10, Unit.PCS);
-    await expect(recipeOf(cake.id, 1, [[other.id, 1]])).rejects.toThrow(/только сырьё и полуфабрикаты/);
+    await expect(recipeOf(cake.id, 1, [[other.id, 1]])).rejects.toThrow(/Нет действующей техкарты у: Готовое-р/);
     await expect(recipeOf(box.id, 1, [[flour.id, 1]])).rejects.toThrow(/готовой продукции или полуфабриката/);
   });
 

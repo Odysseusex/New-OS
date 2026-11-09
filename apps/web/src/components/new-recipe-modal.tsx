@@ -85,17 +85,27 @@ export function NewRecipeModal({
       !p.consignmentSupplierId &&
       !existingRecipeProductIds.includes(p.id),
   );
-  // Raw materials and semi-finished products (a component with its own recipe).
-  const ingredientOptions = products.filter((p) => p.type === ProductType.RAW_MATERIAL || p.type === ProductType.SEMI_FINISHED);
-  // The name the picker shows: a semi-finished product says so.
+  // Raw materials, semi-finished products (a component with its own recipe) and our own finished goods
+  // counted in stock (a plain croissant that goes into a filled one — taken from the shelf).
+  const ingredientOptions = products.filter(
+    (p) =>
+      p.type === ProductType.RAW_MATERIAL ||
+      p.type === ProductType.SEMI_FINISHED ||
+      (p.type === ProductType.FINISHED_GOOD && p.trackInventory && !p.consignmentSupplierId),
+  );
+  // The name the picker shows: a semi-finished product or a finished good says so.
   const ingredientPickerOptions = ingredientOptions.map((p) =>
-    p.type === ProductType.SEMI_FINISHED ? { ...p, name: `${p.name} (полуфабрикат)` } : p,
+    p.type === ProductType.SEMI_FINISHED
+      ? { ...p, name: `${p.name} (полуфабрикат)` }
+      : p.type === ProductType.FINISHED_GOOD
+        ? { ...p, name: `${p.name} (готовая продукция)` }
+        : p,
   );
   // What one unit of an ingredient costs: the moving average of a raw material
   // (its card price before the first priced receipt), the unit cost of its own
   // active recipe for a semi-finished product (0 when it has none).
   const unitCostOfIngredient = (p: ProductDto): number =>
-    p.type === ProductType.SEMI_FINISHED
+    p.type === ProductType.SEMI_FINISHED || p.type === ProductType.FINISHED_GOOD
       ? p.trackInventory && p.averageUnitCost !== null
         ? p.averageUnitCost // held as stock: what its batches cost
         : (allRecipes.find((r) => r.productId === p.id && r.isActive && r.costComplete)?.unitCost ?? 0)
