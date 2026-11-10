@@ -205,6 +205,10 @@ Don't redo a till restyle without a fresh request. Learned on the way: Tailwind 
 (`bg-accent/10`, `border-accent/40`, `text-muted/70`) generate NOTHING here — the colours are plain `var()` without
 `<alpha-value>` — so such classes in existing screens are silent no-ops.
 
+**«Обновить»** (`lib/refresh.ts` `reloadPage`): an icon in the topbar on every screen plus a labelled button on the till;
+a full page reload (fresh data and, after a deploy, the new app version). The till registers `setReloadGuard` while the
+check has lines, so it asks «В чеке есть товары. Обновить экран и очистить чек?» first.
+
 **Scrolling the till's grid on the monoblock** (cashier's complaint: scrolling by dragging over tiles added products):
 `components/pos-scroll.tsx` — `useTapGuard` on the grid counts a press as a tap only if the finger moved < 12 px and the
 page did not scroll (a browser-taken pan = `pointercancel` = no tap); a MOUSE drag over the grid scrolls the page by hand

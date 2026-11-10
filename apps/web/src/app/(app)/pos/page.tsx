@@ -10,6 +10,7 @@ import {
   MonitorSmartphone,
   Plus,
   Printer,
+  RefreshCw,
   RotateCcw,
   ScanLine,
   Split,
@@ -57,6 +58,7 @@ import {
 import { CheckDiscountModal, PinLoginModal, SeniorPinModal, type AppliedDiscount } from "@/components/till-approval";
 import { Modal } from "@/components/modal";
 import { UiScaleControl } from "@/components/ui-scale-control";
+import { reloadPage, setReloadGuard } from "@/lib/refresh";
 import { TillShiftControl } from "@/components/till-shift-control";
 import { NumberPad } from "@/components/number-pad";
 import { LabelPrintPicker } from "@/components/label-print-modal";
@@ -278,6 +280,13 @@ export default function PosPage() {
   const missingLocation = !isOrgWide && !user?.locationId;
 
   useEffect(focusScan, [focusScan]);
+
+  // «Обновить» reloads the page, which drops a check still being rung up.
+  const cartCount = cart.length;
+  useEffect(() => {
+    setReloadGuard(() => (cartCount > 0 ? "В чеке есть товары. Обновить экран и очистить чек?" : null));
+    return () => setReloadGuard(null);
+  }, [cartCount]);
 
   // Typing anywhere on the page (including a scan arriving while focus sits on
   // a tile) is redirected into the scan box, so nothing is ever swallowed.
@@ -793,6 +802,14 @@ export default function PosPage() {
         >
           <Users className="h-4 w-4" strokeWidth={1.75} />
           {user?.fullName.split(" ")[0] ?? "Кассир"}
+        </button>
+        <button
+          onClick={reloadPage}
+          title="Обновить товары, цены и остатки"
+          className="flex shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+        >
+          <RefreshCw className="h-4 w-4" strokeWidth={1.75} />
+          Обновить
         </button>
         <UiScaleControl />
         {/* Escape hatch for exactly what the owner hit: Windows decided a

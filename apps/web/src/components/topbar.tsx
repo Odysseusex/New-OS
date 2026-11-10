@@ -1,8 +1,9 @@
 "use client";
 
-import { LogOut, Menu } from "lucide-react";
+import { LogOut, Menu, RefreshCw } from "lucide-react";
 import { ROLE_LABELS_RU } from "@bakery-os/shared";
 import { useAuth } from "@/lib/auth-context";
+import { reloadPage } from "@/lib/refresh";
 
 export function Topbar({ onMenu }: { onMenu?: () => void }) {
   const { user, logout } = useAuth();
@@ -34,6 +35,13 @@ export function Topbar({ onMenu }: { onMenu?: () => void }) {
         <div className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-muted text-sm font-medium text-foreground">
           {user.fullName.charAt(0)}
         </div>
+        <button
+          onClick={reloadPage}
+          title="Обновить"
+          className="flex h-9 w-9 items-center justify-center rounded-xl text-muted transition hover:bg-surface-muted hover:text-foreground"
+        >
+          <RefreshCw className="h-4 w-4" strokeWidth={1.75} />
+        </button>
         <button
           onClick={logout}
           title="Выйти"
