@@ -76,6 +76,19 @@ describe("working before the first stock count", () => {
     expect(await level(flourId)).toBe(5);
   });
 
+  it("a point marked «не уходить в минус» is still checked while the switch is on", async () => {
+    await prisma.location.update({ where: { id: org.storeId }, data: { strictStock: true } });
+    try {
+      await expect(
+        services.sales.create(org.user, { locationId: org.storeId, paymentMethod: PaymentMethod.CASH, items: [{ productId: cakeId, quantity: 1, unitPrice: 500 }] } as never),
+      ).rejects.toThrow(/Недостаточно товара/);
+      await expect(bake(100)).rejects.toThrow(/Недостаточно ингредиента/);
+      expect(await level(cakeId)).toBe(-1);
+    } finally {
+      await prisma.location.update({ where: { id: org.storeId }, data: { strictStock: false } });
+    }
+  });
+
   it("the first count, approved as the opening, books what was there at the start as the opening stock", async () => {
     const st = await services.stocktake.create(org.user, { locationId: org.storeId } as never);
     const line = (productId: string) => st.lines.find((l) => l.productId === productId)!;

@@ -482,6 +482,12 @@ export default function InventoryPage() {
               <span className="flex-1">
                 Уход в минус включён: производство и касса работают без проверки остатков. После первой ревизии с отметкой
                 «Начальные остатки» выключите.
+                {locations.some((l) => l.isActive && l.strictStock) && (
+                  <>
+                    {" "}
+                    Кроме точек: {locations.filter((l) => l.isActive && l.strictStock).map((l) => l.name).join(", ")}.
+                  </>
+                )}
               </span>
               {canDelete && (
                 <button

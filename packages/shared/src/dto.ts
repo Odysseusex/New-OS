@@ -16,6 +16,8 @@ export interface LocationDto {
   defaultDirectionId: string | null;
   // The till here offers «Произвольная сумма».
   tillOpenPrice: boolean;
+  // Never below zero here, even while «уход в минус» is allowed for the organization.
+  strictStock: boolean;
 }
 
 export interface LocationOverviewDto extends LocationDto {
@@ -34,6 +36,7 @@ export interface CreateLocationRequestDto {
   lng?: number;
   defaultDirectionId?: string | null;
   tillOpenPrice?: boolean;
+  strictStock?: boolean;
 }
 
 export interface UpdateLocationRequestDto {
@@ -47,6 +50,7 @@ export interface UpdateLocationRequestDto {
   lng?: number | null;
   defaultDirectionId?: string | null;
   tillOpenPrice?: boolean;
+  strictStock?: boolean;
 }
 
 export interface LocationComparisonDto extends LocationDto {

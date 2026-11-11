@@ -33,10 +33,18 @@ export async function decrementStockOrThrow(
 }
 
 // Organization.allowNegativeStock: while no stock count has been made yet, production and the
-// till may take stock below zero (the first stocktake then books the opening position).
-export async function allowsNegativeStock(tx: Prisma.TransactionClient, organizationId: string): Promise<boolean> {
-  const org = await tx.organization.findUnique({ where: { id: organizationId }, select: { allowNegativeStock: true } });
-  return org?.allowNegativeStock ?? false;
+// till may take stock below zero (the first stocktake then books the opening position) — except at a
+// point marked `Location.strictStock`, whose shelf is always checked (cashiers checked by the stock).
+export async function allowsNegativeStock(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  locationId: string,
+): Promise<boolean> {
+  const [org, location] = await Promise.all([
+    tx.organization.findUnique({ where: { id: organizationId }, select: { allowNegativeStock: true } }),
+    tx.location.findFirst({ where: { id: locationId, organizationId }, select: { strictStock: true } }),
+  ]);
+  return (org?.allowNegativeStock ?? false) && !(location?.strictStock ?? false);
 }
 
 // Takes stock off a shelf: refused when short, unless the organization allows going below zero —

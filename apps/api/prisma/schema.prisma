@@ -436,6 +436,9 @@ model Location {
   isActive  Boolean           @default(true)
   // The till at this point offers «Произвольная сумма» (an amount with no product behind it).
   tillOpenPrice Boolean @default(false)
+  // Stock is checked here even while Organization.allowNegativeStock is on (a shop whose cashiers are checked by
+  // the shelf): the till and production at this point never take stock below zero.
+  strictStock Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

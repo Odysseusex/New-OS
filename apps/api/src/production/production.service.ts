@@ -374,7 +374,7 @@ export class ProductionService {
 
       // Before the first stock count the organization may produce below zero (Organization.allowNegativeStock):
       // the consumption is written as always and the shelf goes negative until the count.
-      const allowNegative = await allowsNegativeStock(tx, user.organizationId);
+      const allowNegative = await allowsNegativeStock(tx, user.organizationId, batch.locationId);
       for (const [productId, n] of allowNegative ? [] : norms) {
         const used = actual.get(productId) ?? 0;
         if (used <= 0) continue;
@@ -574,7 +574,7 @@ export class ProductionService {
     const [levels, units, allowNegative] = await Promise.all([
       this.prisma.stockLevel.findMany({ where: { locationId: plan.locationId, productId: { in: ids } }, select: { productId: true, quantity: true } }),
       this.prisma.product.findMany({ where: { id: { in: ids } }, select: { id: true, unit: true } }),
-      allowsNegativeStock(this.prisma, user.organizationId),
+      allowsNegativeStock(this.prisma, user.organizationId, plan.locationId),
     ]);
     const onHand = new Map(levels.map((l) => [l.productId, l.quantity.toNumber()]));
     // A filling made in this same release (and put on the workshop's shelf) is there for the lines after it.
