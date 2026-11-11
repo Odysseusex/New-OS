@@ -1742,9 +1742,20 @@ with the programme on (else the oldest non-sandbox org).
   The till's scan box tries it after product barcodes (`parseCardPayload` → `GET /loyalty/members/card`).
 - Backup: `club_login_requests` excluded, `loyalty_members.cardSecret` redacted (re-issued at next app open).
   «Чистый лист» keeps the sessions (members are kept).
-- Next steps agreed with the owner: (2) levels 1 % → 2 % → 3 % by own spend over a ROLLING 90 days, a level held at
-  least a month, thresholds set from the real sales distribution (~top 20 % silver, ~5 % gold), settings editable;
-  (3) a 2D USB scanner at the till (code done; hardware not bought); (4) web push. Not built yet.
+- **Levels are BUILT** (11.11.2026, migration `20261128120000_loyalty_tiers`, additive; OFF until the owner ticks «Уровни
+  включены» on the programme card, where he sets the numbers himself): Базовый `earnPercent` → Серебро → Золото by the
+  member's OWN spend (consignment and returns taken off, merged records counted) over a rolling `tierWindowDays` (90);
+  defaults 30 000 ₸ → 2 %, 75 000 ₸ → 3 %, a level reached is kept at least `tierHoldDays` (30). Nothing is scheduled:
+  `loyalty/loyalty-tier.ts` `memberTier()` works the level out whenever the member is looked at or buys and remembers only
+  `LoyaltyMember.tier` + `tierHeldUntil`; pure rules in shared (`loyaltyTierBySpend`, `resolveLoyaltyTier`,
+  `loyaltyTierDto`). A purchase earns the percent of the level the member CAME with (the sale that crosses a threshold
+  still earns the old percent); the first purchase keeps its own rule (welcome bonus / first-purchase percent). Shown on
+  the till's member block, the member card, the app (card label + «Ваш уровень» with what is left) and the poster
+  («1–3%»). Spec `loyalty/loyalty-tiers.spec.ts`. The thresholds are the owner's to choose (he was asking his family).
+- Still not built: (3) a 2D USB scanner at the till (code done; hardware not bought); (4) web push.
+- `/poster` (link on the programme card): ONE A4 design — warm paper, gold hairline frame, Tenor Sans, «Бонусная карта»,
+  no slogan, no photo. The owner rejected photo posters, red fills, sage, Cormorant/Playfair titles and slogans.
+  The app card's default colour is terracotta (sage stays a choice); do not default to sage anywhere.
 
 ## CRM — `/crm` (built, stage 1)
 

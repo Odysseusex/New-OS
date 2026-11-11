@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CreditCard, Gift, Hourglass, LogOut, Receipt, RotateCcw, Share, Sparkles, User, Wheat, X } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { CARD_CODE_STEP_SECONDS, type ClubHistoryItemDto, type ClubInfoDto, type ClubProfileDto } from "@bakery-os/shared";
+import { CARD_CODE_STEP_SECONDS, LOYALTY_TIER_LABELS_RU, type ClubHistoryItemDto, type ClubInfoDto, type ClubProfileDto, type LoyaltyTierDto } from "@bakery-os/shared";
 import { ClubApiError, clubApi, clubToken } from "@/lib/club-api";
 import { Login } from "./_components/login";
 import { useCardCode } from "./_components/card-code";
@@ -160,7 +160,7 @@ function CardTab({ profile, offsetMs }: { profile: ClubProfileDto; offsetMs: num
         <WheatArt />
         <div className="row">
           <span className="mark">Ar Amir</span>
-          <span className="kind">Бонусная карта</span>
+          <span className="kind">{profile.tier ? `${LOYALTY_TIER_LABELS_RU[profile.tier.tier]} · ${fmtPoints(profile.tier.percent)}%` : "Бонусная карта"}</span>
         </div>
         <div className="balance">
           <strong>{fmtPoints(profile.balance)}</strong>
@@ -195,6 +195,8 @@ function CardTab({ profile, offsetMs }: { profile: ClubProfileDto; offsetMs: num
         </div>
       )}
 
+      {profile.tier && <LevelPanel tier={profile.tier} />}
+
       <section className="aa-panel aa-qr" aria-label="QR-код для кассы">
         <span className="aa-eyebrow">Покажите кассиру</span>
         <div className="box">{code ? <QRCodeSVG value={code.payload} size={208} level="M" marginSize={0} /> : <div style={{ width: 208, height: 208 }} />}</div>
@@ -211,7 +213,7 @@ function CardTab({ profile, offsetMs }: { profile: ClubProfileDto; offsetMs: num
 
       <section className="aa-facts" aria-label="Правила программы">
         <div className="aa-fact">
-          <strong>{fmtPoints(p.earnPercent)}%</strong>
+          <strong>{fmtPoints(profile.tier?.percent ?? p.earnPercent)}%</strong>
           <span>бонусами с каждой покупки</span>
         </div>
         <div className="aa-fact">
@@ -229,6 +231,36 @@ function CardTab({ profile, offsetMs }: { profile: ClubProfileDto; offsetMs: num
 
       <InstallHint />
     </>
+  );
+}
+
+// The member's level and the way to the next one.
+function LevelPanel({ tier }: { tier: LoyaltyTierDto }) {
+  const next = tier.next;
+  const share = next ? Math.max(0.03, Math.min(1, tier.spend / next.threshold)) : 1;
+  return (
+    <section className="aa-panel aa-level" aria-label="Уровень">
+      <div className="head">
+        <span className="aa-eyebrow">Ваш уровень</span>
+        <b>
+          {LOYALTY_TIER_LABELS_RU[tier.tier]} · {fmtPoints(tier.percent)}%
+        </b>
+      </div>
+      <div className="bar" role="presentation">
+        <i style={{ width: `${share * 100}%` }} />
+      </div>
+      <p>
+        {next ? (
+          <>
+            До уровня «{LOYALTY_TIER_LABELS_RU[next.tier]}» ({fmtPoints(next.percent)}%) осталось <b>{fmtMoney(Math.ceil(next.remaining))}</b>
+          </>
+        ) : (
+          "Это высший уровень"
+        )}
+      </p>
+      {tier.heldUntil && <p className="note">Уровень сохраняется до {fmtDay(tier.heldUntil)}</p>}
+      <p className="note">Считаются покупки за последние {tier.windowDays} дней</p>
+    </section>
   );
 }
 

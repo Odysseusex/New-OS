@@ -15,6 +15,7 @@ import {
   StartClubLoginRequestDto,
 } from "@bakery-os/shared";
 import { PrismaService } from "../prisma/prisma.service";
+import { memberTier } from "../loyalty/loyalty-tier";
 import { LoyaltyPointsService } from "../loyalty/loyalty-points.service";
 import { WhatsAppService } from "../loyalty/whatsapp.service";
 import { CustomerBotService } from "../loyalty/customer-bot.service";
@@ -223,6 +224,7 @@ export class ClubService {
       card: { secret: member.cardSecret! },
       serverTime: new Date().toISOString(),
       visits,
+      tier: await memberTier(this.prisma, memberId, settings),
       programme: this.programme(settings),
       history: items.slice(0, HISTORY_LIMIT),
     };
@@ -245,6 +247,13 @@ export class ClubService {
       welcomeBonusPoints: s.welcomeBonusPoints,
       welcomeBonusDays: s.welcomeBonusDays,
       birthdayBonusPoints: s.birthdayBonusPoints,
+      tiers: s.tiersEnabled
+        ? {
+            windowDays: s.tierWindowDays,
+            silver: { threshold: s.silverThreshold, percent: s.silverPercent },
+            gold: { threshold: s.goldThreshold, percent: s.goldPercent },
+          }
+        : null,
     };
   }
 

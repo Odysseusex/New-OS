@@ -168,6 +168,44 @@ body:has(.aa) {
   padding: 18px;
 }
 
+/* ── level ───────────────────────────────────────────────────────────── */
+
+.aa-level {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.aa-level .head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.aa-level .head b {
+  font-size: 17px;
+  font-weight: 700;
+}
+.aa-level .bar {
+  height: 8px;
+  border-radius: 99px;
+  background: var(--aa-wheat-soft);
+  overflow: hidden;
+}
+.aa-level .bar i {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: var(--aa-wheat);
+}
+.aa-level p {
+  margin: 0;
+  font-size: 14.5px;
+}
+.aa-level .note {
+  font-size: 12.5px;
+  color: var(--aa-muted);
+}
+
 /* ── the card ────────────────────────────────────────────────────────── */
 
 .aa-card {

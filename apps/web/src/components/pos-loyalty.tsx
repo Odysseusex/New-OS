@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Cake, UserRound, X } from "lucide-react";
 import type { LoyaltyFamilyMemberDto, LoyaltyMemberDto } from "@bakery-os/shared";
-import { formatKzPhone, KZ_PHONE_INVALID_MESSAGE, LoyaltyMemberStatus, normalizeKzPhone } from "@bakery-os/shared";
+import { formatKzPhone, LOYALTY_TIER_LABELS_RU, KZ_PHONE_INVALID_MESSAGE, LoyaltyMemberStatus, normalizeKzPhone } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { formatMoneyPrecise, formatPoints } from "@/lib/format";
 import { LoyaltyRegisterModal } from "@/components/loyalty-register-modal";
@@ -85,6 +85,7 @@ export function PosLoyaltyBlock({
               {member.name ? ` · ${member.name}` : ""}
             </p>
             <p className="text-xs text-muted">
+              {member.tier && `${LOYALTY_TIER_LABELS_RU[member.tier.tier]} ${member.tier.percent}% · `}
               Баллов: {formatPoints(member.pointsBalance)}
               {member.pointsPending &&
                 ` · ещё ${formatPoints(member.pointsPending.points)} с ${new Date(member.pointsPending.from).toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "2-digit", month: "2-digit" })}`}

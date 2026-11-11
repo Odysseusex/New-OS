@@ -4,6 +4,8 @@
 // own phone (WhatsApp, or the customer Telegram bot with their own contact):
 // no password to forget, no paid SMS.
 
+import type { LoyaltyTierDto } from "./loyalty";
+
 export const CLUB_LOGIN_CODE_LENGTH = 6;
 export const CLUB_LOGIN_TTL_MINUTES = 10;
 
@@ -62,6 +64,8 @@ export interface ClubProgrammeDto {
   welcomeBonusPoints: number;
   welcomeBonusDays: number;
   birthdayBonusPoints: number;
+  // Levels, when switched on: spend over `windowDays` → percent.
+  tiers: { windowDays: number; silver: { threshold: number; percent: number }; gold: { threshold: number; percent: number } } | null;
 }
 
 export interface ClubInfoDto {
@@ -126,6 +130,8 @@ export interface ClubProfileDto {
   // For the card code: the app corrects its own clock by this.
   serverTime: string;
   visits: number;
+  // The member's level; null when levels are off.
+  tier: LoyaltyTierDto | null;
   programme: ClubProgrammeDto;
   history: ClubHistoryItemDto[];
 }

@@ -18,10 +18,11 @@ import {
   LoyaltyMessageStatus,
   normalizeKzPhone,
   TILL_APPROVER_ROLES,
+  LOYALTY_TIER_LABELS_RU,
 } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { formatDate, formatDateTime, formatPoints } from "@/lib/format";
+import { formatDate, formatDateTime, formatMoneyPrecise, formatPoints } from "@/lib/format";
 import { Modal } from "@/components/modal";
 import { TextField } from "@/components/text-keypad";
 import { LoyaltyFamilySection } from "@/components/loyalty-family-section";
@@ -319,6 +320,14 @@ export function LoyaltyMemberModal({
               <h3 className="text-sm font-semibold text-foreground">Баллы</h3>
               <p className="text-lg font-semibold text-foreground">{formatPoints(member.pointsBalance)}</p>
             </div>
+            {member.tier && (
+              <p className="mb-2 text-sm text-foreground">
+                Уровень: {LOYALTY_TIER_LABELS_RU[member.tier.tier]} · {member.tier.percent}% · покупки за {member.tier.windowDays} дн.:{" "}
+                {formatMoneyPrecise(member.tier.spend)}
+                {member.tier.next && ` · до уровня «${LOYALTY_TIER_LABELS_RU[member.tier.next.tier]}»: ${formatMoneyPrecise(member.tier.next.remaining)}`}
+                {member.tier.heldUntil && ` · сохраняется до ${formatDate(member.tier.heldUntil)}`}
+              </p>
+            )}
             {member.pointsPending && (
               <p className="mb-2 text-right text-xs text-muted">
                 Ещё {formatPoints(member.pointsPending.points)} — доступны с {formatDate(member.pointsPending.from)}

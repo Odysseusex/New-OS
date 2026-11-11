@@ -18,6 +18,7 @@ import { recordAudit } from "../audit/audit";
 import { resolveTillApproval } from "../auth/till-pin";
 import { startOfZonedDay } from "../common/zoned-day";
 import { PrismaService } from "../prisma/prisma.service";
+import { memberTier } from "./loyalty-tier";
 import { addMonths, PointsPosition, pointsPosition, PointsRow } from "./points-ledger";
 
 type Db = Prisma.TransactionClient | PrismaService;
@@ -68,11 +69,18 @@ export class LoyaltyPointsService {
       whatsappExpiryNotices: row.whatsappExpiryNotices,
       whatsappBirthdayNotices: row.whatsappBirthdayNotices,
       clubWhatsappLogin: row.clubWhatsappLogin,
+      tiersEnabled: row.tiersEnabled,
+      tierWindowDays: row.tierWindowDays,
+      tierHoldDays: row.tierHoldDays,
+      silverThreshold: row.silverThreshold.toNumber(),
+      silverPercent: row.silverPercent.toNumber(),
+      goldThreshold: row.goldThreshold.toNumber(),
+      goldPercent: row.goldPercent.toNumber(),
     };
   }
 
   async updateSettings(user: AuthenticatedUser, dto: Partial<LoyaltySettingsDto>): Promise<LoyaltySettingsDto> {
-    for (const key of ["firstPurchaseEarnPercent", "earnPercent", "maxRedeemPercent"] as const) {
+    for (const key of ["firstPurchaseEarnPercent", "earnPercent", "maxRedeemPercent", "silverPercent", "goldPercent"] as const) {
       const value = dto[key];
       if (value !== undefined && (value < 0 || value > 100 || Math.round(value * 100) !== value * 100)) {
         throw new BadRequestException("Процент — число от 0 до 100, не больше двух знаков после запятой");
@@ -98,9 +106,27 @@ export class LoyaltyPointsService {
     if (dto.birthdayBonusDays !== undefined && (!Number.isInteger(dto.birthdayBonusDays) || dto.birthdayBonusDays < 1 || dto.birthdayBonusDays > 365)) {
       throw new BadRequestException("Срок подарка — целое число дней от 1 до 365");
     }
+    for (const key of ["silverThreshold", "goldThreshold"] as const) {
+      const value = dto[key];
+      if (value !== undefined && (value <= 0 || value > 100_000_000 || Math.round(value * 100) !== value * 100)) {
+        throw new BadRequestException("Порог уровня — сумма покупок больше нуля, не больше двух знаков после запятой");
+      }
+    }
+    if (dto.tierWindowDays !== undefined && (!Number.isInteger(dto.tierWindowDays) || dto.tierWindowDays < 7 || dto.tierWindowDays > 730)) {
+      throw new BadRequestException("Период для уровней — целое число дней от 7 до 730");
+    }
+    if (dto.tierHoldDays !== undefined && (!Number.isInteger(dto.tierHoldDays) || dto.tierHoldDays < 0 || dto.tierHoldDays > 365)) {
+      throw new BadRequestException("Срок удержания уровня — целое число дней от 0 до 365");
+    }
     return this.prisma.$transaction(async (tx) => {
       const before = await this.getSettings(user.organizationId, tx);
       const after = { ...before, ...Object.fromEntries(Object.entries(dto).filter(([, v]) => v !== undefined)) } as LoyaltySettingsDto;
+      if (after.goldThreshold <= after.silverThreshold) {
+        throw new BadRequestException("Порог «Золото» должен быть больше порога «Серебро»");
+      }
+      if (after.goldPercent < after.silverPercent) {
+        throw new BadRequestException("Процент «Золото» не может быть меньше процента «Серебро»");
+      }
       await tx.loyaltySettings.upsert({
         where: { organizationId: user.organizationId },
         create: { organizationId: user.organizationId, ...after, updatedById: user.id },
@@ -233,7 +259,10 @@ export class LoyaltyPointsService {
     // some of our own goods bought at their normal price (a basket of consignment
     // or marked-down goods earns nothing, as with the percent).
     const welcome = earlier === 0 && settings.welcomeBonusPoints > 0 && base > 0;
-    const rate = earlier === 0 ? settings.firstPurchaseEarnPercent : settings.earnPercent;
+    // With levels on, a later purchase earns the percent of the level the member
+    // came with (this sale does not count toward its own percent).
+    const tier = earlier === 0 ? null : await memberTier(tx, memberId, settings, soldAt, saleId);
+    const rate = earlier === 0 ? settings.firstPurchaseEarnPercent : (tier?.percent ?? settings.earnPercent);
     const earned = welcome ? round2(settings.welcomeBonusPoints) : loyaltyEarnPoints(base, rate);
     if (earned > 0) {
       const delay = welcome ? settings.welcomeBonusDelayDays : 0;
@@ -254,6 +283,8 @@ export class LoyaltyPointsService {
         },
       });
     }
+    // This sale may have lifted the member a level: remembered now, so the hold starts today.
+    await memberTier(tx, memberId, settings, soldAt);
     return { pointsRedeemed: redeem, pointsEarned: earned };
   }
 

@@ -107,6 +107,8 @@ export interface LoyaltyMemberDto {
   // Points already given but not usable yet (the welcome bonus waits for the next
   // day): how many and from when. Null when nothing is waiting.
   pointsPending: { points: number; from: string } | null;
+  // The member's level; null when levels are off or it was not asked for (lists).
+  tier: LoyaltyTierDto | null;
   // Linked to the customer Telegram bot (messages also need the TELEGRAM consent).
   telegramLinked: boolean;
   createdAt: string;
@@ -256,6 +258,16 @@ export interface LoyaltySettingsDto {
   whatsappBirthdayNotices: boolean;
   // Customer app: offer sign-in by a WhatsApp message (needs the webhook set in Meta).
   clubWhatsappLogin: boolean;
+  // Levels: the earn percent grows with the member's own spend over the last
+  // `tierWindowDays` days. Off = everyone earns `earnPercent`.
+  tiersEnabled: boolean;
+  tierWindowDays: number;
+  // A level, once reached, is kept at least this many days.
+  tierHoldDays: number;
+  silverThreshold: number;
+  silverPercent: number;
+  goldThreshold: number;
+  goldPercent: number;
 }
 
 export type UpdateLoyaltySettingsRequestDto = Partial<LoyaltySettingsDto>;
@@ -275,7 +287,91 @@ export const DEFAULT_LOYALTY_SETTINGS: LoyaltySettingsDto = {
   whatsappExpiryNotices: true,
   whatsappBirthdayNotices: true,
   clubWhatsappLogin: false,
+  tiersEnabled: false,
+  tierWindowDays: 90,
+  tierHoldDays: 30,
+  silverThreshold: 30000,
+  silverPercent: 2,
+  goldThreshold: 75000,
+  goldPercent: 3,
 };
+
+// ── levels ──────────────────────────────────────────────────────────────────
+
+export enum LoyaltyTier {
+  BASE = "BASE",
+  SILVER = "SILVER",
+  GOLD = "GOLD",
+}
+
+export const LOYALTY_TIER_LABELS_RU: Record<LoyaltyTier, string> = {
+  [LoyaltyTier.BASE]: "Базовый",
+  [LoyaltyTier.SILVER]: "Серебро",
+  [LoyaltyTier.GOLD]: "Золото",
+};
+
+const TIER_RANK: Record<LoyaltyTier, number> = { [LoyaltyTier.BASE]: 0, [LoyaltyTier.SILVER]: 1, [LoyaltyTier.GOLD]: 2 };
+
+type TierSettings = Pick<LoyaltySettingsDto, "earnPercent" | "silverThreshold" | "silverPercent" | "goldThreshold" | "goldPercent">;
+
+// The level a spend over the window earns by itself.
+export function loyaltyTierBySpend(spend: number, s: TierSettings): LoyaltyTier {
+  if (spend >= s.goldThreshold) return LoyaltyTier.GOLD;
+  if (spend >= s.silverThreshold) return LoyaltyTier.SILVER;
+  return LoyaltyTier.BASE;
+}
+
+export function loyaltyTierPercent(tier: LoyaltyTier, s: TierSettings): number {
+  return tier === LoyaltyTier.GOLD ? s.goldPercent : tier === LoyaltyTier.SILVER ? s.silverPercent : s.earnPercent;
+}
+
+// The level a member holds now: a higher one earned by spend is taken at once and
+// held for `holdDays`; a lower one only replaces the held level once the hold is over.
+export function resolveLoyaltyTier(input: {
+  earned: LoyaltyTier;
+  stored: LoyaltyTier;
+  heldUntil: Date | null;
+  now: Date;
+  holdDays: number;
+}): { tier: LoyaltyTier; heldUntil: Date | null } {
+  const { earned, stored, heldUntil, now } = input;
+  if (TIER_RANK[earned] > TIER_RANK[stored]) {
+    return { tier: earned, heldUntil: earned === LoyaltyTier.BASE ? null : new Date(now.getTime() + input.holdDays * 86_400_000) };
+  }
+  if (TIER_RANK[earned] < TIER_RANK[stored] && (!heldUntil || heldUntil.getTime() <= now.getTime())) {
+    return { tier: earned, heldUntil: null };
+  }
+  return { tier: stored, heldUntil };
+}
+
+export interface LoyaltyTierDto {
+  tier: LoyaltyTier;
+  // What this member earns on a purchase now.
+  percent: number;
+  // Own spend (returns taken off) over the window, ₸.
+  spend: number;
+  windowDays: number;
+  // The next level and how much is left to it; null on the top level.
+  next: { tier: LoyaltyTier; percent: number; threshold: number; remaining: number } | null;
+  // Spend is below the held level: it is kept until this moment.
+  heldUntil: string | null;
+}
+
+export function loyaltyTierDto(input: { tier: LoyaltyTier; heldUntil: Date | null; spend: number; settings: LoyaltySettingsDto }): LoyaltyTierDto {
+  const { tier, spend, settings: s } = input;
+  const round = (v: number) => Math.round(v * 100) / 100;
+  const nextTier = tier === LoyaltyTier.BASE ? LoyaltyTier.SILVER : tier === LoyaltyTier.SILVER ? LoyaltyTier.GOLD : null;
+  const threshold = nextTier === LoyaltyTier.GOLD ? s.goldThreshold : s.silverThreshold;
+  const below = TIER_RANK[loyaltyTierBySpend(spend, s)] < TIER_RANK[tier];
+  return {
+    tier,
+    percent: loyaltyTierPercent(tier, s),
+    spend: round(spend),
+    windowDays: s.tierWindowDays,
+    next: nextTier ? { tier: nextTier, percent: loyaltyTierPercent(nextTier, s), threshold, remaining: round(Math.max(0, threshold - spend)) } : null,
+    heldUntil: below && input.heldUntil ? input.heldUntil.toISOString() : null,
+  };
+}
 
 export enum LoyaltyPointsEntryType {
   EARN = "EARN",

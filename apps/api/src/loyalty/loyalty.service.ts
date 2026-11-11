@@ -21,12 +21,14 @@ import {
   LoyaltyMessageStatus,
   normalizeKzPhone,
   parseCardPayload,
+  LoyaltyTierDto,
 } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { auditFields, recordAudit, recordAuditMany } from "../audit/audit";
 import { PrismaService } from "../prisma/prisma.service";
 import { LoyaltyPointsService } from "./loyalty-points.service";
 import { cardCodeValid, finalMemberByPhone } from "../club/club-confirm";
+import { memberTier } from "./loyalty-tier";
 import { PointsPosition } from "./points-ledger";
 import { toFamilyDto } from "./birthdays";
 import {
@@ -274,7 +276,7 @@ export class LoyaltyService {
       this.points.welcomeBonusAvailable(organizationId, member.id),
     ]);
     return {
-      ...this.toDto(member, positions.get(member.id)),
+      ...this.toDto(member, positions.get(member.id), await this.tierOf(organizationId, member)),
       pointsHistory,
       welcomeBonusAvailable,
       family: member.family.map((f) => toFamilyDto(f)),
@@ -536,10 +538,15 @@ export class LoyaltyService {
 
   private async withBalance(organizationId: string, member: MemberWithConsents): Promise<LoyaltyMemberDto> {
     const positions = await this.points.positions(organizationId, [member.id]);
-    return this.toDto(member, positions.get(member.id));
+    return this.toDto(member, positions.get(member.id), await this.tierOf(organizationId, member));
   }
 
-  private toDto(member: MemberWithConsents, points: PointsPosition | undefined): LoyaltyMemberDto {
+  private async tierOf(organizationId: string, member: MemberWithConsents): Promise<LoyaltyTierDto | null> {
+    if (member.status !== LoyaltyMemberStatus.ACTIVE) return null;
+    return memberTier(this.prisma, member.id, await this.points.getSettings(organizationId));
+  }
+
+  private toDto(member: MemberWithConsents, points: PointsPosition | undefined, tier: LoyaltyTierDto | null = null): LoyaltyMemberDto {
     return {
       id: member.id,
       phone: member.phone,
@@ -550,6 +557,7 @@ export class LoyaltyService {
       consents: consentState(member.consents),
       pointsBalance: points?.available ?? 0,
       pointsPending: points && points.pending > 0 && points.pendingFrom ? { points: points.pending, from: points.pendingFrom.toISOString() } : null,
+      tier,
       telegramLinked: !!member.telegramLink,
       createdAt: member.createdAt.toISOString(),
     };

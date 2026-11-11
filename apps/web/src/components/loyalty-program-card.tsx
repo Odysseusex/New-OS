@@ -16,7 +16,8 @@ type NumericSetting =
   | "welcomeBonusDelayDays"
   | "welcomeBonusDays"
   | "firstPurchaseEarnPercent"
-  | "earnPercent" | "maxRedeemPercent" | "pointsLifetimeMonths" | "birthdayBonusPoints" | "birthdayBonusDays";
+  | "earnPercent" | "maxRedeemPercent" | "pointsLifetimeMonths" | "birthdayBonusPoints" | "birthdayBonusDays"
+  | "silverThreshold" | "silverPercent" | "goldThreshold" | "goldPercent" | "tierWindowDays" | "tierHoldDays";
 
 // Programme settings (owner/admin edit them) and the points figures. Points
 // are a discount when spent («способ Б»), so «Баллов у клиентов» is shown here
@@ -47,6 +48,12 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
       pointsLifetimeMonths: String(s.pointsLifetimeMonths),
       birthdayBonusPoints: String(s.birthdayBonusPoints),
       birthdayBonusDays: String(s.birthdayBonusDays),
+      silverThreshold: String(s.silverThreshold),
+      silverPercent: String(s.silverPercent),
+      goldThreshold: String(s.goldThreshold),
+      goldPercent: String(s.goldPercent),
+      tierWindowDays: String(s.tierWindowDays),
+      tierHoldDays: String(s.tierHoldDays),
     });
   }, []);
 
@@ -109,6 +116,16 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
     ["birthdayBonusDays", "Подарок действует, дней"],
   ];
   const changed = settings && draft ? fields.some(([key]) => num(draft[key]) !== settings[key]) : false;
+  // Levels: the earn percent by the member's own spend over the window.
+  const tierFields: [keyof NonNullable<typeof draft>, string][] = [
+    ["silverThreshold", "Серебро: покупки от, ₸"],
+    ["silverPercent", "Серебро: начисление, %"],
+    ["goldThreshold", "Золото: покупки от, ₸"],
+    ["goldPercent", "Золото: начисление, %"],
+    ["tierWindowDays", "Покупки считаются за, дней"],
+    ["tierHoldDays", "Уровень сохраняется не меньше, дней"],
+  ];
+  const tiersChanged = settings && draft ? tierFields.some(([key]) => num(draft[key]) !== settings[key]) : false;
 
   return (
     <div className="mb-6 rounded-2xl border border-border bg-surface p-5 shadow-card">
@@ -206,6 +223,52 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
               {saved && !changed ? "Сохранено" : "Сохранить"}
             </button>
           )}
+        </div>
+      )}
+      {settings && draft && (
+        <div className="mt-5 border-t border-border pt-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold text-foreground">Уровни</h3>
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={settings.tiersEnabled}
+                disabled={!canEdit || busy}
+                onChange={(e) => save({ tiersEnabled: e.target.checked })}
+              />
+              Уровни включены
+            </label>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:items-end lg:grid-cols-4">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-foreground">Базовый: начисление, %</label>
+              <input value={draft.earnPercent} disabled className={inputClass} />
+            </div>
+            {tierFields.map(([key, label]) => (
+              <div key={key}>
+                <label className="mb-1.5 block text-xs font-medium text-foreground">{label}</label>
+                <input
+                  inputMode="decimal"
+                  value={draft[key]}
+                  disabled={!canEdit}
+                  onChange={(e) => {
+                    setSaved(false);
+                    setDraft({ ...draft, [key]: e.target.value });
+                  }}
+                  className={inputClass}
+                />
+              </div>
+            ))}
+            {canEdit && (
+              <button
+                disabled={!tiersChanged || busy}
+                onClick={() => save(Object.fromEntries(tierFields.map(([key]) => [key, num(draft[key])])) as Partial<LoyaltySettingsDto>)}
+                className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-60"
+              >
+                {saved && !tiersChanged ? "Сохранено" : "Сохранить"}
+              </button>
+            )}
+          </div>
         </div>
       )}
       {qrOpen && telegram?.username && <BotQrModal username={telegram.username} onClose={() => setQrOpen(false)} />}
