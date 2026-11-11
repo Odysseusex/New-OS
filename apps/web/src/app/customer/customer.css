@@ -1,0 +1,472 @@
+/* The buyer's screen of the two-screen till. Scoped under .cd.
+
+   Every size is in vh/vw, not rem: the screen is read from a metre away on a
+   monitor whose resolution we do not choose, and the till's own «− 100% +» scale
+   (root font size) must not shrink it. Colours are the bakery's (logo brown,
+   cream, wheat) at full contrast — a cheap glossy panel washes pale tints out. */
+
+.cd {
+  --cd-paper: #fbf7f0;
+  --cd-cream: #f3eadc;
+  --cd-ink: #2a1c13;
+  --cd-brown: #66391f;
+  --cd-deep: #2b190d;
+  --cd-wheat: #c49a5f;
+  --cd-wheat-soft: #e9d6b4;
+  --cd-muted: #6f5c4d;
+  --cd-line: rgba(102, 57, 31, 0.16);
+  --cd-serif: var(--font-cd-serif), "Cormorant Garamond", Georgia, serif;
+  --cd-sans: var(--font-cd-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --cd-photo: 38vw;
+  --cd-ease: cubic-bezier(0.22, 0.8, 0.24, 1);
+
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--cd-paper);
+  color: var(--cd-ink);
+  font-family: var(--cd-sans);
+  font-size: 2.6vh;
+  line-height: 1.3;
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums lining-nums;
+  cursor: none;
+  user-select: none;
+}
+
+/* ── photo panel: the whole screen while idle, a side panel during an order ── */
+
+.cd-photo {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 100vw;
+  overflow: hidden;
+  background: var(--cd-deep);
+  transition: width 0.9s var(--cd-ease);
+  z-index: 2;
+}
+.cd[data-mode="order"] .cd-photo {
+  width: var(--cd-photo);
+}
+.cd-slide {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  transform: scale(1.02);
+  transition: opacity 2.2s ease;
+}
+/* The slide going out keeps drifting while it fades, so it never jumps back. */
+.cd-slide[data-state="in"],
+.cd-slide[data-state="out"] {
+  animation: cd-drift 18s linear forwards;
+}
+.cd-slide[data-state="in"] {
+  opacity: 1;
+}
+@keyframes cd-drift {
+  from { transform: scale(1.02); }
+  to { transform: scale(1.12); }
+}
+.cd-shade {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at center, rgba(27, 15, 7, 0.5) 0%, rgba(27, 15, 7, 0.18) 55%, rgba(27, 15, 7, 0.5) 100%),
+    linear-gradient(180deg, rgba(27, 15, 7, 0.35) 0%, rgba(27, 15, 7, 0) 35%, rgba(27, 15, 7, 0.62) 100%);
+}
+.cd-brand {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3.2vh;
+  padding: 4vh 3vw;
+  text-align: center;
+  color: var(--cd-paper);
+}
+.cd-logo {
+  width: 30vh;
+  height: 30vh;
+  border-radius: 50%;
+  box-shadow: 0 2vh 6vh rgba(0, 0, 0, 0.35), 0 0 0 0.5vh rgba(251, 247, 240, 0.22);
+  transition: width 0.9s var(--cd-ease), height 0.9s var(--cd-ease);
+}
+.cd[data-mode="order"] .cd-logo {
+  width: 22vh;
+  height: 22vh;
+}
+.cd-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.6vh;
+  transition: opacity 0.5s ease, max-height 0.9s var(--cd-ease);
+  max-height: 40vh;
+  overflow: hidden;
+}
+.cd[data-mode="order"] .cd-welcome {
+  opacity: 0;
+  max-height: 0;
+}
+.cd-welcome h1 {
+  margin: 0;
+  font-family: var(--cd-serif);
+  font-weight: 500;
+  font-size: 9vh;
+  line-height: 1.05;
+  letter-spacing: 0.01em;
+  text-shadow: 0 0.4vh 3vh rgba(0, 0, 0, 0.45);
+}
+.cd-rule {
+  width: 9vh;
+  height: 1px;
+  background: var(--cd-wheat);
+}
+.cd-place {
+  font-size: 2.3vh;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--cd-wheat-soft);
+  text-shadow: 0 0.2vh 1.5vh rgba(0, 0, 0, 0.5);
+}
+
+/* ── order / thanks panel ─────────────────────────────────────────────── */
+
+.cd-panel {
+  position: absolute;
+  inset: 0 0 0 var(--cd-photo);
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  transform: translateX(4vw);
+  transition: opacity 0.6s ease 0.15s, transform 0.9s var(--cd-ease);
+  pointer-events: none;
+}
+.cd[data-mode="order"] .cd-panel {
+  opacity: 1;
+  transform: none;
+}
+
+.cd-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2vw;
+  padding: 4.6vh 3.4vw 2.2vh;
+}
+.cd-head h2 {
+  margin: 0;
+  font-family: var(--cd-serif);
+  font-weight: 600;
+  font-size: 6.4vh;
+  line-height: 1;
+  color: var(--cd-deep);
+}
+.cd-count {
+  font-size: 2.2vh;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--cd-brown);
+}
+
+.cd-lines {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 0 3.4vw;
+  /* Older lines fade out at the top instead of being cut by an edge. */
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 7vh);
+  mask-image: linear-gradient(180deg, transparent 0, #000 7vh);
+}
+.cd-line {
+  display: flex;
+  align-items: center;
+  gap: 1.6vw;
+  padding: 1.7vh 0;
+  border-top: 1px solid var(--cd-line);
+  flex-shrink: 0;
+  animation: cd-in 0.45s var(--cd-ease);
+}
+@keyframes cd-in {
+  from { opacity: 0; transform: translateY(2.4vh); }
+  to { opacity: 1; transform: none; }
+}
+.cd-thumb {
+  width: 9vh;
+  height: 9vh;
+  flex-shrink: 0;
+  border-radius: 1.6vh;
+  object-fit: cover;
+  background: var(--cd-cream);
+  box-shadow: 0 0.6vh 1.6vh rgba(43, 25, 13, 0.14);
+}
+.cd-thumb-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none;
+  color: var(--cd-wheat);
+}
+.cd-thumb-empty svg {
+  width: 4.4vh;
+  height: 4.4vh;
+}
+.cd-line-main {
+  flex: 1;
+  min-width: 0;
+}
+.cd-name {
+  font-size: 3.5vh;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--cd-deep);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.cd-sub {
+  margin-top: 0.5vh;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4vh 0.9vw;
+  font-size: 2.5vh;
+  font-weight: 500;
+  color: var(--cd-muted);
+}
+.cd-old {
+  text-decoration: line-through;
+  text-decoration-thickness: 0.25vh;
+}
+.cd-new {
+  color: var(--cd-brown);
+  font-weight: 700;
+}
+.cd-off {
+  padding: 0.3vh 1.2vh;
+  border-radius: 99vh;
+  background: var(--cd-brown);
+  color: var(--cd-paper);
+  font-size: 2.1vh;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.cd-sum {
+  flex-shrink: 0;
+  font-size: 3.9vh;
+  font-weight: 700;
+  color: var(--cd-deep);
+  white-space: nowrap;
+}
+
+.cd-foot {
+  padding: 1.6vh 3.4vw 3.6vh;
+  display: flex;
+  flex-direction: column;
+  gap: 1.6vh;
+}
+.cd-member {
+  display: flex;
+  align-items: center;
+  gap: 1.2vw;
+  padding: 1.5vh 1.6vw;
+  border-radius: 2vh;
+  background: var(--cd-cream);
+  font-size: 2.6vh;
+  font-weight: 500;
+  color: var(--cd-ink);
+}
+.cd-member svg {
+  width: 3.4vh;
+  height: 3.4vh;
+  flex-shrink: 0;
+  color: var(--cd-wheat);
+}
+.cd-member b {
+  font-weight: 700;
+  color: var(--cd-deep);
+}
+.cd-member-right {
+  margin-left: auto;
+  white-space: nowrap;
+  font-weight: 700;
+  color: var(--cd-brown);
+}
+.cd-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2vw;
+  padding: 2.6vh 2.4vw;
+  border-radius: 2.6vh;
+  background: var(--cd-deep);
+  color: var(--cd-paper);
+  box-shadow: 0 1.6vh 4vh rgba(43, 25, 13, 0.28);
+}
+.cd-total-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6vh;
+  font-size: 2.3vh;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--cd-wheat-soft);
+}
+.cd-saved {
+  font-size: 2.3vh;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--cd-wheat);
+}
+.cd-total-sum {
+  font-size: 10.5vh;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+.cd-total-sum small {
+  font-size: 0.5em;
+  font-weight: 600;
+  margin-left: 0.18em;
+  color: var(--cd-wheat-soft);
+}
+
+/* ── thanks ───────────────────────────────────────────────────────────── */
+
+.cd-thanks {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2.6vh;
+  padding: 4vh 3.4vw;
+  text-align: center;
+  animation: cd-in 0.6s var(--cd-ease);
+}
+.cd-check {
+  width: 14vh;
+  height: 14vh;
+}
+.cd-check circle {
+  fill: none;
+  stroke: var(--cd-wheat);
+  stroke-width: 2.5;
+  stroke-dasharray: 302;
+  stroke-dashoffset: 302;
+  animation: cd-draw 0.7s ease-out 0.1s forwards;
+}
+.cd-check path {
+  fill: none;
+  stroke: var(--cd-brown);
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 70;
+  stroke-dashoffset: 70;
+  animation: cd-draw 0.45s ease-out 0.6s forwards;
+}
+@keyframes cd-draw {
+  to { stroke-dashoffset: 0; }
+}
+.cd-thanks h2 {
+  margin: 0;
+  font-family: var(--cd-serif);
+  font-weight: 600;
+  font-size: 8.4vh;
+  line-height: 1.05;
+  color: var(--cd-deep);
+}
+.cd-paid {
+  font-size: 8vh;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--cd-brown);
+}
+.cd-paid small {
+  font-size: 0.5em;
+  font-weight: 600;
+  margin-left: 0.18em;
+}
+.cd-facts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1.6vh 1.2vw;
+}
+.cd-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4vh;
+  min-width: 15vw;
+  padding: 1.8vh 2vw;
+  border-radius: 2vh;
+  background: var(--cd-cream);
+}
+.cd-fact span {
+  font-size: 2vh;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--cd-muted);
+}
+.cd-fact b {
+  font-size: 4.6vh;
+  font-weight: 700;
+  color: var(--cd-deep);
+}
+.cd-qr {
+  display: flex;
+  align-items: center;
+  gap: 1.6vw;
+  text-align: left;
+  font-size: 2.3vh;
+  color: var(--cd-muted);
+}
+/* Black on white on purpose: a phone camera has to read it. */
+.cd-qr-box {
+  padding: 1.4vh;
+  border-radius: 1.6vh;
+  background: #ffffff;
+  box-shadow: 0 0.8vh 2.4vh rgba(43, 25, 13, 0.14);
+  line-height: 0;
+}
+.cd-qr-box svg {
+  width: 20vh;
+  height: 20vh;
+}
+.cd-bye {
+  font-family: var(--cd-serif);
+  font-weight: 500;
+  font-size: 4vh;
+  color: var(--cd-muted);
+}
+
+/* A screen standing upright: the photo goes on top, the order under it. */
+@media (orientation: portrait) {
+  .cd { --cd-photo: 100vw; }
+  .cd-photo { inset: 0 0 auto 0; width: 100vw; height: 100vh; transition: height 0.9s var(--cd-ease); }
+  .cd[data-mode="order"] .cd-photo { width: 100vw; height: 26vh; }
+  .cd[data-mode="order"] .cd-logo { width: 18vh; height: 18vh; }
+  .cd-panel { inset: 26vh 0 0 0; transform: translateY(4vh); }
+  .cd-total-sum { font-size: 7.5vh; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cd *, .cd { animation: none !important; transition: none !important; }
+  .cd-check circle, .cd-check path { stroke-dashoffset: 0; }
+}

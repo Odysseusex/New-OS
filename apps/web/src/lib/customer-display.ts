@@ -25,6 +25,17 @@ export interface CustomerLine {
   // what the item normally costs struck through next to what they are being
   // charged — a discount nobody can see is a discount nobody trusts.
   fullUnitPrice: number | null;
+  // The product's photo, when it has one (served without a login).
+  photoUrl?: string | null;
+}
+
+// The bonus-programme member attached to the order. Only what the buyer may see
+// on a screen facing the shop floor: a name and points, never the phone.
+export interface CustomerMember {
+  name: string | null;
+  points: number;
+  // Points being spent on this order, ₸.
+  redeemed: number;
 }
 
 export type CustomerState =
@@ -34,6 +45,7 @@ export type CustomerState =
       locationName: string | null;
       lines: CustomerLine[];
       total: number;
+      member?: CustomerMember | null;
     }
   | {
       kind: "paid";
@@ -45,6 +57,8 @@ export type CustomerState =
       change: number | null;
       receiptNumber: string | null;
       qrCode: string | null;
+      // Points this purchase earned; null for a sale without a member.
+      pointsEarned?: number | null;
     };
 
 type Message =
