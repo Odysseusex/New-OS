@@ -12,6 +12,8 @@ import {
   LoyaltyPointsEntryType as T,
   LoyaltySettingsDto,
   LoyaltySummaryDto,
+  LoyaltyTier,
+  loyaltyTierPercent,
 } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { recordAudit } from "../audit/audit";
@@ -240,7 +242,7 @@ export class LoyaltyPointsService {
       redeem: number;
       lines: SaleLoyaltyLine[];
     },
-  ): Promise<{ pointsRedeemed: number; pointsEarned: number }> {
+  ): Promise<{ pointsRedeemed: number; pointsEarned: number; tierUp: { tier: LoyaltyTier; percent: number } | null }> {
     const { user, prepared, saleId, soldAt } = input;
     const { memberId, settings } = prepared;
     const position = await this.settle(tx, user.organizationId, memberId, soldAt);
@@ -292,8 +294,12 @@ export class LoyaltyPointsService {
       });
     }
     // This sale may have lifted the member a level: remembered now, so the hold starts today.
-    await memberTier(tx, memberId, settings, soldAt);
-    return { pointsRedeemed: redeem, pointsEarned: earned };
+    const before = (await tx.loyaltyMember.findUnique({ where: { id: memberId }, select: { tier: true } }))?.tier;
+    const after = await memberTier(tx, memberId, settings, soldAt);
+    const tierUp = after && before && after.tier !== before && after.tier !== LoyaltyTier.BASE && after.percent > loyaltyTierPercent(before as LoyaltyTier, settings)
+      ? { tier: after.tier, percent: after.percent }
+      : null;
+    return { pointsRedeemed: redeem, pointsEarned: earned, tierUp };
   }
 
   // ── returns ───────────────────────────────────────────────────────────────

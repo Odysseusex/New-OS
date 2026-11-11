@@ -1,18 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CreditCard, Gift, Hourglass, LogOut, Receipt, RotateCcw, Share, Sparkles, User, Wheat, X } from "lucide-react";
+import { Bell, CreditCard, Gift, Hourglass, LogOut, Receipt, RotateCcw, Share, Sparkles, User, Wheat, X } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { CARD_CODE_STEP_SECONDS, LOYALTY_TIER_LABELS_RU, type ClubHistoryItemDto, type ClubInfoDto, type ClubProfileDto, type LoyaltyTierDto } from "@bakery-os/shared";
 import { ClubApiError, clubApi, clubToken } from "@/lib/club-api";
 import { Login } from "./_components/login";
 import { useCardCode } from "./_components/card-code";
+import { disablePush, enablePush, pushState, syncPush, type PushState } from "./_components/push";
 import { CARD_COLORS, cardStyle, useCardColor, type CardColor } from "./_components/card-colors";
 import { bonusWord, fmtDay, fmtDayTime, fmtMoney, fmtMonth, fmtPoints, greeting, prettyPhone, privacyHref } from "./_components/format";
 
 type Tab = "card" | "history" | "profile";
 const REFRESH_MS = 60_000;
 const HINT_KEY = "aa.club.installHintHidden";
+const PUSH_PROMPT_KEY = "aa.club.pushPromptHidden";
 
 export default function ClubApp() {
   const [phase, setPhase] = useState<"loading" | "login" | "in">("loading");
@@ -35,6 +37,8 @@ export default function ClubApp() {
       setProfile(me);
       setError(null);
       setPhase("in");
+      // The phone that allowed notifications is confirmed to the server (never awaited).
+      void syncPush();
     } catch (err) {
       if (err instanceof ClubApiError && err.status === 401) {
         clubToken.set(null);
@@ -119,6 +123,8 @@ export default function ClubApp() {
             profile={profile}
             onRenamed={(name) => setProfile({ ...profile, name })}
             onLogout={async () => {
+              // Signed out = no more notices on this phone.
+              await disablePush().catch(() => undefined);
               await clubApi.logout().catch(() => undefined);
               clubToken.set(null);
               setProfile(null);
@@ -197,6 +203,8 @@ function CardTab({ profile, offsetMs }: { profile: ClubProfileDto; offsetMs: num
 
       {profile.tier && <LevelPanel tier={profile.tier} />}
 
+      <PushPanel prompt />
+
       <section className="aa-panel aa-qr" aria-label="QR-код для кассы">
         <span className="aa-eyebrow">Покажите кассиру</span>
         <div className="box">{code ? <QRCodeSVG value={code.payload} size={208} level="M" marginSize={0} /> : <div style={{ width: 208, height: 208 }} />}</div>
@@ -260,6 +268,98 @@ function LevelPanel({ tier }: { tier: LoyaltyTierDto }) {
       </p>
       {tier.heldUntil && <p className="note">Уровень сохраняется до {fmtDay(tier.heldUntil)}</p>}
       <p className="note">Считаются покупки за последние {tier.windowDays} дней</p>
+    </section>
+  );
+}
+
+// Notifications of the app. `prompt` = the one-time offer on the card screen
+// (shown only while they are off and can be switched on); without it, the
+// section in «Профиль» with the current state.
+function PushPanel({ prompt = false }: { prompt?: boolean }) {
+  const [state, setState] = useState<PushState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [hidden, setHidden] = useState(false);
+  useEffect(() => {
+    void pushState().then(setState);
+    try {
+      setHidden(localStorage.getItem(PUSH_PROMPT_KEY) === "1");
+    } catch {
+      setHidden(false);
+    }
+  }, []);
+
+  const run = async (action: () => Promise<PushState>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      setState(await action());
+    } catch (err) {
+      setError(err instanceof ClubApiError ? err.message : "Не получилось включить уведомления. Попробуйте ещё раз.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!state || state === "unsupported") return null;
+
+  if (prompt) {
+    if (state !== "off" || hidden) return null;
+    return (
+      <section className="aa-panel" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+          <Bell size={20} style={{ color: "var(--aa-wheat)", flexShrink: 0, marginTop: 2 }} />
+          <div style={{ flex: 1, fontSize: 14 }}>
+            <b>Включите уведомления.</b> Сообщим о начисленных бонусах, подарках и новом уровне.
+          </div>
+          <button
+            type="button"
+            aria-label="Скрыть"
+            style={{ border: 0, background: "none", padding: 2, color: "var(--aa-muted)" }}
+            onClick={() => {
+              try {
+                localStorage.setItem(PUSH_PROMPT_KEY, "1");
+              } catch {
+                // the offer just comes back next time
+              }
+              setHidden(true);
+            }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+        {error && <div className="aa-error">{error}</div>}
+        <button type="button" className="aa-btn primary" disabled={busy} onClick={() => run(enablePush)}>
+          {busy ? "Секунду…" : "Включить уведомления"}
+        </button>
+      </section>
+    );
+  }
+
+  return (
+    <section className="aa-panel" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--aa-ink2)" }}>Уведомления</span>
+        <span style={{ fontSize: 13, color: state === "on" ? "var(--aa-plus)" : "var(--aa-muted)" }}>
+          {state === "on" ? "Включены" : state === "blocked" ? "Запрещены" : "Выключены"}
+        </span>
+      </div>
+      {state === "needs-install" && (
+        <p style={{ margin: 0, fontSize: 14 }}>Чтобы получать уведомления, добавьте приложение на экран «Домой»: «Поделиться» внизу Safari, затем «На экран “Домой”».</p>
+      )}
+      {state === "blocked" && <p style={{ margin: 0, fontSize: 14 }}>Уведомления запрещены в настройках телефона. Разрешите их для Ar Amir — и вернитесь сюда.</p>}
+      {state === "off" && <p style={{ margin: 0, fontSize: 14 }}>Сообщим о начисленных бонусах, подарках и новом уровне.</p>}
+      {error && <div className="aa-error">{error}</div>}
+      {state === "off" && (
+        <button type="button" className="aa-btn primary" disabled={busy} onClick={() => run(enablePush)}>
+          {busy ? "Секунду…" : "Включить уведомления"}
+        </button>
+      )}
+      {state === "on" && (
+        <button type="button" className="aa-btn ghost" disabled={busy} onClick={() => run(disablePush)}>
+          {busy ? "Секунду…" : "Выключить"}
+        </button>
+      )}
     </section>
   );
 }
@@ -446,6 +546,7 @@ function ProfileTab({ profile, onRenamed, onLogout }: { profile: ClubProfileDto;
           {saved && !changed ? "Сохранено" : saving ? "Сохраняем…" : "Сохранить"}
         </button>
       </section>
+      <PushPanel />
       <section className="aa-panel" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <span style={{ fontSize: 13, fontWeight: 600, color: "var(--aa-ink2)" }}>Цвет карты</span>
         <div className="aa-swatches" role="radiogroup" aria-label="Цвет карты">

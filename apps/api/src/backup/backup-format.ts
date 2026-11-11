@@ -16,7 +16,9 @@ export const EXPORT_VERSION = 1;
 //  * telegram_link_tokens: one-time codes that expire in minutes.
 //  * club_login_requests: customer-app sign-ins and sessions; after a restore
 //    customers simply sign in again.
-export const EXCLUDED_TABLES: ReadonlySet<string> = new Set(["_prisma_migrations", "telegram_link_tokens", "club_login_requests"]);
+//  * club_push_subscriptions: the phones that allowed app notifications (addresses
+//    and keys of single devices); after a restore the app subscribes again by itself.
+export const EXCLUDED_TABLES: ReadonlySet<string> = new Set(["_prisma_migrations", "telegram_link_tokens", "club_login_requests", "club_push_subscriptions"]);
 
 // Columns left out of the rows. A restore asks for a temporary password instead.
 export const REDACTED_COLUMNS: Readonly<Record<string, readonly string[]>> = {

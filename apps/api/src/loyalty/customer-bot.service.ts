@@ -10,6 +10,8 @@ import {
   LoyaltyTelegramStatusDto,
   normalizeKzPhone,
   SendLoyaltyTelegramResultDto,
+  LOYALTY_TIER_LABELS_RU,
+  LoyaltyTier,
 } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
@@ -20,6 +22,7 @@ import { LoyaltyPointsService } from "./loyalty-points.service";
 import { consentState } from "./loyalty.service";
 import { pointsPosition } from "./points-ledger";
 import { confirmClubLogin } from "../club/club-confirm";
+import { ClubPushService } from "./club-push.service";
 import { WhatsAppService, WhatsAppTemplateKey } from "./whatsapp.service";
 
 // The CUSTOMER bot — a separate bot from the staff one (its own token,
@@ -76,6 +79,7 @@ export class CustomerBotService implements OnModuleInit {
     private prisma: PrismaService,
     private points: LoyaltyPointsService,
     private whatsapp?: WhatsAppService,
+    private push?: ClubPushService,
   ) {}
 
   // ── lifecycle ─────────────────────────────────────────────────────────────
@@ -314,10 +318,31 @@ export class CustomerBotService implements OnModuleInit {
     }
   }
 
-  async notifySale(sale: { id: string; totalAmount: number; loyalty: { memberId: string; pointsRedeemed: number; pointsEarned: number } | null }) {
+  async notifySale(
+    sale: { id: string; totalAmount: number; loyalty: { memberId: string; pointsRedeemed: number; pointsEarned: number } | null },
+    // The level this purchase lifted the member to, if it did (the app is told).
+    tierUp: { tier: LoyaltyTier; percent: number } | null = null,
+  ) {
     if (!sale.loyalty) return;
     const { memberId, pointsRedeemed, pointsEarned } = sale.loyalty;
+    const inApp = await this.viaPush(memberId);
+    if (inApp && tierUp) {
+      await this.push!.send(memberId, `tier:${sale.id}`, {
+        title: `Новый уровень — ${LOYALTY_TIER_LABELS_RU[tierUp.tier]}`,
+        body: `Теперь вы получаете ${pointsFmt.format(tierUp.percent)}% бонусами с каждой покупки.`,
+      });
+    }
     if (pointsRedeemed <= 0 && pointsEarned <= 0) return;
+    if (inApp) {
+      const balance = await this.balanceOf(memberId);
+      const parts = [
+        ...(pointsEarned > 0 ? [`Начислено: +${pointsFmt.format(pointsEarned)}`] : []),
+        ...(pointsRedeemed > 0 ? [`Оплачено бонусами: ${pointsFmt.format(pointsRedeemed)}`] : []),
+        `На счёте: ${pointsFmt.format(balance)}`,
+      ];
+      await this.push!.send(memberId, `sale:${sale.id}`, { title: `Спасибо за покупку на ${moneyFmt.format(sale.totalAmount)} ₸!`, body: parts.join(" · ") });
+      return;
+    }
     if (await this.useWhatsApp(memberId, "whatsappSaleNotices", "purchase")) {
       await this.viaWhatsApp(memberId, "purchase", (balance) => [moneyFmt.format(sale.totalAmount), pointsFmt.format(pointsEarned), pointsFmt.format(pointsRedeemed), pointsFmt.format(balance)], `sale:${sale.id}`, null);
     } else if (await this.viaTelegram(memberId)) {
@@ -327,6 +352,16 @@ export class CustomerBotService implements OnModuleInit {
 
   async notifyReturn(memberId: string, saleReturnId: string, refunded: number, reversed: number) {
     if (refunded <= 0 && reversed <= 0) return;
+    if (await this.viaPush(memberId)) {
+      const balance = await this.balanceOf(memberId);
+      const parts = [
+        ...(refunded > 0 ? [`Бонусы вернулись: +${pointsFmt.format(refunded)}`] : []),
+        ...(reversed > 0 ? [`Начисление отменено: −${pointsFmt.format(reversed)}`] : []),
+        `На счёте: ${pointsFmt.format(balance)}`,
+      ];
+      await this.push!.send(memberId, `return:${saleReturnId}`, { title: "Оформлен возврат товара", body: parts.join(" · ") });
+      return;
+    }
     if (await this.useWhatsApp(memberId, "whatsappSaleNotices", "return")) {
       await this.viaWhatsApp(memberId, "return", (balance) => [pointsFmt.format(refunded), pointsFmt.format(reversed), pointsFmt.format(balance)], `return:${saleReturnId}`, null);
       return;
@@ -349,11 +384,12 @@ export class CustomerBotService implements OnModuleInit {
   @Cron("5 7 * * *")
   async remindExpiringPoints(): Promise<number> {
     const whatsapp = this.whatsapp?.isEnabled() ? await this.whatsapp.reachableMemberIds() : [];
-    if (!this.isEnabled() && whatsapp.length === 0) return 0;
+    const inApp = this.push ? (await this.prisma.clubPushSubscription.findMany({ select: { memberId: true }, distinct: ["memberId"] })).map((d) => d.memberId) : [];
+    if (!this.isEnabled() && whatsapp.length === 0 && inApp.length === 0) return 0;
     const links = this.isEnabled() ? await this.prisma.loyaltyTelegramLink.findMany({ select: { memberId: true } }) : [];
     const now = new Date();
     let sent = 0;
-    for (const memberId of new Set([...whatsapp, ...links.map((l) => l.memberId)])) {
+    for (const memberId of new Set([...whatsapp, ...inApp, ...links.map((l) => l.memberId)])) {
       try {
         const rows = await this.prisma.loyaltyPointsEntry.findMany({ where: { memberId } });
         const position = pointsPosition(
@@ -366,7 +402,10 @@ export class CustomerBotService implements OnModuleInit {
         if (amount < 1) continue;
         const first = soon[0].expiresAt;
         const key = `expiry:${first.toISOString().slice(0, 10)}`;
-        if (await this.useWhatsApp(memberId, "whatsappExpiryNotices", "expiring")) {
+        if (await this.viaPush(memberId)) {
+          const body = `${pointsFmt.format(amount)} бонусов сгорят ${dateFmt.format(first)}. Приходите — оплатите ими часть покупки!`;
+          if (await this.push!.send(memberId, key, { title: "Бонусы скоро сгорят", body })) sent += 1;
+        } else if (await this.useWhatsApp(memberId, "whatsappExpiryNotices", "expiring")) {
           if (await this.viaWhatsApp(memberId, "expiring", () => [pointsFmt.format(amount), dateFmt.format(first)], key, null)) sent += 1;
         } else if (await this.viaTelegram(memberId)) {
           const text = `${pointsFmt.format(amount)} ваших баллов сгорят ${dateFmt.format(first)}. Приходите — оплатите ими часть покупки!`;
@@ -381,15 +420,17 @@ export class CustomerBotService implements OnModuleInit {
 
   // A message written by the owner (e.g. to the churn radar list).
   async sendManual(user: AuthenticatedUser, memberIds: string[], text: string): Promise<SendLoyaltyTelegramResultDto> {
-    if (!this.isEnabled() && !this.whatsapp?.isEnabled()) throw new BadRequestException("Не подключены ни WhatsApp, ни Telegram-бот");
+    if (!this.isEnabled() && !this.whatsapp?.isEnabled() && !this.push) throw new BadRequestException("Не подключены ни WhatsApp, ни Telegram-бот");
     const clean = text.trim();
     const members = await this.prisma.loyaltyMember.findMany({ where: { id: { in: [...new Set(memberIds)] }, organizationId: user.organizationId }, select: { id: true } });
     const key = `manual:${Date.now()}`;
     let sent = 0;
     for (const m of members) {
-      const ok = (await this.useWhatsApp(m.id, null, "news"))
-        ? await this.viaWhatsApp(m.id, "news", () => [clean], key, user.id)
-        : (await this.viaTelegram(m.id)) && (await this.sendToMember(m.id, escapeHtml(clean), key, user.id));
+      const ok = (await this.viaPush(m.id))
+        ? await this.push!.send(m.id, key, { title: "Ar Amir", body: clean })
+        : (await this.useWhatsApp(m.id, null, "news"))
+          ? await this.viaWhatsApp(m.id, "news", () => [clean], key, user.id)
+          : (await this.viaTelegram(m.id)) && (await this.sendToMember(m.id, escapeHtml(clean), key, user.id));
       if (ok) sent += 1;
     }
     return { sent, skipped: memberIds.length - sent };
@@ -398,6 +439,12 @@ export class CustomerBotService implements OnModuleInit {
   // A birthday gift was just granted.
   async notifyBirthday(memberId: string, name: string, points: number, lastDay: Date, key: string): Promise<boolean> {
     try {
+      if (await this.viaPush(memberId)) {
+        return await this.push!.send(memberId, key, {
+          title: `С днём рождения, ${name}! 🎂`,
+          body: `Дарим ${pointsFmt.format(points)} бонусов — потратьте их до ${dateFmt.format(lastDay)}.`,
+        });
+      }
       if (await this.useWhatsApp(memberId, "whatsappBirthdayNotices", "birthday")) {
         return await this.viaWhatsApp(memberId, "birthday", () => [name, pointsFmt.format(points), dateFmt.format(lastDay)], key, null);
       }
@@ -430,6 +477,21 @@ export class CustomerBotService implements OnModuleInit {
       this.logger.error(`WhatsApp check for ${memberId} failed`, err instanceof Error ? err.stack : String(err));
       return false;
     }
+  }
+
+  // The customer app comes first: free, and the member asked for it on that
+  // phone. Decided before sending, so a notice goes to ONE channel only.
+  private async viaPush(memberId: string): Promise<boolean> {
+    try {
+      return !!this.push && (await this.push.hasDevices(memberId));
+    } catch {
+      return false;
+    }
+  }
+
+  private async balanceOf(memberId: string): Promise<number> {
+    const organizationId = await this.orgOf(memberId);
+    return organizationId ? ((await this.points.balances(organizationId, [memberId])).get(memberId) ?? 0) : 0;
   }
 
   // Telegram, for whoever WhatsApp does not cover and who linked the bot.

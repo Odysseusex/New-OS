@@ -28,3 +28,23 @@ export class UpdateClubProfileDto {
   @MaxLength(60)
   name!: string;
 }
+
+export class ClubPushSubscribeDto {
+  @IsString()
+  @MaxLength(1000)
+  endpoint!: string;
+
+  @IsString()
+  @MaxLength(300)
+  p256dh!: string;
+
+  @IsString()
+  @MaxLength(300)
+  auth!: string;
+}
+
+export class ClubPushUnsubscribeDto {
+  @IsString()
+  @MaxLength(1000)
+  endpoint!: string;
+}

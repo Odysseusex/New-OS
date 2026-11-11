@@ -1762,7 +1762,20 @@ with the programme on (else the oldest non-sandbox org).
   still earns the old percent); the first purchase keeps its own rule (welcome bonus / first-purchase percent). Shown on
   the till's member block, the member card, the app (card label + «Ваш уровень» with what is left) and the poster
   (a row Бронза 2 % · Серебро · Золото · Платина with their percents, no sums — printed paper outlives a threshold change). Spec `loyalty/loyalty-tiers.spec.ts`. The thresholds are the owner's to choose (he was asking his family). A new settings field must ALSO go into `UpdateLoyaltySettingsDto` — the global `ValidationPipe({whitelist})` silently drops undeclared fields (the «Уровни включены» box did nothing on 11.11.2026 because of it; the spec now pushes the level fields through the same pipe).
-- Still not built: (3) a 2D USB scanner at the till (code done; hardware not bought); (4) web push.
+- **App notifications (Web Push) are BUILT** (11.11.2026, migration `20261130120000_club_push`, additive; free of charge):
+  `loyalty/club-push.service.ts` (`ClubPushService`, `web-push` library). The server's VAPID key pair is DERIVED from
+  `JWT_SECRET` (nothing to configure or store; the app re-subscribes if the key changes). A phone = a
+  `ClubPushSubscription` row (unique endpoint; it follows whoever is signed in — the app re-posts it at every opening;
+  excluded from backups; 404/410 from the push service deletes it); a notice is claimed once per member+key in
+  `ClubPushNotice`. Endpoints `GET /club/push/key`, `POST /club/push/subscribe|unsubscribe` (club token; only the browsers'
+  own push hosts are accepted — the server sends requests there). Worker `public/app/sw.js` (scope `/app/`, the page is
+  `/app`, so the code waits for ITS registration, never `serviceWorker.ready`). In the app: an offer on the card screen and
+  a section in «Профиль» (`_components/push.ts`); iPhone only once the app is on the home screen. **Channel order is now
+  app → WhatsApp → Telegram** (`CustomerBotService.viaPush`, decided before sending, one channel per notice): purchase,
+  return, expiring points, birthday, owner's manual message, plus «Новый уровень» (`recordSale` returns `tierUp`,
+  `notifySale(detail, tierUp)`). Verified with a fake transport (`club-push.spec.ts`) and in a browser with the push
+  service stubbed; the FIRST real delivery to a phone is still to be seen on the owner's device.
+- Still not built: (3) a 2D USB scanner at the till (code done; hardware not bought).
 - `/poster` (link on the programme card): ONE A4 design — warm paper, gold hairline frame, Tenor Sans, «Бонусная карта»,
   no slogan, no photo. The owner rejected photo posters, red fills, sage, Cormorant/Playfair titles and slogans.
   The app card's default colour is terracotta (sage stays a choice); do not default to sage anywhere.

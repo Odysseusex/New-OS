@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from "@nes
 import { priceListLocationId } from "../common/price-source";
 import { assertTillShiftOpen } from "../till-shifts/till-shift-guard";
 import { resolveTillApproval } from "../auth/till-pin";
-import { directionIdOfSale, FINANCE_VIEW_ROLES, isPointsRedeemableLine, manualDiscountTarget, TILL_ROLES } from "@bakery-os/shared";
+import { directionIdOfSale, FINANCE_VIEW_ROLES, LoyaltyTier, isPointsRedeemableLine, manualDiscountTarget, TILL_ROLES } from "@bakery-os/shared";
 import { loadDirectionContext } from "../directions/direction-context";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
@@ -1435,6 +1435,7 @@ export class SalesService {
       ? await this.fiscalizeBeforeSale(user, locationId, items, totalAmount, paymentMethod, soldAt, split)
       : null;
 
+    let tierUp: { tier: LoyaltyTier; percent: number } | null = null;
     const detail = await this.prisma.$transaction(async (tx) => {
       const products = await tx.product.findMany({
         where: { id: { in: productIds }, organizationId: user.organizationId },
@@ -1597,6 +1598,7 @@ export class SalesService {
             consignment: !!productById.get(i.productId)?.consignmentSupplierId,
           })),
         });
+        tierUp = result.tierUp;
         loyaltyEntries = [
           ...(result.pointsRedeemed > 0 ? [{ type: "REDEEM", points: new Prisma.Decimal(-result.pointsRedeemed) }] : []),
           ...(result.pointsEarned > 0 ? [{ type: "EARN", points: new Prisma.Decimal(result.pointsEarned) }] : []),
@@ -1726,7 +1728,7 @@ export class SalesService {
       });
     });
     // After the commit and never awaited: a Telegram hiccup must not slow or fail the till.
-    void this.customerBot?.notifySale(detail);
+    void this.customerBot?.notifySale(detail, tierUp);
     return detail;
   }
 

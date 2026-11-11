@@ -87,4 +87,8 @@ export const clubApi = {
   me: () => request<ClubProfileDto>("/club/me", {}, true),
   rename: (name: string) => request<{ name: string | null }>("/club/me", { method: "PATCH", body: JSON.stringify({ name }) }, true),
   logout: () => request<{ loggedOut: true }>("/club/logout", { method: "POST" }, true),
+  pushKey: () => request<{ publicKey: string }>("/club/push/key"),
+  pushSubscribe: (dto: { endpoint: string; p256dh: string; auth: string }) =>
+    request<{ subscribed: true }>("/club/push/subscribe", { method: "POST", body: JSON.stringify(dto) }, true),
+  pushUnsubscribe: (endpoint: string) => request<{ subscribed: false }>("/club/push/unsubscribe", { method: "POST", body: JSON.stringify({ endpoint }) }, true),
 };

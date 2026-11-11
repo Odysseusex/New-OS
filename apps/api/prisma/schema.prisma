@@ -3119,6 +3119,40 @@ enum ClubLoginStatus {
   REVOKED
 }
 
+// A phone (browser) that allowed notifications from the customer app. The three
+// values come from the browser's push service and address that one device.
+model ClubPushSubscription {
+  id             String        @id @default(cuid())
+  organizationId String
+  memberId       String
+  member         LoyaltyMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  endpoint       String        @unique
+  p256dh         String
+  auth           String
+  createdAt      DateTime      @default(now())
+  lastSeenAt     DateTime      @default(now())
+
+  @@index([memberId])
+  @@map("club_push_subscriptions")
+}
+
+// What was sent to a member's app, once per key (the same idea as
+// LoyaltyMessageLog: the key is claimed before sending, so nothing goes twice).
+model ClubPushNotice {
+  id             String        @id @default(cuid())
+  organizationId String
+  memberId       String
+  member         LoyaltyMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  key            String
+  title          String
+  body           String
+  sentAt         DateTime      @default(now())
+
+  @@unique([memberId, key])
+  @@index([organizationId, sentAt])
+  @@map("club_push_notices")
+}
+
 model ClubLoginRequest {
   id               String          @id @default(cuid())
   organizationId   String
@@ -3182,6 +3216,8 @@ model LoyaltyMember {
 
   consents      LoyaltyConsent[]
   clubLogins    ClubLoginRequest[]
+  pushSubscriptions ClubPushSubscription[]
+  pushNotices   ClubPushNotice[]
   sales         Sale[]
   pointsEntries LoyaltyPointsEntry[]
   telegramLink  LoyaltyTelegramLink?
