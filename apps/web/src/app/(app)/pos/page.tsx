@@ -59,6 +59,7 @@ import { CheckDiscountModal, PinLoginModal, SeniorPinModal, type AppliedDiscount
 import { Modal } from "@/components/modal";
 import { UiScaleControl } from "@/components/ui-scale-control";
 import { reloadPage, setReloadGuard } from "@/lib/refresh";
+import { TextKeypadModal } from "@/components/text-keypad";
 import { TillShiftControl } from "@/components/till-shift-control";
 import { NumberPad } from "@/components/number-pad";
 import { LabelPrintPicker } from "@/components/label-print-modal";
@@ -139,6 +140,7 @@ export default function PosPage() {
   const [locationId, setLocationId] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
   // Phone only: is the check (under the product grid) on screen? The bar that
   // jumps to it hides while it is.
@@ -305,7 +307,7 @@ export default function PosPage() {
     // otherwise type into the search box behind the dialog and quietly drop
     // a product into the cart nobody asked for. The customer-by-phone dialog
     // is excluded for the same reason.
-    if (openPriceOpen || historyOpen || loyaltyOpen || payMode !== null) return;
+    if (searchOpen || openPriceOpen || historyOpen || loyaltyOpen || payMode !== null) return;
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target && ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
@@ -313,7 +315,7 @@ export default function PosPage() {
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [focusScan, openPriceOpen, historyOpen, loyaltyOpen, payMode]);
+  }, [focusScan, searchOpen, openPriceOpen, historyOpen, loyaltyOpen, payMode]);
 
   // Only categories that actually hold something sellable. Without this the
   // till offers chips like «Сырьё», which can only ever show an empty grid,
@@ -340,14 +342,7 @@ export default function PosPage() {
       const ids = new Set(categoryIdsWithDescendants(categories, categoryId));
       list = list.filter((p) => p.categoryId !== null && ids.has(p.categoryId));
     }
-    if (normalizedQuery) {
-      list = list.filter(
-        (p) =>
-          p.name.toLowerCase().includes(normalizedQuery) ||
-          (p.sku ?? "").toLowerCase().includes(normalizedQuery) ||
-          (p.barcode ?? "").toLowerCase().includes(normalizedQuery),
-      );
-    }
+    if (normalizedQuery) list = list.filter((p) => matchesSearch(p, normalizedQuery));
     return list;
   }, [products, categories, categoryId, normalizedQuery]);
 
@@ -754,6 +749,9 @@ export default function PosPage() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            // A tap opens the till's own keyboard with the matches under it: the monoblock's system
+            // keyboard is switched off. A scanner or a physical keyboard still types straight in.
+            onClick={() => setSearchOpen(true)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -1356,6 +1354,48 @@ export default function PosPage() {
         }}
       />
     )}
+    {searchOpen && (
+      <TextKeypadModal
+        title="Поиск товара"
+        lowercase
+        placeholder="Начните вводить название…"
+        live={(text) => {
+          const q = text.trim().toLowerCase();
+          const found = q ? products.filter((p) => matchesSearch(p, q)) : [];
+          return (
+            <div className="mb-3 grid h-[8.75rem] grid-cols-2 content-start gap-2 overflow-y-auto sm:grid-cols-4">
+              {q && found.length === 0 && <p className="col-span-full py-3 text-sm text-muted">Ничего не найдено</p>}
+              {found.slice(0, 40).map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    addToCart(p);
+                    setSearchOpen(false);
+                    setQuery("");
+                    focusScan();
+                  }}
+                  className="flex min-h-[4.25rem] flex-col justify-between rounded-xl border border-border bg-surface p-2 text-left transition hover:bg-surface-muted active:scale-[0.98]"
+                >
+                  <span className="line-clamp-2 text-sm font-semibold text-foreground">{p.name}</span>
+                  <span className="text-sm font-bold text-accent">{formatMoney(p.effectivePrice)}</span>
+                </button>
+              ))}
+            </div>
+          );
+        }}
+        onDone={(text) => {
+          // «Готово» leaves the words in the search box, so the grid below shows every match.
+          setQuery(text);
+          setSearchOpen(false);
+          focusScan();
+        }}
+        onClose={() => {
+          setSearchOpen(false);
+          focusScan();
+        }}
+      />
+    )}
     {openPriceOpen && (
       <OpenPriceModal
         onClose={() => {
@@ -1870,6 +1910,17 @@ function MixedPaymentModal({
 // The exact amount, then the next few round notes above it. Anything already
 // smaller than the total is useless as a suggestion, and duplicates are
 // dropped so «Без сдачи» never appears twice.
+// Search on the till: every typed word must appear somewhere in the name (or SKU / barcode), in any
+// order, «е» and «ё» alike — «сло» finds «Сытная слойка» and «Сырная слойка», «сыр сло» only the latter.
+const searchText = (s: string) => s.toLowerCase().replace(/ё/g, "е");
+function matchesSearch(p: ProductDto, query: string): boolean {
+  const hay = searchText(`${p.name} ${p.sku ?? ""} ${p.barcode ?? ""}`);
+  return searchText(query)
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((word) => hay.includes(word));
+}
+
 function quickCashAmounts(total: number): number[] {
   const notes = [500, 1000, 2000, 5000, 10000, 20000];
   const above = notes.filter((n) => n > total);

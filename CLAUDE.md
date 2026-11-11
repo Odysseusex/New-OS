@@ -209,6 +209,11 @@ Don't redo a till restyle without a fresh request. Learned on the way: Tailwind 
 a full page reload (fresh data and, after a deploy, the new app version). The till registers `setReloadGuard` while the
 check has lines, so it asks «В чеке есть товары. Обновить экран и очистить чек?» first.
 
+**Product search on the till**: a tap on the scan/search field opens `TextKeypadModal` («Поиск товара», `lowercase`,
+`live` = up to 40 matching tiles above the keys; a tap adds the product and closes; «Готово» leaves the words as the grid
+filter). Matching (`matchesSearch` in the POS page, also used by the grid): every typed word must occur in name / SKU /
+barcode, any order, «ё» = «е» («сло» → every «…слойка»). A scanner / physical keyboard still types straight in.
+
 **Scrolling the till's grid on the monoblock** (cashier's complaint: scrolling by dragging over tiles added products):
 `components/pos-scroll.tsx` — `useTapGuard` on the grid counts a press as a tap only if the finger moved < 12 px and the
 page did not scroll (a browser-taken pan = `pointercancel` = no tap); a MOUSE drag over the grid scrolls the page by hand

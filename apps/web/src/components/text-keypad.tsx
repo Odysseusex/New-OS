@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import { ArrowBigUp, Delete } from "lucide-react";
 import { Modal } from "@/components/modal";
@@ -30,9 +30,16 @@ export function TextKeypadModal({
   maxLength = 100,
   placeholder,
   withDigits = false,
+  lowercase = false,
+  live,
   onDone,
   onClose,
 }: {
+  // No automatic capitals (a search: case does not matter, small letters read easier).
+  lowercase?: boolean;
+  // Shown between the typed text and the keys, recomputed as the text changes (the till's
+  // product search lists matches here).
+  live?: (text: string) => ReactNode;
   title: string;
   // A row of digits on top (comments: «Инкассация 2»), not needed for names.
   withDigits?: boolean;
@@ -45,7 +52,7 @@ export function TextKeypadModal({
   const [text, setText] = useState(initial);
   const [shift, setShift] = useState(false);
   // Names start each word with a capital; free text only the first word.
-  const upper = (withDigits ? text === "" : startsWord(text)) !== shift;
+  const upper = (lowercase ? false : withDigits ? text === "" : startsWord(text)) !== shift;
 
   const add = (ch: string) => {
     setText((t) => (t.length >= maxLength ? t : t + ch));
@@ -84,6 +91,7 @@ export function TextKeypadModal({
         {text ? <span className="break-all">{text}</span> : <span className="text-muted">{placeholder}</span>}
         <span className="ml-0.5 inline-block h-7 w-0.5 animate-pulse bg-accent" />
       </div>
+      {live?.(text)}
       <div className="space-y-2">
         {withDigits && (
           <div className="flex gap-1.5">
