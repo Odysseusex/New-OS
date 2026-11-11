@@ -33,6 +33,8 @@ function Start({ info, onStarted }: { info: ClubInfoDto | null; onStarted: (p: P
   const [name, setName] = useState("");
   const [consent, setConsent] = useState(false);
   const [marketing, setMarketing] = useState(true);
+  // The WhatsApp notices box only while WhatsApp is switched on for the app.
+  const whatsappOn = info?.whatsapp === true;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,7 +49,7 @@ function Start({ info, onStarted }: { info: ClubInfoDto | null; onStarted: (p: P
     }
     setBusy(true);
     try {
-      const started = await clubApi.startLogin({ phone: `+7${digits}`, name: name.trim() || undefined, consent, marketing });
+      const started = await clubApi.startLogin({ phone: `+7${digits}`, name: name.trim() || undefined, consent, marketing: whatsappOn && marketing });
       const value = { ...started, phone: `+7${digits}` };
       pendingLogin.set(value);
       onStarted(value);
@@ -100,10 +102,12 @@ function Start({ info, onStarted }: { info: ClubInfoDto | null; onStarted: (p: P
             </a>
           </span>
         </label>
-        <label className="aa-check">
-          <input type="checkbox" checked={marketing} onChange={(e) => setMarketing(e.target.checked)} />
-          <span>Присылать уведомления о бонусах и подарках в WhatsApp</span>
-        </label>
+        {whatsappOn && (
+          <label className="aa-check">
+            <input type="checkbox" checked={marketing} onChange={(e) => setMarketing(e.target.checked)} />
+            <span>Присылать уведомления о бонусах и подарках в WhatsApp</span>
+          </label>
+        )}
         {error && <div className="aa-error">{error}</div>}
         {info && !info.ready ? (
           <div className="aa-error">Вход временно недоступен. Загляните позже.</div>
