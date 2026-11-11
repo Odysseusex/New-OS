@@ -5,8 +5,8 @@ import { QRCodeSVG } from "qrcode.react";
 import type { ClubInfoDto } from "@bakery-os/shared";
 import { clubApi } from "@/lib/club-api";
 
-// A4 poster next to the till: scan → the customer app. Plain white, one font,
-// nothing but the code and what to do with it. Bonus figures are read live from
+// A4 poster next to the till: scan → the customer app. Warm paper, a gold
+// hairline frame, a serif title; nothing but the code and what to do with it. Bonus figures are read live from
 // the programme's settings and left out if they cannot be loaded.
 const APP_URL = "https://ar-amir.com/app";
 const fmt = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 });
@@ -31,6 +31,11 @@ export default function PosterPage() {
           <img className="pp-logo" src="/site/app/logo.png" alt="Ar Amir" />
           <span className="pp-brand">Ar Amir</span>
         </header>
+        <div className="pp-orn" aria-hidden="true">
+          <i />
+          <em />
+          <i />
+        </div>
 
         <h1 className="pp-title">
           Бонусная карта

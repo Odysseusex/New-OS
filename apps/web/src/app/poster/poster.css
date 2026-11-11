@@ -1,4 +1,5 @@
-/* Printable A4 poster: white, one font, the brand red only in the logo itself. */
+/* Printable A4 poster: warm paper, a gold hairline frame, a serif title.
+   The brand red stays only in the logo itself. */
 @page {
   size: A4;
   margin: 0;
@@ -6,7 +7,9 @@
 .pp {
   --pp-ink: #1f1712;
   --pp-muted: #6b6058;
-  --pp-line: #e6ded2;
+  --pp-gold: #a8823f;
+  --pp-gold-soft: rgba(168, 130, 63, 0.45);
+  --pp-paper: #fbf7ef;
   font-family: var(--font-pp-sans), system-ui, sans-serif;
   font-variant-numeric: lining-nums;
   color: var(--pp-ink);
@@ -33,17 +36,33 @@
   cursor: pointer;
 }
 .pp-sheet {
+  position: relative;
   width: 210mm;
   height: 297mm;
   margin: 0 auto;
-  background: #fff;
+  background: var(--pp-paper);
   box-shadow: 0 20px 50px -25px rgba(0, 0, 0, 0.3);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 16mm 18mm 13mm;
+  padding: 19mm 22mm 17mm;
+}
+/* Double hairline frame. */
+.pp-sheet::before,
+.pp-sheet::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+.pp-sheet::before {
+  inset: 8mm;
+  border: 0.45mm solid var(--pp-gold);
+}
+.pp-sheet::after {
+  inset: 9.6mm;
+  border: 0.2mm solid var(--pp-gold-soft);
 }
 .pp-head {
   display: flex;
@@ -52,35 +71,56 @@
   gap: 3mm;
 }
 .pp-logo {
-  width: 20mm;
-  height: 20mm;
-  border-radius: 5mm;
+  width: 18mm;
+  height: 18mm;
+  border-radius: 4.5mm;
 }
 .pp-brand {
-  font-size: 11pt;
+  font-size: 10.5pt;
   font-weight: 700;
-  letter-spacing: 0.32em;
+  letter-spacing: 0.38em;
+  margin-right: -0.38em;
   text-transform: uppercase;
-  color: var(--pp-muted);
+  color: var(--pp-gold);
+}
+/* ─◆─ */
+.pp-orn {
+  margin-top: 7mm;
+  display: flex;
+  align-items: center;
+  gap: 3mm;
+}
+.pp-orn i {
+  width: 16mm;
+  height: 0.3mm;
+  background: var(--pp-gold);
+}
+.pp-orn em {
+  width: 2.2mm;
+  height: 2.2mm;
+  background: var(--pp-gold);
+  transform: rotate(45deg);
 }
 .pp-title {
-  margin: 11mm 0 0;
-  font-size: 40pt;
-  font-weight: 700;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
+  margin: 6mm 0 0;
+  font-family: var(--font-pp-serif), Georgia, serif;
+  font-size: 42pt;
+  font-weight: 500;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
 }
 .pp-qr {
-  margin-top: 11mm;
-  padding: 7mm;
-  border: 0.5mm solid var(--pp-line);
-  border-radius: 8mm;
+  margin-top: 10mm;
+  padding: 6mm;
+  background: #fff;
+  border: 0.3mm solid var(--pp-gold-soft);
+  border-radius: 6mm;
 }
 .pp-url {
-  margin-top: 6mm;
-  font-size: 18pt;
-  font-weight: 700;
-  letter-spacing: 0.01em;
+  margin-top: 5mm;
+  font-size: 17pt;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 .pp-steps {
   list-style: none;
@@ -95,26 +135,23 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3mm;
-  font-size: 13pt;
+  gap: 2.5mm;
+  font-size: 12.5pt;
   font-weight: 500;
   line-height: 1.35;
 }
 .pp-steps b {
-  width: 10mm;
-  height: 10mm;
-  border-radius: 50%;
-  border: 0.4mm solid var(--pp-ink);
-  display: grid;
-  place-items: center;
-  font-size: 13pt;
-  font-weight: 700;
+  font-family: var(--font-pp-serif), Georgia, serif;
+  font-size: 24pt;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--pp-gold);
 }
 .pp-perks {
   margin-top: auto;
   width: 100%;
   padding-top: 6mm;
-  border-top: 0.4mm solid var(--pp-line);
+  border-top: 0.3mm solid var(--pp-gold-soft);
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 6mm;
@@ -125,12 +162,13 @@
   gap: 1.5mm;
 }
 .pp-perks strong {
-  font-size: 24pt;
-  font-weight: 700;
+  font-family: var(--font-pp-serif), Georgia, serif;
+  font-size: 25pt;
+  font-weight: 600;
   line-height: 1;
 }
 .pp-perks span {
-  font-size: 11pt;
+  font-size: 10.5pt;
   color: var(--pp-muted);
   line-height: 1.3;
 }
