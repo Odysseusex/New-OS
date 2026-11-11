@@ -1,0 +1,164 @@
+/* Printable A4 poster. White paper (office printers), the logo's red and a dark ink. */
+@page {
+  size: A4;
+  margin: 0;
+}
+.pp {
+  --pp-red: #e8141c;
+  --pp-ink: #1f1712;
+  --pp-muted: #6b5d52;
+  --pp-line: #eadfd2;
+  --pp-gold: #b98a4c;
+  font-family: var(--font-pp-sans), system-ui, sans-serif;
+  color: var(--pp-ink);
+  background: #e9e4dc;
+  min-height: 100vh;
+  padding: 24px 12px 48px;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.pp-bar {
+  max-width: 210mm;
+  margin: 0 auto 16px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  color: #4a3f36;
+}
+.pp-bar button {
+  border: 0;
+  border-radius: 12px;
+  padding: 12px 22px;
+  background: var(--pp-ink);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pp-sheet {
+  width: 210mm;
+  height: 297mm;
+  margin: 0 auto;
+  background: #fff;
+  box-shadow: 0 20px 50px -25px rgba(0, 0, 0, 0.35);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 17mm 18mm 15mm;
+  text-align: center;
+}
+.pp-sheet::before {
+  /* a thin red frame */
+  content: "";
+  position: absolute;
+  inset: 8mm;
+  border: 0.6mm solid var(--pp-red);
+  border-radius: 7mm;
+  pointer-events: none;
+}
+.pp-logo {
+  width: 26mm;
+  height: 26mm;
+  border-radius: 8mm;
+}
+.pp-eyebrow {
+  margin-top: 6mm;
+  font-size: 11pt;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--pp-red);
+}
+.pp-title {
+  margin: 3mm 0 0;
+  font-family: var(--font-pp-serif), Georgia, serif;
+  font-weight: 600;
+  font-size: 40pt;
+  line-height: 1.02;
+}
+.pp-sub {
+  margin: 3mm 0 0;
+  font-size: 14pt;
+  color: var(--pp-muted);
+}
+.pp-qr {
+  margin-top: 7mm;
+  padding: 6mm;
+  border-radius: 8mm;
+  border: 0.5mm solid var(--pp-line);
+  line-height: 0;
+}
+.pp-url {
+  margin-top: 4mm;
+  font-size: 15pt;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.pp-steps {
+  margin-top: 8mm;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6mm;
+  width: 100%;
+}
+.pp-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3mm;
+  font-size: 12pt;
+  line-height: 1.35;
+}
+.pp-step b {
+  width: 11mm;
+  height: 11mm;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--pp-red);
+  color: #fff;
+  font-size: 13pt;
+}
+.pp-perks {
+  margin-top: 9mm;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4mm;
+  width: 100%;
+}
+.pp-perk {
+  border-radius: 5mm;
+  background: #fbf4ea;
+  padding: 3.5mm 4mm;
+  font-size: 11pt;
+  line-height: 1.3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2.5mm;
+  text-align: left;
+}
+.pp-perk strong {
+  font-family: var(--font-pp-serif), Georgia, serif;
+  font-size: 19pt;
+  color: var(--pp-red);
+  white-space: nowrap;
+}
+@media print {
+  .pp {
+    background: #fff;
+    padding: 0;
+    min-height: 0;
+  }
+  .pp-bar {
+    display: none;
+  }
+  .pp-sheet {
+    box-shadow: none;
+    margin: 0;
+  }
+}

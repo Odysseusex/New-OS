@@ -114,6 +114,9 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
     <div className="mb-6 rounded-2xl border border-border bg-surface p-5 shadow-card">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-foreground">Бонусная программа</h2>
+        <a href="/poster" target="_blank" rel="noreferrer" className="text-sm font-medium text-accent hover:underline">
+          Плакат с QR для кассы (A4)
+        </a>
         {settings && (
           <label className="flex items-center gap-2 text-sm text-foreground">
             <input
