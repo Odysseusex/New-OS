@@ -75,7 +75,7 @@ describe("customer app chat (database)", () => {
     expect(answer.byName).toBe(org.user.fullName);
     await flush();
     expect(pushed).toHaveLength(1);
-    expect(pushed[0].payload).toMatchObject({ title: "Ar Amir", body: "Да, конечно! Какой вес?", url: "/app?tab=chat" });
+    expect(pushed[0].payload).toMatchObject({ title: "Новое сообщение", body: "Да, конечно! Какой вес?", url: "/app?tab=chat" });
 
     // The app: one unread, the thread without staff names, then nothing unread.
     expect(await chat.unreadForMember(memberId)).toBe(1);

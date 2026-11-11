@@ -185,7 +185,7 @@ export class ClubChatService {
       data: { organizationId: user.organizationId, memberId, direction: ClubChatDirection.OUT, kind: ClubChatKind.TEXT, text, sentById: user.id, sentByName: user.fullName },
     });
     // Never awaited: the phone's push service must not slow the answer down.
-    void this.push.send(memberId, `chat:${row.id}`, { title: "Ar Amir", body: text, url: CHAT_URL });
+    void this.push.send(memberId, `chat:${row.id}`, { title: "Новое сообщение", body: text, url: CHAT_URL });
     return this.toDto(row, true);
   }
 
@@ -239,7 +239,7 @@ export class ClubChatService {
 
   private async pushAll(memberIds: string[], key: string, text: string): Promise<void> {
     for (const memberId of memberIds) {
-      await this.push.send(memberId, key, { title: "Ar Amir", body: text, url: CHAT_URL });
+      await this.push.send(memberId, key, { title: "Новое сообщение", body: text, url: CHAT_URL });
     }
     this.logger.log(`Mass message ${key} offered to ${memberIds.length} members' phones`);
   }
