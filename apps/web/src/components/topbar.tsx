@@ -5,25 +5,27 @@ import { ROLE_LABELS_RU } from "@bakery-os/shared";
 import { useAuth } from "@/lib/auth-context";
 import { reloadPage } from "@/lib/refresh";
 
-export function Topbar({ onMenu }: { onMenu?: () => void }) {
+// `phoneMenu`: on a phone the menu is opened from the bottom bar; a screen without that bar
+// (the till) keeps the button here.
+export function Topbar({ onMenu, phoneMenu = false }: { onMenu?: () => void; phoneMenu?: boolean }) {
   const { user, logout } = useAuth();
   if (!user) return null;
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-border bg-background px-4 sm:px-6">
+    <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border bg-background px-3 sm:px-6 md:h-16">
       <div className="flex min-w-0 items-center gap-2">
         {onMenu && (
           <button
             onClick={onMenu}
             title="Меню"
-            className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-foreground transition hover:bg-surface-muted lg:hidden"
+            className={`-ml-1 h-10 w-10 shrink-0 items-center justify-center rounded-xl text-foreground transition hover:bg-surface-muted md:flex lg:hidden ${phoneMenu ? "flex" : "hidden"}`}
           >
             <Menu className="h-5 w-5" strokeWidth={1.75} />
           </button>
         )}
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-foreground">{user.organization.name}</p>
-          <p className="text-xs text-muted">Вся сеть</p>
+          <p className="hidden text-xs text-muted md:block">Вся сеть</p>
         </div>
       </div>
 
@@ -32,7 +34,7 @@ export function Topbar({ onMenu }: { onMenu?: () => void }) {
           <p className="text-sm font-medium leading-tight text-foreground">{user.fullName}</p>
           <p className="text-xs leading-tight text-muted">{user.title || ROLE_LABELS_RU[user.role]}</p>
         </div>
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-muted text-sm font-medium text-foreground">
+        <div className="hidden h-9 w-9 items-center justify-center rounded-full bg-surface-muted text-sm font-medium text-foreground md:flex">
           {user.fullName.charAt(0)}
         </div>
         <button

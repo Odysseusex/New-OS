@@ -738,8 +738,8 @@ export default function PosPage() {
           products — to tell a cashier, whose screen has nothing else on it,
           which screen they are on. The controls that did earn their place
           move onto the scan row instead. */}
-      <div className="mb-3 flex items-center gap-3">
-        <div className="relative flex-1">
+      <div className="mb-3 flex items-center gap-3 max-md:gap-2">
+        <div className="relative flex-1 max-md:basis-full">
           <ScanLine
             className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted"
             strokeWidth={1.75}
@@ -814,7 +814,7 @@ export default function PosPage() {
               setFlash("Экран покупателя открыт. Перетащите окно на второй экран пальцем за верхний край.");
             }
           }}
-          className="flex shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+          className="flex shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted max-md:hidden"
         >
           <MonitorSmartphone className="h-4 w-4" strokeWidth={1.75} />
           Экран покупателя
@@ -852,7 +852,7 @@ export default function PosPage() {
             }
           }}
           title="Сменить экран покупателя"
-          className="flex shrink-0 items-center justify-center rounded-xl border border-border bg-surface px-2.5 py-2.5 text-sm font-medium text-muted transition hover:bg-surface-muted hover:text-foreground"
+          className="flex shrink-0 items-center justify-center rounded-xl border border-border bg-surface px-2.5 py-2.5 text-sm font-medium text-muted transition hover:bg-surface-muted hover:text-foreground max-md:hidden"
         >
           <RotateCcw className="h-4 w-4" strokeWidth={1.75} />
         </button>

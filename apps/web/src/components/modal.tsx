@@ -42,17 +42,18 @@ export function Modal({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-2 sm:px-4">
+    // On a phone a window is a sheet rising from the bottom edge, as wide as the screen.
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 md:items-center md:px-4">
       <div
         ref={rootRef}
         data-modal-root=""
-        className={`w-full ${width} max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-surface p-4 shadow-card sm:p-6`}
+        className={`modal-sheet w-full ${width} max-h-[92dvh] overflow-y-auto rounded-t-2xl border border-border bg-surface p-4 shadow-card md:max-h-[90vh] md:rounded-2xl md:p-6`}
       >
-        <div className="mb-5 flex items-center justify-between">
+        <div className="sticky -top-4 z-10 -mx-4 -mt-4 mb-4 flex items-center justify-between bg-surface px-4 py-3 md:static md:m-0 md:mb-5 md:p-0">
           <h2 className="text-base font-semibold text-foreground">{title}</h2>
           <button
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-foreground"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted transition hover:bg-surface-muted hover:text-foreground md:h-8 md:w-8"
           >
             <X className="h-4 w-4" strokeWidth={1.75} />
           </button>

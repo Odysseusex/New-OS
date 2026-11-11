@@ -6,6 +6,8 @@ import { Role, TILL_ROLES } from "@bakery-os/shared";
 import { useAuth } from "@/lib/auth-context";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
+import { MobileNav } from "@/components/mobile-nav";
+import { MobileEnhancer } from "@/components/mobile-enhancer";
 import { homeFor, isBlockedRoute } from "@/lib/nav";
 
 // CASHIER is locked to the till screen only — no sidebar, no other route.
@@ -27,6 +29,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // On a phone or a narrow tablet the menu is a drawer opened from the topbar.
   const [navOpen, setNavOpen] = useState(false);
   useEffect(() => setNavOpen(false), [pathname]);
+  const showMobileNav = !isCashier && pathname !== CASHIER_ONLY_ROUTE;
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -57,7 +60,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-screen h-[100dvh] bg-background">
+      <MobileEnhancer />
       {!isCashier && (
         <div className="print:hidden">
           <Sidebar open={navOpen} onClose={() => setNavOpen(false)} />
@@ -65,10 +69,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       )}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <div className="print:hidden">
-          <Topbar onMenu={isCashier ? undefined : () => setNavOpen(true)} />
+          <Topbar onMenu={isCashier ? undefined : () => setNavOpen(true)} phoneMenu={!showMobileNav} />
         </div>
-        <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 lg:px-8 lg:py-8">{children}</main>
+        <main
+          className={
+            // Room for the phone's bottom bar (not on the till, which has its own).
+            `flex-1 overflow-y-auto px-3 py-4 sm:px-6 md:py-5 lg:px-8 lg:py-8 ${showMobileNav ? "pb-20 md:pb-5" : ""}`
+          }
+        >
+          {children}
+        </main>
       </div>
+      {showMobileNav && <MobileNav menuOpen={navOpen} onMenu={() => setNavOpen((open) => !open)} />}
     </div>
   );
 }

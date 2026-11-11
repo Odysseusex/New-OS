@@ -1130,6 +1130,24 @@ unrecorded выемки do not become a loss in the P&L. Built after a till's bo
 
 ## Phone layout + product photos (built)
 
+**Phone (below `md`, 768 px) was redone on 11.11.2026** (owner: «всё большое и широкое, нужно крутить в стороны»). One
+shared base, not a phone version of each page — keep it that way:
+- `components/mobile-nav.tsx`: bottom bar = the first four of Дашборд / Продажи / Склад / Производство / Закупки /
+  Финансы the role may open + «Меню» (not on the till). The menu (`Sidebar`) is a full-screen grid of tiles on a phone,
+  a side drawer on a tablet. Topbar is 3rem high; its menu button shows on a phone only where there is no bottom bar.
+- `components/mobile-enhancer.tsx` (in the `(app)` layout): marks every `<table>` `data-m="cards"` (one header row,
+  ≤ 8 columns, no merged header cells) and gives each cell `data-label` = its column heading; `globals.css` then shows
+  rows as cards (first cell = the title). Anything else is `data-m="wide"`: scrolls inside its own box, first column
+  sticky. Put `data-wide` on a table to force that. Only attributes are added — never nodes (React owns the DOM).
+- `globals.css` phone block: fields are 16px (below that iOS zooms the page in on focus and leaves it zoomed — the
+  likely cause of the complaint; `maximumScale: 1` in the root viewport too), tab bars (`.flex.bg-surface-muted.p-1`)
+  are one swiped line, stat tiles (`.grid > .rounded-2xl.shadow-card.p-5`) go two in a row, a document line with a
+  `ProductSelect` (class `product-select`) puts the product on its own line and the figures under it (`.doc-head`
+  column captions are hidden — give the inputs placeholders), filters share the line.
+- `Modal` is a bottom sheet (class `modal-sheet`, sticky title). `PeriodPicker` is a `<select>` on a phone.
+- Heights use `100dvh` (iOS address bar). Check a new page with the scratch sweep idea: no element of `main` may end
+  right of `innerWidth` unless inside a scrolling box — at 390 and 320 px.
+
 - **Below `lg` (1024 px) the menu is a drawer**: `Sidebar({open, onClose})` slides over the page, opened by the topbar's
   «Меню» button (`Topbar({onMenu})`), closed on navigation; ≥ lg nothing changed. `main` padding is `px-4 sm:px-6 lg:px-8`.
 - Pages were NOT rewritten one by one: a block at the end of `globals.css` (`@media (max-width: 1023px)`, scoped to

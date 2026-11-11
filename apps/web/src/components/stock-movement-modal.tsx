@@ -230,7 +230,7 @@ export function StockMovementModal({
           </div>
         )}
 
-        <div className="mb-2 flex items-end gap-2 text-sm font-medium text-foreground">
+        <div className="doc-head mb-2 flex items-end gap-2 text-sm font-medium text-foreground">
           <span className="flex-1">Товар</span>
           <span className="w-32">{isAdjustment ? "Фактически" : "Количество"}</span>
           {isReceive && <span className="w-32">Цена за ед.</span>}
@@ -262,7 +262,7 @@ export function StockMovementModal({
                     step="any"
                     value={row.quantity}
                     onChange={(e) => updateRow(row.key, { quantity: e.target.value })}
-                    placeholder={product ? UNIT_LABELS_RU[product.unit] : ""}
+                    placeholder={`${isAdjustment ? "Фактически" : "Кол-во"}${product ? `, ${UNIT_LABELS_RU[product.unit]}` : ""}`}
                     className="w-32 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
                   />
                   {isReceive &&
@@ -274,7 +274,7 @@ export function StockMovementModal({
                         step="any"
                         value={row.price}
                         onChange={(e) => updateRow(row.key, { price: e.target.value })}
-                        placeholder="₸"
+                        placeholder="Цена, ₸"
                         aria-label="Цена за единицу"
                         className="w-32 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
                       />

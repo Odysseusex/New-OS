@@ -29,6 +29,12 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#a85333",
+  width: "device-width",
+  initialScale: 1,
+  // A phone must not zoom the page in when a field is tapped (it then stays zoomed and
+  // everything has to be dragged sideways).
+  maximumScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

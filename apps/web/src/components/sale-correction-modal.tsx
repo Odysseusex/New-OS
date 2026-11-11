@@ -141,7 +141,7 @@ export function SaleCorrectionModal({
         </p>
 
         <div className="space-y-2">
-          <div className="flex gap-2 text-xs font-medium uppercase tracking-wide text-muted">
+          <div className="doc-head flex gap-2 text-xs font-medium uppercase tracking-wide text-muted">
             <span className="flex-1">Товар</span>
             <span className="w-24">Кол-во</span>
             <span className="w-28">Цена</span>
@@ -159,8 +159,8 @@ export function SaleCorrectionModal({
                 className="min-w-0 flex-1"
                 enterFlow
               />
-              <input {...enterNext} inputMode="decimal" value={row.quantity} onChange={(e) => update(row.key, { quantity: e.target.value })} className={`w-24 ${inputClass}`} />
-              <input {...enterNext} inputMode="decimal" value={row.unitPrice} onChange={(e) => update(row.key, { unitPrice: e.target.value })} className={`w-28 ${inputClass}`} />
+              <input {...enterNext} inputMode="decimal" value={row.quantity} onChange={(e) => update(row.key, { quantity: e.target.value })} placeholder="Кол-во" className={`w-24 ${inputClass}`} />
+              <input {...enterNext} inputMode="decimal" value={row.unitPrice} onChange={(e) => update(row.key, { unitPrice: e.target.value })} placeholder="Цена" className={`w-28 ${inputClass}`} />
               <button
                 type="button"
                 onClick={() => setRows((prev) => trailing(prev.filter((r) => r.key !== row.key)))}
