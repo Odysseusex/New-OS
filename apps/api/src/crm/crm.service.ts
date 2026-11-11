@@ -537,6 +537,7 @@ export class CrmService {
         overdueDays: p.overdueDays,
         segment: segments.of.get(id) ?? null,
         pointsBalance: 0,
+        pointsPending: 0,
         whatsapp: consentState(m.consents as never).marketing.WHATSAPP,
         createdAt: m.createdAt.toISOString(),
       };
@@ -551,8 +552,11 @@ export class CrmService {
     rows.sort(sorters[query.sort ?? "recent"] ?? sorters.recent);
     const filteredTotal = segment ? rows.length : total;
     rows = rows.slice(0, LIST_LIMIT);
-    const balances = await this.points.balances(organizationId, rows.map((r) => r.id));
-    for (const r of rows) r.pointsBalance = balances.get(r.id) ?? 0;
+    const positions = await this.points.positions(organizationId, rows.map((r) => r.id));
+    for (const r of rows) {
+      r.pointsBalance = positions.get(r.id)?.available ?? 0;
+      r.pointsPending = positions.get(r.id)?.pending ?? 0;
+    }
     return { items: rows, total: filteredTotal, segmentsAvailable: segments.available };
   }
 

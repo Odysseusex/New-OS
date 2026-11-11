@@ -172,6 +172,8 @@ export interface CrmMemberRowDto {
   overdueDays: number | null;
   segment: LoyaltySegment | null;
   pointsBalance: number;
+  // Given but not spendable yet (a welcome bonus waits for the next day).
+  pointsPending: number;
   whatsapp: boolean;
   createdAt: string;
 }

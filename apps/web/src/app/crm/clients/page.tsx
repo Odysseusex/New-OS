@@ -140,9 +140,10 @@ function ClientsList() {
         <div className="crm-row" style={{ borderTop: 0, color: "var(--tx3)", fontSize: 12.5, fontWeight: 500 }}>
           <input type="checkbox" className="crm-check" checked={everyone || allShown} onChange={toggleShown} aria-label="Выбрать всех в списке" />
           <span style={{ flex: "2 1 220px" }}>Клиент</span>
-          <span style={{ flex: "1 1 130px" }}>Группа</span>
+          <span className="hide-sm" style={{ flex: "1 1 130px" }}>Группа</span>
           <span className="hide-sm" style={{ width: 70, textAlign: "right" }}>Визиты</span>
           <span style={{ width: 100, textAlign: "right" }}>Сумма</span>
+          <span style={{ width: 110, textAlign: "right" }}>Бонусы</span>
           <span className="hide-sm" style={{ width: 120 }}>Был</span>
           <span className="hide-sm" style={{ width: 120 }}>Ритм</span>
         </div>
@@ -165,11 +166,19 @@ function ClientsList() {
                 <span className="muted num" style={{ fontSize: 12.5 }}>{fmtPhone(m.phone)}</span>
               </span>
             </span>
-            <span style={{ flex: "1 1 130px" }}>
+            <span className="hide-sm" style={{ flex: "1 1 130px" }}>
               <SegmentTag segment={m.segment} />
             </span>
             <span className="num hide-sm" style={{ width: 70, textAlign: "right" }}>{m.visits}</span>
-            <span className="num" style={{ width: 100, textAlign: "right", fontWeight: 500 }}>{fmtMoney(m.spend)}</span>
+            <span className="num" style={{ width: 100, textAlign: "right", fontWeight: 500, whiteSpace: "nowrap" }}>{fmtMoney(m.spend)}</span>
+            <span className="num" style={{ width: 110, textAlign: "right", display: "flex", flexDirection: "column", lineHeight: 1.3 }}>
+              <span style={{ fontWeight: 500, color: m.pointsBalance > 0 ? "var(--tx)" : "var(--tx3)" }}>{num.format(m.pointsBalance)}</span>
+              {m.pointsPending > 0 && (
+                <span className="muted" style={{ fontSize: 12 }} title="Начислено, станет доступно позже">
+                  +{num.format(m.pointsPending)} ожидает
+                </span>
+              )}
+            </span>
             <span className="tx2 hide-sm" style={{ width: 120, fontSize: 13.5 }}>{m.lastVisitAt ? agoDays(m.daysSinceLastVisit) : "—"}</span>
             <span className="hide-sm" style={{ width: 120, fontSize: 13.5, color: m.overdueDays && m.overdueDays > 0 ? "var(--red)" : "var(--tx2)" }}>
               {everyDays(m.rhythmDays) ?? "—"}
@@ -200,7 +209,7 @@ function ClientsList() {
 
 const clientsDat = (n: number) => plural(n, "клиенту", "клиентам", "клиентам");
 const clientsGen = (n: number) => plural(n, "клиента", "клиентов", "клиентов");
-const num = new Intl.NumberFormat("ru-RU");
+const num = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 });
 
 // The welcome bonus for the ticked clients (ids) or the whole base (ids = null),
 // sent in portions of 50 so a long list never hangs on one request.
