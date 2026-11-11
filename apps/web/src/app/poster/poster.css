@@ -1,19 +1,19 @@
-/* Printable A4 poster. White paper (office printers), the logo's red and a dark ink. */
+/* Printable A4 poster, three looks. The brand red stays only in the logo itself. */
 @page {
   size: A4;
   margin: 0;
 }
 .pp {
-  --pp-red: #e8141c;
   --pp-ink: #1f1712;
-  --pp-muted: #6b5d52;
-  --pp-line: #eadfd2;
-  --pp-gold: #b98a4c;
+  --pp-muted: #6e6259;
+  --pp-gold: #a8782f;
+  --pp-line: #e8dfd3;
+  --pp-cream: #f7f1e7;
   font-family: var(--font-pp-sans), system-ui, sans-serif;
   color: var(--pp-ink);
-  background: #e9e4dc;
+  background: #e7e2da;
   min-height: 100vh;
-  padding: 24px 12px 48px;
+  padding: 20px 12px 48px;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
@@ -24,13 +24,33 @@
   gap: 12px;
   align-items: center;
   justify-content: space-between;
-  font-size: 14px;
-  color: #4a3f36;
+  flex-wrap: wrap;
 }
-.pp-bar button {
+.pp-switch {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 14px;
+  background: #d8d1c6;
+}
+.pp-switch button {
+  border: 0;
+  border-radius: 10px;
+  padding: 9px 16px;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  color: #5a4e44;
+  cursor: pointer;
+}
+.pp-switch button.on {
+  background: #fff;
+  color: var(--pp-ink);
+}
+.pp-print {
   border: 0;
   border-radius: 12px;
-  padding: 12px 22px;
+  padding: 12px 24px;
   background: var(--pp-ink);
   color: #fff;
   font: inherit;
@@ -45,109 +65,293 @@
   box-shadow: 0 20px 50px -25px rgba(0, 0, 0, 0.35);
   position: relative;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 17mm 18mm 15mm;
-  text-align: center;
-}
-.pp-sheet::before {
-  /* a thin red frame */
-  content: "";
-  position: absolute;
-  inset: 8mm;
-  border: 0.6mm solid var(--pp-red);
-  border-radius: 7mm;
-  pointer-events: none;
-}
-.pp-logo {
-  width: 26mm;
-  height: 26mm;
-  border-radius: 8mm;
 }
 .pp-eyebrow {
-  margin-top: 6mm;
-  font-size: 11pt;
+  font-size: 10pt;
   font-weight: 700;
-  letter-spacing: 0.3em;
+  letter-spacing: 0.28em;
   text-transform: uppercase;
-  color: var(--pp-red);
+  color: var(--pp-gold);
+}
+.pp strong,
+.pp-steps b,
+.pc-steps b {
+  font-variant-numeric: lining-nums;
 }
 .pp-title {
-  margin: 3mm 0 0;
+  margin: 0;
   font-family: var(--font-pp-serif), Georgia, serif;
   font-weight: 600;
-  font-size: 40pt;
-  line-height: 1.02;
-}
-.pp-sub {
-  margin: 3mm 0 0;
-  font-size: 14pt;
-  color: var(--pp-muted);
-}
-.pp-qr {
-  margin-top: 7mm;
-  padding: 6mm;
-  border-radius: 8mm;
-  border: 0.5mm solid var(--pp-line);
-  line-height: 0;
+  line-height: 1.04;
+  letter-spacing: -0.005em;
 }
 .pp-url {
-  margin-top: 4mm;
-  font-size: 15pt;
+  font-size: 13pt;
   font-weight: 700;
   letter-spacing: 0.02em;
 }
-.pp-steps {
+.pp ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── 1. Фото ───────────────────────────────────────────────────────── */
+.pa .pa-photo {
+  height: 124mm;
+  background: url("/site/croissant-coffee.jpg") center 58% / cover no-repeat;
+  position: relative;
+}
+.pa .pa-logo {
+  position: absolute;
+  left: 16mm;
+  top: 14mm;
+  width: 22mm;
+  height: 22mm;
+  border-radius: 5.5mm;
+  box-shadow: 0 2mm 6mm rgba(0, 0, 0, 0.18);
+}
+.pa .pa-body {
+  padding: 11mm 16mm 0;
+}
+.pa .pp-title {
+  margin-top: 3mm;
+  font-size: 38pt;
+}
+.pa .pa-row {
+  margin-top: 9mm;
+  display: flex;
+  gap: 9mm;
+  align-items: center;
+}
+.pa .pa-qr {
+  padding: 4mm;
+  border: 0.4mm solid var(--pp-line);
+  border-radius: 6mm;
+  flex-shrink: 0;
+}
+.pa .pa-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6mm;
+}
+.pa .pa-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4.5mm;
+}
+.pa .pa-steps li {
+  display: flex;
+  gap: 3.5mm;
+  align-items: flex-start;
+  font-size: 12pt;
+  line-height: 1.35;
+}
+.pa .pa-steps b {
+  flex-shrink: 0;
+  width: 8mm;
+  height: 8mm;
+  border-radius: 50%;
+  border: 0.35mm solid var(--pp-ink);
+  display: grid;
+  place-items: center;
+  font-size: 10.5pt;
+}
+.pa .pa-perks {
+  margin-top: 8mm;
+  padding-top: 6mm;
+  border-top: 0.35mm solid var(--pp-line);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4mm;
+}
+.pa-perks div,
+.pc-perks div {
+  display: flex;
+  flex-direction: column;
+  gap: 1mm;
+}
+.pa-perks strong,
+.pc-perks strong {
+  font-family: var(--font-pp-serif), Georgia, serif;
+  font-size: 22pt;
+  line-height: 1;
+}
+.pa-perks span,
+.pc-perks span {
+  font-size: 10pt;
+  color: var(--pp-muted);
+  line-height: 1.3;
+}
+
+/* ── 2. Шалфей ─────────────────────────────────────────────────────── */
+.pb {
+  background: linear-gradient(160deg, #56735c 0%, #3f5a46 48%, #2b4031 100%);
+  color: #f6f1e4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 22mm 18mm 0;
+}
+.pb::after {
+  content: "";
+  position: absolute;
+  inset: 9mm;
+  border: 0.3mm solid rgba(234, 215, 166, 0.55);
+  border-radius: 6mm;
+  pointer-events: none;
+}
+.pb .pb-logo {
+  width: 22mm;
+  height: 22mm;
+  border-radius: 5.5mm;
+}
+.pb .pp-eyebrow {
+  margin-top: 7mm;
+  color: #ead7a6;
+}
+.pb .pp-title {
+  margin-top: 4mm;
+  font-size: 42pt;
+  color: #fbf6ea;
+}
+.pb .pb-qr {
+  margin-top: 9mm;
+  padding: 5mm;
+  background: #fff;
+  border-radius: 6mm;
+}
+.pb .pp-url {
+  margin-top: 4mm;
+  color: #fbf6ea;
+}
+.pb .pb-steps {
   margin-top: 8mm;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 6mm;
   width: 100%;
 }
-.pp-step {
+.pb .pb-steps li {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3mm;
-  font-size: 12pt;
+  gap: 2.5mm;
+  font-size: 11pt;
   line-height: 1.35;
+  color: rgba(246, 241, 228, 0.88);
 }
-.pp-step b {
-  width: 11mm;
-  height: 11mm;
+.pb .pb-steps b {
+  width: 8.5mm;
+  height: 8.5mm;
   border-radius: 50%;
+  border: 0.35mm solid #ead7a6;
+  color: #ead7a6;
   display: grid;
   place-items: center;
-  background: var(--pp-red);
-  color: #fff;
-  font-size: 13pt;
+  font-size: 10.5pt;
 }
-.pp-perks {
-  margin-top: 9mm;
+.pb .pb-perks {
+  margin-top: 7mm;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4mm;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5mm;
   width: 100%;
+  border-top: 0.3mm solid rgba(234, 215, 166, 0.4);
+  padding-top: 6mm;
 }
-.pp-perk {
-  border-radius: 5mm;
-  background: #fbf4ea;
-  padding: 3.5mm 4mm;
-  font-size: 11pt;
-  line-height: 1.3;
+.pb-perks div {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2.5mm;
-  text-align: left;
+  flex-direction: column;
+  gap: 1mm;
 }
-.pp-perk strong {
+.pb-perks strong {
   font-family: var(--font-pp-serif), Georgia, serif;
-  font-size: 19pt;
-  color: var(--pp-red);
-  white-space: nowrap;
+  font-size: 22pt;
+  line-height: 1;
+  color: #ead7a6;
 }
+.pb-perks span {
+  font-size: 10pt;
+  color: rgba(246, 241, 228, 0.78);
+}
+
+/* ── 3. Журнал ─────────────────────────────────────────────────────── */
+.pc {
+  display: grid;
+  grid-template-columns: 80mm 1fr;
+  background: var(--pp-cream);
+}
+.pc .pc-photo {
+  background: url("/site/croissant-cup.jpg") center / cover no-repeat;
+}
+.pc .pc-body {
+  padding: 20mm 13mm 0 12mm;
+  display: flex;
+  flex-direction: column;
+}
+.pc .pc-logo {
+  width: 17mm;
+  height: 17mm;
+  border-radius: 4.3mm;
+}
+.pc .pp-eyebrow {
+  margin-top: 9mm;
+}
+.pc .pp-title {
+  margin-top: 3mm;
+  font-size: 31pt;
+}
+.pc .pc-lead {
+  margin: 4mm 0 0;
+  font-size: 12pt;
+  line-height: 1.45;
+  color: var(--pp-muted);
+}
+.pc .pc-qr {
+  margin-top: 10mm;
+  align-self: flex-start;
+  padding: 4mm;
+  background: #fff;
+  border-radius: 5mm;
+}
+.pc .pp-url {
+  margin-top: 3.5mm;
+}
+.pc .pc-steps {
+  margin-top: 9mm;
+  display: flex;
+  flex-direction: column;
+  gap: 3.5mm;
+}
+.pc .pc-steps li {
+  display: flex;
+  gap: 3mm;
+  align-items: flex-start;
+  font-size: 11pt;
+  line-height: 1.35;
+}
+.pc .pc-steps b {
+  flex-shrink: 0;
+  font-family: var(--font-pp-serif), Georgia, serif;
+  font-size: 15pt;
+  line-height: 1;
+  color: var(--pp-gold);
+  width: 5mm;
+}
+.pc .pc-perks {
+  margin-top: 11mm;
+  padding-top: 5mm;
+  border-top: 0.35mm solid var(--pp-line);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3mm;
+}
+.pc-perks strong {
+  font-size: 19pt;
+}
+
 @media print {
   .pp {
     background: #fff;
