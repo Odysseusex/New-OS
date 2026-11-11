@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, forwardRef, Inject, Injectable } from "@nestjs/common";
 import { DEFAULT_LOYALTY_CHURN_SETTINGS, LoyaltyAnalyticsDto, LoyaltyChurnSettings, LoyaltyMemberStatus } from "@bakery-os/shared";
 import { ownAmount } from "../common/own-sales";
 import { PrismaService } from "../prisma/prisma.service";
@@ -17,7 +17,9 @@ const MAX_MERGE_HOPS = 10;
 export class LoyaltyAnalyticsService {
   constructor(
     private prisma: PrismaService,
-    private customerBot?: CustomerBotService,
+    // The bot writes notices into the app chat, and the chat reads these groups: a
+    // loop of files, so both ends name each other lazily.
+    @Inject(forwardRef(() => CustomerBotService)) private customerBot?: CustomerBotService,
     private whatsapp?: WhatsAppService,
   ) {}
 

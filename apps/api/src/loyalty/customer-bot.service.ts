@@ -22,6 +22,7 @@ import { LoyaltyPointsService } from "./loyalty-points.service";
 import { consentState } from "./loyalty.service";
 import { pointsPosition } from "./points-ledger";
 import { confirmClubLogin } from "../club/club-confirm";
+import { ClubChatService } from "./club-chat.service";
 import { ClubPushService } from "./club-push.service";
 import { WhatsAppService, WhatsAppTemplateKey } from "./whatsapp.service";
 
@@ -80,6 +81,7 @@ export class CustomerBotService implements OnModuleInit {
     private points: LoyaltyPointsService,
     private whatsapp?: WhatsAppService,
     private push?: ClubPushService,
+    private chat?: ClubChatService,
   ) {}
 
   // ── lifecycle ─────────────────────────────────────────────────────────────
@@ -325,24 +327,23 @@ export class CustomerBotService implements OnModuleInit {
   ) {
     if (!sale.loyalty) return;
     const { memberId, pointsRedeemed, pointsEarned } = sale.loyalty;
-    const inApp = await this.viaPush(memberId);
-    if (inApp && tierUp) {
-      await this.push!.send(memberId, `tier:${sale.id}`, {
+    if (tierUp) {
+      await this.inApp(memberId, `tier:${sale.id}`, async () => ({
         title: `Новый уровень — ${LOYALTY_TIER_LABELS_RU[tierUp.tier]}`,
         body: `Теперь вы получаете ${pointsFmt.format(tierUp.percent)}% бонусами с каждой покупки.`,
-      });
+      }));
     }
     if (pointsRedeemed <= 0 && pointsEarned <= 0) return;
-    if (inApp) {
+    const told = await this.inApp(memberId, `sale:${sale.id}`, async () => {
       const balance = await this.balanceOf(memberId);
       const parts = [
         ...(pointsEarned > 0 ? [`Начислено: +${pointsFmt.format(pointsEarned)}`] : []),
         ...(pointsRedeemed > 0 ? [`Оплачено бонусами: ${pointsFmt.format(pointsRedeemed)}`] : []),
         `На счёте: ${pointsFmt.format(balance)}`,
       ];
-      await this.push!.send(memberId, `sale:${sale.id}`, { title: `Спасибо за покупку на ${moneyFmt.format(sale.totalAmount)} ₸!`, body: parts.join(" · ") });
-      return;
-    }
+      return { title: `Спасибо за покупку на ${moneyFmt.format(sale.totalAmount)} ₸!`, body: parts.join(" · ") };
+    });
+    if (told) return;
     if (await this.useWhatsApp(memberId, "whatsappSaleNotices", "purchase")) {
       await this.viaWhatsApp(memberId, "purchase", (balance) => [moneyFmt.format(sale.totalAmount), pointsFmt.format(pointsEarned), pointsFmt.format(pointsRedeemed), pointsFmt.format(balance)], `sale:${sale.id}`, null);
     } else if (await this.viaTelegram(memberId)) {
@@ -352,16 +353,16 @@ export class CustomerBotService implements OnModuleInit {
 
   async notifyReturn(memberId: string, saleReturnId: string, refunded: number, reversed: number) {
     if (refunded <= 0 && reversed <= 0) return;
-    if (await this.viaPush(memberId)) {
+    const told = await this.inApp(memberId, `return:${saleReturnId}`, async () => {
       const balance = await this.balanceOf(memberId);
       const parts = [
         ...(refunded > 0 ? [`Бонусы вернулись: +${pointsFmt.format(refunded)}`] : []),
         ...(reversed > 0 ? [`Начисление отменено: −${pointsFmt.format(reversed)}`] : []),
         `На счёте: ${pointsFmt.format(balance)}`,
       ];
-      await this.push!.send(memberId, `return:${saleReturnId}`, { title: "Оформлен возврат товара", body: parts.join(" · ") });
-      return;
-    }
+      return { title: "Оформлен возврат товара", body: parts.join(" · ") };
+    });
+    if (told) return;
     if (await this.useWhatsApp(memberId, "whatsappSaleNotices", "return")) {
       await this.viaWhatsApp(memberId, "return", (balance) => [pointsFmt.format(refunded), pointsFmt.format(reversed), pointsFmt.format(balance)], `return:${saleReturnId}`, null);
       return;
@@ -384,7 +385,11 @@ export class CustomerBotService implements OnModuleInit {
   @Cron("5 7 * * *")
   async remindExpiringPoints(): Promise<number> {
     const whatsapp = this.whatsapp?.isEnabled() ? await this.whatsapp.reachableMemberIds() : [];
-    const inApp = this.push ? (await this.prisma.clubPushSubscription.findMany({ select: { memberId: true }, distinct: ["memberId"] })).map((d) => d.memberId) : [];
+    // Everyone with the app: the reminder is written into their chat, and rings the phones that allowed it.
+    const inApp = [
+      ...(this.push ? (await this.prisma.clubPushSubscription.findMany({ select: { memberId: true }, distinct: ["memberId"] })).map((d) => d.memberId) : []),
+      ...(this.chat ? await this.chat.allAppMemberIds() : []),
+    ];
     if (!this.isEnabled() && whatsapp.length === 0 && inApp.length === 0) return 0;
     const links = this.isEnabled() ? await this.prisma.loyaltyTelegramLink.findMany({ select: { memberId: true } }) : [];
     const now = new Date();
@@ -402,9 +407,12 @@ export class CustomerBotService implements OnModuleInit {
         if (amount < 1) continue;
         const first = soon[0].expiresAt;
         const key = `expiry:${first.toISOString().slice(0, 10)}`;
-        if (await this.viaPush(memberId)) {
-          const body = `${pointsFmt.format(amount)} бонусов сгорят ${dateFmt.format(first)}. Приходите — оплатите ими часть покупки!`;
-          if (await this.push!.send(memberId, key, { title: "Бонусы скоро сгорят", body })) sent += 1;
+        const told = await this.inApp(memberId, key, async () => ({
+          title: "Бонусы скоро сгорят",
+          body: `${pointsFmt.format(amount)} бонусов сгорят ${dateFmt.format(first)}. Приходите — оплатите ими часть покупки!`,
+        }));
+        if (told) {
+          sent += 1;
         } else if (await this.useWhatsApp(memberId, "whatsappExpiryNotices", "expiring")) {
           if (await this.viaWhatsApp(memberId, "expiring", () => [pointsFmt.format(amount), dateFmt.format(first)], key, null)) sent += 1;
         } else if (await this.viaTelegram(memberId)) {
@@ -426,8 +434,8 @@ export class CustomerBotService implements OnModuleInit {
     const key = `manual:${Date.now()}`;
     let sent = 0;
     for (const m of members) {
-      const ok = (await this.viaPush(m.id))
-        ? await this.push!.send(m.id, key, { title: "Ar Amir", body: clean })
+      const ok = (await this.inApp(m.id, key, async () => ({ title: null, body: clean }), { id: user.id, fullName: user.fullName }))
+        ? true
         : (await this.useWhatsApp(m.id, null, "news"))
           ? await this.viaWhatsApp(m.id, "news", () => [clean], key, user.id)
           : (await this.viaTelegram(m.id)) && (await this.sendToMember(m.id, escapeHtml(clean), key, user.id));
@@ -439,12 +447,11 @@ export class CustomerBotService implements OnModuleInit {
   // A birthday gift was just granted.
   async notifyBirthday(memberId: string, name: string, points: number, lastDay: Date, key: string): Promise<boolean> {
     try {
-      if (await this.viaPush(memberId)) {
-        return await this.push!.send(memberId, key, {
-          title: `С днём рождения, ${name}! 🎂`,
-          body: `Дарим ${pointsFmt.format(points)} бонусов — потратьте их до ${dateFmt.format(lastDay)}.`,
-        });
-      }
+      const told = await this.inApp(memberId, key, async () => ({
+        title: `С днём рождения, ${name}! 🎂`,
+        body: `Дарим ${pointsFmt.format(points)} бонусов — потратьте их до ${dateFmt.format(lastDay)}.`,
+      }));
+      if (told) return true;
       if (await this.useWhatsApp(memberId, "whatsappBirthdayNotices", "birthday")) {
         return await this.viaWhatsApp(memberId, "birthday", () => [name, pointsFmt.format(points), dateFmt.format(lastDay)], key, null);
       }
@@ -479,12 +486,26 @@ export class CustomerBotService implements OnModuleInit {
     }
   }
 
-  // The customer app comes first: free, and the member asked for it on that
-  // phone. Decided before sending, so a notice goes to ONE channel only.
-  private async viaPush(memberId: string): Promise<boolean> {
+  // The customer app comes first: free, and the member asked for it. A notice is
+  // written into the member's chat in the app (whoever is signed in), and rings
+  // the phones that allowed notifications. Returns whether a phone was rung —
+  // decided BEFORE sending, so the notice then goes to no other channel; a
+  // member with the app but silent phones still gets it on WhatsApp / Telegram.
+  private async inApp(
+    memberId: string,
+    key: string,
+    build: () => Promise<{ title: string | null; body: string }>,
+    by?: { id: string; fullName: string },
+  ): Promise<boolean> {
     try {
-      return !!this.push && (await this.push.hasDevices(memberId));
-    } catch {
+      const [signedIn, phones] = await Promise.all([this.chat ? this.chat.isAppMember(memberId) : false, this.push ? this.push.hasDevices(memberId) : false]);
+      if (!signedIn && !phones) return false;
+      const message = await build();
+      if (signedIn) await this.chat!.notice(memberId, key, message, by);
+      if (phones) await this.push!.send(memberId, key, { title: message.title ?? "Ar Amir", body: message.body, url: signedIn ? "/app?tab=chat" : undefined });
+      return phones;
+    } catch (err) {
+      this.logger.error(`App notice for ${memberId} failed`, err instanceof Error ? err.stack : String(err));
       return false;
     }
   }

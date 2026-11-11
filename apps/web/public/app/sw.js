@@ -27,7 +27,10 @@ self.addEventListener("notificationclick", (event) => {
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
       for (const client of list) {
-        if (new URL(client.url).pathname.startsWith("/app") && "focus" in client) return client.focus();
+        if (new URL(client.url).pathname.startsWith("/app") && "focus" in client) {
+          client.postMessage({ type: "aa-open", url });
+          return client.focus();
+        }
       }
       return self.clients.openWindow(url);
     }),

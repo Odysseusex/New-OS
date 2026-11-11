@@ -137,10 +137,92 @@ export interface ClubProfileDto {
   visits: number;
   // The member's level; null when levels are off.
   tier: LoyaltyTierDto | null;
+  // Messages from the bakery not opened yet (the dot on «Чат»).
+  chatUnread: number;
   programme: ClubProgrammeDto;
   history: ClubHistoryItemDto[];
 }
 
 export interface UpdateClubProfileRequestDto {
   name: string;
+}
+
+// ── Chat between a customer (the app) and the bakery (CRM) ───────────────────
+
+export const CLUB_CHAT_MAX_LENGTH = 1000;
+
+export type ClubChatFrom = "CUSTOMER" | "BAKERY";
+export type ClubChatMessageKind = "TEXT" | "NOTICE" | "BROADCAST";
+
+export interface ClubChatMessageDto {
+  id: string;
+  at: string;
+  from: ClubChatFrom;
+  kind: ClubChatMessageKind;
+  // Automatic notices carry a heading («Бонусы скоро сгорят»).
+  title: string | null;
+  text: string;
+  // Who of the staff wrote it — shown in CRM only, never to the customer.
+  byName: string | null;
+  // Seen by the other side.
+  read: boolean;
+}
+
+// What the app gets: the thread, oldest first.
+export interface ClubChatDto {
+  messages: ClubChatMessageDto[];
+}
+
+export interface CrmChatRowDto {
+  memberId: string;
+  name: string | null;
+  phone: string;
+  lastText: string;
+  lastAt: string;
+  lastFrom: ClubChatFrom;
+  // Messages from the customer nobody has opened yet.
+  unread: number;
+}
+
+export interface CrmChatListDto {
+  items: CrmChatRowDto[];
+  unread: number;
+}
+
+export interface CrmChatThreadDto {
+  member: {
+    id: string;
+    name: string | null;
+    phone: string;
+    // Signed in to the app (otherwise a message has nowhere to be read).
+    inApp: boolean;
+    // Allowed notifications on some phone.
+    notifications: boolean;
+  };
+  messages: ClubChatMessageDto[];
+}
+
+// A group a mass message can go to. Nothing is typed in to make one: «Все», the
+// levels and the purchase groups are all worked out from sales.
+export interface CrmChatAudienceDto {
+  key: string;
+  label: string;
+  // Of them, signed in to the app (the ones who will see the message).
+  members: number;
+}
+
+export interface CrmChatBroadcastDto {
+  id: string;
+  audience: string;
+  text: string;
+  recipients: number;
+  byName: string | null;
+  at: string;
+}
+
+export interface CrmChatOverviewDto {
+  // Customers signed in to the app.
+  appMembers: number;
+  audiences: CrmChatAudienceDto[];
+  broadcasts: CrmChatBroadcastDto[];
 }

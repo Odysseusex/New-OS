@@ -1,17 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bell, CreditCard, Gift, Hourglass, LogOut, Receipt, RotateCcw, Share, Sparkles, User, Wheat, X } from "lucide-react";
+import { Bell, CreditCard, MessageCircle, Gift, Hourglass, LogOut, Receipt, RotateCcw, Share, Sparkles, User, Wheat, X } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { CARD_CODE_STEP_SECONDS, LOYALTY_TIER_LABELS_RU, type ClubHistoryItemDto, type ClubInfoDto, type ClubProfileDto, type LoyaltyTierDto } from "@bakery-os/shared";
 import { ClubApiError, clubApi, clubToken } from "@/lib/club-api";
 import { Login } from "./_components/login";
+import { ChatTab } from "./_components/chat";
 import { useCardCode } from "./_components/card-code";
 import { disablePush, enablePush, pushState, syncPush, type PushState } from "./_components/push";
 import { CARD_COLORS, cardStyle, useCardColor, type CardColor } from "./_components/card-colors";
 import { bonusWord, fmtDay, fmtDayTime, fmtMoney, fmtMonth, fmtPoints, greeting, prettyPhone, privacyHref } from "./_components/format";
 
-type Tab = "card" | "history" | "profile";
+type Tab = "card" | "history" | "chat" | "profile";
 const REFRESH_MS = 60_000;
 const HINT_KEY = "aa.club.installHintHidden";
 const PUSH_PROMPT_KEY = "aa.club.pushPromptHidden";
@@ -55,7 +56,21 @@ export default function ClubApp() {
   useEffect(() => {
     clubApi.info().then(setInfo).catch(() => setInfo(null));
     void load();
+    // A tapped notification opens the chat: on a cold start by the address,
+    // in an open app by a message from the service worker.
+    const wantsChat = (url: string) => new URL(url, window.location.href).searchParams.get("tab") === "chat";
+    if (wantsChat(window.location.href)) {
+      setTab("chat");
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+    const onMessage = (e: MessageEvent) => {
+      if (e.data?.type === "aa-open" && typeof e.data.url === "string" && wantsChat(e.data.url)) setTab("chat");
+    };
+    navigator.serviceWorker?.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker?.removeEventListener("message", onMessage);
   }, [load]);
+
+  const chatRead = useCallback(() => setProfile((p) => (p && p.chatUnread ? { ...p, chatUnread: 0 } : p)), []);
 
   // Fresh balance after a purchase: on return to the app and once a minute.
   useEffect(() => {
@@ -118,6 +133,7 @@ export default function ClubApp() {
         {error && <div className="aa-error">{error}</div>}
         {tab === "card" && <CardTab profile={profile} offsetMs={offsetMs} />}
         {tab === "history" && <HistoryTab items={profile.history} />}
+        {tab === "chat" && <ChatTab onRead={chatRead} />}
         {tab === "profile" && (
           <ProfileTab
             profile={profile}
@@ -139,11 +155,15 @@ export default function ClubApp() {
           [
             ["card", "Карта", CreditCard],
             ["history", "История", Receipt],
+            ["chat", "Чат", MessageCircle],
             ["profile", "Профиль", User],
           ] as const
         ).map(([key, label, Icon]) => (
           <button key={key} type="button" className={`aa-tab${tab === key ? " on" : ""}`} onClick={() => setTab(key)} aria-current={tab === key ? "page" : undefined}>
-            <Icon size={20} strokeWidth={1.9} />
+            <span className="aa-tab-ic">
+              <Icon size={20} strokeWidth={1.9} />
+              {key === "chat" && tab !== "chat" && profile.chatUnread > 0 && <i className="aa-tab-dot">{profile.chatUnread > 9 ? "9+" : profile.chatUnread}</i>}
+            </span>
             {label}
           </button>
         ))}

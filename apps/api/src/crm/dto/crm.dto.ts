@@ -79,3 +79,19 @@ export class SaveCrmOrderDto {
   @MaxLength(500)
   cancelReason?: string | null;
 }
+
+export class CrmChatReplyDto {
+  @IsString()
+  @MaxLength(4000)
+  text!: string;
+}
+
+export class CrmChatBroadcastDto {
+  @IsString()
+  @MaxLength(60)
+  audience!: string;
+
+  @IsString()
+  @MaxLength(4000)
+  text!: string;
+}

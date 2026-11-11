@@ -3,7 +3,8 @@ import { ClubAuthGuard, CurrentClubSession } from "./club-auth.guard";
 import { ClubService, ClubSession } from "./club.service";
 import { BadRequestException } from "@nestjs/common";
 import { ClubPushService } from "../loyalty/club-push.service";
-import { ClubLoginStatusRequestDto, ClubPushSubscribeDto, ClubPushUnsubscribeDto, StartClubLoginDto, UpdateClubProfileDto } from "./club.dto";
+import { ClubChatService } from "../loyalty/club-chat.service";
+import { ClubChatSendDto, ClubLoginStatusRequestDto, ClubPushSubscribeDto, ClubPushUnsubscribeDto, StartClubLoginDto, UpdateClubProfileDto } from "./club.dto";
 
 // Chrome/Android (FCM), Safari/iOS (Apple), Firefox (Mozilla), Edge (Windows).
 const PUSH_HOSTS = [/^fcm\.googleapis\.com$/, /\.push\.apple\.com$/, /^updates\.push\.services\.mozilla\.com$/, /\.notify\.windows\.com$/];
@@ -23,6 +24,7 @@ export class ClubController {
   constructor(
     private club: ClubService,
     private push: ClubPushService,
+    private chat: ClubChatService,
   ) {}
 
   @Get("info")
@@ -73,6 +75,19 @@ export class ClubController {
   @UseGuards(ClubAuthGuard)
   pushUnsubscribe(@CurrentClubSession() session: ClubSession, @Body() dto: ClubPushUnsubscribeDto) {
     return this.push.unsubscribe(session.memberId, dto.endpoint);
+  }
+
+  // The chat with the bakery. Reading the thread marks the bakery's messages read.
+  @Get("chat")
+  @UseGuards(ClubAuthGuard)
+  chatThread(@CurrentClubSession() session: ClubSession) {
+    return this.chat.threadForMember(session.memberId);
+  }
+
+  @Post("chat")
+  @UseGuards(ClubAuthGuard)
+  chatSend(@CurrentClubSession() session: ClubSession, @Body() dto: ClubChatSendDto) {
+    return this.chat.sendFromMember(session.organizationId, session.memberId, dto.text);
   }
 
   @Post("logout")

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Cake, CircleDot, Gift, MessageCircle, MessageSquare, Pencil, Phone, ShieldCheck, ShoppingBag, Sparkles, Undo2, UserPlus } from "lucide-react";
+import { Cake, CircleDot, Gift, MessageCircle, MessageSquare, MessagesSquare, Pencil, Phone, ShieldCheck, ShoppingBag, Sparkles, Undo2, UserPlus } from "lucide-react";
 import {
   CRM_ORDER_STAGE_LABELS_RU,
   CrmContactReason,
@@ -112,6 +112,9 @@ export default function CrmClientPage() {
             <Gift size={15} /> Активировать бонус
           </button>
         )}
+        <Link className="crm-btn" href={`/crm/chats?m=${member.id}`}>
+          <MessagesSquare size={15} /> Чат
+        </Link>
         <button type="button" className="crm-btn" onClick={() => setOrdering(true)}>
           <Cake size={15} /> Заказ торта
         </button>

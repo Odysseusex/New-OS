@@ -48,3 +48,9 @@ export class ClubPushUnsubscribeDto {
   @MaxLength(1000)
   endpoint!: string;
 }
+
+export class ClubChatSendDto {
+  @IsString()
+  @MaxLength(4000)
+  text!: string;
+}

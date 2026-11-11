@@ -225,6 +225,7 @@ export class ClubService {
       serverTime: new Date().toISOString(),
       visits,
       tier: await memberTier(this.prisma, memberId, settings),
+      chatUnread: await this.prisma.clubChatMessage.count({ where: { memberId, direction: "OUT", readAt: null } }),
       programme: this.programme(settings),
       history: items.slice(0, HISTORY_LIMIT),
     };

@@ -3153,6 +3153,64 @@ model ClubPushNotice {
   @@map("club_push_notices")
 }
 
+enum ClubChatDirection {
+  // From the customer (typed in the app).
+  IN
+  // From the bakery: a person in CRM, a mass message, or an automatic notice.
+  OUT
+}
+
+enum ClubChatKind {
+  TEXT
+  // Automatic: bonuses earned, points about to expire, a gift, a new level.
+  NOTICE
+  // One message written once for a group of customers.
+  BROADCAST
+}
+
+// The chat between a customer (in the app) and the bakery (in CRM). One thread
+// per member; `readAt` is set by the OTHER side opening the thread.
+model ClubChatMessage {
+  id             String            @id @default(cuid())
+  organizationId String
+  memberId       String
+  member         LoyaltyMember     @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  direction      ClubChatDirection
+  kind           ClubChatKind      @default(TEXT)
+  title          String?
+  text           String
+  // An automatic notice is written once per key (the same keys the other channels use).
+  noticeKey      String?
+  broadcastId    String?
+  broadcast      ClubChatBroadcast? @relation(fields: [broadcastId], references: [id], onDelete: SetNull)
+  sentById       String?
+  sentByName     String?
+  createdAt      DateTime          @default(now())
+  readAt         DateTime?
+
+  @@unique([memberId, noticeKey])
+  @@index([memberId, createdAt])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, direction, readAt])
+  @@map("club_chat_messages")
+}
+
+model ClubChatBroadcast {
+  id             String   @id @default(cuid())
+  organizationId String
+  // Whom it was for, in words («Все клиенты», «Уровень: Золото»…).
+  audience       String
+  text           String
+  recipients     Int
+  sentById       String?
+  sentByName     String?
+  createdAt      DateTime @default(now())
+  messages       ClubChatMessage[]
+
+  @@index([organizationId, createdAt])
+  @@map("club_chat_broadcasts")
+}
+
 model ClubLoginRequest {
   id               String          @id @default(cuid())
   organizationId   String
@@ -3218,6 +3276,7 @@ model LoyaltyMember {
   clubLogins    ClubLoginRequest[]
   pushSubscriptions ClubPushSubscription[]
   pushNotices   ClubPushNotice[]
+  chatMessages  ClubChatMessage[]
   sales         Sale[]
   pointsEntries LoyaltyPointsEntry[]
   telegramLink  LoyaltyTelegramLink?

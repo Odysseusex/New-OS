@@ -7,7 +7,8 @@ import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { CrmService } from "./crm.service";
 import { CrmOrdersService } from "./crm-orders.service";
-import { CreateCrmContactDto, SaveCrmOrderDto } from "./dto/crm.dto";
+import { ClubChatService } from "../loyalty/club-chat.service";
+import { CreateCrmContactDto, CrmChatBroadcastDto, CrmChatReplyDto, SaveCrmOrderDto } from "./dto/crm.dto";
 
 // People's names, phones and habits: closed to everyone outside CRM_ROLES.
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -17,6 +18,7 @@ export class CrmController {
   constructor(
     private crm: CrmService,
     private orders: CrmOrdersService,
+    private chat: ClubChatService,
   ) {}
 
   @Get("today")
@@ -52,5 +54,38 @@ export class CrmController {
   @Patch("orders/:id")
   updateOrder(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: SaveCrmOrderDto) {
     return this.orders.update(user, id, dto);
+  }
+
+  // ── chats with customers (the app) ────────────────────────────────────────
+
+  @Get("chats")
+  chats(@CurrentUser() user: AuthenticatedUser) {
+    return this.chat.list(user.organizationId);
+  }
+
+  @Get("chats/unread")
+  async chatsUnread(@CurrentUser() user: AuthenticatedUser) {
+    return { unread: await this.chat.unreadForStaff(user.organizationId) };
+  }
+
+  // Whom a mass message can go to, and the ones already sent.
+  @Get("chats/overview")
+  chatsOverview(@CurrentUser() user: AuthenticatedUser) {
+    return this.chat.overview(user.organizationId);
+  }
+
+  @Post("chats/broadcast")
+  chatsBroadcast(@CurrentUser() user: AuthenticatedUser, @Body() dto: CrmChatBroadcastDto) {
+    return this.chat.broadcast(user, dto.audience, dto.text);
+  }
+
+  @Get("chats/:memberId")
+  chatThread(@CurrentUser() user: AuthenticatedUser, @Param("memberId") memberId: string) {
+    return this.chat.thread(user.organizationId, memberId);
+  }
+
+  @Post("chats/:memberId")
+  chatReply(@CurrentUser() user: AuthenticatedUser, @Param("memberId") memberId: string, @Body() dto: CrmChatReplyDto) {
+    return this.chat.reply(user, memberId, dto.text);
   }
 }

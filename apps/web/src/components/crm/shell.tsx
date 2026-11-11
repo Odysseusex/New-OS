@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Cake, LayoutGrid, Layers, LogOut, Menu, Moon, Sun, Sunrise, Users } from "lucide-react";
+import { Cake, LayoutGrid, MessagesSquare, Layers, LogOut, Menu, Moon, Sun, Sunrise, Users } from "lucide-react";
 import { CRM_ROLES, CrmOrderStage, Role, ROLE_LABELS_RU } from "@bakery-os/shared";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -22,6 +22,7 @@ export const useCrm = () => useContext(CrmContext);
 
 const NAV = [
   { href: "/crm", label: "Сегодня", icon: Sunrise, color: "orange", countKey: "today" as const },
+  { href: "/crm/chats", label: "Чаты", icon: MessagesSquare, color: "green", countKey: "chats" as const },
   { href: "/crm/clients", label: "Клиенты", icon: Users, color: "blue" },
   { href: "/crm/groups", label: "Группы", icon: Layers, color: "purple" },
   { href: "/crm/orders", label: "Торты на заказ", icon: Cake, color: "pink", countKey: "orders" as const },
@@ -41,7 +42,7 @@ export function CrmShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [theme, setTheme] = useState<Theme>("light");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [counts, setCounts] = useState<{ today: number | null; orders: number | null }>({ today: null, orders: null });
+  const [counts, setCounts] = useState<{ today: number | null; orders: number | null; chats: number | null }>({ today: null, orders: null, chats: null });
 
   useEffect(() => setTheme(readTheme()), []);
   useEffect(() => setMenuOpen(false), [pathname]);
@@ -58,8 +59,17 @@ export function CrmShell({ children }: { children: React.ReactNode }) {
       .orders()
       .then((o) => setCounts((c) => ({ ...c, orders: o.filter((x) => x.stage !== CrmOrderStage.DONE && x.stage !== CrmOrderStage.CANCELLED).length })))
       .catch(() => undefined);
+    api.crm.chatsUnread().then((r) => setCounts((c) => ({ ...c, chats: r.unread }))).catch(() => undefined);
   }, [allowed]);
   useEffect(() => refreshCounts(), [refreshCounts]);
+  // New messages from customers show up in the menu without a reload.
+  useEffect(() => {
+    if (!allowed) return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") api.crm.chatsUnread().then((r) => setCounts((c) => ({ ...c, chats: r.unread }))).catch(() => undefined);
+    }, 30_000);
+    return () => window.clearInterval(id);
+  }, [allowed]);
 
   const toggleTheme = () => {
     const next = theme === "light" ? "dark" : "light";

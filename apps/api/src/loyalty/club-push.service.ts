@@ -15,6 +15,8 @@ import { PrismaService } from "../prisma/prisma.service";
 export interface ClubPushMessage {
   title: string;
   body: string;
+  // Where a tap leads (default: the card).
+  url?: string;
 }
 
 export interface ClubPushTarget {
@@ -89,7 +91,7 @@ export class ClubPushService {
       } catch {
         return false;
       }
-      const payload = JSON.stringify({ title: message.title, body: message.body, tag: key, url: "/app" });
+      const payload = JSON.stringify({ title: message.title, body: message.body, tag: key, url: message.url ?? "/app" });
       let delivered = 0;
       for (const d of devices) {
         try {

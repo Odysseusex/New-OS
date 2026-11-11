@@ -1775,6 +1775,21 @@ with the programme on (else the oldest non-sandbox org).
   return, expiring points, birthday, owner's manual message, plus «Новый уровень» (`recordSale` returns `tierUp`,
   `notifySale(detail, tierUp)`). Verified with a fake transport (`club-push.spec.ts`) and in a browser with the push
   service stubbed; the FIRST real delivery to a phone is still to be seen on the owner's device.
+- **Chat in the app is BUILT** (11.11.2026, migration `20261201120000_club_chat`, additive): `loyalty/club-chat.service.ts`
+  (`ClubChatService`), tables `ClubChatMessage` (IN = from the customer, OUT = ours; kind TEXT / NOTICE / BROADCAST;
+  `readAt`; unique member+`noticeKey`) and `ClubChatBroadcast`; both KEPT by clean start and included in backups. App: a
+  4th tab «Чат» (`app/_components/chat.tsx`, polls every 12 s, unread badge from `ClubProfileDto.chatUnread`,
+  `/app?tab=chat` and the worker's `aa-open` message open it), `GET/POST /club/chat` (30 messages / 10 min). CRM: «Чаты»
+  (`/crm/chats?m=<memberId>`, unread count in the menu, `GET /crm/chats|unread|overview|:memberId`, `POST
+  /crm/chats/:memberId`, `POST /crm/chats/broadcast`). Only a customer SIGNED IN to the app (a USED `ClubLoginRequest`)
+  can be written to. «Рассылка» goes to a COMPUTED group only — everyone with the app, a level (when levels are on), an
+  RFM group (when available) — never a hand-made list; audited `clubChat.broadcast`; each recipient gets a BROADCAST
+  message + a push. **Every automatic notice is also written into the chat** (`CustomerBotService.inApp`): purchase,
+  return, level up, expiring points, birthday, owner's manual message — for any member signed in to the app, whether or
+  not the phone allows notifications; the push (url `/app?tab=chat`) goes only to phones that do, and only then are
+  WhatsApp/Telegram skipped. Staff names are stored but never shown to the customer. `LoyaltyAnalyticsService` ↔
+  `CustomerBotService` ↔ `ClubChatService` is a loop of files: both ends use `@Inject(forwardRef(...))` — removing it
+  breaks boot (caught by starting the server, the app-boot spec did NOT catch it). Spec `loyalty/club-chat.spec.ts`.
 - Still not built: (3) a 2D USB scanner at the till (code done; hardware not bought).
 - `/poster` (link on the programme card): ONE A4 design — warm paper, gold hairline frame, Tenor Sans, «Бонусная карта»,
   no slogan, no photo. The owner rejected photo posters, red fills, sage, Cormorant/Playfair titles and slogans.

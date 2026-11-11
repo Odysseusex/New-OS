@@ -78,6 +78,7 @@ export const AUDIT_ACTION_GROUPS = {
   cleanStart: ["organization.cleanStart"],
   loyalty: ["loyaltyMember.create", "loyaltyMember.update", "loyaltyMember.consent", "loyaltyMember.merge", "loyaltyMember.import"],
   loyaltyPoints: ["loyaltySettings.update", "loyaltyPoints.adjust", "loyaltyPoints.welcome"],
+  clubChat: ["clubChat.broadcast"],
   loyaltyFamily: ["loyaltyFamily.add", "loyaltyFamily.update", "loyaltyFamily.remove"],
   // Posting from operations is traced by the journal itself (each entry carries
   // its source, poster and time); these are the deliberate human actions.
