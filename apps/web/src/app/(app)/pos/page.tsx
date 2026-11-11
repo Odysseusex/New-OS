@@ -471,6 +471,7 @@ export default function PosPage() {
         change: cashDetails ? cashDetails.change : null,
         receiptNumber: lastSale.fiscalReceipt?.ticketNumber ?? null,
         qrCode: lastSale.fiscalReceipt?.qrCode ?? null,
+        pointsEarned: lastSale.loyalty ? lastSale.loyalty.pointsEarned : null,
       };
     }
     if (cart.length === 0) return { kind: "idle", locationName: activeLocationName };
@@ -478,6 +479,10 @@ export default function PosPage() {
       kind: "cart",
       locationName: activeLocationName,
       total,
+      member:
+        loyaltyActive && loyaltyMember
+          ? { name: loyaltyMember.name, points: loyaltyMember.pointsBalance, redeemed: pointsDiscount?.total ?? 0 }
+          : null,
       lines: cart.map((line, index) => {
         const byPoints = pointsDiscountByIndex.get(index);
         return {
@@ -487,13 +492,14 @@ export default function PosPage() {
           unit: UNIT_LABELS_RU[line.product.unit],
           unitPrice: byPoints ? byPoints.unitPrice : displayUnitPrice(line),
           fullUnitPrice: byPoints ? byPoints.fullUnitPrice : fullPriceOf(line),
+          photoUrl: productPhotoUrl(line.product),
         };
       }),
     };
     // couponPercentFor/displayUnitPrice are plain functions closing over
     // couponRuleByCategory, which IS listed — they need no dep of their own.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cart, total, lastSale, cashDetails, activeLocationName, couponRuleByCategory, pointsDiscount?.total]);
+  }, [cart, total, lastSale, cashDetails, activeLocationName, couponRuleByCategory, pointsDiscount?.total, loyaltyActive, loyaltyMember]);
 
   useCustomerDisplayPublisher(customerState);
 

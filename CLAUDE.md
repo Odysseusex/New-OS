@@ -214,6 +214,14 @@ check has lines, so it asks «В чеке есть товары. Обновит�
 filter). Matching (`matchesSearch` in the POS page, also used by the grid): every typed word must occur in name / SKU /
 barcode, any order, «ё» = «е» («сло» → every «…слойка»). A scanner / physical keyboard still types straight in.
 
+**Buyer's screen (`/customer`, the till's «Экран покупателя») restyled 11.11.2026** on the owner's request («слишком
+дешёвый»): own layout + `app/customer/customer.css` scoped under `.cd` (the site's bakery palette, Cormorant + Manrope),
+ALL sizes in vh/vw (read from a metre away on any monitor; the till's «− 100% +» scale must not shrink it). One
+composition: the site's photos fill the screen while idle (logo + «Добро пожаловать» + point) and fold into a side panel
+when an order starts; lines with product photos, «К оплате» bar, «Ваша скидка», the bonus member (name + points, never
+the phone; `CustomerState.member`), «Спасибо за покупку» with change / «Начислено баллов» / fiscal QR. Still passive
+(BroadcastChannel only, no API call). The till itself was not touched.
+
 **Scrolling the till's grid on the monoblock** (cashier's complaint: scrolling by dragging over tiles added products):
 `components/pos-scroll.tsx` — `useTapGuard` on the grid counts a press as a tap only if the finger moved < 12 px and the
 page did not scroll (a browser-taken pan = `pointercancel` = no tap); a MOUSE drag over the grid scrolls the page by hand
