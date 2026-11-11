@@ -69,3 +69,232 @@ body {
     max-width: 100%;
   }
 }
+
+/* ───────────── Phone (below md) ─────────────
+   One set of rules for every page instead of a phone version of each:
+   nothing scrolls sideways, everything is reachable with a thumb. */
+.mobile-nav {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@media (max-width: 767px) {
+  /* A field under 16px makes iOS zoom the page in and leave it zoomed. */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+  .modal-sheet {
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+  main select {
+    min-width: 0;
+    max-width: 100%;
+  }
+  /* Nothing may make its parent wider than the screen. */
+  main > *,
+  main > * > *,
+  main > * > * > *,
+  main .flex > .flex,
+  main .flex-wrap {
+    min-width: 0;
+    max-width: 100%;
+  }
+  main h1 {
+    font-size: 1.25rem;
+    line-height: 1.6rem;
+  }
+  /* Finger-sized targets. */
+  main button,
+  main a[class*="rounded"],
+  main select,
+  main input:not([type="checkbox"]):not([type="radio"]) {
+    min-height: 2.5rem;
+  }
+  main table button {
+    min-height: 2rem;
+    min-width: 2rem;
+  }
+  main table a {
+    min-height: 0;
+  }
+  /* Filters share the line evenly instead of each keeping its laptop width. */
+  main .flex > select,
+  main .flex > .relative:has(> input) {
+    flex: 1 1 7rem;
+  }
+  /* The till's tiles: always two in a row. */
+  main .grid.touch-pan-y {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  main .flex > .relative:has(> input) > input {
+    width: 100%;
+  }
+
+  /* A document line (product + quantity + price): the product on its own line, the figures under it. */
+  .doc-head {
+    display: none !important;
+  }
+  .flex:has(> .product-select) {
+    flex-wrap: wrap;
+    row-gap: 0.375rem;
+  }
+  .flex > .product-select {
+    flex: 1 1 100% !important;
+    width: 100%;
+  }
+  .flex:has(> .product-select) > input,
+  .flex:has(> .product-select) > select {
+    flex: 1 1 0;
+    width: auto !important;
+    min-width: 0;
+  }
+  .flex:has(> .product-select) > span:empty {
+    display: none;
+  }
+
+  /* Tab bars: one line that is swiped, not five wrapped lines. */
+  main .flex.bg-surface-muted.p-1 {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    scrollbar-width: none;
+    width: auto !important;
+    max-width: 100%;
+  }
+  main .flex.bg-surface-muted.p-1,
+  main :has(> .flex.bg-surface-muted.p-1) {
+    min-width: 0;
+    max-width: 100%;
+  }
+  main .flex.bg-surface-muted.p-1::-webkit-scrollbar {
+    display: none;
+  }
+  main .flex.bg-surface-muted.p-1 > * {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  /* Figures: two tiles in a row, compact. */
+  main .grid:has(> .rounded-2xl.shadow-card.p-5),
+  main .grid:has(> .rounded-2xl.border.px-4.py-3) {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.5rem !important;
+  }
+  main .grid > .rounded-2xl.shadow-card.p-5 {
+    padding: 0.75rem;
+    min-width: 0;
+  }
+  main .grid > .rounded-2xl.shadow-card.p-5 > .h-9.w-9 {
+    display: none;
+  }
+  main .grid > .rounded-2xl.shadow-card.p-5 .text-2xl {
+    font-size: 1.0625rem;
+    line-height: 1.4rem;
+    overflow-wrap: anywhere;
+  }
+  main .grid > .rounded-2xl.shadow-card.p-5 .text-sm {
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+
+  /* Tables as cards (components/mobile-enhancer.tsx names every cell). */
+  main :has(> table[data-m="cards"]) {
+    overflow-x: visible;
+  }
+  table[data-m="cards"],
+  table[data-m="cards"] > tbody,
+  table[data-m="cards"] > tfoot {
+    display: block;
+    width: 100%;
+    min-width: 0 !important;
+  }
+  table[data-m="cards"] > thead {
+    display: none;
+  }
+  table[data-m="cards"] > * > tr {
+    display: block;
+    padding: 0.625rem 0.875rem;
+    border-bottom: 1px solid var(--border);
+  }
+  table[data-m="cards"] > tbody:last-child > tr:last-child {
+    border-bottom: 0;
+  }
+  table[data-m="cards"] > tfoot > tr {
+    background: var(--surface-muted);
+  }
+  table[data-m="cards"] > * > tr > td,
+  table[data-m="cards"] > * > tr > th {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    padding: 0.1875rem 0 !important;
+    border: 0 !important;
+    text-align: right !important;
+    white-space: normal !important;
+    position: static !important;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    overflow-wrap: anywhere;
+  }
+  table[data-m="cards"] > * > tr > td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    max-width: 46%;
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--muted);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  table[data-m="cards"] > * > tr > td[data-label=""]::before,
+  table[data-m="cards"] > * > tr > td:not([data-label])::before {
+    content: none;
+  }
+  /* The first cell is the card's title. */
+  table[data-m="cards"] > * > tr > td[data-label]:first-child {
+    display: block;
+    text-align: left !important;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--foreground);
+    padding-bottom: 0.25rem !important;
+  }
+  table[data-m="cards"] > * > tr > td[data-label]:first-child::before {
+    content: none;
+  }
+  table[data-m="cards"] > * > tr > td:empty,
+  table[data-m="cards"] > * > tr > td[data-label]:not(:first-child):not(:has(*)):empty {
+    display: none;
+  }
+  /* A merged cell (an empty-list note, an opened detail) keeps the full width. */
+  table[data-m="cards"] > * > tr > td[colspan]:not([data-label]) {
+    display: block;
+    text-align: left !important;
+  }
+  table[data-m="cards"] td > input,
+  table[data-m="cards"] td > select {
+    max-width: 60%;
+  }
+  table[data-m="cards"] td:not(:first-child) > .flex {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  /* A wide grid stays a table inside its own box; its first column does not scroll away. */
+  main :has(> table[data-m="wide"]) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  table[data-m="wide"] > * > tr > :first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--surface);
+    max-width: 9.5rem;
+    white-space: normal !important;
+  }
+}

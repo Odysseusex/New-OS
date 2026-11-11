@@ -1458,7 +1458,7 @@ export class SalesService {
       // This is what lets the till's «Произвольная сумма» line work at all.
       const stockedItems = items.filter((item) => trackedById.get(item.productId));
       // Before the first stock count the organization may sell below zero (Organization.allowNegativeStock).
-      const allowNegative = await allowsNegativeStock(tx, user.organizationId);
+      const allowNegative = await allowsNegativeStock(tx, user.organizationId, locationId);
 
       for (const item of allowNegative ? [] : stockedItems) {
         const available = stockByProduct.get(item.productId) ?? 0;
@@ -1825,7 +1825,7 @@ export class SalesService {
     // do not have. Products opted out of stock tracking are skipped — there
     // is no stock to be short of.
     const stockByProduct = new Map(stockLevels.map((s) => [s.productId, s.quantity.toNumber()]));
-    const allowNegative = await allowsNegativeStock(this.prisma as unknown as Prisma.TransactionClient, user.organizationId);
+    const allowNegative = await allowsNegativeStock(this.prisma as unknown as Prisma.TransactionClient, user.organizationId, locationId);
     for (const item of allowNegative ? [] : items) {
       if (!productById.get(item.productId)?.trackInventory) continue;
       if ((stockByProduct.get(item.productId) ?? 0) < item.quantity) {

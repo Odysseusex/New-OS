@@ -1098,7 +1098,10 @@ stock. With «Непосчитанные считать нулём» (`approve(�
 default; «Начальные остатки» is ticked by default too while the switch is on) every line left blank is set to 0 (the
 line's count is stored as 0), so a product nobody found on the shelf leaves its minus at zero (owner, 08.11.2026: the
 first weeks were chaos — nothing received or transferred — and the count must clean it up without deleting history).
-A shortage stays an ordinary adjustment. Intended order: «Запустить» on the first morning (cash counted),
+**Per-point exception** (owner, 11.11.2026, to check one shop's cashiers by the shelf): `Location.strictStock`
+(migration `20261127120000`, «Запретить уход в минус на этой точке» in the point form, listed as «Кроме точек: …» in the
+Склад → Остатки banner) — `allowsNegativeStock(tx, organizationId, locationId)` is the org switch AND NOT the point's
+flag, so that point's till and production check stock as before. A shortage stays an ordinary adjustment. Intended order: «Запустить» on the first morning (cash counted),
 switch on, work, count with «Начальные остатки», switch off. Launching LATER is also fine (the owner waits for the bank
 question): `BalanceService` adds the cash of every event dated before go-live to «Денежные средства» and to opening
 equity, so the days traded before «Запустить» are part of the opening position (spec: «launching finance after…»).
@@ -1126,6 +1129,24 @@ fully classified article of the right kind; for a SHORTAGE `ownerWithdrawal: tru
 unrecorded выемки do not become a loss in the P&L. Built after a till's books showed 4.3 M ₸ that was not in the drawer.
 
 ## Phone layout + product photos (built)
+
+**Phone (below `md`, 768 px) was redone on 11.11.2026** (owner: «всё большое и широкое, нужно крутить в стороны»). One
+shared base, not a phone version of each page — keep it that way:
+- `components/mobile-nav.tsx`: bottom bar = the first four of Дашборд / Продажи / Склад / Производство / Закупки /
+  Финансы the role may open + «Меню» (not on the till). The menu (`Sidebar`) is a full-screen grid of tiles on a phone,
+  a side drawer on a tablet. Topbar is 3rem high; its menu button shows on a phone only where there is no bottom bar.
+- `components/mobile-enhancer.tsx` (in the `(app)` layout): marks every `<table>` `data-m="cards"` (one header row,
+  ≤ 8 columns, no merged header cells) and gives each cell `data-label` = its column heading; `globals.css` then shows
+  rows as cards (first cell = the title). Anything else is `data-m="wide"`: scrolls inside its own box, first column
+  sticky. Put `data-wide` on a table to force that. Only attributes are added — never nodes (React owns the DOM).
+- `globals.css` phone block: fields are 16px (below that iOS zooms the page in on focus and leaves it zoomed — the
+  likely cause of the complaint; `maximumScale: 1` in the root viewport too), tab bars (`.flex.bg-surface-muted.p-1`)
+  are one swiped line, stat tiles (`.grid > .rounded-2xl.shadow-card.p-5`) go two in a row, a document line with a
+  `ProductSelect` (class `product-select`) puts the product on its own line and the figures under it (`.doc-head`
+  column captions are hidden — give the inputs placeholders), filters share the line.
+- `Modal` is a bottom sheet (class `modal-sheet`, sticky title). `PeriodPicker` is a `<select>` on a phone.
+- Heights use `100dvh` (iOS address bar). Check a new page with the scratch sweep idea: no element of `main` may end
+  right of `innerWidth` unless inside a scrolling box — at 390 and 320 px.
 
 - **Below `lg` (1024 px) the menu is a drawer**: `Sidebar({open, onClose})` slides over the page, opened by the topbar's
   «Меню» button (`Topbar({onMenu})`), closed on navigation; ≥ lg nothing changed. `main` padding is `px-4 sm:px-6 lg:px-8`.

@@ -17,7 +17,7 @@ export function UiScaleControl() {
   };
 
   return (
-    <div className="flex shrink-0 items-center rounded-xl border border-border bg-surface" title="Масштаб экрана на этом устройстве">
+    <div className="flex shrink-0 items-center rounded-xl border border-border bg-surface max-md:hidden" title="Масштаб экрана на этом устройстве">
       <button
         onClick={() => step(-1)}
         disabled={scale === UI_SCALE_STEPS[0]}

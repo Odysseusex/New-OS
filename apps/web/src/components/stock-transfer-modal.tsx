@@ -106,7 +106,7 @@ export function StockTransferModal({
           </label>
         </div>
 
-        <div className="mb-2 flex items-end gap-2 text-sm font-medium text-foreground">
+        <div className="doc-head mb-2 flex items-end gap-2 text-sm font-medium text-foreground">
           <span className="flex-1">Товар</span>
           <span className="w-32">Количество</span>
           <span className="w-8" />
@@ -125,7 +125,7 @@ export function StockTransferModal({
                     inputMode="decimal"
                     value={row.quantity}
                     onChange={(e) => update(row.key, { quantity: e.target.value })}
-                    placeholder={product ? UNIT_LABELS_RU[product.unit] : ""}
+                    placeholder={`Кол-во${product ? `, ${UNIT_LABELS_RU[product.unit]}` : ""}`}
                     className={`${field} w-32`}
                   />
                   <button

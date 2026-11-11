@@ -287,7 +287,7 @@ export function ProductionReleaseModal({
           </div>
         </div>
 
-        <div className="mb-1.5 flex gap-2 text-xs text-muted">
+        <div className="doc-head mb-1.5 flex gap-2 text-xs text-muted">
           <span className="flex-1">Продукция</span>
           <span className="w-32">Вышло</span>
           <span className="w-8" />

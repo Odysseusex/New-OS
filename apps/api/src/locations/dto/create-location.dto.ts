@@ -43,4 +43,9 @@ export class CreateLocationDto {
   @IsOptional()
   @IsBoolean()
   tillOpenPrice?: boolean;
+
+  // Never below zero at this point, even while «уход в минус» is allowed.
+  @IsOptional()
+  @IsBoolean()
+  strictStock?: boolean;
 }

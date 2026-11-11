@@ -55,7 +55,8 @@ export function Sidebar({
       )}
       <aside
         className={clsx(
-          "flex h-screen w-64 shrink-0 flex-col border-r border-border bg-surface",
+          // A phone gets the whole screen (a grid of big tiles), a tablet a side drawer.
+          "flex h-screen h-[100dvh] w-full shrink-0 flex-col border-r border-border bg-surface md:w-64",
           "fixed inset-y-0 left-0 z-50 transition-transform lg:static lg:z-auto lg:translate-x-0",
           open ? "translate-x-0 shadow-card" : "-translate-x-full",
         )}
@@ -82,8 +83,8 @@ export function Sidebar({
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-2">
-          <ul className="space-y-0.5">
+        <nav className="flex-1 overflow-y-auto px-3 py-2 pb-24 md:pb-2">
+          <ul className="grid grid-cols-3 gap-2 md:block md:space-y-0.5">
             {primaryNav
               .filter((item) => !user || canOpen(item, user.role))
               .map((item) => (
@@ -97,7 +98,7 @@ export function Sidebar({
 
           <div className="my-3 border-t border-border" />
 
-          <ul className="space-y-0.5">
+          <ul className="grid grid-cols-3 gap-2 md:block md:space-y-0.5">
             {secondaryNav
               .filter((item) => !user || canOpen(item, user.role))
               .map((item) => (
@@ -130,21 +131,22 @@ function NavRow({
       <Link
         href={item.href}
         className={clsx(
-          "group flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm transition",
+          "group relative flex h-[4.75rem] flex-col items-center justify-center gap-1.5 rounded-2xl border border-border px-1 text-center text-xs transition",
+          "md:h-auto md:flex-row md:justify-start md:gap-2.5 md:rounded-xl md:border-0 md:px-2.5 md:py-2 md:text-left md:text-sm",
           active
             ? "bg-surface-muted font-medium text-foreground"
             : "text-muted hover:bg-surface-muted hover:text-foreground",
         )}
       >
-        <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
-        <span className="flex-1 truncate">{item.label}</span>
+        <Icon className="h-5 w-5 shrink-0 md:h-4 md:w-4" strokeWidth={1.75} />
+        <span className="line-clamp-2 leading-tight md:line-clamp-none md:flex-1 md:truncate">{item.label}</span>
         {item.status === "soon" && (
-          <span className="rounded-full bg-surface-muted px-1.5 py-0.5 text-[10px] font-medium text-muted group-hover:bg-background">
+          <span className="absolute right-1 top-1 rounded-full bg-surface-muted px-1.5 py-0.5 text-[10px] font-medium text-muted group-hover:bg-background md:static">
             скоро
           </span>
         )}
         {badgeCount > 0 && (
-          <span className="rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-medium text-accent-foreground">
+          <span className="absolute right-1 top-1 rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-medium text-accent-foreground md:static">
             {badgeCount > 99 ? "99+" : badgeCount}
           </span>
         )}

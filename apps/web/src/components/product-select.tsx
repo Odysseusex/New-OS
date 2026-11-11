@@ -133,7 +133,7 @@ export function ProductSelect({
   }
 
   return (
-    <div ref={containerRef} className={`relative ${className}`}>
+    <div ref={containerRef} className={`product-select relative ${className}`}>
       <button
         ref={triggerRef}
         type="button"

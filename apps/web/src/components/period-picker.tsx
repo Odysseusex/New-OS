@@ -29,8 +29,21 @@ export function PeriodPicker({
   const today = zonedDateKey();
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <div className="flex flex-wrap items-center gap-1 rounded-xl bg-surface-muted p-1">
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      {/* A phone: one list instead of ten buttons in a row. */}
+      <select
+        value={custom ? "custom" : value}
+        onChange={(e) => onChange(e.target.value === "custom" ? customPeriod(days.from, days.to) : (e.target.value as PeriodPreset))}
+        className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent md:hidden"
+      >
+        {presets.map((p) => (
+          <option key={p} value={p}>
+            {PERIOD_PRESET_LABELS[p]}
+          </option>
+        ))}
+        <option value="custom">Период: с … по …</option>
+      </select>
+      <div className="hidden flex-wrap items-center gap-1 rounded-xl bg-surface-muted p-1 md:flex">
         {presets.map((p) => (
           <button
             key={p}
@@ -56,7 +69,7 @@ export function PeriodPicker({
         </button>
       </div>
       {custom && (
-        <div className="flex items-center gap-2 text-sm text-muted">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm text-muted">
           <span>с</span>
           <input
             type="date"
