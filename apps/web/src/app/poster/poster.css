@@ -1,4 +1,4 @@
-/* Printable A4 poster: warm paper, a gold hairline frame, a serif title.
+/* Printable A4 poster: warm paper, a gold hairline frame, Tenor Sans display type.
    The brand red stays only in the logo itself. */
 @page {
   size: A4;
@@ -47,7 +47,7 @@
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 19mm 22mm 17mm;
+  padding: 18mm 22mm 16mm;
 }
 /* Double hairline frame. */
 .pp-sheet::before,
@@ -71,9 +71,9 @@
   gap: 3mm;
 }
 .pp-logo {
-  width: 18mm;
-  height: 18mm;
-  border-radius: 4.5mm;
+  width: 24mm;
+  height: 24mm;
+  border-radius: 6mm;
 }
 .pp-brand {
   font-size: 10.5pt;
@@ -101,13 +101,14 @@
   background: var(--pp-gold);
   transform: rotate(45deg);
 }
-.pp-title {
-  margin: 6mm 0 0;
-  font-family: var(--font-pp-serif), Georgia, serif;
-  font-size: 42pt;
-  font-weight: 500;
-  line-height: 1.12;
-  letter-spacing: -0.01em;
+.pp-label {
+  margin: 8mm 0 0;
+  font-family: var(--font-pp-display), sans-serif;
+  font-size: 26pt;
+  font-weight: 400;
+  letter-spacing: 0.22em;
+  margin-right: -0.22em;
+  text-transform: uppercase;
 }
 .pp-qr {
   margin-top: 10mm;
@@ -117,10 +118,10 @@
   border-radius: 6mm;
 }
 .pp-url {
-  margin-top: 5mm;
+  margin-top: 6mm;
+  font-family: var(--font-pp-display), sans-serif;
   font-size: 17pt;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
 }
 .pp-steps {
   list-style: none;
@@ -141,9 +142,9 @@
   line-height: 1.35;
 }
 .pp-steps b {
-  font-family: var(--font-pp-serif), Georgia, serif;
+  font-family: var(--font-pp-display), sans-serif;
   font-size: 24pt;
-  font-weight: 500;
+  font-weight: 400;
   line-height: 1;
   color: var(--pp-gold);
 }
@@ -162,9 +163,9 @@
   gap: 1.5mm;
 }
 .pp-perks strong {
-  font-family: var(--font-pp-serif), Georgia, serif;
+  font-family: var(--font-pp-display), sans-serif;
   font-size: 25pt;
-  font-weight: 600;
+  font-weight: 400;
   line-height: 1;
 }
 .pp-perks span {

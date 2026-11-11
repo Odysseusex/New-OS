@@ -6,7 +6,7 @@ import type { ClubInfoDto } from "@bakery-os/shared";
 import { clubApi } from "@/lib/club-api";
 
 // A4 poster next to the till: scan → the customer app. Warm paper, a gold
-// hairline frame, a serif title; nothing but the code and what to do with it. Bonus figures are read live from
+// hairline frame, no slogan; nothing but the code and what to do with it. Bonus figures are read live from
 // the programme's settings and left out if they cannot be loaded.
 const APP_URL = "https://ar-amir.com/app";
 const fmt = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 });
@@ -37,10 +37,7 @@ export default function PosterPage() {
           <i />
         </div>
 
-        <h1 className="pp-title">
-          Бонусная карта
-          <br />в вашем телефоне
-        </h1>
+        <h1 className="pp-label">Бонусная карта</h1>
 
         <div className="pp-qr">
           <QRCodeSVG
@@ -51,7 +48,7 @@ export default function PosterPage() {
             bgColor="#ffffff"
             fgColor="#1f1712"
             imageSettings={{ src: "/site/app/icon-192.png", height: 84, width: 84, excavate: true }}
-            style={{ width: "86mm", height: "86mm", display: "block" }}
+            style={{ width: "92mm", height: "92mm", display: "block" }}
           />
         </div>
         <div className="pp-url">ar-amir.com/app</div>
