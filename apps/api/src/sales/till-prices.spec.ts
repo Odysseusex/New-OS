@@ -5,7 +5,7 @@ import { buildServices } from "../../test/support/services";
 
 // A cashier sells only at the till's prices: the point's own price or its fixed
 // markdown. Anything else did not come from the till screen and is refused —
-// «Произвольная сумма» included (switched off: no product, nothing to check).
+// «Произвольная сумма» included, unless the point has it switched on.
 
 describe("till prices are the server's, not the cashier's", () => {
   const prisma = new PrismaService();
@@ -45,13 +45,27 @@ describe("till prices are the server's, not the cashier's", () => {
   });
 
   it("refuses «Произвольная сумма» from a cashier, alone or in a basket", async () => {
-    await expect(sell(cashier, [{ productId: openPriceId, quantity: 1, unitPrice: 437 }])).rejects.toThrow("Произвольная сумма на кассе отключена");
+    await expect(sell(cashier, [{ productId: openPriceId, quantity: 1, unitPrice: 437 }])).rejects.toThrow("Произвольная сумма на этой точке отключена");
     await expect(
       sell(cashier, [
         { productId: cakeId, quantity: 1, unitPrice: 1000 },
         { productId: openPriceId, quantity: 1, unitPrice: 437 },
       ]),
-    ).rejects.toThrow("Произвольная сумма на кассе отключена");
+    ).rejects.toThrow("Произвольная сумма на этой точке отключена");
+  });
+
+  it("accepts «Произвольная сумма» where the point allows it, never at zero", async () => {
+    await prisma.location.update({ where: { id: org.storeId }, data: { tillOpenPrice: true } });
+    try {
+      const sale = await sell(cashier, [
+        { productId: cakeId, quantity: 1, unitPrice: 1000 },
+        { productId: openPriceId, quantity: 1, unitPrice: 437 },
+      ]);
+      expect(sale.totalAmount).toBe(1437);
+      await expect(sell(cashier, [{ productId: openPriceId, quantity: 1, unitPrice: 0 }])).rejects.toThrow("больше нуля");
+    } finally {
+      await prisma.location.update({ where: { id: org.storeId }, data: { tillOpenPrice: false } });
+    }
   });
 
   it("refuses a price the till never sends", async () => {
@@ -68,7 +82,7 @@ describe("till prices are the server's, not the cashier's", () => {
     }
     // Nothing of the refused checks reached the shelf.
     const level = await prisma.stockLevel.findUniqueOrThrow({ where: { locationId_productId: { locationId: org.storeId, productId: cakeId } } });
-    expect(level.quantity.toNumber()).toBe(48);
+    expect(level.quantity.toNumber()).toBe(47);
   });
 
   it("an owner may still agree a price (wholesale on «Продажи»)", async () => {

@@ -1,4 +1,4 @@
-import { IsEnum, IsNumber, IsOptional, IsString, MinLength, ValidateIf } from "class-validator";
+import { IsBoolean, IsEnum, IsNumber, IsOptional, IsString, MinLength, ValidateIf } from "class-validator";
 import { LocationOwnership, LocationType } from "@bakery-os/shared";
 
 export class UpdateLocationDto {
@@ -42,4 +42,9 @@ export class UpdateLocationDto {
   @ValidateIf((_, v) => v !== null)
   @IsString()
   defaultDirectionId?: string | null;
+
+  // The till at this point offers «Произвольная сумма».
+  @IsOptional()
+  @IsBoolean()
+  tillOpenPrice?: boolean;
 }

@@ -434,6 +434,8 @@ model Location {
   lat       Float?
   lng       Float?
   isActive  Boolean           @default(true)
+  // The till at this point offers «Произвольная сумма» (an amount with no product behind it).
+  tillOpenPrice Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

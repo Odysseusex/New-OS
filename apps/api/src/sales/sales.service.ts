@@ -1737,8 +1737,9 @@ export class SalesService {
   // this point's price or the fixed markdown of it — so anything else did not
   // come from the till screen, and the server must not take the client's word
   // for it (a check rung up at 0 ₸ with the cash pocketed balances perfectly in
-  // «Сверка дня»). «Произвольная сумма» is refused too (the owner's decision):
-  // an amount with no product behind it cannot be checked against the shelf.
+  // «Сверка дня»). «Произвольная сумма» is refused unless the point has it
+  // switched on (`Location.tillOpenPrice`, the owner's choice per point): an
+  // amount with no product behind it cannot be checked against the shelf.
   // Coupons and points are applied by the server afterwards, from these prices.
   // Other roles keep a free price: a wholesale sale on «Продажи» is negotiated.
   private async assertTillPrices(
@@ -1761,13 +1762,24 @@ export class SalesService {
     ]);
     const byId = new Map(products.map((p) => [p.id, p]));
     const pointPrice = new Map(overrides.map((o) => [o.productId, o.price.toNumber()]));
+    // «Произвольная сумма» is offered only at points where it is switched on.
+    const openPriceAllowed = products.some((p) => p.isOpenPrice)
+      ? (await this.prisma.location.findFirst({ where: { id: locationId, organizationId }, select: { tillOpenPrice: true } }))
+          ?.tillOpenPrice === true
+      : false;
     const tiyn = (n: number) => Math.round(n * 100);
     for (const item of items) {
       const product = byId.get(item.productId);
       // An unknown product is refused further on with its own message.
       if (!product) continue;
       if (product.isOpenPrice) {
-        throw new BadRequestException("Произвольная сумма на кассе отключена — пробейте товар из каталога");
+        if (!openPriceAllowed) {
+          throw new BadRequestException("Произвольная сумма на этой точке отключена — пробейте товар из каталога");
+        }
+        if (!(item.unitPrice > 0) || item.fullUnitPrice !== undefined) {
+          throw new BadRequestException("Произвольная сумма должна быть больше нуля");
+        }
+        continue;
       }
       const price = pointPrice.get(product.id) ?? product.price.toNumber();
       const ok =

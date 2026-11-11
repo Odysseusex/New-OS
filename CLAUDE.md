@@ -1176,9 +1176,10 @@ and Enter in a count jumps to the next one.
 
 **A cashier's price is the server's** (`SalesService.assertTillPrices`): a CASHIER line must be the point's price or its
 fixed markdown (`markdownPrice`, with `fullUnitPrice` = point price) — the only things the till sends; anything else is
-refused. **«Произвольная сумма» is switched off at the till** (owner's decision, for «Сверка дня»: an amount with no
-product cannot be checked against the shelf) — the POS no longer offers it and a CASHIER line on the `isOpenPrice`
-product is refused; the product row itself stays (history, and other roles' sales on «Продажи») (a 0 ₸ check with the cash pocketed balances perfectly in «Сверка
+refused. **«Произвольная сумма» is per point** (owner, 11.11.2026, after first switching it off for «Сверка дня»: an
+amount with no product cannot be checked against the shelf): `Location.tillOpenPrice` (default OFF, migration
+`20261126120000`, checkbox «"Произвольная сумма" на кассе» in the point form, STORE only) — the till shows the tile only
+there, and a CASHIER line on the `isOpenPrice` product is refused elsewhere (and at 0 ₸ everywhere); the product row itself stays (history, and other roles' sales on «Продажи») (a 0 ₸ check with the cash pocketed balances perfectly in «Сверка
 дня»). Coupons/points are applied by the server after this. Other roles keep a free price (wholesale on «Продажи»).
 The till's «История» loads the whole Almaty day (not the latest 50) and filters by product (`GET /sales?productId=`).
 

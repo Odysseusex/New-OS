@@ -14,6 +14,8 @@ export interface LocationDto {
   isActive: boolean;
   // Where this point's till sales go (null = «Розница»).
   defaultDirectionId: string | null;
+  // The till here offers «Произвольная сумма».
+  tillOpenPrice: boolean;
 }
 
 export interface LocationOverviewDto extends LocationDto {
@@ -31,6 +33,7 @@ export interface CreateLocationRequestDto {
   lat?: number;
   lng?: number;
   defaultDirectionId?: string | null;
+  tillOpenPrice?: boolean;
 }
 
 export interface UpdateLocationRequestDto {
@@ -43,6 +46,7 @@ export interface UpdateLocationRequestDto {
   lat?: number | null;
   lng?: number | null;
   defaultDirectionId?: string | null;
+  tillOpenPrice?: boolean;
 }
 
 export interface LocationComparisonDto extends LocationDto {

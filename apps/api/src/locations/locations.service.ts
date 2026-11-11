@@ -52,6 +52,7 @@ export class LocationsService {
         lat: dto.lat,
         lng: dto.lng,
         defaultDirectionId: dto.defaultDirectionId ?? null,
+        tillOpenPrice: dto.tillOpenPrice ?? false,
       },
     });
     return this.toDto(location);
@@ -285,6 +286,7 @@ export class LocationsService {
     lng: number | null;
     isActive: boolean;
     defaultDirectionId?: string | null;
+    tillOpenPrice?: boolean;
   }): LocationDto {
     return {
       id: loc.id,
@@ -298,6 +300,7 @@ export class LocationsService {
       lng: loc.lng,
       isActive: loc.isActive,
       defaultDirectionId: loc.defaultDirectionId ?? null,
+      tillOpenPrice: loc.tillOpenPrice ?? false,
     };
   }
 }
