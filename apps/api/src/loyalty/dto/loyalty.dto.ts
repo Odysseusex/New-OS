@@ -215,6 +215,44 @@ export class UpdateLoyaltySettingsDto {
   @IsOptional()
   @IsBoolean()
   clubWhatsappLogin?: boolean;
+
+  // Levels (Бронза = earnPercent → Серебро → Золото → Платина). The ranges are
+  // checked again, with Russian messages, in LoyaltyPointsService.updateSettings.
+  @IsOptional()
+  @IsBoolean()
+  tiersEnabled?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  tierWindowDays?: number;
+
+  @IsOptional()
+  @IsInt()
+  tierHoldDays?: number;
+
+  @IsOptional()
+  @IsNumber()
+  silverThreshold?: number;
+
+  @IsOptional()
+  @IsNumber()
+  silverPercent?: number;
+
+  @IsOptional()
+  @IsNumber()
+  goldThreshold?: number;
+
+  @IsOptional()
+  @IsNumber()
+  goldPercent?: number;
+
+  @IsOptional()
+  @IsNumber()
+  platinumThreshold?: number;
+
+  @IsOptional()
+  @IsNumber()
+  platinumPercent?: number;
 }
 
 export class SaveLoyaltyFamilyMemberDto {

@@ -1753,7 +1753,7 @@ with the programme on (else the oldest non-sandbox org).
   `loyaltyTierDto`). A purchase earns the percent of the level the member CAME with (the sale that crosses a threshold
   still earns the old percent); the first purchase keeps its own rule (welcome bonus / first-purchase percent). Shown on
   the till's member block, the member card, the app (card label + «Ваш уровень» with what is left) and the poster
-  (a row Бронза 2 % · Серебро · Золото · Платина with their percents, no sums — printed paper outlives a threshold change). Spec `loyalty/loyalty-tiers.spec.ts`. The thresholds are the owner's to choose (he was asking his family).
+  (a row Бронза 2 % · Серебро · Золото · Платина with their percents, no sums — printed paper outlives a threshold change). Spec `loyalty/loyalty-tiers.spec.ts`. The thresholds are the owner's to choose (he was asking his family). A new settings field must ALSO go into `UpdateLoyaltySettingsDto` — the global `ValidationPipe({whitelist})` silently drops undeclared fields (the «Уровни включены» box did nothing on 11.11.2026 because of it; the spec now pushes the level fields through the same pipe).
 - Still not built: (3) a 2D USB scanner at the till (code done; hardware not bought); (4) web push.
 - `/poster` (link on the programme card): ONE A4 design — warm paper, gold hairline frame, Tenor Sans, «Бонусная карта»,
   no slogan, no photo. The owner rejected photo posters, red fills, sage, Cormorant/Playfair titles and slogans.

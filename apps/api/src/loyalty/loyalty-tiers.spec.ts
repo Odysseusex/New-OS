@@ -9,7 +9,9 @@ import {
   resolveLoyaltyTier,
   Unit,
 } from "@bakery-os/shared";
+import { ValidationPipe } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { UpdateLoyaltySettingsDto } from "./dto/loyalty.dto";
 import { createIsolatedOrg, destroyOrg, IsolatedOrg } from "../../test/support/isolated-org";
 import { buildServices } from "../../test/support/services";
 import { LoyaltyPointsService } from "./loyalty-points.service";
@@ -48,6 +50,27 @@ describe("level maths", () => {
     expect(loyaltyTierDto({ tier: L.GOLD, heldUntil: held, spend: 80_000, settings: s })).toMatchObject({ percent: 4, next: { tier: L.PLATINUM, percent: 5, remaining: 70_000 }, heldUntil: null });
     expect(loyaltyTierDto({ tier: L.PLATINUM, heldUntil: held, spend: 200_000, settings: s })).toMatchObject({ percent: 5, next: null });
     expect(loyaltyTierDto({ tier: L.GOLD, heldUntil: held, spend: 10_000, settings: s }).heldUntil).toBe(held.toISOString());
+  });
+});
+
+describe("the settings request keeps the level fields", () => {
+  // The app's ValidationPipe strips every field the DTO does not declare, silently:
+  // the «Уровни включены» box once did nothing because of exactly that.
+  it("passes them through the same pipe as main.ts", async () => {
+    const pipe = new ValidationPipe({ whitelist: true, transform: true });
+    const body = {
+      tiersEnabled: true,
+      tierWindowDays: 90,
+      tierHoldDays: 30,
+      silverThreshold: 30000,
+      silverPercent: 3,
+      goldThreshold: 75000,
+      goldPercent: 4,
+      platinumThreshold: 150000,
+      platinumPercent: 5,
+    };
+    const out = await pipe.transform(body, { type: "body", metatype: UpdateLoyaltySettingsDto });
+    expect({ ...out }).toEqual(body);
   });
 });
 
