@@ -252,6 +252,7 @@ export class ClubService {
             windowDays: s.tierWindowDays,
             silver: { threshold: s.silverThreshold, percent: s.silverPercent },
             gold: { threshold: s.goldThreshold, percent: s.goldPercent },
+            platinum: { threshold: s.platinumThreshold, percent: s.platinumPercent },
           }
         : null,
     };

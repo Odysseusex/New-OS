@@ -76,11 +76,13 @@ export class LoyaltyPointsService {
       silverPercent: row.silverPercent.toNumber(),
       goldThreshold: row.goldThreshold.toNumber(),
       goldPercent: row.goldPercent.toNumber(),
+      platinumThreshold: row.platinumThreshold.toNumber(),
+      platinumPercent: row.platinumPercent.toNumber(),
     };
   }
 
   async updateSettings(user: AuthenticatedUser, dto: Partial<LoyaltySettingsDto>): Promise<LoyaltySettingsDto> {
-    for (const key of ["firstPurchaseEarnPercent", "earnPercent", "maxRedeemPercent", "silverPercent", "goldPercent"] as const) {
+    for (const key of ["firstPurchaseEarnPercent", "earnPercent", "maxRedeemPercent", "silverPercent", "goldPercent", "platinumPercent"] as const) {
       const value = dto[key];
       if (value !== undefined && (value < 0 || value > 100 || Math.round(value * 100) !== value * 100)) {
         throw new BadRequestException("Процент — число от 0 до 100, не больше двух знаков после запятой");
@@ -106,7 +108,7 @@ export class LoyaltyPointsService {
     if (dto.birthdayBonusDays !== undefined && (!Number.isInteger(dto.birthdayBonusDays) || dto.birthdayBonusDays < 1 || dto.birthdayBonusDays > 365)) {
       throw new BadRequestException("Срок подарка — целое число дней от 1 до 365");
     }
-    for (const key of ["silverThreshold", "goldThreshold"] as const) {
+    for (const key of ["silverThreshold", "goldThreshold", "platinumThreshold"] as const) {
       const value = dto[key];
       if (value !== undefined && (value <= 0 || value > 100_000_000 || Math.round(value * 100) !== value * 100)) {
         throw new BadRequestException("Порог уровня — сумма покупок больше нуля, не больше двух знаков после запятой");
@@ -124,8 +126,14 @@ export class LoyaltyPointsService {
       if (after.goldThreshold <= after.silverThreshold) {
         throw new BadRequestException("Порог «Золото» должен быть больше порога «Серебро»");
       }
+      if (after.platinumThreshold <= after.goldThreshold) {
+        throw new BadRequestException("Порог «Платина» должен быть больше порога «Золото»");
+      }
       if (after.goldPercent < after.silverPercent) {
         throw new BadRequestException("Процент «Золото» не может быть меньше процента «Серебро»");
+      }
+      if (after.platinumPercent < after.goldPercent) {
+        throw new BadRequestException("Процент «Платина» не может быть меньше процента «Золото»");
       }
       await tx.loyaltySettings.upsert({
         where: { organizationId: user.organizationId },

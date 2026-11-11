@@ -268,6 +268,8 @@ export interface LoyaltySettingsDto {
   silverPercent: number;
   goldThreshold: number;
   goldPercent: number;
+  platinumThreshold: number;
+  platinumPercent: number;
 }
 
 export type UpdateLoyaltySettingsRequestDto = Partial<LoyaltySettingsDto>;
@@ -291,9 +293,11 @@ export const DEFAULT_LOYALTY_SETTINGS: LoyaltySettingsDto = {
   tierWindowDays: 90,
   tierHoldDays: 30,
   silverThreshold: 30000,
-  silverPercent: 2,
+  silverPercent: 3,
   goldThreshold: 75000,
-  goldPercent: 3,
+  goldPercent: 4,
+  platinumThreshold: 150000,
+  platinumPercent: 5,
 };
 
 // ── levels ──────────────────────────────────────────────────────────────────
@@ -302,27 +306,39 @@ export enum LoyaltyTier {
   BASE = "BASE",
   SILVER = "SILVER",
   GOLD = "GOLD",
+  PLATINUM = "PLATINUM",
 }
 
+// BASE is the level everyone starts on (it earns `earnPercent`), shown as «Бронза».
 export const LOYALTY_TIER_LABELS_RU: Record<LoyaltyTier, string> = {
-  [LoyaltyTier.BASE]: "Базовый",
+  [LoyaltyTier.BASE]: "Бронза",
   [LoyaltyTier.SILVER]: "Серебро",
   [LoyaltyTier.GOLD]: "Золото",
+  [LoyaltyTier.PLATINUM]: "Платина",
 };
 
-const TIER_RANK: Record<LoyaltyTier, number> = { [LoyaltyTier.BASE]: 0, [LoyaltyTier.SILVER]: 1, [LoyaltyTier.GOLD]: 2 };
+const TIER_ORDER = [LoyaltyTier.BASE, LoyaltyTier.SILVER, LoyaltyTier.GOLD, LoyaltyTier.PLATINUM];
+const TIER_RANK: Record<LoyaltyTier, number> = { [LoyaltyTier.BASE]: 0, [LoyaltyTier.SILVER]: 1, [LoyaltyTier.GOLD]: 2, [LoyaltyTier.PLATINUM]: 3 };
 
-type TierSettings = Pick<LoyaltySettingsDto, "earnPercent" | "silverThreshold" | "silverPercent" | "goldThreshold" | "goldPercent">;
+type TierSettings = Pick<
+  LoyaltySettingsDto,
+  "earnPercent" | "silverThreshold" | "silverPercent" | "goldThreshold" | "goldPercent" | "platinumThreshold" | "platinumPercent"
+>;
+
+export function loyaltyTierThreshold(tier: LoyaltyTier, s: TierSettings): number {
+  return tier === LoyaltyTier.PLATINUM ? s.platinumThreshold : tier === LoyaltyTier.GOLD ? s.goldThreshold : tier === LoyaltyTier.SILVER ? s.silverThreshold : 0;
+}
 
 // The level a spend over the window earns by itself.
 export function loyaltyTierBySpend(spend: number, s: TierSettings): LoyaltyTier {
+  if (spend >= s.platinumThreshold) return LoyaltyTier.PLATINUM;
   if (spend >= s.goldThreshold) return LoyaltyTier.GOLD;
   if (spend >= s.silverThreshold) return LoyaltyTier.SILVER;
   return LoyaltyTier.BASE;
 }
 
 export function loyaltyTierPercent(tier: LoyaltyTier, s: TierSettings): number {
-  return tier === LoyaltyTier.GOLD ? s.goldPercent : tier === LoyaltyTier.SILVER ? s.silverPercent : s.earnPercent;
+  return tier === LoyaltyTier.PLATINUM ? s.platinumPercent : tier === LoyaltyTier.GOLD ? s.goldPercent : tier === LoyaltyTier.SILVER ? s.silverPercent : s.earnPercent;
 }
 
 // The level a member holds now: a higher one earned by spend is taken at once and
@@ -360,8 +376,8 @@ export interface LoyaltyTierDto {
 export function loyaltyTierDto(input: { tier: LoyaltyTier; heldUntil: Date | null; spend: number; settings: LoyaltySettingsDto }): LoyaltyTierDto {
   const { tier, spend, settings: s } = input;
   const round = (v: number) => Math.round(v * 100) / 100;
-  const nextTier = tier === LoyaltyTier.BASE ? LoyaltyTier.SILVER : tier === LoyaltyTier.SILVER ? LoyaltyTier.GOLD : null;
-  const threshold = nextTier === LoyaltyTier.GOLD ? s.goldThreshold : s.silverThreshold;
+  const nextTier = TIER_ORDER[TIER_RANK[tier] + 1] ?? null;
+  const threshold = nextTier ? loyaltyTierThreshold(nextTier, s) : 0;
   const below = TIER_RANK[loyaltyTierBySpend(spend, s)] < TIER_RANK[tier];
   return {
     tier,

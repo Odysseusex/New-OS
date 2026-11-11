@@ -17,7 +17,7 @@ type NumericSetting =
   | "welcomeBonusDays"
   | "firstPurchaseEarnPercent"
   | "earnPercent" | "maxRedeemPercent" | "pointsLifetimeMonths" | "birthdayBonusPoints" | "birthdayBonusDays"
-  | "silverThreshold" | "silverPercent" | "goldThreshold" | "goldPercent" | "tierWindowDays" | "tierHoldDays";
+  | "silverThreshold" | "silverPercent" | "goldThreshold" | "goldPercent" | "platinumThreshold" | "platinumPercent" | "tierWindowDays" | "tierHoldDays";
 
 // Programme settings (owner/admin edit them) and the points figures. Points
 // are a discount when spent («способ Б»), so «Баллов у клиентов» is shown here
@@ -52,6 +52,8 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
       silverPercent: String(s.silverPercent),
       goldThreshold: String(s.goldThreshold),
       goldPercent: String(s.goldPercent),
+      platinumThreshold: String(s.platinumThreshold),
+      platinumPercent: String(s.platinumPercent),
       tierWindowDays: String(s.tierWindowDays),
       tierHoldDays: String(s.tierHoldDays),
     });
@@ -122,6 +124,8 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
     ["silverPercent", "Серебро: начисление, %"],
     ["goldThreshold", "Золото: покупки от, ₸"],
     ["goldPercent", "Золото: начисление, %"],
+    ["platinumThreshold", "Платина: покупки от, ₸"],
+    ["platinumPercent", "Платина: начисление, %"],
     ["tierWindowDays", "Покупки считаются за, дней"],
     ["tierHoldDays", "Уровень сохраняется не меньше, дней"],
   ];
@@ -241,7 +245,7 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:items-end lg:grid-cols-4">
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-foreground">Базовый: начисление, %</label>
+              <label className="mb-1.5 block text-xs font-medium text-foreground">Бронза: начисление, %</label>
               <input value={draft.earnPercent} disabled className={inputClass} />
             </div>
             {tierFields.map(([key, label]) => (

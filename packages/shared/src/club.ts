@@ -65,7 +65,12 @@ export interface ClubProgrammeDto {
   welcomeBonusDays: number;
   birthdayBonusPoints: number;
   // Levels, when switched on: spend over `windowDays` → percent.
-  tiers: { windowDays: number; silver: { threshold: number; percent: number }; gold: { threshold: number; percent: number } } | null;
+  tiers: {
+    windowDays: number;
+    silver: { threshold: number; percent: number };
+    gold: { threshold: number; percent: number };
+    platinum: { threshold: number; percent: number };
+  } | null;
 }
 
 export interface ClubInfoDto {

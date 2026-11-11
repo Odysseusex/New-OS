@@ -25,7 +25,7 @@ export const SITE_INFO = {
 // site as marketing copy; change both together.
 export const BONUS = {
   firstPurchasePercent: 5,
-  earnPercent: 1,
+  earnPercent: 2,
   maxRedeemPercent: 30,
   lifetimeMonths: 12,
 };

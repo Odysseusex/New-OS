@@ -71,7 +71,7 @@ export default function PosterPage() {
         {p?.enabled && (
           <footer className="pp-perks">
             <div>
-              <strong>{p.tiers ? `${fmt.format(p.earnPercent)}–${fmt.format(p.tiers.gold.percent)}%` : `${fmt.format(p.earnPercent)}%`}</strong>
+              <strong>{p.tiers ? `${fmt.format(p.earnPercent)}–${fmt.format(p.tiers.platinum.percent)}%` : `${fmt.format(p.earnPercent)}%`}</strong>
               <span>бонусами с каждой покупки</span>
             </div>
             <div>

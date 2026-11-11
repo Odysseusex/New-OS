@@ -3152,6 +3152,7 @@ enum LoyaltyTier {
   BASE
   SILVER
   GOLD
+  PLATINUM
 }
 
 model LoyaltyMember {
@@ -3258,9 +3259,11 @@ model LoyaltySettings {
   tierWindowDays           Int      @default(90)
   tierHoldDays             Int      @default(30)
   silverThreshold          Decimal  @default(30000) @db.Decimal(12, 2)
-  silverPercent            Decimal  @default(2) @db.Decimal(5, 2)
+  silverPercent            Decimal  @default(3) @db.Decimal(5, 2)
   goldThreshold            Decimal  @default(75000) @db.Decimal(12, 2)
-  goldPercent              Decimal  @default(3) @db.Decimal(5, 2)
+  goldPercent              Decimal  @default(4) @db.Decimal(5, 2)
+  platinumThreshold        Decimal  @default(150000) @db.Decimal(12, 2)
+  platinumPercent          Decimal  @default(5) @db.Decimal(5, 2)
   updatedAt                DateTime @updatedAt
   updatedById              String?
 

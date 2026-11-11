@@ -68,7 +68,7 @@ function Start({ info, onStarted }: { info: ClubInfoDto | null; onStarted: (p: P
         <h1 className="aa-h1">Ar Amir</h1>
         {programme && (
           <p className="aa-sub" style={{ maxWidth: 340 }}>
-            {programme.tiers ? `От ${fmtPoints(programme.earnPercent)}% до ${fmtPoints(programme.tiers.gold.percent)}%` : `${fmtPoints(programme.earnPercent)}%`} бонусами с каждой покупки. Оплачивайте ими до {fmtPoints(programme.maxRedeemPercent)}% чека.
+            {programme.tiers ? `От ${fmtPoints(programme.earnPercent)}% до ${fmtPoints(programme.tiers.platinum.percent)}%` : `${fmtPoints(programme.earnPercent)}%`} бонусами с каждой покупки. Оплачивайте ими до {fmtPoints(programme.maxRedeemPercent)}% чека.
           </p>
         )}
       </div>
