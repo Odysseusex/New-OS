@@ -172,13 +172,13 @@ body:has(.aa) {
 
 .aa-card {
   /* The card's own palette, in one place. */
-  --c-bg: linear-gradient(140deg, #6f8b72 0%, #48644e 52%, #2f4535 100%);
-  --c-ink: #f6f3e8;
-  --c-soft: rgba(246, 243, 232, 0.74);
-  --c-mark: #ead7a6;
-  --c-art: #ead7a6;
-  --c-sheen: rgba(255, 255, 235, 0.18);
-  --c-shadow: rgba(47, 69, 53, 0.7);
+  --c-bg: linear-gradient(140deg, #d27a55 0%, #ad5a3e 52%, #7d3b29 100%);
+  --c-ink: #fff5ec;
+  --c-soft: rgba(255, 245, 236, 0.78);
+  --c-mark: #ffe3c6;
+  --c-art: #ffe3c6;
+  --c-sheen: rgba(255, 236, 210, 0.22);
+  --c-shadow: rgba(125, 59, 41, 0.6);
 
   position: relative;
   aspect-ratio: 1.586;

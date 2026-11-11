@@ -4,9 +4,14 @@ import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 
 // The card's colour, chosen by the customer in «Профиль» and kept on their phone.
-// Sage is the default.
+// Terracotta is the default.
 
 export const CARD_COLORS = {
+  terracotta: {
+    label: "Терракота",
+    swatch: "#ad5a3e",
+    vars: { "--c-bg": "linear-gradient(140deg,#d27a55 0%,#ad5a3e 52%,#7d3b29 100%)", "--c-ink": "#fff5ec", "--c-soft": "rgba(255,245,236,.78)", "--c-mark": "#ffe3c6", "--c-art": "#ffe3c6", "--c-sheen": "rgba(255,236,210,.22)", "--c-shadow": "rgba(125,59,41,.6)" },
+  },
   sage: {
     label: "Шалфей",
     swatch: "#48644e",
@@ -22,11 +27,6 @@ export const CARD_COLORS = {
     swatch: "#18233a",
     vars: { "--c-bg": "linear-gradient(140deg,#2b3a55 0%,#18233a 52%,#0e1525 100%)", "--c-ink": "#f4eee2", "--c-soft": "rgba(244,238,226,.7)", "--c-mark": "#dcbb82", "--c-art": "#dcbb82", "--c-sheen": "rgba(170,195,255,.14)", "--c-shadow": "rgba(14,21,37,.7)" },
   },
-  terracotta: {
-    label: "Терракота",
-    swatch: "#ad5a3e",
-    vars: { "--c-bg": "linear-gradient(140deg,#d27a55 0%,#ad5a3e 52%,#7d3b29 100%)", "--c-ink": "#fff5ec", "--c-soft": "rgba(255,245,236,.78)", "--c-mark": "#ffe3c6", "--c-art": "#ffe3c6", "--c-sheen": "rgba(255,236,210,.22)", "--c-shadow": "rgba(125,59,41,.6)" },
-  },
   milk: {
     label: "Молочный",
     swatch: "#f3e9da",
@@ -41,14 +41,14 @@ const EVENT = "aa-card-color";
 function read(): CardColor {
   try {
     const v = localStorage.getItem(KEY);
-    return v && v in CARD_COLORS ? (v as CardColor) : "sage";
+    return v && v in CARD_COLORS ? (v as CardColor) : "terracotta";
   } catch {
-    return "sage";
+    return "terracotta";
   }
 }
 
 export function useCardColor(): [CardColor, (c: CardColor) => void] {
-  const [color, setColor] = useState<CardColor>("sage");
+  const [color, setColor] = useState<CardColor>("terracotta");
   useEffect(() => {
     setColor(read());
     const on = () => setColor(read());
