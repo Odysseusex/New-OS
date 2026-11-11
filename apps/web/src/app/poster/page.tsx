@@ -68,10 +68,32 @@ export default function PosterPage() {
           </li>
         </ol>
 
-        {p?.enabled && (
+        {p?.enabled && p.tiers && (
+          <footer className="pp-levels">
+            <div className="pp-levels-row">
+              {(
+                [
+                  ["Бронза", p.earnPercent],
+                  ["Серебро", p.tiers.silver.percent],
+                  ["Золото", p.tiers.gold.percent],
+                  ["Платина", p.tiers.platinum.percent],
+                ] as const
+              ).map(([name, percent]) => (
+                <div key={name}>
+                  <span>{name}</span>
+                  <strong>{fmt.format(percent)}%</strong>
+                </div>
+              ))}
+            </div>
+            <p>
+              Чем больше покупок — тем выше уровень · до {fmt.format(p.maxRedeemPercent)}% чека бонусами · 1 бонус = 1 ₸
+            </p>
+          </footer>
+        )}
+        {p?.enabled && !p.tiers && (
           <footer className="pp-perks">
             <div>
-              <strong>{p.tiers ? `${fmt.format(p.earnPercent)}–${fmt.format(p.tiers.platinum.percent)}%` : `${fmt.format(p.earnPercent)}%`}</strong>
+              <strong>{fmt.format(p.earnPercent)}%</strong>
               <span>бонусами с каждой покупки</span>
             </div>
             <div>
