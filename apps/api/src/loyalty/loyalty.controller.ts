@@ -10,6 +10,7 @@ import { LoyaltyPointsService } from "./loyalty-points.service";
 import { LoyaltyAnalyticsService } from "./loyalty-analytics.service";
 import { LoyaltyBirthdayService } from "./loyalty-birthday.service";
 import {
+  ActivateWelcomeBonusBulkDto,
   ActivateWelcomeBonusDto,
   AdjustLoyaltyPointsDto,
   UpdateLoyaltySettingsDto,
@@ -60,6 +61,12 @@ export class LoyaltyController {
   @Roles(...LOYALTY_ADMIN_ROLES)
   merge(@CurrentUser() user: AuthenticatedUser, @Body() dto: MergeLoyaltyMembersDto) {
     return this.loyaltyService.merge(user, dto);
+  }
+
+  @Post("welcome-bonus/bulk")
+  @Roles(...LOYALTY_MANAGE_ROLES)
+  activateWelcomeBonusBulk(@CurrentUser() user: AuthenticatedUser, @Body() dto: ActivateWelcomeBonusBulkDto) {
+    return this.pointsService.activateWelcomeBonusBulk(user, dto);
   }
 
   @Post("import/preview")

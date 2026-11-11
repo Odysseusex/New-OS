@@ -1656,6 +1656,11 @@ earning on consignment, markdown/coupon lines or the part paid by points — all
   attached (merged duplicates included) and none was given by hand; LOYALTY_MANAGE_ROLES give it themselves, anyone else at
   the till needs a senior cashier's PIN (till approval `WELCOME_BONUS`). A manual welcome lot makes the next real sale
   earn like a later one. Fixed bonus only (`welcomeBonusPoints` > 0). Audited `loyaltyPoints.welcome`.
+- **Welcome bonus for many at once** (owner, 11.11.2026, after a clean start wiped the points): CRM → Клиенты has a
+  checkbox per row, «выбрать всех в списке» in the header and «Выбрать всех в базе (N)»; «Активировать бонус» →
+  `POST /loyalty/members/welcome-bonus/bulk {memberIds ≤ 50 | all + afterId}` (LOYALTY_MANAGE_ROLES,
+  `activateWelcomeBonusBulk`): each member goes through the single button's own rule and audit; one who already has a
+  purchase or the bonus is SKIPPED (counted), never an error. The browser sends portions of 50 and follows `nextAfterId`.
 - «First purchase» = the first sale the member is attached to. Sales attach a member via `Sale.loyaltyMemberId`
   (till: «Клиент бонусной программы» in the cart). `SalesService`/`SaleReturnsService` take
   `LoyaltyPointsService` as their LAST constructor argument (defaulted) so hand-wired specs keep working.

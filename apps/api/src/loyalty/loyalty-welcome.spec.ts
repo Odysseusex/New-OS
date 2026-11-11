@@ -194,6 +194,28 @@ describe("welcome bonus on real sales (database)", () => {
     });
   });
 
+  it("many at once: the named ones, then the whole base page by page; whoever has it already is skipped", async () => {
+    const a = await register("+77071000301");
+    const b = await register("+77071000302");
+    const c = await register("+77071000303");
+    expect(await points.activateWelcomeBonusBulk(org.user, { memberIds: [a, b] })).toMatchObject({ given: 2, skipped: 0, points: 5000 });
+    expect(await points.activateWelcomeBonusBulk(org.user, { memberIds: [a] })).toMatchObject({ given: 0, skipped: 1 });
+    await expect(points.activateWelcomeBonusBulk(org.user, { memberIds: [] })).rejects.toThrow(/Выберите клиентов/);
+    // The whole base: c gets it, everyone who had it or bought already does not get a second one.
+    let given = 0;
+    let afterId: string | undefined;
+    for (;;) {
+      const page = await points.activateWelcomeBonusBulk(org.user, { all: true, afterId });
+      given += page.given;
+      if (!page.nextAfterId) break;
+      afterId = page.nextAfterId;
+    }
+    expect(given).toBeGreaterThanOrEqual(1);
+    expect((await loyalty.findOne(org.organizationId, c)).welcomeBonusAvailable).toBeNull();
+    expect(await prisma.loyaltyPointsEntry.count({ where: { memberId: { in: [a, b, c] }, reason: { startsWith: MANUAL_WELCOME_BONUS_REASON } } })).toBe(3);
+    expect((await points.activateWelcomeBonusBulk(org.user, { all: true })).given).toBe(0);
+  });
+
   it("with the bonus at 0 the first-purchase percent applies again", async () => {
     await points.updateSettings(org.user, { welcomeBonusPoints: 0 });
     const memberId = await register("+77071000106");

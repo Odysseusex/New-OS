@@ -531,6 +531,48 @@ export class LoyaltyPointsService {
     });
   }
 
+  // The welcome bonus for many members at once (CRM → Клиенты): the ones named, or
+  // — with `all` — the next page of the whole base after `afterId`. Each member goes
+  // through the same rule as the single button; one who already has a purchase or a
+  // bonus is skipped, not an error. The caller repeats until `nextAfterId` is null.
+  async activateWelcomeBonusBulk(
+    user: AuthenticatedUser,
+    input: { memberIds?: string[]; all?: boolean; afterId?: string },
+  ): Promise<{ given: number; skipped: number; points: number; nextAfterId: string | null }> {
+    const settings = await this.getSettings(user.organizationId);
+    if (!settings.enabled) throw new BadRequestException("Бонусная программа выключена");
+    if (settings.welcomeBonusPoints <= 0) throw new BadRequestException("Приветственный бонус не задан в настройках программы — начислять нечего");
+    const PAGE = 50;
+    let ids: string[];
+    let nextAfterId: string | null = null;
+    if (input.all) {
+      const page = await this.prisma.loyaltyMember.findMany({
+        where: { organizationId: user.organizationId, status: LoyaltyMemberStatus.ACTIVE, ...(input.afterId ? { id: { gt: input.afterId } } : {}) },
+        orderBy: { id: "asc" },
+        take: PAGE,
+        select: { id: true },
+      });
+      ids = page.map((m) => m.id);
+      if (page.length === PAGE) nextAfterId = ids[ids.length - 1];
+    } else {
+      ids = [...new Set(input.memberIds ?? [])];
+      if (ids.length === 0) throw new BadRequestException("Выберите клиентов");
+      if (ids.length > PAGE) throw new BadRequestException(`Не больше ${PAGE} клиентов за один раз`);
+    }
+    let given = 0;
+    let skipped = 0;
+    for (const id of ids) {
+      try {
+        await this.activateWelcomeBonus(user, id);
+        given += 1;
+      } catch (err) {
+        if (err instanceof BadRequestException || err instanceof NotFoundException) skipped += 1;
+        else throw err;
+      }
+    }
+    return { given, skipped, points: round2(settings.welcomeBonusPoints), nextAfterId };
+  }
+
   // ── merge ─────────────────────────────────────────────────────────────────
   // The duplicate's live points move to the primary record lot by lot, keeping
   // each lot's own expiry date — a merge neither extends nor shortens them.

@@ -763,6 +763,8 @@ export const api = {
     updateSettings: (dto: UpdateLoyaltySettingsRequestDto) =>
       request<LoyaltySettingsDto>("/loyalty/settings", { method: "PATCH", body: JSON.stringify(dto) }),
     summary: (from: string, to: string) => request<LoyaltySummaryDto>(withQuery("/loyalty/summary", { from, to })),
+    activateWelcomeBonusBulk: (dto: { memberIds?: string[]; all?: boolean; afterId?: string }) =>
+      request<{ given: number; skipped: number; points: number; nextAfterId: string | null }>("/loyalty/members/welcome-bonus/bulk", { method: "POST", body: JSON.stringify(dto) }),
     activateWelcomeBonus: (id: string, approvalToken?: string) =>
       request<{ points: number }>(`/loyalty/members/${id}/points/welcome`, { method: "POST", body: JSON.stringify({ approvalToken }) }),
     adjustPoints: (id: string, dto: AdjustLoyaltyPointsRequestDto) =>

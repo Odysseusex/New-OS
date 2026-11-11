@@ -299,3 +299,20 @@ export class ActivateWelcomeBonusDto {
   @MaxLength(2000)
   approvalToken?: string;
 }
+
+export class ActivateWelcomeBonusBulkDto {
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  memberIds?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  all?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  afterId?: string;
+}

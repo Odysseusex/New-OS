@@ -2,10 +2,10 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Search, Users } from "lucide-react";
+import { Gift, Search, Users } from "lucide-react";
 import { CrmMemberListDto, LOYALTY_SEGMENT_LABELS_RU, LOYALTY_SEGMENTS, LoyaltySegment } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
-import { agoDays, Avatar, ErrorBox, everyDays, fmtMoney, fmtPhone, PageHeader, SegmentTag, SEGMENT_TONES, Skeleton } from "@/components/crm/ui";
+import { agoDays, Avatar, CrmModal, ErrorBox, plural, everyDays, fmtMoney, fmtPhone, PageHeader, SegmentTag, SEGMENT_TONES, Skeleton } from "@/components/crm/ui";
 
 const SORTS = [
   { key: "recent", label: "Недавние" },
@@ -32,6 +32,11 @@ function ClientsList() {
   const [data, setData] = useState<CrmMemberListDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Several clients at once: the ticked ones, or the whole base.
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [everyone, setEveryone] = useState(false);
+  const [bonusOpen, setBonusOpen] = useState(false);
+  const [reload, setReload] = useState(0);
 
   // The base is searched on the server (it is people's phone numbers); a short
   // pause after typing keeps it to one request per word.
@@ -52,7 +57,28 @@ function ClientsList() {
     return () => {
       cancelled = true;
     };
-  }, [query, segment, sort]);
+  }, [query, segment, sort, reload]);
+
+  const shownIds = data?.items.map((m) => m.id) ?? [];
+  const allShown = shownIds.length > 0 && shownIds.every((id) => picked.has(id));
+  const toggle = (id: string) => {
+    setEveryone(false);
+    setPicked((p) => {
+      const next = new Set(p);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const toggleShown = () => {
+    setEveryone(false);
+    setPicked(allShown ? new Set() : new Set(shownIds));
+  };
+  const clearPicked = () => {
+    setEveryone(false);
+    setPicked(new Set());
+  };
+  const pickedCount = everyone ? (data?.total ?? 0) : picked.size;
 
   const subtitle = useMemo(() => (data ? `${data.total} в базе` : undefined), [data]);
 
@@ -90,8 +116,29 @@ function ClientsList() {
 
       {error && <ErrorBox message={error} />}
 
+      {pickedCount > 0 && (
+        <div className="crm-panel crm-bulk">
+          <span style={{ fontWeight: 600 }}>
+            {everyone ? `Выбраны все в базе: ${pickedCount}` : `Выбрано: ${pickedCount}`}
+          </span>
+          {!everyone && data && !query && !segment && data.total > picked.size && (
+            <button type="button" className="crm-btn ghost sm" onClick={() => setEveryone(true)}>
+              Выбрать всех в базе ({data.total})
+            </button>
+          )}
+          <button type="button" className="crm-btn ghost sm" onClick={clearPicked}>
+            Снять выбор
+          </button>
+          <span style={{ flex: 1 }} />
+          <button type="button" className="crm-btn primary" onClick={() => setBonusOpen(true)}>
+            <Gift size={15} /> Активировать бонус
+          </button>
+        </div>
+      )}
+
       <section className="crm-panel" style={{ overflow: "hidden" }} aria-label="Список клиентов">
         <div className="crm-row" style={{ borderTop: 0, color: "var(--tx3)", fontSize: 12.5, fontWeight: 500 }}>
+          <input type="checkbox" className="crm-check" checked={everyone || allShown} onChange={toggleShown} aria-label="Выбрать всех в списке" />
           <span style={{ flex: "2 1 220px" }}>Клиент</span>
           <span style={{ flex: "1 1 130px" }}>Группа</span>
           <span className="hide-sm" style={{ width: 70, textAlign: "right" }}>Визиты</span>
@@ -103,6 +150,14 @@ function ClientsList() {
         {data && data.items.length === 0 && <div className="crm-row muted">Никого не нашли</div>}
         {data?.items.map((m) => (
           <div key={m.id} className="crm-row clickable" onClick={() => router.push(`/crm/clients/${m.id}`)} style={{ opacity: loading ? 0.6 : 1 }}>
+            <input
+              type="checkbox"
+              className="crm-check"
+              checked={everyone || picked.has(m.id)}
+              onClick={(e) => e.stopPropagation()}
+              onChange={() => toggle(m.id)}
+              aria-label={`Выбрать: ${m.name ?? m.phone}`}
+            />
             <span style={{ flex: "2 1 220px", display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
               <Avatar name={m.name} size={26} />
               <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
@@ -123,7 +178,116 @@ function ClientsList() {
         ))}
       </section>
       {data && data.total > data.items.length && <span className="muted">Показаны первые {data.items.length} из {data.total} — уточните поиск</span>}
-      <style>{`@media (max-width: 700px) { .crm .hide-sm { display: none; } }`}</style>
+      {bonusOpen && (
+        <BulkBonusDialog
+          ids={everyone ? null : Array.from(picked)}
+          count={pickedCount}
+          onClose={(done) => {
+            setBonusOpen(false);
+            if (done) {
+              clearPicked();
+              setReload((n) => n + 1);
+            }
+          }}
+        />
+      )}
+      <style>{`@media (max-width: 700px) { .crm .hide-sm { display: none; } }
+.crm-check { width: 17px; height: 17px; flex-shrink: 0; accent-color: var(--acc); cursor: pointer; }
+.crm-bulk { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; position: sticky; top: 8px; z-index: 5; }`}</style>
     </div>
+  );
+}
+
+const clientsDat = (n: number) => plural(n, "клиенту", "клиентам", "клиентам");
+const clientsGen = (n: number) => plural(n, "клиента", "клиентов", "клиентов");
+const num = new Intl.NumberFormat("ru-RU");
+
+// The welcome bonus for the ticked clients (ids) or the whole base (ids = null),
+// sent in portions of 50 so a long list never hangs on one request.
+function BulkBonusDialog({ ids, count, onClose }: { ids: string[] | null; count: number; onClose: (done: boolean) => void }) {
+  const [points, setPoints] = useState<number | null>(null);
+  const [state, setState] = useState<"ask" | "run" | "done">("ask");
+  const [progress, setProgress] = useState({ given: 0, skipped: 0 });
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.loyalty
+      .settings()
+      .then((s) => setPoints(s.enabled ? s.welcomeBonusPoints : 0))
+      .catch((e) => setError(e instanceof ApiError ? e.message : "Не удалось загрузить настройки программы"));
+  }, []);
+
+  const run = async () => {
+    setState("run");
+    setError(null);
+    let given = 0;
+    let skipped = 0;
+    const add = (r: { given: number; skipped: number }) => {
+      given += r.given;
+      skipped += r.skipped;
+      setProgress({ given, skipped });
+    };
+    try {
+      if (ids === null) {
+        let afterId: string | undefined;
+        for (;;) {
+          const r = await api.loyalty.activateWelcomeBonusBulk({ all: true, afterId });
+          add(r);
+          if (!r.nextAfterId) break;
+          afterId = r.nextAfterId;
+        }
+      } else {
+        for (let i = 0; i < ids.length; i += 50) add(await api.loyalty.activateWelcomeBonusBulk({ memberIds: ids.slice(i, i + 50) }));
+      }
+    } catch (e) {
+      // What was given stays given; pressing again only reaches the rest.
+      setError(e instanceof ApiError ? e.message : "Связь прервалась. Нажмите ещё раз — бонус получат только те, кто не успел.");
+    }
+    setState("done");
+  };
+
+  const off = points !== null && points <= 0;
+  return (
+    <CrmModal
+      title="Приветственный бонус"
+      width={460}
+      onClose={() => state !== "run" && onClose(state === "done")}
+      footer={
+        state === "done" ? (
+          <button type="button" className="crm-btn primary" onClick={() => onClose(true)}>
+            Готово
+          </button>
+        ) : (
+          <>
+            <button type="button" className="crm-btn ghost" onClick={() => onClose(false)} disabled={state === "run"}>
+              Отмена
+            </button>
+            <button type="button" className="crm-btn primary" onClick={run} disabled={state === "run" || points === null || off}>
+              {state === "run" ? "Начисляю…" : "Начислить"}
+            </button>
+          </>
+        )
+      }
+    >
+      {error && <div className="crm-error">{error}</div>}
+      {off && <div className="crm-error">Приветственный бонус не задан в настройках бонусной программы</div>}
+      {state === "ask" && points !== null && !off && (
+        <span>
+          Начислить <b className="num">{num.format(points)}</b> бонусов {count} {clientsDat(count)}?
+        </span>
+      )}
+      {state !== "ask" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span>
+            Начислено: <b className="num">{progress.given}</b> {clientsDat(progress.given)}
+          </span>
+          {progress.skipped > 0 && (
+            <span className="muted">
+              Пропущено: {progress.skipped} {clientsGen(progress.skipped)} — бонус уже получен или есть покупка
+            </span>
+          )}
+        </div>
+      )}
+    </CrmModal>
   );
 }
