@@ -1,0 +1,9 @@
+{
+  "name": "ar-amir-app-video",
+  "private": true,
+  "description": "Source of the «how to get the bonus card app» video for the buyer's screen. Render: node tools/render.js",
+  "dependencies": {
+    "gsap": "3.15.1",
+    "qrcode": "1.5.4"
+  }
+}

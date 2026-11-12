@@ -1,0 +1,100 @@
+/* The poster's world: warm paper, ink, gold hairlines, Tenor Sans + Manrope.
+   The brand red lives only inside the logo. No green, no photographs. */
+:root {
+  --paper: #fbf7ef;
+  --paper-deep: #f3ead9;
+  --ink: #1f1712;
+  --muted: #6b6058;
+  --gold: #a8823f;
+  --gold-soft: rgba(168, 130, 63, 0.45);
+  --gold-faint: rgba(168, 130, 63, 0.18);
+  --card: #ffffff;
+  --terracotta: #ad5a3e;
+  --display: "Tenor Sans", "Manrope", sans-serif;
+  --sans: "Manrope", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: #000; }
+#frame {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 38%, #fffdf8 0%, var(--paper) 46%, var(--paper-deep) 100%);
+  font-family: var(--sans);
+  color: var(--ink);
+  font-variant-numeric: lining-nums;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+html.preview body { display: grid; place-items: center; min-height: 100vh; }
+html.preview #frame { zoom: 0.5; }
+#stage, #persistent { position: absolute; inset: 0; }
+#persistent { pointer-events: none; }
+.scene { position: absolute; inset: 0; }
+img { display: block; -webkit-user-drag: none; }
+
+/* ── type ─────────────────────────────────────────────────────────────── */
+.t-display { font-family: var(--display); font-weight: 400; font-size: 132px; line-height: 1.04; letter-spacing: 0.01em; margin: 0; }
+.t-h1 { font-family: var(--display); font-weight: 400; font-size: 92px; line-height: 1.1; margin: 0; }
+.t-h2 { font-family: var(--display); font-weight: 400; font-size: 70px; line-height: 1.14; margin: 0; }
+.t-text { font-size: 44px; line-height: 1.32; font-weight: 500; margin: 0; }
+.t-small { font-size: 34px; line-height: 1.35; font-weight: 500; margin: 0; }
+.t-muted { color: var(--muted); }
+.t-gold { color: var(--gold); }
+.t-eyebrow { font-size: 28px; font-weight: 700; letter-spacing: 0.34em; text-transform: uppercase; color: var(--gold); margin: 0; }
+.t-num { font-family: var(--display); font-weight: 400; }
+.nowrap { white-space: nowrap; }
+
+/* ── ornaments ────────────────────────────────────────────────────────── */
+/* Double hairline frame, as on the poster. */
+.poster-frame { position: absolute; inset: 26px; border: 3px solid var(--gold); pointer-events: none; }
+.poster-frame::after { content: ""; position: absolute; inset: 7px; border: 1.5px solid var(--gold-soft); }
+/* ─◆─ */
+.orn { display: flex; align-items: center; gap: 18px; }
+.orn i { width: 96px; height: 2px; background: var(--gold); display: block; }
+.orn em { width: 13px; height: 13px; background: var(--gold); transform: rotate(45deg); display: block; }
+.hair { height: 2px; background: var(--gold-soft); }
+.step-num {
+  width: 92px; height: 92px; border-radius: 50%; border: 2.5px solid var(--gold); color: var(--gold);
+  font-family: var(--display); font-size: 52px; display: grid; place-items: center; flex-shrink: 0;
+}
+.logo { width: 150px; height: 150px; border-radius: 34px; box-shadow: 0 24px 50px -24px rgba(31, 23, 18, 0.45); }
+
+/* ── QR ───────────────────────────────────────────────────────────────── */
+.qr { position: relative; background: #fff; border: 2px solid var(--gold-soft); border-radius: 34px; box-shadow: 0 30px 70px -40px rgba(31, 23, 18, 0.5); }
+.qr > img.qr-code { width: 100%; height: 100%; image-rendering: pixelated; }
+.qr > .qr-logo { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: #fff; display: grid; place-items: center; }
+.qr > .qr-logo img { border-radius: 16%; }
+
+/* ── phone ────────────────────────────────────────────────────────────── */
+/* Everything inside .phone-screen is laid out in the phone's own points (390 × 844);
+   the whole phone is then scaled by --s. Screens are stacked as .layer elements. */
+.phone { --s: 1; --bezel: 13px; position: relative; width: calc((390px + 2 * var(--bezel)) * var(--s)); height: calc((844px + 2 * var(--bezel)) * var(--s)); flex-shrink: 0; }
+.phone-body {
+  position: absolute; left: 0; top: 0; width: calc(390px + 2 * var(--bezel)); height: calc(844px + 2 * var(--bezel));
+  transform: scale(var(--s)); transform-origin: 0 0;
+  border-radius: 62px; background: linear-gradient(145deg, #3a302a 0%, #1c1512 55%, #2b221d 100%);
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.14) inset, 0 60px 90px -50px rgba(31, 23, 18, 0.55), 0 24px 40px -24px rgba(31, 23, 18, 0.35);
+}
+.phone-screen { position: absolute; left: var(--bezel); top: var(--bezel); width: 390px; height: 844px; border-radius: 50px; overflow: hidden; background: var(--paper); }
+.phone-status { position: absolute; left: 0; top: 0; width: 390px; height: 47px; z-index: 30; display: flex; align-items: center; justify-content: space-between; padding: 6px 30px 0 34px; font: 600 16px/1 var(--sans); color: var(--ink); }
+.phone-status .icons { display: flex; align-items: center; gap: 6px; }
+
+.phone-view { position: absolute; left: 0; top: 47px; width: 390px; height: 797px; overflow: hidden; }
+.phone-island { position: absolute; left: 50%; top: calc(var(--bezel) + 11px); width: 112px; height: 32px; margin-left: -56px; border-radius: 20px; background: #0d0a08; z-index: 40; }
+.phone-home { position: absolute; left: 50%; bottom: 8px; width: 136px; height: 5px; margin-left: -68px; border-radius: 3px; background: rgba(31, 23, 18, 0.85); z-index: 40; }
+
+.phone--android .phone-body { border-radius: 48px; }
+.phone--android .phone-screen { border-radius: 36px; }
+.phone--android .phone-island { width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; top: calc(var(--bezel) + 16px); }
+.phone--android .phone-status { padding: 4px 22px 0 24px; }
+.phone--android .phone-home { width: 108px; height: 4px; margin-left: -54px; bottom: 9px; }
+.layer { position: absolute; inset: 0; }
+.shot { width: 390px; height: auto; }
+
+/* A touch: a soft dot with a ring that opens. */
+.tap { position: absolute; width: 0; height: 0; z-index: 60; pointer-events: none; }
+.tap i, .tap b { position: absolute; left: 0; top: 0; border-radius: 50%; transform: translate(-50%, -50%); display: block; }
+.tap i { width: 54px; height: 54px; background: rgba(168, 130, 63, 0.42); border: 2px solid rgba(255, 255, 255, 0.9); box-shadow: 0 6px 16px rgba(31, 23, 18, 0.28); }
+.tap b { width: 54px; height: 54px; border: 3px solid var(--gold); }

@@ -1,0 +1,27 @@
+/* Phone camera looking at a QR. Drawn, simplified. Prefix: .m-cam- */
+.m-cam { position: absolute; inset: 0; background: #14110f; overflow: hidden; }
+/* What the lens sees: the till's screen, out of focus at the edges. */
+.m-cam-world { position: absolute; left: -40px; top: 120px; width: 470px; height: 560px; border-radius: 10px;
+  background: radial-gradient(90% 70% at 50% 40%, #fffdf8 0%, #f6efe2 60%, #e6dccb 100%); box-shadow: 0 0 0 9px #26211d, 0 40px 80px rgba(0, 0, 0, 0.6); }
+.m-cam-world .m-cam-title { position: absolute; left: 0; right: 0; top: 52px; text-align: center; font: 400 22px/1 var(--display); letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink); }
+.m-cam-world .m-cam-code { position: absolute; left: 50%; top: 116px; width: 250px; height: 250px; margin-left: -125px; background: #fff; border-radius: 18px; padding: 16px; box-shadow: 0 0 0 1.5px rgba(168, 130, 63, 0.4); }
+.m-cam-world .m-cam-code img { width: 100%; height: 100%; image-rendering: pixelated; }
+.m-cam-world .m-cam-url { position: absolute; left: 0; right: 0; top: 396px; text-align: center; font: 400 19px/1 var(--display); letter-spacing: 0.06em; color: var(--ink); }
+.m-cam-vignette { position: absolute; inset: 0; background: radial-gradient(75% 55% at 50% 44%, transparent 55%, rgba(0, 0, 0, 0.5) 100%); }
+/* Yellow focus brackets around the code. */
+.m-cam-focus { position: absolute; left: 62px; top: 228px; width: 266px; height: 266px; }
+.m-cam-focus i { position: absolute; width: 38px; height: 38px; border: 4px solid #ffd60a; border-radius: 4px; }
+.m-cam-focus i:nth-child(1) { left: 0; top: 0; border-right: 0; border-bottom: 0; border-top-left-radius: 14px; }
+.m-cam-focus i:nth-child(2) { right: 0; top: 0; border-left: 0; border-bottom: 0; border-top-right-radius: 14px; }
+.m-cam-focus i:nth-child(3) { left: 0; bottom: 0; border-right: 0; border-top: 0; border-bottom-left-radius: 14px; }
+.m-cam-focus i:nth-child(4) { right: 0; bottom: 0; border-left: 0; border-top: 0; border-bottom-right-radius: 14px; }
+/* The link the camera offers once it has read the code. */
+.m-cam-link { position: absolute; left: 50%; top: 512px; transform: translateX(-50%); display: flex; align-items: center; gap: 9px; height: 46px; padding: 0 20px 0 14px; border-radius: 23px; background: #ffd60a; color: #1c1a12; font: 700 19px/1 var(--sans); white-space: nowrap; box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45); }
+.m-cam-link svg { flex-shrink: 0; }
+/* Camera controls. */
+.m-cam-top { position: absolute; left: 0; right: 0; top: 0; height: 104px; background: linear-gradient(#0a0908 40%, rgba(10, 9, 8, 0)); }
+.m-cam-bottom { position: absolute; left: 0; right: 0; bottom: 0; height: 196px; background: #0a0908; }
+.m-cam-modes { position: absolute; left: 0; right: 0; top: 16px; display: flex; justify-content: center; gap: 22px; font: 600 13px/1 var(--sans); letter-spacing: 0.06em; color: rgba(255, 255, 255, 0.7); text-transform: uppercase; }
+.m-cam-modes b { color: #ffd60a; font-weight: 700; }
+.m-cam-shutter { position: absolute; left: 50%; top: 58px; width: 74px; height: 74px; margin-left: -37px; border-radius: 50%; border: 4px solid #fff; }
+.m-cam-shutter::after { content: ""; position: absolute; inset: 4px; border-radius: 50%; background: #fff; }
