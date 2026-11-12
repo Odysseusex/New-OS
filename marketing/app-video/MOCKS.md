@@ -41,7 +41,7 @@ V.mocks.thing = function (phone /* element from V.phone() */, opts = {}) {
 - Initial states: set them at build time with `gsap.set(...)` and animate with `tl.to(...)`. A `from()` /
   `fromTo()` renders its start values immediately — fine for an element's first tween, but any later
   `from`/`fromTo` on the same element needs `immediateRender: false` (or use `tl.set` + `tl.to`).
-- A user touch is `V.tap(tl, screen, x, y, at)` (x, y in phone points) — about 0.8 s long; the thing touched
+- A user touch is `V.tap(tl, screen, x, y, at)` (x, y in phone points) — about 0.65 s long; the thing touched
   should visibly react ~0.25 s after `at` (press-in), and the screen should change ~0.45 s after `at`.
 - Dark screens: `V.statusLight(tl, phone, at, true)` for a white status bar; switch back on leaving.
 - Real app screens are `V.shot("<name>")` (390 pt wide images from `assets/app/`), placed inside `.phone-view`

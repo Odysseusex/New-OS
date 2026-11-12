@@ -20,6 +20,8 @@
   V.fmt = (n) => new Intl.NumberFormat("ru-RU").format(n).replace(/ /g, " ");
 
   V.boot = async () => {
+    // Fonts first: scenes measure their own text while they are built.
+    await Promise.all(Array.from(document.fonts).map((f) => f.load().catch(() => null)));
     const stage = document.getElementById("stage");
     const master = gsap.timeline({ paused: true });
     scenes.sort((a, b) => a.start - b.start);
@@ -50,9 +52,14 @@
     V.master = master;
     await document.fonts.ready;
     await Promise.all(Array.from(document.images).map((img) => (img.complete ? null : new Promise((r) => ((img.onload = r), (img.onerror = r))))));
-    window.__duration = V.duration;
+    // V.cfg.preroll: seconds of timeline BEFORE the video's first frame. A looping film uses it to
+    // arrive at frame 0 already in the state its last frame leaves (nothing fades in at the seam).
+    const pre = V.cfg.preroll || 0;
+    window.__duration = V.duration - pre;
     window.__seek = (t) => {
-      master.time(t, false);
+      // Never exactly 0: a set() placed at time 0 only applies once the playhead has moved,
+      // and a blank first frame would flash on every loop.
+      master.time(Math.max(t + pre, 0.0001), false);
       for (const fn of seekHooks) fn(t);
       return true;
     };
@@ -62,7 +69,7 @@
     if (new URLSearchParams(location.search).has("play")) {
       const t0 = performance.now();
       const tick = () => {
-        window.__seek(((performance.now() - t0) / 1000) % V.duration);
+        window.__seek(((performance.now() - t0) / 1000) % window.__duration);
         requestAnimationFrame(tick);
       };
       document.documentElement.classList.add("preview");

@@ -1,0 +1,59 @@
+/* The film: a permanent poster column with the code on the right, the steps and one phone on the left. */
+
+/* ── right: the poster column (never moves) ───────────────────────────── */
+.f-divider { position: absolute; left: 1262px; top: 100px; width: 2px; height: 880px; background: linear-gradient(var(--gold-soft), var(--gold) 20%, var(--gold) 80%, var(--gold-soft)); opacity: 0.7; }
+.f-divider::after { content: ""; position: absolute; left: -5.5px; top: 434px; width: 13px; height: 13px; background: var(--gold); transform: rotate(45deg); }
+.f-panel { position: absolute; left: 1264px; top: 0; width: 620px; height: 1080px; display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 74px; }
+.f-panel-title { font: 400 40px/1.1 var(--display); letter-spacing: 0.2em; margin-right: -0.2em; text-transform: uppercase; }
+.f-panel-offer { margin-top: 26px; font: 400 66px/1 var(--display); white-space: nowrap; }
+.f-panel-offer-sub { margin-top: 12px; font: 500 36px/1.15 var(--sans); color: var(--muted); }
+.f-panel .qr { margin-top: 30px; border-radius: 30px; }
+.f-panel-act { margin-top: 28px; font: 600 38px/1.24 var(--sans); }
+.f-panel-url { margin-top: 14px; font: 400 32px/1 var(--display); letter-spacing: 0.06em; color: var(--muted); }
+/* Corner brackets that close around the code once per loop (outside the white card). */
+.f-brackets { position: absolute; }
+.f-brackets i { position: absolute; width: 46px; height: 46px; border: 4px solid var(--gold); }
+.f-brackets i:nth-child(1) { left: 0; top: 0; border-right: 0; border-bottom: 0; border-top-left-radius: 26px; }
+.f-brackets i:nth-child(2) { right: 0; top: 0; border-left: 0; border-bottom: 0; border-top-right-radius: 26px; }
+.f-brackets i:nth-child(3) { left: 0; bottom: 0; border-right: 0; border-top: 0; border-bottom-left-radius: 26px; }
+.f-brackets i:nth-child(4) { right: 0; bottom: 0; border-left: 0; border-top: 0; border-bottom-right-radius: 26px; }
+
+/* ── left: the page of text ───────────────────────────────────────────── */
+.f-col { position: absolute; left: 104px; top: 128px; width: 676px; height: 840px; }
+.f-page { position: absolute; left: 0; top: 0; width: 100%; display: flex; flex-direction: column; align-items: flex-start; }
+.f-step { display: flex; align-items: center; gap: 20px; font: 700 27px/1 var(--sans); letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold); height: 34px; }
+.f-step-dots { display: flex; gap: 12px; }
+.f-step-dots i { width: 11px; height: 11px; transform: rotate(45deg); border: 2px solid var(--gold); display: block; }
+.f-step-dots i.on { background: var(--gold); }
+.f-platform { margin-top: 30px; font: 400 88px/1 var(--display); color: var(--gold); }
+.f-head { margin: 30px 0 0; font: 400 64px/1.14 var(--display); }
+.f-platform + .f-head { margin-top: 12px; font-size: 54px; }
+.f-line { display: block; overflow: hidden; padding-bottom: 0.1em; margin-bottom: -0.1em; }
+.f-line > span { display: block; white-space: nowrap; }
+.f-rows { list-style: none; margin: 44px 0 0; padding: 0; display: flex; flex-direction: column; gap: 22px; width: 100%; }
+.f-row { display: flex; align-items: flex-start; gap: 22px; }
+.f-bullet { position: relative; width: 58px; height: 58px; margin-top: 6px; flex-shrink: 0; border-radius: 50%; border: 2px solid var(--gold-soft); color: var(--muted); font: 400 30px/1 var(--display); display: grid; place-items: center; }
+.f-bullet > u { position: absolute; inset: -2px; border-radius: 50%; background: var(--gold); color: #fff; display: grid; place-items: center; text-decoration: none; }
+.f-row-body { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
+.f-chip { position: relative; display: inline-flex; align-items: center; gap: 14px; height: 70px; padding: 0 24px; border-radius: 18px; border: 2px solid rgba(31, 23, 18, 0.5); font: 600 40px/1 var(--sans); white-space: nowrap; }
+.f-chip > u { position: absolute; inset: -2px; border-radius: 18px; background: #fff; border: 3px solid var(--gold); box-shadow: 0 18px 34px -18px rgba(31, 23, 18, 0.4); }
+.f-chip > span, .f-chip > svg, .f-chip > img { position: relative; }
+.f-chip img { width: 42px; height: 42px; border-radius: 10px; }
+.f-plain { font: 600 40px/1.2 var(--sans); padding-top: 12px; min-height: 70px; display: flex; align-items: center; gap: 14px; }
+.f-plain.is-chip { padding-top: 0; }
+.f-sub { font: 500 32px/1.2 var(--sans); color: var(--muted); }
+.f-note { margin: 34px 0 0; padding-left: 22px; border-left: 3px solid var(--gold); font: 600 36px/1.25 var(--sans); }
+/* The opening page: what the card gives. */
+.f-brandline { font: 700 27px/1 var(--sans); letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold); height: 34px; display: flex; align-items: center; }
+.f-levels { margin-top: 44px; display: grid; grid-template-columns: repeat(2, 286px); gap: 26px 56px; }
+.f-level { display: flex; flex-direction: column; gap: 12px; padding-bottom: 18px; border-bottom: 2px solid var(--gold-soft); }
+.f-level b { font: 400 80px/1 var(--display); white-space: nowrap; }
+.f-level span { font: 700 31px/1 var(--sans); letter-spacing: 0.16em; text-transform: uppercase; color: var(--gold); }
+.f-facts { margin-top: 40px; font: 500 38px/1.3 var(--sans); color: var(--muted); }
+.f-facts b { color: var(--ink); font-weight: 600; }
+
+/* ── the phone and the line that points at it ─────────────────────────── */
+.f-phone { position: absolute; left: 814px; top: 105px; }
+.f-leads { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: visible; pointer-events: none; }
+.f-leads path { fill: none; stroke: var(--gold); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.f-leads circle { fill: var(--gold); }

@@ -44,9 +44,9 @@
     gsap.set([dot, ring], { autoAlpha: 0, scale: 0.5 });
     tl.to(dot, { autoAlpha: 1, scale: 1, duration: 0.2, ease: "power2.out" }, at)
       .to(dot, { scale: 0.82, duration: 0.14, ease: "power2.in" }, at + 0.24)
-      .set(ring, { autoAlpha: 0.9, scale: 0.8 }, at + 0.34)
-      .to(ring, { autoAlpha: 0, scale: 2.1, duration: 0.6, ease: "power2.out" }, at + 0.34)
-      .to(dot, { autoAlpha: 0, scale: 1.1, duration: 0.3, ease: "power1.out" }, at + 0.5);
+      .set(ring, { autoAlpha: 0.9, scale: 0.8 }, at + 0.22)
+      .to(ring, { autoAlpha: 0, scale: 1.9, duration: 0.4, ease: "power2.out" }, at + 0.22)
+      .to(dot, { autoAlpha: 0, scale: 1.1, duration: 0.22, ease: "power1.out" }, at + 0.42);
     return el;
   };
 

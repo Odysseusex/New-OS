@@ -1,0 +1,61 @@
+/* Android: Chrome → «⋮» → «Добавить на гл. экран» → «Установить» → home screen → the app opens.
+   Drawn, simplified. Prefix: .m-and-  (geometry that the anchors depend on is set inline by the script) */
+.m-and { position: absolute; inset: 0; overflow: hidden; font-family: var(--sans); }
+.m-and i { display: block; font-style: normal; }
+
+/* The gold ring that marks the one control to press. */
+.m-and-ring { position: absolute; border: 2px solid #a8823f; background: rgba(168, 130, 63, 0.09); box-shadow: 0 0 0 5px rgba(168, 130, 63, 0.22); pointer-events: none; }
+
+/* ── Chrome ───────────────────────────────────────────────────────────── */
+.m-and-chrome { position: absolute; inset: 0; overflow: hidden; border-radius: 36px; background: #fbf7f0; box-shadow: 0 40px 110px rgba(31, 23, 18, 0.4); }
+.m-and-page { position: absolute; left: 0; top: 103px; width: 390px; height: 741px; overflow: hidden; background: #fbf7f0; }
+.m-and-bar { position: absolute; left: 0; top: 0; width: 390px; height: 103px; background: #fff; box-shadow: 0 1px 0 rgba(31, 23, 18, 0.09); }
+.m-and-btn { position: absolute; top: 51px; width: 48px; height: 48px; display: grid; place-items: center; color: #444746; }
+.m-and-pill { position: absolute; left: 54px; top: 55px; width: 228px; height: 40px; border-radius: 20px; background: #edf0f3; display: flex; align-items: center; gap: 9px; padding: 0 14px 0 13px; font: 500 16px/1 var(--sans); color: #1f1f1f; white-space: nowrap; }
+.m-and-pill svg { flex-shrink: 0; color: #444746; }
+.m-and-pill em { font-style: normal; color: #6a6d70; }
+.m-and-tabs { width: 21px; height: 21px; border: 2px solid #444746; border-radius: 6px; display: grid; place-items: center; font: 700 11.5px/1 var(--sans); color: #444746; }
+.m-and-press { position: absolute; border-radius: 50%; background: rgba(31, 31, 31, 0.1); }
+
+/* The menu that drops from «⋮». */
+.m-and-menu { position: absolute; border-radius: 16px; background: #fff; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.12); }
+.m-and-menu-icons { position: absolute; left: 0; right: 0; top: 4px; height: 48px; display: flex; align-items: center; justify-content: space-around; padding: 0 8px; color: #444746; }
+.m-and-menu-div { position: absolute; left: 0; right: 0; height: 1px; background: rgba(31, 31, 31, 0.1); }
+.m-and-row { position: absolute; left: 0; right: 0; height: 48px; display: flex; align-items: center; gap: 16px; padding: 0 12px 0 16px; font: 500 16px/1 var(--sans); color: #1f1f1f; white-space: nowrap; }
+.m-and-row svg { flex-shrink: 0; color: #444746; }
+
+/* The install dialog. */
+.m-and-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.32); }
+.m-and-dialog { position: absolute; border-radius: 28px; background: #fff; box-shadow: 0 16px 44px rgba(0, 0, 0, 0.26), 0 2px 8px rgba(0, 0, 0, 0.1); }
+.m-and-dialog-title { position: absolute; left: 24px; top: 24px; font: 500 22px/28px var(--sans); letter-spacing: -0.01em; color: #1f1f1f; white-space: nowrap; }
+.m-and-dialog-app { position: absolute; left: 24px; top: 70px; display: flex; align-items: center; gap: 16px; }
+.m-and-dialog-app img { width: 48px; height: 48px; border-radius: 12px; }
+.m-and-dialog-app b { display: block; font: 600 16px/20px var(--sans); color: #1f1f1f; }
+.m-and-dialog-app span { display: block; margin-top: 2px; font: 400 14px/18px var(--sans); color: #5f6368; }
+.m-and-dbtn { position: absolute; height: 40px; border-radius: 20px; display: grid; place-items: center; font: 600 15px/1 var(--sans); color: #0b57d0; white-space: nowrap; }
+
+/* ── Home screen ──────────────────────────────────────────────────────── */
+.m-and-home { position: absolute; inset: 0; overflow: hidden; background: linear-gradient(168deg, #f4ebdd 0%, #eadcc8 46%, #dcc9af 100%); }
+.m-and-wall-a { position: absolute; left: -250px; top: 250px; width: 640px; height: 640px; border-radius: 50%; background: linear-gradient(150deg, rgba(255, 250, 240, 0.55) 0%, rgba(232, 216, 194, 0.35) 60%); }
+.m-and-wall-b { position: absolute; left: 150px; top: -210px; width: 520px; height: 520px; border-radius: 50%; background: linear-gradient(200deg, rgba(214, 194, 166, 0.5) 0%, rgba(226, 209, 185, 0.2) 70%); }
+.m-and-glance { position: absolute; left: 28px; top: 96px; }
+.m-and-glance i { height: 9px; border-radius: 5px; background: rgba(31, 23, 18, 0.26); width: 132px; }
+.m-and-glance i + i { margin-top: 11px; width: 84px; height: 7px; background: rgba(31, 23, 18, 0.16); }
+.m-and-tile { position: absolute; width: 60px; height: 60px; border-radius: 19px; box-shadow: 0 10px 18px -12px rgba(74, 52, 30, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+.m-and-tone-1 { background: linear-gradient(160deg, #fdf9f1, #f3eadb); }
+.m-and-tone-2 { background: linear-gradient(160deg, #d9c8b0, #cbb89e); }
+.m-and-tone-3 { background: linear-gradient(160deg, #c4ad92, #b59c80); }
+.m-and-tone-4 { background: linear-gradient(160deg, #a38d78, #937d69); }
+.m-and-tone-5 { background: linear-gradient(160deg, #f1e6d5, #e2d2bb); }
+.m-and-name { position: absolute; height: 6px; border-radius: 3px; background: rgba(31, 23, 18, 0.22); }
+.m-and-search { position: absolute; left: 22px; top: 758px; width: 346px; height: 50px; border-radius: 25px; background: rgba(255, 253, 248, 0.82); box-shadow: 0 8px 18px -14px rgba(74, 52, 30, 0.5); display: flex; align-items: center; gap: 12px; padding: 0 18px; color: #6b6058; }
+.m-and-search i { width: 74px; height: 7px; border-radius: 4px; background: rgba(31, 23, 18, 0.14); }
+/* The new icon. */
+.m-and-app { position: absolute; width: 60px; height: 60px; }
+.m-and-app img { width: 60px; height: 60px; border-radius: 19px; box-shadow: 0 10px 18px -10px rgba(74, 52, 30, 0.6); }
+.m-and-app-name { position: absolute; width: 100px; text-align: center; font: 600 13px/16px var(--sans); color: #1f1712; white-space: nowrap; }
+
+/* ── The app opening: paper and the logo grow out of the icon ─────────── */
+.m-and-launch-wrap { position: absolute; inset: 0; filter: drop-shadow(0 12px 26px rgba(31, 23, 18, 0.3)); }
+.m-and-launch { position: absolute; inset: 0; background: #fbf7ef; }
+.m-and-launch img { position: absolute; border-radius: 24px; box-shadow: 0 18px 30px -18px rgba(31, 23, 18, 0.45); }

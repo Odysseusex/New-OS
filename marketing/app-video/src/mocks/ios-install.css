@@ -1,0 +1,77 @@
+/* iPhone: Safari → «Поделиться» → «На экран «Домой»» → «Добавить» → home screen → the app opens.
+   Drawn, simplified. Everything in phone points (390 × 844). Prefix: .m-ios- */
+.m-ios { position: absolute; inset: 0; overflow: hidden; isolation: isolate; background: #e6dac6; font-family: var(--sans); color: #111; }
+.m-ios svg { display: block; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; }
+
+/* The gold ring around the one control to press. */
+.m-ios-ring { position: absolute; border: 2px solid #a8823f; box-shadow: 0 0 0 4px rgba(168, 130, 63, 0.2), 0 0 14px 1px rgba(168, 130, 63, 0.36); pointer-events: none; }
+
+/* ── home screen (under Safari until «Добавить») ─────────────────────────── */
+.m-ios-home { position: absolute; inset: 0; background:
+  radial-gradient(95% 60% at 16% 6%, rgba(255, 252, 245, 0.8) 0%, rgba(255, 252, 245, 0) 72%),
+  radial-gradient(95% 60% at 92% 100%, rgba(146, 116, 86, 0.3) 0%, rgba(146, 116, 86, 0) 72%),
+  linear-gradient(165deg, #efe6d7 0%, #e4d7c2 48%, #d6c5ac 100%); }
+.m-ios-tile { position: absolute; width: 60px; height: 60px; border-radius: 14px;
+  background-image: linear-gradient(155deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0) 62%);
+  box-shadow: 0 1px 2px rgba(60, 42, 24, 0.1), 0 7px 14px -9px rgba(60, 42, 24, 0.4); }
+.m-ios-tile i { position: absolute; left: 50%; top: 72px; height: 5px; border-radius: 3px; background: rgba(31, 23, 18, 0.2); transform: translateX(-50%); }
+.m-ios-dock { position: absolute; left: 12px; top: 736px; width: 366px; height: 96px; border-radius: 36px; background: rgba(255, 253, 248, 0.46); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4); }
+.m-ios-dots { position: absolute; left: 0; right: 0; top: 707px; display: flex; justify-content: center; gap: 8px; }
+.m-ios-dots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(31, 23, 18, 0.2); }
+.m-ios-dots i:first-child { background: rgba(31, 23, 18, 0.58); }
+/* The new icon. */
+.m-ios-app { position: absolute; left: 211px; top: 376px; width: 60px; height: 60px; }
+.m-ios-app img { width: 60px; height: 60px; border-radius: 14px; box-shadow: 0 1px 2px rgba(60, 42, 24, 0.14), 0 9px 16px -9px rgba(60, 42, 24, 0.55); }
+.m-ios-app span { position: absolute; left: -20px; top: 68px; width: 100px; text-align: center; font: 600 12px/15px var(--sans); color: #1f1712; white-space: nowrap; }
+.m-ios-ring--home, .m-ios-ping { left: 207px; top: 372px; width: 68px; height: 68px; border-radius: 18px; }
+.m-ios-ping { position: absolute; border: 2px solid #a8823f; pointer-events: none; }
+
+/* ── Safari ──────────────────────────────────────────────────────────────── */
+.m-ios-safari { position: absolute; inset: 0; background: #fbf7f0; box-shadow: 0 -14px 44px rgba(31, 23, 18, 0.24); }
+.m-ios-page { position: absolute; left: 0; top: 47px; width: 390px; height: 664px; overflow: hidden; }
+.m-ios-chrome { position: absolute; left: 0; top: 711px; width: 390px; height: 133px; background: #f6f5f3; box-shadow: 0 -1px 0 rgba(0, 0, 0, 0.1); }
+.m-ios-pill { position: absolute; left: 18px; top: 8px; width: 354px; height: 46px; border-radius: 13px; background: #fff; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.07), 0 2px 8px rgba(0, 0, 0, 0.1); text-align: center; font: 500 17px/46px var(--sans); color: #111; }
+.m-ios-aa { position: absolute; left: 14px; top: 0; font: 500 17px/46px var(--sans); letter-spacing: -0.01em; }
+.m-ios-aa small { font-size: 12px; }
+.m-ios-reload { position: absolute; right: 13px; top: 13px; color: #111; }
+.m-ios-bar { position: absolute; left: 10px; top: 56px; width: 370px; height: 44px; display: flex; justify-content: space-between; }
+.m-ios-bar > span { position: relative; width: 44px; height: 44px; display: grid; place-items: center; color: #007aff; }
+.m-ios-bar > span.m-ios-off { color: #c2c2c7; }
+.m-ios-ring--share { left: -1px; top: -1px; width: 46px; height: 46px; border-radius: 50%; }
+
+.m-ios-dim { position: absolute; inset: 0; background: #000; opacity: 0; }
+
+/* ── share sheet ─────────────────────────────────────────────────────────── */
+.m-ios-sheet { position: absolute; left: 0; top: 340px; width: 390px; height: 504px; border-radius: 14px 14px 0 0; background: #f2f2f7; }
+.m-ios-grab { position: absolute; left: 177px; top: 6px; width: 36px; height: 5px; border-radius: 3px; background: rgba(60, 60, 67, 0.3); }
+.m-ios-head { position: absolute; left: 16px; top: 22px; width: 358px; height: 40px; }
+.m-ios-head img { position: absolute; left: 0; top: 0; width: 40px; height: 40px; border-radius: 9.5px; }
+.m-ios-head b { position: absolute; left: 52px; top: 1px; font: 600 15px/20px var(--sans); color: #111; white-space: nowrap; }
+.m-ios-head em { position: absolute; left: 52px; top: 21px; font: normal 500 13px/18px var(--sans); color: #8a8a8e; white-space: nowrap; }
+.m-ios-x { position: absolute; right: 0; top: 5px; width: 30px; height: 30px; border-radius: 50%; background: rgba(118, 118, 128, 0.16); display: grid; place-items: center; color: #7b7b80; }
+.m-ios-rule { position: absolute; left: 0; top: 76px; width: 390px; height: 1px; background: rgba(60, 60, 67, 0.12); }
+.m-ios-targets { position: absolute; left: 18px; top: 93px; width: 354px; display: flex; justify-content: space-between; }
+.m-ios-targets span { width: 72px; text-align: center; font: 500 11px/13px var(--sans); color: #2c2c2e; white-space: nowrap; }
+.m-ios-targets i { display: block; width: 60px; height: 60px; margin: 0 auto 7px; border-radius: 50%; }
+.m-ios-list { position: absolute; left: 16px; top: 192px; width: 358px; border-radius: 12px; background: #fff; overflow: hidden; }
+.m-ios-row { position: relative; height: 52px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; background: #fff; font: 500 17px/22px var(--sans); color: #111; white-space: nowrap; }
+.m-ios-row + .m-ios-row::before { content: ""; position: absolute; left: 16px; right: 0; top: 0; height: 1px; background: rgba(60, 60, 67, 0.13); }
+.m-ios-ring--row { left: 14px; top: 398px; width: 362px; height: 56px; border-radius: 13px; }
+
+/* ── «На экран «Домой»» (the add screen: a full-height sheet) ─────────────── */
+.m-ios-add { position: absolute; left: 0; top: 57px; width: 390px; height: 787px; border-radius: 14px 14px 0 0; background: #f2f2f7; box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.16); }
+.m-ios-nav { position: absolute; left: 0; top: 0; width: 390px; height: 56px; font: 500 16px/56px var(--sans); letter-spacing: -0.2px; white-space: nowrap; }
+.m-ios-nav .m-ios-cancel { position: absolute; left: 18px; top: 0; color: #007aff; }
+.m-ios-nav .m-ios-title { position: absolute; left: 0; top: 0; width: 390px; text-align: center; font-weight: 600; color: #111; }
+.m-ios-nav .m-ios-ok { position: absolute; right: 18px; top: 0; font-weight: 700; color: #007aff; }
+.m-ios-ring--add { left: -9px; right: -9px; top: 11px; height: 34px; border-radius: 17px; }
+.m-ios-card { position: absolute; left: 16px; top: 68px; width: 358px; height: 92px; border-radius: 12px; background: #fff; }
+.m-ios-card img { position: absolute; left: 16px; top: 16px; width: 60px; height: 60px; border-radius: 14px; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12); }
+.m-ios-card b { position: absolute; left: 92px; top: 0; font: 500 17px/46px var(--sans); color: #111; white-space: nowrap; }
+.m-ios-card em { position: absolute; left: 92px; top: 46px; font: normal 500 15px/45px var(--sans); color: #8a8a8e; white-space: nowrap; }
+.m-ios-card u { position: absolute; left: 92px; right: 0; top: 46px; height: 1px; background: rgba(60, 60, 67, 0.13); }
+.m-ios-clear { position: absolute; right: 14px; top: 14px; width: 18px; height: 18px; border-radius: 50%; background: #c7c7cc; display: grid; place-items: center; color: #fff; }
+
+/* ── the app opening: grows out of the icon ──────────────────────────────── */
+.m-ios-launch { position: absolute; left: 211px; top: 376px; width: 60px; height: 60px; border-radius: 14px; overflow: hidden; background: #fbf7ef; box-shadow: 0 18px 50px rgba(31, 23, 18, 0.26); }
+.m-ios-launch img { position: absolute; left: 50%; top: 50%; width: 110px; height: 110px; border-radius: 24px; box-shadow: 0 16px 30px -16px rgba(31, 23, 18, 0.45); }

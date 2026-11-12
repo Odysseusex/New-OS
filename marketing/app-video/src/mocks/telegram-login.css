@@ -1,0 +1,57 @@
+/* The bakery's Telegram bot asking for the customer's number. Drawn, simplified. Prefix: .m-tg- */
+.m-tg { position: absolute; inset: 0; overflow: hidden; isolation: isolate; background: linear-gradient(180deg, #ece7dd 0%, #e5ded1 100%); font-family: var(--sans); color: #1b1613; }
+
+/* The gold ring around the one control to press. */
+.m-tg-ring { position: absolute; z-index: 14; border: 2px solid #a8823f; box-shadow: 0 0 0 4px rgba(168, 130, 63, 0.2), 0 0 14px 1px rgba(168, 130, 63, 0.36); pointer-events: none; }
+
+/* ── header: back, the bot's picture, its name ─────────────────────────── */
+.m-tg-head { position: absolute; left: 0; top: 0; width: 390px; height: 102px; z-index: 5; background: #fff; box-shadow: 0 1px 0 rgba(31, 23, 18, 0.1); }
+.m-tg-back { position: absolute; left: 12px; top: 64px; }
+.m-tg-ava { position: absolute; left: 38px; top: 55px; width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
+.m-tg-title { position: absolute; left: 90px; top: 55px; font: 700 17px/22px var(--sans); white-space: nowrap; }
+.m-tg-sub { position: absolute; left: 90px; top: 77px; font: 500 13px/17px var(--sans); color: #8d8882; }
+.m-tg-more { position: absolute; right: 17px; top: 65px; }
+
+/* ── the chat ──────────────────────────────────────────────────────────── */
+/* What the bot says about itself, in the middle of an empty chat. */
+.m-tg-card { position: absolute; left: 80px; top: 384px; width: 230px; height: 62px; padding: 11px 14px; border-radius: 14px; background: rgba(255, 255, 255, 0.74); text-align: center; font: 500 15px/20px var(--sans); color: #4a433d; }
+.m-tg-thread { position: absolute; inset: 0; }
+.m-tg-row { position: absolute; left: 0; width: 390px; height: 0; }
+.m-tg-msg { position: absolute; top: 0; max-width: 290px; padding: 7px 12px 8px; border-radius: 16px; font: 500 16px/21px var(--sans); box-shadow: 0 1px 1.5px rgba(31, 23, 18, 0.13); }
+.m-tg-msg--in { left: 10px; background: #fff; }
+.m-tg-msg--out { right: 10px; background: #e3f2fd; }
+/* A bubble is as wide as its longest line (CSS alone would leave a wrapped one at its max-width). */
+.m-tg-msg--ask { width: 253px; }
+/* Its last line is full, so the time takes the corner under it (as Telegram does). */
+.m-tg-msg--done { width: 278px; padding-bottom: 23px; }
+/* The time sits in the last line when there is room for it: an inline spacer keeps that room. */
+.m-tg-sp { display: inline-block; width: 36px; height: 1px; }
+.m-tg-msg--out .m-tg-sp { width: 54px; }
+.m-tg-meta { position: absolute; right: 11px; bottom: 6px; display: flex; align-items: center; gap: 3px; font: 500 11.5px/14px var(--sans); color: #9a948d; white-space: nowrap; }
+.m-tg-msg--out .m-tg-meta { right: 9px; color: #6b9fcf; }
+.m-tg-meta svg { display: block; }
+/* A shared contact. */
+.m-tg-contact { width: 238px; height: 58px; padding: 0; }
+.m-tg-cava { position: absolute; left: 8px; top: 8px; width: 42px; height: 42px; border-radius: 50%; background: linear-gradient(180deg, #c4beb5 0%, #a39c92 100%); color: #fff; display: grid; place-items: center; font: 600 19px/1 var(--sans); }
+.m-tg-cname { position: absolute; left: 60px; top: 8px; font: 700 15.5px/21px var(--sans); color: #3390ec; white-space: nowrap; }
+.m-tg-cphone { position: absolute; left: 60px; top: 29px; font: 500 15px/21px var(--sans); white-space: nowrap; }
+
+/* ── bottom: «НАЧАТЬ», then the message field with the bot's keyboard ───── */
+.m-tg-start { position: absolute; left: 0; top: 760px; width: 390px; height: 84px; z-index: 6; background: #fff; box-shadow: 0 -1px 0 rgba(31, 23, 18, 0.1); }
+.m-tg-start b { position: absolute; left: 0; top: 0; width: 390px; height: 50px; display: grid; place-items: center; font: 700 16px/1 var(--sans); letter-spacing: 0.04em; color: #3390ec; }
+.m-tg-input { position: absolute; left: 0; top: 694px; width: 390px; height: 150px; z-index: 7; background: #fff; box-shadow: 0 -1px 0 rgba(31, 23, 18, 0.1); }
+.m-tg-clip { position: absolute; left: 12px; top: 15px; }
+.m-tg-field { position: absolute; left: 47px; top: 8px; width: 296px; height: 38px; border-radius: 19px; background: #f3f1ed; padding: 0 16px; font: 500 16px/38px var(--sans); color: #9d978f; }
+.m-tg-mic { position: absolute; right: 12px; top: 15px; }
+.m-tg-keys { position: absolute; left: 0; top: 748px; width: 390px; height: 96px; z-index: 8; background: #e6e2dc; }
+.m-tg-key { position: absolute; left: 8px; top: 8px; width: 374px; height: 48px; border-radius: 11px; background: #fff; box-shadow: 0 1px 0 rgba(31, 23, 18, 0.24); display: flex; align-items: center; justify-content: center; gap: 9px; font: 600 16px/1 var(--sans); white-space: nowrap; }
+.m-tg-key svg { display: block; flex-shrink: 0; }
+
+/* ── «Поделиться номером?» ─────────────────────────────────────────────── */
+.m-tg-dim { position: absolute; inset: 0; z-index: 10; background: #000; }
+.m-tg-dialog { position: absolute; left: 55px; top: 357px; width: 280px; height: 130px; z-index: 11; border-radius: 14px; background: #fff; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28); text-align: center; }
+.m-tg-dialog h4 { position: absolute; left: 14px; right: 14px; top: 19px; margin: 0; font: 700 17px/22px var(--sans); }
+.m-tg-dialog p { position: absolute; left: 14px; right: 14px; top: 45px; margin: 0; font: 500 13.5px/19px var(--sans); color: #3f3833; white-space: nowrap; }
+.m-tg-btns { position: absolute; left: 0; top: 84px; width: 280px; height: 46px; border-top: 1px solid rgba(31, 23, 18, 0.13); display: flex; }
+.m-tg-btn { flex: 1 1 0; display: grid; place-items: center; font: 500 16.5px/1 var(--sans); color: #3390ec; border-bottom-left-radius: 14px; }
+.m-tg-btn--ok { font-weight: 700; border-left: 1px solid rgba(31, 23, 18, 0.13); border-radius: 0 0 14px 0; }
