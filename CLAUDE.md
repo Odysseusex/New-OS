@@ -1802,6 +1802,13 @@ with the programme on (else the oldest non-sandbox org).
   WhatsApp/Telegram skipped. Staff names are stored but never shown to the customer. `LoyaltyAnalyticsService` ↔
   `CustomerBotService` ↔ `ClubChatService` is a loop of files: both ends use `@Inject(forwardRef(...))` — removing it
   breaks boot (caught by starting the server, the app-boot spec did NOT catch it). Spec `loyalty/club-chat.spec.ts`.
+- **«Добавьте на экран телефона» before sign-in** (owner, 13.11.2026: people registered in the browser and never added
+  the icon): `app/_components/install.tsx` — in a PHONE's browser (not standalone, not signed in, no sign-in under way)
+  `/app` shows `InstallGate` instead of the form: Android = one button «Установить приложение» (Chrome's
+  `beforeinstallprompt`, caught at import; no offer within 3.5 s → the way by hand), iPhone = steps «Поделиться» → «На
+  экран „Домой“» (Safari 26+ starts with «•••»), inside Instagram/Telegram = «Откройте в Safari / Chrome». SOFT by the
+  owner's choice: the link «Продолжить в браузере» (sessionStorage) stays. A computer and the installed app go straight
+  to the form. Not seen on real phones yet.
 - Still not built: (3) a 2D USB scanner at the till (code done; hardware not bought).
 - `/poster` (link on the programme card): ONE A4 design — warm paper, gold hairline frame, Tenor Sans, «Бонусная карта»,
   no slogan, no photo. The owner rejected photo posters, red fills, sage, Cormorant/Playfair titles and slogans.

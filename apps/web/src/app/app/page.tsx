@@ -4,9 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bell, CreditCard, MessageCircle, Gift, Hourglass, LogOut, Receipt, RotateCcw, Share, Sparkles, User, Wheat, X } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { CARD_CODE_STEP_SECONDS, LOYALTY_TIER_LABELS_RU, type ClubHistoryItemDto, type ClubInfoDto, type ClubProfileDto, type LoyaltyTierDto } from "@bakery-os/shared";
-import { ClubApiError, clubApi, clubToken } from "@/lib/club-api";
+import { ClubApiError, clubApi, clubToken, pendingLogin } from "@/lib/club-api";
 import { Login } from "./_components/login";
 import { ChatTab } from "./_components/chat";
+import { InstallGate, installEnv, type InstallEnv } from "./_components/install";
 import { useCardCode } from "./_components/card-code";
 import { disablePush, enablePush, pushState, syncPush, type PushState } from "./_components/push";
 import { CARD_COLORS, cardStyle, useCardColor, type CardColor } from "./_components/card-colors";
@@ -24,6 +25,8 @@ export default function ClubApp() {
   const [offsetMs, setOffsetMs] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("card");
+  // A phone's browser before sign-in: «add to the home screen» comes first.
+  const [gate, setGate] = useState<InstallEnv | null>(null);
 
   const load = useCallback(async () => {
     if (!clubToken.get()) {
@@ -55,6 +58,8 @@ export default function ClubApp() {
 
   useEffect(() => {
     clubApi.info().then(setInfo).catch(() => setInfo(null));
+    // Not for someone already half-way through a sign-in started in this browser.
+    if (!pendingLogin.get()) setGate(installEnv());
     void load();
     // A tapped notification opens the chat: on a cold start by the address,
     // in an open app by a message from the service worker.
@@ -91,6 +96,7 @@ export default function ClubApp() {
       </div>
     );
   }
+  if (phase === "login" && gate) return <InstallGate env={gate} onSkip={() => setGate(null)} />;
   if (phase === "login") {
     return (
       <>

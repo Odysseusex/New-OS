@@ -1009,3 +1009,70 @@ body:has(.aa) {
 .aa-chat-form button:disabled {
   opacity: 0.4;
 }
+
+/* ── add to the home screen (before sign-in in a browser) ────────────── */
+
+.aa-install-icon {
+  width: 84px;
+  height: 84px;
+  border-radius: 20px;
+  box-shadow: 0 16px 30px -18px rgba(43, 26, 14, 0.7);
+}
+.aa-install .aa-steps li {
+  color: var(--aa-ink);
+  font-size: 16px;
+  line-height: 1.4;
+}
+.aa-ic {
+  display: inline-block;
+  vertical-align: -3px;
+  margin: 0 2px;
+  color: var(--aa-brown);
+}
+.aa-step-note {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--aa-muted);
+}
+.aa-install-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+.aa-install-done svg {
+  color: var(--aa-brown);
+}
+.aa-install-done p {
+  margin: 0;
+  color: var(--aa-ink2);
+}
+.aa-install-arrow {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom) + 6px);
+  width: 44px;
+  height: 44px;
+  margin-left: -22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--aa-wheat-soft);
+  color: var(--aa-brown);
+  animation: aa-nudge 1.4s ease-in-out infinite;
+  pointer-events: none;
+}
+.aa-install {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 72px);
+}
+@keyframes aa-nudge {
+  0%,
+  100% {
+    transform: translateY(-6px);
+  }
+  50% {
+    transform: translateY(4px);
+  }
+}
