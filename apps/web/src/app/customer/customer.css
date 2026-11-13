@@ -470,3 +470,23 @@
   .cd *, .cd { animation: none !important; transition: none !important; }
   .cd-check circle, .cd-check path { stroke-dashoffset: 0; }
 }
+
+/* ── the film about the bonus card: the whole screen while idle ─────────── */
+.cd-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #fbf7ef;
+  z-index: 5;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.5s ease, visibility 0s linear 0.5s;
+  pointer-events: none;
+}
+.cd-video[data-on] {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.6s ease;
+}

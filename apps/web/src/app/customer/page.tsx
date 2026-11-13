@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Award, Wheat } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useCustomerDisplaySubscriber, type CustomerLine, type CustomerState } from "@/lib/customer-display";
@@ -82,6 +82,33 @@ export default function CustomerDisplayPage() {
 
   const previous = (slide + SLIDES.length - 1) % SLIDES.length;
 
+  // While nobody is being served the screen plays the film about the bonus card
+  // (marketing/app-video; silent, looping, its QR always on screen). It starts
+  // again from the beginning after each customer and steps aside for an order.
+  // If the file cannot play, the photographs underneath simply stay.
+  const video = useRef<HTMLVideoElement | null>(null);
+  const [videoOk, setVideoOk] = useState(true);
+  // Shown only once it really plays: a monitor that cannot decode it keeps the photographs.
+  const [playing, setPlaying] = useState(false);
+  const idle = state.kind === "idle";
+  useEffect(() => {
+    // An error raised before this page became interactive never reaches onError.
+    const el = video.current;
+    if (!el) return;
+    if (el.error) setVideoOk(false);
+    else if (!el.paused && el.readyState >= 3) setPlaying(true);
+  }, []);
+  useEffect(() => {
+    const el = video.current;
+    if (!el) return;
+    if (idle) {
+      el.currentTime = 0;
+      el.play().catch(() => undefined);
+    } else {
+      el.pause();
+    }
+  }, [idle]);
+
   return (
     <div className="cd" data-mode={state.kind === "idle" ? "idle" : "order"}>
       <div className="cd-photo">
@@ -108,6 +135,22 @@ export default function CustomerDisplayPage() {
           </div>
         </div>
       </div>
+
+      {videoOk && (
+        <video
+          ref={video}
+          className="cd-video"
+          data-on={idle && playing ? "1" : undefined}
+          src="/site/bonus-card.mp4"
+          muted
+          loop
+          playsInline
+          autoPlay
+          preload="auto"
+          onPlaying={() => setPlaying(true)}
+          onError={() => setVideoOk(false)}
+        />
+      )}
 
       <div className="cd-panel">
         {state.kind === "cart" && <CartPanel state={state} />}

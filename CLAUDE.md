@@ -222,6 +222,13 @@ when an order starts; lines with product photos, «К оплате» bar, «Ва
 the phone; `CustomerState.member`), «Спасибо за покупку» with change / «Начислено баллов» / fiscal QR. Still passive
 (BroadcastChannel only, no API call). The till itself was not touched.
 
+**The film on the buyer's screen** (13.11.2026): while idle `/customer` plays `public/site/bonus-card.mp4` (60 s, silent,
+looping; `.cd-video`, shown only once it really PLAYS — a monitor that cannot decode it keeps the photographs; restarts
+after each customer, pauses and hides during an order). Its source is `marketing/app-video/` (HTML + GSAP, one paused
+timeline rendered frame by frame: `node tools/render.js`; figures in `src/config.js` mirror `/api/club/info`; see its
+`BRIEF.md`, `STORYBOARD.md`, `MOCKS.md`). A change of percents / welcome bonus / sign-in channel = edit config, render,
+copy the MP4 over. Owner's rules for it: the poster's look, the QR permanently on screen, no slogans, no photos.
+
 **Scrolling the till's grid on the monoblock** (cashier's complaint: scrolling by dragging over tiles added products):
 `components/pos-scroll.tsx` — `useTapGuard` on the grid counts a press as a tap only if the finger moved < 12 px and the
 page did not scroll (a browser-taken pan = `pointercancel` = no tap); a MOUSE drag over the grid scrolls the page by hand
