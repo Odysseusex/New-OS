@@ -14,6 +14,9 @@
   V.mocks = V.mocks || {};
   const A = "../assets/";
   const LEAD = 0.7; // ring first, then the touch
+  // The launch layer's shadow at full strength, written the way the browser reports it (colour first) so the tween
+  // from the transparent one in the CSS pairs the numbers up correctly.
+  const LAUNCH_SHADOW = "rgba(31, 23, 18, 0.26) 0px 18px 50px 0px";
 
   // Line icons, drawn after the system's own (stroke = currentColor).
   const svg = (w, h, box, sw, body) => `<svg width="${w}" height="${h}" viewBox="0 0 ${box}" stroke-width="${sw}">${body}</svg>`;
@@ -28,7 +31,7 @@
     close: svg(12, 12, "12 12", 2.1, '<path d="M2 2l8 8M10 2l-8 8"/>'),
     clear: svg(8, 8, "8 8", 1.5, '<path d="M1.5 1.5l5 5M6.5 1.5l-5 5"/>'),
     copy: svg(24, 24, "24 24", 1.6, '<rect x="4.5" y="7" width="11" height="14.5" rx="2.3"/><path d="M8.5 7V5a2.3 2.3 0 0 1 2.3-2.3h6.4A2.3 2.3 0 0 1 19.5 5v10.2a2.3 2.3 0 0 1-2.3 2.3h-1.7"/>'),
-    glasses: svg(24, 24, "24 24", 1.6, '<circle cx="6.7" cy="15" r="3.6"/><circle cx="17.3" cy="15" r="3.6"/><path d="M10.2 14.3a1.9 1.9 0 0 1 3.6 0"/><path d="M3.3 13.8 5.3 6.2"/><path d="M20.7 13.8l-2-7.6"/>'),
+    glasses: svg(24, 24, "24 24", 1.6, '<circle cx="6.8" cy="15.3" r="3.9"/><circle cx="17.2" cy="15.3" r="3.9"/><path d="M10.6 14.4a1.6 1.6 0 0 1 2.8 0"/><path d="M3 14.4 4.5 8.1c.3-1.2 1.3-1.8 2.5-1.5"/><path d="M21 14.4l-1.5-6.3c-.3-1.2-1.3-1.8-2.5-1.5"/>'),
     bookmark: svg(24, 24, "24 24", 1.6, '<path d="M12 6.3C10 5 6.9 4.6 3 5.2v12.9c3.9-.6 7-.2 9 1.1 2-1.3 5.1-1.7 9-1.1V5.2c-3.9-.6-7-.2-9 1.1z"/><path d="M12 6.3v12.9"/>'),
     find: svg(24, 24, "24 24", 1.6, '<path d="M11.5 21H7a2.3 2.3 0 0 1-2.3-2.3V5.3A2.3 2.3 0 0 1 7 3h8.2a2.3 2.3 0 0 1 2.3 2.3v4.9"/><path d="M8.3 7.5h5.7M8.3 11h2.7"/><circle cx="15.9" cy="16.3" r="3.3"/><path d="M18.4 18.8l2.6 2.6"/>'),
     plusApp: svg(24, 24, "24 24", 1.6, '<rect x="3.5" y="3.5" width="17" height="17" rx="4.7"/><path d="M12 8v8M8 12h8"/>'),
@@ -45,7 +48,8 @@
     DOCK.map((tone, i) => `<div class="m-ios-tile" style="left:${COL(i)}px;top:754px;background-color:${tone}"></div>`).join("");
 
   const ICON = { x: COL(2), y: ROW(3), w: 60, h: 60 }; // 211, 376
-  const SHEET_H = 504;
+  const SHEET_H = 520, LIST_TOP = 208;        // the share sheet: its height, and where its action list starts inside it
+  const ADD_TOP = 57, ADD_OFF = 832;          // the add screen: its top on the screen, and how far below it waits (its shadow included)
   const ACTIONS = [
     ["Скопировать", I.copy],
     ["В список для чтения", I.glasses],
@@ -101,7 +105,7 @@
     gsap.set(root, { autoAlpha: 0 });
 
     const q = (sel) => root.querySelector(sel);
-    const safari = q(".m-ios-safari"), dim = q(".m-ios-dim"), sheet = q(".m-ios-sheet"), add = q(".m-ios-add");
+    const safari = q(".m-ios-safari"), chrome = q(".m-ios-chrome"), dim = q(".m-ios-dim"), sheet = q(".m-ios-sheet"), add = q(".m-ios-add");
     const shareIcon = q(".m-ios-share svg"), targetRow = root.querySelectorAll(".m-ios-row")[ACTIONS.length - 1], okText = q(".m-ios-ok > span");
     const ringShare = q(".m-ios-ring--share"), ringRow = q(".m-ios-ring--row"), ringAdd = q(".m-ios-ring--add"), ringHome = q(".m-ios-ring--home");
     const app = q(".m-ios-app"), appIcon = q(".m-ios-app img"), appName = q(".m-ios-app span"), ping = q(".m-ios-ping");
@@ -111,7 +115,7 @@
     gsap.set(safari, { y: 0 });
     gsap.set(dim, { opacity: 0 });
     gsap.set(sheet, { y: SHEET_H + 12 });
-    gsap.set(add, { y: 800 });
+    gsap.set(add, { y: ADD_OFF });
     gsap.set([shareIcon, okText], { opacity: 1 });
     gsap.set(ringShare, { autoAlpha: 0, scale: 1.3 });
     gsap.set(ringRow, { autoAlpha: 0, scale: 1.03 });
@@ -130,14 +134,17 @@
     const press = (tl, el, tp) => tl.to(el, { opacity: 0.3, duration: 0.1, ease: "power1.in" }, tp + 0.24).to(el, { opacity: 1, duration: 0.2, ease: "power1.out" }, tp + 0.4);
     let barFaded = false; // build-time: is the phone's home bar faded by the latest step?
 
-    const rowY = 844 - SHEET_H + 192 + (ACTIONS.length - 1) * 52; // 740
+    const rowY = 844 - SHEET_H + LIST_TOP + (ACTIONS.length - 1) * 52; // 740
     const anchors = {
-      share: { x: 173, y: 767, w: 44, h: 44 },
+      share: { x: 173, y: 771, w: 44, h: 44 },
       addToHomeRow: { x: 16, y: rowY, w: 358, h: 52 },
-      addButton: { x: 288, y: 68, w: 93, h: 34 },
+      addButton: { x: 285, y: 68, w: 91, h: 34 },
       homeIcon: { x: ICON.x, y: ICON.y, w: ICON.w, h: ICON.h },
     };
     const mid = (r) => [r.x + r.w / 2, r.y + r.h / 2];
+    // A touch on Safari is drawn ON the surface it lands on (not on the screen): the sheet that arrives next covers its
+    // fading mark, and a surface that leaves takes the mark with it.
+    const touch = (tl, surface, top, x, y, at) => V.tap(tl, surface, x, y - top, at);
 
     return {
       root,
@@ -158,7 +165,7 @@
         tapShare(tl, at) {
           const tp = at + LEAD;
           ringIn(tl, ringShare, at);
-          V.tap(tl, screen, ...mid(anchors.share), tp);
+          touch(tl, chrome, 711, ...mid(anchors.share), tp);
           press(tl, shareIcon, tp);
           ringOut(tl, ringShare, tp + 0.4);
           tl.to(dim, { opacity: 0.3, duration: 0.4, ease: "power2.out" }, tp + 0.45)
@@ -169,7 +176,7 @@
         tapAddToHome(tl, at) {
           const tp = at + LEAD;
           ringIn(tl, ringRow, at);
-          V.tap(tl, screen, 262, rowY + 26, tp); // right of the label, so the words stay readable
+          touch(tl, sheet, 844 - SHEET_H, 262, rowY + 26, tp); // right of the label, so the words stay readable
           tl.to(targetRow, { backgroundColor: "#dcdce1", duration: 0.08, ease: "none" }, tp + 0.24);
           ringOut(tl, ringRow, tp + 0.45);
           tl.to(dim, { opacity: 0.4, duration: 0.45, ease: "power2.out" }, tp + 0.45)
@@ -181,11 +188,11 @@
         tapAdd(tl, at) {
           const tp = at + LEAD;
           ringIn(tl, ringAdd, at);
-          V.tap(tl, screen, ...mid(anchors.addButton), tp);
+          touch(tl, add, ADD_TOP, ...mid(anchors.addButton), tp);
           press(tl, okText, tp);
           ringOut(tl, ringAdd, tp + 0.4);
           tl.to(dim, { opacity: 0, duration: 0.3, ease: "power1.out" }, tp + 0.45)
-            .to(safari, { y: 870, duration: 0.55, ease: "power3.inOut" }, tp + 0.45)
+            .to(safari, { y: 912, duration: 0.55, ease: "power3.inOut" }, tp + 0.45) // far enough for its shadow to leave too
             .to(homeBar, { autoAlpha: 0, duration: 0.2, ease: "power1.out" }, tp + 0.45)
             .to(app, { autoAlpha: 1, duration: 0.12, ease: "none" }, tp + 0.95)
             .to(appIcon, { scale: 1, duration: 0.45, ease: "back.out(1.6)" }, tp + 0.95)
@@ -199,11 +206,12 @@
         // A touch on the new icon: the app opens out of it. The launch screen stays until hide().
         openIcon(tl, at) {
           tl.to(ringHome, { autoAlpha: 1, scale: 1, duration: 0.3, ease: "power2.out" }, at); // already on after tapAdd
-          V.tap(tl, screen, ...mid(anchors.homeIcon), at);
+          V.tap(tl, screen, ...mid(anchors.homeIcon), at); // on the screen: its mark fades over the icon as the app starts to open
           tl.to(appIcon, { scale: 0.92, duration: 0.12, ease: "power1.in" }, at + 0.24)
             .to(appIcon, { scale: 1, duration: 0.08, ease: "power1.out" }, at + 0.37);
           ringOut(tl, ringHome, at + 0.38);
           tl.set(launch, { autoAlpha: 1 }, at + 0.45)
+            .to(launch, { boxShadow: LAUNCH_SHADOW, duration: 0.25, ease: "power1.out" }, at + 0.45) // its shadow comes in softly
             .to(launch, { left: 0, top: 0, width: 390, height: 844, borderRadius: 50, duration: 0.45, ease: "power3.inOut" }, at + 0.45)
             .to(launchLogo, { scale: 1, duration: 0.45, ease: "power3.inOut" }, at + 0.45)
             .to(homeBar, { autoAlpha: 1, duration: 0.1, ease: "none" }, at + 0.8); // once the app covers the bottom edge

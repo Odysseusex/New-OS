@@ -105,6 +105,13 @@
       const login = M.appLogin ? M.appLogin(phoneI) : null;
       const tg = M.telegramLogin(phoneI);
       const card = M.appCard ? M.appCard(phoneI) : null;
+      // The app's own card code (the demo customer's digits) must not be readable from the till's
+      // screen — a customer's camera should find only the code in the poster column. One finder
+      // square loses its centre; to the eye the code stays a code.
+      if (card) {
+        const blind = V.h('<div style="position:absolute;left:110.5px;top:567.5px;width:30.5px;height:30.5px;background:#fff"></div>');
+        card.root.querySelector(".m-app-scroll").appendChild(blind);
+      }
       gsap.set(phoneA, { autoAlpha: 0 });
       const swap = (at, from, to) => {
         tl.to(from, { autoAlpha: 0, y: 24, scale: 0.985, duration: 0.3, ease: "power2.in" }, at)
@@ -266,9 +273,13 @@
         login.steps.show(tl, t - 0.1);
         ios.steps.hide(tl, t + 0.25);
         on("signin", 1, t + 0.5);
-        t = login.steps.typeNumber(tl, t + 0.6);
-        t = login.steps.fillRest(tl, t + 0.1);
-        t = login.steps.tapContinue(tl, t + 0.2);
+        // Typing is shown at 1.6× — it only has to be recognised, not followed key by key.
+        const typing = gsap.timeline();
+        const typed = login.steps.fillRest(typing, login.steps.typeNumber(typing, 0) + 0.1);
+        typing.timeScale(1.6);
+        tl.add(typing, t + 0.5);
+        t = t + 0.5 + typed / 1.6;
+        t = login.steps.tapContinue(tl, t + 0.1);
         on("signin", 2, t + 0.3);
         t = login.steps.tapOpenTelegram(tl, t + 0.3);
       } else {

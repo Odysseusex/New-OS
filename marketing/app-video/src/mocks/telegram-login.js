@@ -19,13 +19,15 @@
     clip: `<svg class="m-tg-clip" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="${GREY}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21.440 11.050l-9.190 9.190a6 6 0 0 1-8.490-8.490l9.190-9.190a4 4 0 0 1 5.660 5.660l-9.200 9.190a2 2 0 0 1-2.830-2.830l8.490-8.480"/></svg>`,
     mic: `<svg class="m-tg-mic" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="${GREY}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12.500" rx="3"/><path d="M5.200 11.200a6.800 6.800 0 0 0 13.600 0M12 18v3.600"/></svg>`,
     // The «📱» of the bot's button, drawn (the system emoji font is a blurry bitmap with stray colours).
-    phone: `<svg width="13" height="21" viewBox="0 0 13 21"><defs><linearGradient id="m-tg-scr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8cc8f8"/><stop offset="1" stop-color="#4a9be8"/></linearGradient></defs><rect width="13" height="21" rx="2.800" fill="#2c2a2e"/><rect x="1.500" y="2.900" width="10" height="14.200" rx="0.900" fill="url(#m-tg-scr)"/><rect x="5" y="1.200" width="3" height="0.800" rx="0.400" fill="#77737c"/><circle cx="6.500" cy="19.050" r="0.850" fill="#77737c"/></svg>`,
+    // `id` names its gradient: one per mock, so two of these chats on one page never share (or lose) it.
+    phone: (id) => `<svg width="13" height="21" viewBox="0 0 13 21"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8cc8f8"/><stop offset="1" stop-color="#4a9be8"/></linearGradient></defs><rect width="13" height="21" rx="2.800" fill="#2c2a2e"/><rect x="1.500" y="2.900" width="10" height="14.200" rx="0.900" fill="url(#${id})"/><rect x="5" y="1.200" width="3" height="0.800" rx="0.400" fill="#77737c"/><circle cx="6.500" cy="19.050" r="0.850" fill="#77737c"/></svg>`,
     ticks: `<svg width="16" height="10" viewBox="0 0 16 10" fill="none" stroke="${BLUE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 5.400 4 8.400l6-7.200"/><path d="M7.700 7.700l.7.7 6-7.200"/></svg>`,
   };
 
   // Geometry, in phone points. Every bubble has a row placed where it stands at the very end; earlier the
   // rows are simply shifted down (`y`), so that the newest bubble always sits just above the bottom bar.
   const LEAD = 0.7;                                   // ring first, then the touch
+  const PRESS = 0.24;                                 // after the touch starts: the control presses in and its ring lets go (gone before the screen changes at +0.45)
   const GAP = 8;                                      // between bubbles
   const H = { start: 36, ask: 78, contact: 58, done: 72 }; // bubble heights (checked against the rendered layout)
   const DONE_W = 278;                                 // the last bubble's width (its CSS width)
@@ -50,6 +52,7 @@
   };
   const box = (r, radius) => `left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px;border-radius:${radius}px`;
   const mid = (r) => [r.x + r.w / 2, r.y + r.h / 2];
+  let made = 0;                                       // mocks built so far (for ids that must be unique on the page)
 
   V.mocks.telegramLogin = function (phone) {
     const screen = phone.querySelector(".phone-screen");
@@ -77,7 +80,7 @@
       </div>
       <div class="m-tg-start"><b>НАЧАТЬ</b></div>
       <div class="m-tg-input">${I.clip}<div class="m-tg-field">Сообщение</div>${I.mic}</div>
-      <div class="m-tg-keys"><div class="m-tg-key">${I.phone}<span>Отправить мой номер</span></div></div>
+      <div class="m-tg-keys"><div class="m-tg-key">${I.phone("m-tg-scr-" + ++made)}<span>Отправить мой номер</span></div></div>
       <div class="m-tg-dim"></div>
       <div class="m-tg-dialog">
         <h4>Поделиться номером?</h4>
@@ -92,7 +95,7 @@
     const q = (sel) => root.querySelector(sel);
     const rStart = q(".js-row-start"), rAsk = q(".js-row-ask"), rContact = q(".js-row-contact"), rDone = q(".js-row-done");
     const mStart = rStart.firstElementChild, mAsk = rAsk.firstElementChild, mContact = rContact.firstElementChild, mDone = rDone.firstElementChild;
-    const startBar = q(".m-tg-start"), startWord = q(".m-tg-start b");
+    const card = q(".m-tg-card"), startBar = q(".m-tg-start"), startWord = q(".m-tg-start b");
     const input = q(".m-tg-input"), keys = q(".m-tg-keys"), key = q(".m-tg-key");
     const dim = q(".m-tg-dim"), dialog = q(".m-tg-dialog"), ok = q(".m-tg-btn--ok");
     const ringStart = q(".js-ring-start"), ringKey = q(".js-ring-key"), ringShare = q(".js-ring-share");
@@ -142,13 +145,17 @@
           const tp = at + LEAD;
           ringIn(tl, ringStart, at);
           V.tap(tl, screen, ...mid(R.start), tp);
-          tl.to(startWord, { opacity: 0.4, duration: 0.1, ease: "power1.in" }, tp + 0.24);
-          ringOut(tl, ringStart, tp + 0.4);
-          tl.to(startBar, { autoAlpha: 0, duration: 0.2, ease: "power1.out" }, tp + 0.45)
-            .to(input, { autoAlpha: 1, duration: 0.2, ease: "power1.out" }, tp + 0.45);
+          tl.to(startWord, { opacity: 0.4, duration: 0.1, ease: "power1.in" }, tp + PRESS);
+          ringOut(tl, ringStart, tp + PRESS);
+          // The field fades in OVER the start bar, which stays solid until it is covered (two bars fading
+          // against each other would let the chat show through the bottom of the screen), then it is switched off.
+          tl.to(startWord, { opacity: 0, duration: 0.15, ease: "power1.out" }, tp + 0.45)
+            .to(input, { autoAlpha: 1, duration: 0.25, ease: "power1.out" }, tp + 0.45)
+            .set(startBar, { autoAlpha: 0 }, tp + 0.7);
           bubbleIn(tl, mStart, tp + 0.6);
           // The bot's answer arrives with its keyboard: the field and «/start» move up, the request fades in above the field.
-          tl.set(keys, { autoAlpha: 1 }, tp + 0.9)
+          // The keyboard fades as it slides, so its label is still faint while it passes under the home indicator.
+          tl.to(keys, { autoAlpha: 1, duration: 0.2, ease: "none" }, tp + 0.9)
             .to(keys, { y: 0, duration: 0.4, ease: "power3.out" }, tp + 0.9)
             .to(input, { y: 0, duration: 0.4, ease: "power3.out" }, tp + 0.9);
           rowsTo(tl, rStart, SHIFT.askKeys, tp + 0.9);
@@ -160,10 +167,13 @@
           const tp = at + LEAD;
           ringIn(tl, ringKey, at);
           V.tap(tl, screen, ...mid(R.key), tp);
-          tl.to(key, { backgroundColor: "#dcd8d1", duration: 0.1, ease: "power1.in" }, tp + 0.24)
+          tl.to(key, { backgroundColor: "#dcd8d1", duration: 0.1, ease: "power1.in" }, tp + PRESS)
             .to(key, { backgroundColor: "#ffffff", duration: 0.2, ease: "power1.out" }, tp + 0.45);
-          ringOut(tl, ringKey, tp + 0.4);
-          tl.to(dim, { autoAlpha: 0.32, duration: 0.3, ease: "power1.out" }, tp + 0.45)
+          ringOut(tl, ringKey, tp + PRESS);
+          // The bot's card lies exactly under the dialog: it steps aside while the dialog is half-transparent,
+          // so its words never show through the dialog's (it comes back as the dialog closes, in tapShare).
+          tl.to(card, { autoAlpha: 0, duration: 0.1, ease: "power1.out" }, tp + 0.45)
+            .to(dim, { autoAlpha: 0.32, duration: 0.3, ease: "power1.out" }, tp + 0.45)
             .to(dialog, { autoAlpha: 1, scale: 1, duration: 0.35, ease: "power3.out" }, tp + 0.45);
           return tp + 0.8;
         },
@@ -172,13 +182,14 @@
           const tp = at + LEAD;
           ringIn(tl, ringShare, at);
           V.tap(tl, screen, ...mid(R.share), tp);
-          tl.to(ok, { backgroundColor: "rgba(31,23,18,0.08)", duration: 0.1, ease: "power1.in" }, tp + 0.24);
-          ringOut(tl, ringShare, tp + 0.4);
+          tl.to(ok, { backgroundColor: "rgba(31,23,18,0.08)", duration: 0.1, ease: "power1.in" }, tp + PRESS);
+          ringOut(tl, ringShare, tp + PRESS);
           tl.to(dialog, { autoAlpha: 0, duration: 0.2, ease: "power1.in" }, tp + 0.45)
+            .to(card, { autoAlpha: 1, duration: 0.2, ease: "power1.in" }, tp + 0.55)
             .to(dim, { autoAlpha: 0, duration: 0.25, ease: "power1.out" }, tp + 0.45)
             .to(keys, { y: KEYS_DROP, duration: 0.4, ease: "power3.out" }, tp + 0.65)
-            .to(input, { y: INPUT_DROP, duration: 0.4, ease: "power3.out" }, tp + 0.65)
-            .set(keys, { autoAlpha: 0 }, tp + 1.05);
+            .to(keys, { autoAlpha: 0, duration: 0.2, ease: "power2.out" }, tp + 0.65)
+            .to(input, { y: INPUT_DROP, duration: 0.4, ease: "power3.out" }, tp + 0.65);
           rowsTo(tl, [rStart, rAsk], SHIFT.contact, tp + 0.65);
           bubbleIn(tl, mContact, tp + 0.85);
           rowsTo(tl, [rStart, rAsk, rContact], SHIFT.done, tp + 1.3);

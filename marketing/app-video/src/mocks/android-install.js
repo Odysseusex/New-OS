@@ -1,13 +1,14 @@
 // MOCK: installing the app on Android from Chrome.
 //   const and = V.mocks.androidInstall(phone);   // phone = V.phone({ kind: "android" })
 //   let t = and.steps.show(tl, 0);               // 0.3 s  Chrome with ar-amir.com/app open (hidden until then)
-//   t = and.steps.tapMenu(tl, t + 0.8);          // 1.35 s gold ring on «⋮», a touch, the menu drops from the corner
-//   t = and.steps.tapAddToHome(tl, t + 0.8);     // 1.5 s  ring on «Добавить на гл. экран», a touch, the install dialog
-//   t = and.steps.tapInstall(tl, t + 0.8);       // 3.2 s  ring on «Установить», a touch, home screen, the icon pops in
-//   t = and.steps.openIcon(tl, t + 0.8);         // 1.5 s  ring on the icon, a touch, the app opens on its logo
+//   t = and.steps.tapMenu(tl, t + 0.8);          // 1.5 s  gold ring on «⋮», a touch, the menu drops from the corner
+//   t = and.steps.tapAddToHome(tl, t + 0.8);     // 1.65 s ring on «Добавить на гл. экран», a touch, the install dialog
+//   t = and.steps.tapInstall(tl, t + 0.8);       // 3.35 s ring on «Установить», a touch, home screen, the icon pops in
+//   t = and.steps.openIcon(tl, t + 0.8);         // 1.65 s ring on the icon, a touch, the app opens on its logo
 //   t = and.steps.hide(tl, t + 0.8);             // 0.3 s  the whole mock fades away
 // Every step adds its tweens to `tl` at `at` and returns the time it ends. In a tap step the gold ring
-// fades in from `at` and the touch lands 0.55 s later; the screen changes 0.45 s after the touch.
+// fades in from `at` and the touch lands 0.7 s later (the same lead as the iPhone mock); the screen changes
+// 0.45 s after the touch.
 // anchors (menuButton, addToHomeRow, installButton, homeIcon): rectangles in the phone's own points
 // (origin: top-left of .phone-screen, 390 × 844).
 (function () {
@@ -31,8 +32,8 @@
     history: '<path d="M4 12a8 8 0 1 0 2.35-5.65L4 8.7"/><path d="M4 4.2v4.5h4.5"/><path d="M12 7.8V12l3 1.8"/>',
     share: '<circle cx="17.5" cy="5.5" r="2.4"/><circle cx="6.5" cy="12" r="2.4"/><circle cx="17.5" cy="18.5" r="2.4"/><path d="M8.6 10.8l6.8-4M8.6 13.2l6.8 4"/>',
     find: '<circle cx="10.5" cy="10.5" r="6.2"/><path d="M15.2 15.2 20 20"/>',
-    // A phone outline with an arrow coming in: «Добавить на гл. экран».
-    addHome: '<path d="M17 7.5V5a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-2.5"/><path d="M21 12h-8.5M15.7 8.8 12.5 12l3.2 3.2"/>',
+    // «Добавить на гл. экран» as Chrome draws it: a phone, open on its left, and an arrow coming up into it.
+    addHome: '<path d="M8 5.8V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-.8"/><path d="M3.6 17.4 12 9M7 9h5v5"/>',
     gear: '<g transform="translate(12 12) scale(0.84) translate(-12 -12)" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></g>',
   };
 
@@ -107,6 +108,7 @@
           <span class="m-and-btn" style="left:338px">${ic(P.dots)}</span>
           <i class="m-and-ring js-ring-dots" style="left:${DOTS.x}px;top:${DOTS.y}px;width:${DOTS.w}px;height:${DOTS.h}px;border-radius:50%"></i>
         </div>
+        <div class="m-and-touch"></div>
         <div class="m-and-menu" style="left:${MENU.x}px;top:${MENU.y}px;width:${MENU.w}px;height:${menuH}px">${menuHtml}</div>
         <div class="m-and-scrim"></div>
         <div class="m-and-dialog" style="left:${DIALOG.x}px;top:${DIALOG.y}px;width:${DIALOG.w}px;height:${DIALOG.h}px">
@@ -126,6 +128,7 @@
     const home = $(".m-and-home"), chrome = $(".m-and-chrome"), menu = $(".m-and-menu"), scrim = $(".m-and-scrim");
     const dialog = $(".m-and-dialog"), launchWrap = $(".m-and-launch-wrap"), launch = $(".m-and-launch"), logo = launch.querySelector("img");
     const press = $(".m-and-press"), row = $(".js-target"), install = $(".js-install");
+    const underMenu = $(".m-and-touch"); // the touch on «⋮» is drawn here: the menu opens over its fading mark
     const app = $(".m-and-app"), appName = $(".m-and-app-name");
     const ringDots = $(".js-ring-dots"), ringRow = $(".js-ring-row"), ringInstall = $(".js-ring-install");
     const ringPulse = $(".js-ring-pulse"), ringIcon = $(".js-ring-icon");
@@ -148,8 +151,8 @@
     gsap.set(logo, { x: cx - 195, y: cy - 422, scale: TILE / LOGO });
 
     // The gold ring that says "this one": fades in before the touch.
-    const ringIn = (tl, ring, at) => tl.to(ring, { autoAlpha: 1, duration: 0.45, ease: "power1.out" }, at);
-    const RING = 0.55; // from the start of a step to its touch
+    const ringIn = (tl, ring, at) => tl.to(ring, { autoAlpha: 1, duration: 0.5, ease: "power1.out" }, at);
+    const RING = 0.7; // from the start of a step to its touch: the ring is fully there before the finger covers it
 
     const anchors = {
       menuButton: { ...DOTS },
@@ -175,7 +178,7 @@
         tapMenu(tl, at) {
           const T = at + RING;
           ringIn(tl, ringDots, at);
-          V.tap(tl, screen, DOTS.x + DOTS.w / 2, DOTS.y + DOTS.h / 2, T);
+          V.tap(tl, underMenu, DOTS.x + DOTS.w / 2, DOTS.y + DOTS.h / 2, T);
           tl.to(press, { autoAlpha: 1, duration: 0.1, ease: "power1.out" }, T + 0.24)
             .to([press, ringDots], { autoAlpha: 0, duration: 0.15, ease: "power1.in" }, T + 0.42)
             .to(menu, { autoAlpha: 1, duration: 0.12, ease: "power1.out" }, T + 0.42)
@@ -187,7 +190,7 @@
           const T = at + RING;
           const a = anchors.addToHomeRow;
           ringIn(tl, ringRow, at);
-          V.tap(tl, screen, a.x + a.w - 40, a.y + a.h / 2, T);
+          V.tap(tl, menu, a.x - MENU.x + a.w - 40, a.y - MENU.y + a.h / 2, T); // drawn on the menu: it leaves with it
           tl.to(row, { backgroundColor: "rgba(31,31,31,0.1)", duration: 0.1, ease: "power1.out" }, T + 0.24)
             .to(menu, { autoAlpha: 0, duration: 0.12, ease: "power1.in" }, T + 0.45)
             .to(scrim, { autoAlpha: 1, duration: 0.3, ease: "power1.out" }, T + 0.5)
