@@ -15,6 +15,7 @@ let org: IsolatedOrg;
 let flourId: string;
 let cakeId: string;
 let recipeId: string;
+let memberId: string;
 
 beforeAll(async () => {
   await prisma.$connect();
@@ -39,6 +40,12 @@ beforeAll(async () => {
   await services.returns.create(org.user, sale.id, { items: [{ productId: cakeId, quantity: 1 }], restocked: true } as never);
   await services.sales.create(org.user, {
     locationId: org.storeId, customerId, amountPaid: 0, paymentMethod: PaymentMethod.TRANSFER, items: [{ productId: cakeId, quantity: 1, unitPrice: 1000 }],
+  } as never);
+  // A bonus customer who bought once with the card (the welcome percent) and spent some points.
+  await prisma.loyaltySettings.create({ data: { organizationId: id, enabled: true } });
+  memberId = (await prisma.loyaltyMember.create({ data: { organizationId: id, phone: "+77075550011" } })).id;
+  await services.sales.create(org.user, {
+    locationId: org.storeId, paymentMethod: PaymentMethod.CASH, loyaltyMemberId: memberId, items: [{ productId: cakeId, quantity: 1, unitPrice: 1000 }],
   } as never);
   await services.cash.adjust(org.user, { accountId: org.cashAccountId, actualBalance: 0, reason: "Пересчёт", ownerWithdrawal: true });
   await prisma.organization.update({ where: { id }, data: { financeInitializedAt: new Date(), openingInventoryValue: 5 } });
@@ -66,17 +73,18 @@ it("refuses anyone but the owner, without a fresh backup, and without the word",
   await expect(cleanStart.preview({ ...org.user, role: Role.ADMIN })).rejects.toThrow("собственника");
   const preview = await cleanStart.preview(org.user);
   expect(preview.backupFresh).toBe(false);
-  expect(preview.remove.find((g) => g.label === "Продажи и чеки")?.count).toBe(2);
+  expect(preview.remove.find((g) => g.label === "Продажи и чеки")?.count).toBe(3);
+  expect(preview.keep.find((g) => g.label === "Бонусные баллы клиентов")?.count).toBe(1);
   await expect(cleanStart.execute(org.user, "ОЧИСТИТЬ")).rejects.toThrow("резервную копию");
   await prisma.auditLog.create({ data: { organizationId: org.organizationId, actorId: org.user.id, action: "dataExport.download", entityType: "DataExport", entityId: "all" } });
   await expect(cleanStart.execute(org.user, "да")).rejects.toThrow("ОЧИСТИТЬ");
-  expect(await count("sales")).toBe(2);
+  expect(await count("sales")).toBe(3);
 });
 
 it("wipes the history, keeps recipes and the catalogue, and starts the money from zero", async () => {
   const keptBefore = Object.fromEntries(await Promise.all(CLEAN_START_KEPT_TABLES.filter((t) => t !== "audit_logs").map(async (t) => [t, await count(t)])));
   const result = await cleanStart.execute(org.user, "очистить");
-  expect(result.removed.find((g) => g.label === "Продажи и чеки")?.count).toBe(2);
+  expect(result.removed.find((g) => g.label === "Продажи и чеки")?.count).toBe(3);
 
   for (const table of CLEAN_START_REMOVED_TABLES) expect([table, await count(table)]).toEqual([table, 0]);
   for (const [table, n] of Object.entries(keptBefore)) expect([table, await count(table)]).toEqual([table, n]);
@@ -89,6 +97,19 @@ it("wipes the history, keeps recipes and the catalogue, and starts the money fro
   expect(organization.financeInitializedAt).toBeNull();
   expect(organization.openingInventoryValue).toBeNull();
   expect(await prisma.auditLog.count({ where: { organizationId: org.organizationId, action: "organization.cleanStart" } })).toBe(1);
+
+  // The bonus programme is untouched: the points stay (50 = 5 % of the first purchase), only the
+  // link to the deleted check is gone; any other change of a points entry is still refused.
+  const entries = await prisma.loyaltyPointsEntry.findMany({ where: { memberId } });
+  expect(entries.map((e) => [e.points.toNumber(), e.saleId])).toEqual([[50, null]]);
+  await expect(prisma.loyaltyPointsEntry.update({ where: { id: entries[0].id }, data: { points: 5000 } })).rejects.toThrow();
+  // …and the next purchase is not a «first» one again (1 %, not another 5 %).
+  await services.inventory.receive(org.user, { locationId: org.storeId, productId: cakeId, quantity: 1 } as never);
+  await services.sales.create(org.user, {
+    locationId: org.storeId, paymentMethod: PaymentMethod.CASH, loyaltyMemberId: memberId, items: [{ productId: cakeId, quantity: 1, unitPrice: 1000 }],
+  } as never);
+  expect((await prisma.loyaltyPointsEntry.findMany({ where: { memberId }, orderBy: { createdAt: "asc" } })).map((e) => e.points.toNumber())).toEqual([50, 10]);
+  await prisma.cashAccount.update({ where: { id: org.cashAccountId }, data: { currentBalance: 0 } });
 
   // Business goes on: a new receipt and sale work on the clean books.
   await services.inventory.receive(org.user, { locationId: org.storeId, productId: cakeId, quantity: 3 } as never);
