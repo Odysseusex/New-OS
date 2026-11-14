@@ -1,17 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Cake, UserRound, X } from "lucide-react";
+import { Cake, QrCode, ScanLine, Smartphone, UserRound, X } from "lucide-react";
 import type { LoyaltyFamilyMemberDto, LoyaltyMemberDto } from "@bakery-os/shared";
 import { formatKzPhone, LOYALTY_TIER_LABELS_RU, KZ_PHONE_INVALID_MESSAGE, LoyaltyMemberStatus, normalizeKzPhone } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { formatMoneyPrecise, formatPoints } from "@/lib/format";
-import { LoyaltyRegisterModal } from "@/components/loyalty-register-modal";
 import { LoyaltyFamilySection } from "@/components/loyalty-family-section";
 import { Modal } from "@/components/modal";
 import { NumberKeypadModal, PhoneKeypadModal } from "@/components/numeric-keypad";
 
-// The loyalty member on the current order: found by phone, then optionally
+// The loyalty member on the current order: scanned from the customer app's card
+// (the till's scan field) or found by phone, then optionally
 // paying part of the check with points. The discount itself is worked out by
 // the till page with the same shared function the server uses.
 export function PosLoyaltyBlock({
@@ -21,9 +21,15 @@ export function PosLoyaltyBlock({
   onPointsChange,
   cap,
   discount,
+  inviting,
+  onInvite,
 }: {
   member: LoyaltyMemberDto | null;
   onMemberChange: (member: LoyaltyMemberDto | null) => void;
+  // The app's QR on the buyer's screen: a new customer registers in the app,
+  // never at the till (owner, 14.11.2026).
+  inviting: boolean;
+  onInvite: (on: boolean) => void;
   pointsToRedeem: number;
   onPointsChange: (points: number) => void;
   cap: number;
@@ -34,7 +40,6 @@ export function PosLoyaltyBlock({
   const [phone, setPhone] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState<string | null>(null);
-  const [registerPhone, setRegisterPhone] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pointsPad, setPointsPad] = useState(false);
   const [birthdaysOpen, setBirthdaysOpen] = useState(false);
@@ -63,7 +68,10 @@ export function PosLoyaltyBlock({
     try {
       const result = await api.loyalty.lookup(full);
       if (result.member) attach(result.member);
-      else setNotFound(result.phone);
+      else {
+        setNotFound(result.phone);
+        onInvite(true);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось найти клиента");
     } finally {
@@ -84,6 +92,16 @@ export function PosLoyaltyBlock({
               {formatKzPhone(member.phone)}
               {member.name ? ` · ${member.name}` : ""}
             </p>
+            {member.hasApp === false && (
+              <button
+                type="button"
+                onClick={() => onInvite(!inviting)}
+                className="mt-0.5 flex items-center gap-1 rounded-md bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-900"
+              >
+                <Smartphone className="h-3 w-3" strokeWidth={2} />
+                {inviting ? "QR приложения на экране покупателя · скрыть" : "Без приложения — показать QR"}
+              </button>
+            )}
             <p className="text-xs text-muted">
               {member.tier && `${LOYALTY_TIER_LABELS_RU[member.tier.tier]} ${member.tier.percent}% · `}
               Баллов: {formatPoints(member.pointsBalance)}
@@ -154,18 +172,34 @@ export function PosLoyaltyBlock({
 
   return (
     <div>
-      <button
-        onClick={() => {
-          setPhone("");
-          setError(null);
-          setNotFound(null);
-          setOpen(true);
-        }}
-        className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
-      >
-        <UserRound className="h-4 w-4" strokeWidth={1.75} />
-        Клиент бонусной программы
-      </button>
+      <div className="flex items-center gap-2 rounded-xl border border-dashed border-border px-3 py-2 text-sm text-muted">
+        <ScanLine className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+        <span className="min-w-0 flex-1">Сканируйте QR-код из приложения клиента</span>
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <button
+          onClick={() => {
+            setPhone("");
+            setError(null);
+            setNotFound(null);
+            setOpen(true);
+          }}
+          className="flex items-center justify-center gap-1.5 rounded-xl border border-border px-2 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+        >
+          <UserRound className="h-4 w-4" strokeWidth={1.75} />
+          По номеру
+        </button>
+        <button
+          onClick={() => onInvite(!inviting)}
+          className={`flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-sm font-medium transition ${
+            inviting ? "border-accent bg-accent text-accent-foreground" : "border-border text-foreground hover:bg-surface-muted"
+          }`}
+        >
+          <QrCode className="h-4 w-4" strokeWidth={1.75} />
+          {inviting ? "Скрыть QR" : "QR приложения"}
+        </button>
+      </div>
+      {inviting && <p className="mt-1.5 text-xs text-muted">QR приложения на экране покупателя</p>}
       {open && (
         <PhoneKeypadModal
           title="Телефон клиента"
@@ -183,31 +217,18 @@ export function PosLoyaltyBlock({
         >
           {notFound && (
             <div className="mt-3 rounded-2xl bg-surface-muted px-4 py-3 text-center">
-              <p className="text-sm text-foreground">Номер {formatKzPhone(notFound)} не зарегистрирован</p>
+              <p className="text-sm font-medium text-foreground">Номер {formatKzPhone(notFound)} не зарегистрирован</p>
+              <p className="mt-1 text-sm text-muted">Клиент регистрируется сам в приложении Ar Amir: QR-код уже на экране покупателя.</p>
               <button
                 type="button"
-                onClick={() => {
-                  setOpen(false);
-                  setRegisterPhone(notFound);
-                }}
+                onClick={() => setOpen(false)}
                 className="mt-2 h-11 w-full rounded-xl border border-accent text-base font-semibold text-accent transition hover:bg-accent/10"
               >
-                Зарегистрировать
+                Понятно
               </button>
             </div>
           )}
         </PhoneKeypadModal>
-      )}
-      {registerPhone !== null && (
-        <LoyaltyRegisterModal
-          initialPhone={registerPhone}
-          keypad
-          onClose={() => setRegisterPhone(null)}
-          onSaved={(saved) => {
-            setRegisterPhone(null);
-            attach(saved);
-          }}
-        />
       )}
     </div>
   );

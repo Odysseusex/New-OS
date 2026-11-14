@@ -152,10 +152,30 @@ export default function CustomerDisplayPage() {
         />
       )}
 
+      {state.kind !== "paid" && state.invite && <InvitePanel bonus={state.invite.bonus} />}
+
       <div className="cd-panel">
         {state.kind === "cart" && <CartPanel state={state} />}
         {state.kind === "paid" && <PaidPanel state={state} />}
       </div>
+    </div>
+  );
+}
+
+// «Скачайте приложение»: shown when the cashier asks (a new customer registers
+// in the app, never at the till). Over the photographs / film, beside the order.
+const APP_URL = "https://ar-amir.com/app";
+function InvitePanel({ bonus }: { bonus: number | null }) {
+  return (
+    <div className="cd-invite">
+      <span className="cd-invite-eyebrow">Бонусная карта</span>
+      <h2>Скачайте приложение Ar Amir</h2>
+      {bonus ? <p className="cd-invite-bonus">{amount(bonus)} бонусов за первую покупку</p> : null}
+      <div className="cd-invite-qr">
+        <QRCodeSVG value={APP_URL} size={240} level="M" bgColor="#ffffff" fgColor="#000000" />
+      </div>
+      <p className="cd-invite-hint">Наведите камеру телефона на код</p>
+      <span className="cd-invite-url">ar-amir.com/app</span>
     </div>
   );
 }

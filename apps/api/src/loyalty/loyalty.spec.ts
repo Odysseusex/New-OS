@@ -53,7 +53,7 @@ describe("who may do what", () => {
   const roles = (method: keyof LoyaltyController) =>
     reflector.getAllAndOverride<Role[]>(ROLES_KEY, [LoyaltyController.prototype[method], LoyaltyController]);
 
-  it("a cashier finds, registers and records consent, but cannot browse, merge or import", () => {
+  it("a cashier finds and records consent, but cannot browse, merge or import", () => {
     for (const m of ["lookup", "register", "findOne", "recordConsent"] as const) expect(roles(m)).toContain(Role.CASHIER);
     for (const m of ["list", "update", "merge", "previewImport", "applyImport"] as const) expect(roles(m)).not.toContain(Role.CASHIER);
   });
@@ -88,6 +88,25 @@ describe("LoyaltyService (database)", () => {
 
   const register = (phone: string, extra: object = {}) =>
     loyalty.register(org.user, { phone, personalDataConsent: true, source: S.AT_TILL, ...extra });
+
+  it("the till's own staff cannot register: a new customer signs up in the app", async () => {
+    for (const role of [Role.CASHIER, Role.SENIOR_CASHIER]) {
+      await expect(
+        loyalty.register({ ...org.user, role }, { phone: "+77010000077", personalDataConsent: true, source: S.AT_TILL }),
+      ).rejects.toThrow(/в приложении Ar Amir/);
+    }
+    expect(await prisma.loyaltyMember.count({ where: { organizationId: org.organizationId, phone: "+77010000077" } })).toBe(0);
+  });
+
+  it("lookup tells whether the member has signed in to the app", async () => {
+    const member = await loyalty.register(org.user, { phone: "+77010000078", personalDataConsent: true, source: S.AT_TILL });
+    expect((await loyalty.lookup(org.organizationId, "+77010000078")).member?.hasApp).toBe(false);
+    await prisma.clubLoginRequest.create({
+      data: { organizationId: org.organizationId, phone: "+77010000078", code: "990078", secretHash: "x", status: "USED", memberId: member.id, expiresAt: new Date() },
+    });
+    expect((await loyalty.lookup(org.organizationId, "+77010000078")).member?.hasApp).toBe(true);
+    expect((await loyalty.findOne(org.organizationId, member.id)).hasApp).toBe(true);
+  });
 
   it("registers by phone, stores the canonical number and who recorded the consent", async () => {
     const member = await register("8 701 000 00 01", { name: "Айгерим", marketingChannels: [Ch.WHATSAPP] });

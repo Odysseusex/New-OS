@@ -490,3 +490,73 @@
   visibility: visible;
   transition: opacity 0.6s ease;
 }
+
+/* «Скачайте приложение» (the cashier asked for it): the whole screen while
+   idle, the photo column during an order. The QR is black on white on purpose. */
+.cd-invite {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2vh;
+  padding: 4vh 3vw;
+  text-align: center;
+  background: var(--cd-paper);
+  animation: cd-invite-in 0.5s ease;
+}
+.cd[data-mode="order"] .cd-invite {
+  right: auto;
+  width: var(--cd-photo);
+  border-right: 1px solid var(--cd-line);
+}
+.cd-invite-eyebrow {
+  font-size: 2vh;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--cd-wheat);
+}
+.cd-invite h2 {
+  margin: 0;
+  font-family: var(--cd-serif);
+  font-weight: 500;
+  font-size: 5.4vh;
+  line-height: 1.1;
+  color: var(--cd-ink);
+}
+.cd-invite-bonus {
+  margin: 0;
+  font-size: 3vh;
+  font-weight: 600;
+  color: var(--cd-brown);
+}
+.cd-invite-qr {
+  padding: 2vh;
+  border-radius: 2vh;
+  background: #ffffff;
+  box-shadow: 0 1vh 3vh rgba(43, 25, 13, 0.14);
+  line-height: 0;
+}
+.cd-invite-qr svg {
+  width: 36vh;
+  height: 36vh;
+  max-width: 28vw;
+  max-height: 28vw;
+}
+.cd-invite-hint {
+  margin: 0;
+  font-size: 2.6vh;
+  color: var(--cd-muted);
+}
+.cd-invite-url {
+  font-size: 2.2vh;
+  font-weight: 600;
+  color: var(--cd-ink);
+}
+@keyframes cd-invite-in {
+  from {
+    opacity: 0;
+  }
+}

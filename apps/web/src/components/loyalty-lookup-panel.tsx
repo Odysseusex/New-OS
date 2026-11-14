@@ -53,6 +53,7 @@ export function LoyaltyLookupPanel({ role, onChanged, keypad = false }: { role: 
           <Search className="h-4 w-4" strokeWidth={1.75} />
           Найти
         </button>
+        {!keypad && (
         <button
           type="button"
           onClick={() => setRegisterPhone(phone)}
@@ -61,6 +62,7 @@ export function LoyaltyLookupPanel({ role, onChanged, keypad = false }: { role: 
           <Plus className="h-4 w-4" strokeWidth={1.75} />
           Новый клиент
         </button>
+        )}
       </form>
 
       {error && <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
@@ -84,9 +86,13 @@ export function LoyaltyLookupPanel({ role, onChanged, keypad = false }: { role: 
       {lookup && !lookup.member && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-surface-muted px-4 py-3 text-sm">
           <span className="text-foreground">Клиент с номером {formatKzPhone(lookup.phone)} не найден</span>
-          <button type="button" onClick={() => setRegisterPhone(lookup.phone)} className="font-medium text-accent hover:underline">
-            Зарегистрировать
-          </button>
+          {keypad ? (
+            <span className="text-muted">Регистрация — в приложении Ar Amir</span>
+          ) : (
+            <button type="button" onClick={() => setRegisterPhone(lookup.phone)} className="font-medium text-accent hover:underline">
+              Зарегистрировать
+            </button>
+          )}
         </div>
       )}
 

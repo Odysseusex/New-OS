@@ -1815,6 +1815,13 @@ with the programme on (else the oldest non-sandbox org).
   browser (owner, 14.11.2026, removed the «Продолжить в браузере» link: whoever does not install is registered at the
   till by phone); a computer gets a QR to open `/app` on the phone. Only the installed app shows the sign-in form;
   members already signed in in a browser keep working. Not seen on real phones yet.
+- **No registration at the till** (owner, 14.11.2026: cashiers registered by number, and such members cannot be
+  reached): `LoyaltyService.register` refuses `TILL_ROLES` (403 «…регистрируется сам в приложении Ar Amir…»); managers
+  still register in Клиенты → Розница. The till's member block = «Сканируйте QR-код из приложения клиента» (the scan field,
+  2D scanner bought) + «По номеру» (find only) + «QR приложения»: `CustomerState.invite` makes `/customer` show
+  «Скачайте приложение Ar Amir» with a QR to ar-amir.com/app (full screen idle, the photo column during an order); a
+  number not found turns it on, a sale or a member with the app turns it off. `LoyaltyMemberDto.hasApp` (lookup / card
+  only: a USED/REVOKED `ClubLoginRequest`) — the till marks «Без приложения — показать QR».
 - Still not built: (3) a 2D USB scanner at the till (code done; hardware not bought).
 - `/poster` (link on the programme card): ONE A4 design — warm paper, gold hairline frame, Tenor Sans, «Бонусная карта»,
   no slogan, no photo. The owner rejected photo posters, red fills, sage, Cormorant/Playfair titles and slogans.

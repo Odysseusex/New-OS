@@ -1,5 +1,5 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { LoyaltyConsent, LoyaltyMember, Prisma } from "@prisma/client";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { ClubLoginStatus, LoyaltyConsent, LoyaltyMember, Prisma } from "@prisma/client";
 import {
   formatKzPhone,
   KZ_PHONE_INVALID_MESSAGE,
@@ -22,6 +22,8 @@ import {
   normalizeKzPhone,
   parseCardPayload,
   LoyaltyTierDto,
+  Role,
+  TILL_ROLES,
 } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { auditFields, recordAudit, recordAuditMany } from "../audit/audit";
@@ -129,6 +131,11 @@ export class LoyaltyService {
   }
 
   async register(user: AuthenticatedUser, dto: RegisterLoyaltyMemberDto): Promise<LoyaltyMemberDto> {
+    // The till's own staff do not register: a new customer signs up in the app
+    // (owner, 14.11.2026 — a member registered by number cannot be reached).
+    if (TILL_ROLES.includes(user.role as Role)) {
+      throw new ForbiddenException("Новый клиент регистрируется сам в приложении Ar Amir — покажите ему QR-код на экране покупателя");
+    }
     const phone = this.requirePhone(dto.phone);
     if (!dto.personalDataConsent) {
       throw new BadRequestException("Без согласия клиента на обработку персональных данных зарегистрировать его нельзя");
@@ -277,6 +284,7 @@ export class LoyaltyService {
     ]);
     return {
       ...this.toDto(member, positions.get(member.id), await this.tierOf(organizationId, member)),
+      hasApp: await this.hasApp(member.id),
       pointsHistory,
       welcomeBonusAvailable,
       family: member.family.map((f) => toFamilyDto(f)),
@@ -538,7 +546,16 @@ export class LoyaltyService {
 
   private async withBalance(organizationId: string, member: MemberWithConsents): Promise<LoyaltyMemberDto> {
     const positions = await this.points.positions(organizationId, [member.id]);
-    return this.toDto(member, positions.get(member.id), await this.tierOf(organizationId, member));
+    return { ...this.toDto(member, positions.get(member.id), await this.tierOf(organizationId, member)), hasApp: await this.hasApp(member.id) };
+  }
+
+  // Signed in to the customer app at least once (a session was collected).
+  private async hasApp(memberId: string): Promise<boolean> {
+    const session = await this.prisma.clubLoginRequest.findFirst({
+      where: { memberId, status: { in: [ClubLoginStatus.USED, ClubLoginStatus.REVOKED] } },
+      select: { id: true },
+    });
+    return !!session;
   }
 
   private async tierOf(organizationId: string, member: MemberWithConsents): Promise<LoyaltyTierDto | null> {

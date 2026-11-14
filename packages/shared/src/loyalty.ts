@@ -111,6 +111,8 @@ export interface LoyaltyMemberDto {
   tier: LoyaltyTierDto | null;
   // Linked to the customer Telegram bot (messages also need the TELEGRAM consent).
   telegramLinked: boolean;
+  // Has signed in to the customer app; only on the till's lookup and the card (absent in lists).
+  hasApp?: boolean;
   createdAt: string;
 }
 
