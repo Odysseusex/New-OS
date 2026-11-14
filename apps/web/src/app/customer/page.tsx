@@ -91,6 +91,9 @@ export default function CustomerDisplayPage() {
   // Shown only once it really plays: a monitor that cannot decode it keeps the photographs.
   const [playing, setPlaying] = useState(false);
   const idle = state.kind === "idle";
+  // The owner's call (14.11.2026, «пока так»): the film stays on screen ALL the time,
+  // over the order too. Set to false to bring back the order / «Спасибо» panels.
+  const film = FILM_ALWAYS || idle;
   useEffect(() => {
     // An error raised before this page became interactive never reaches onError.
     const el = video.current;
@@ -101,6 +104,7 @@ export default function CustomerDisplayPage() {
   useEffect(() => {
     const el = video.current;
     if (!el) return;
+    if (FILM_ALWAYS) return;
     if (idle) {
       el.currentTime = 0;
       el.play().catch(() => undefined);
@@ -140,7 +144,7 @@ export default function CustomerDisplayPage() {
         <video
           ref={video}
           className="cd-video"
-          data-on={idle && playing ? "1" : undefined}
+          data-on={film && playing ? "1" : undefined}
           src="/site/bonus-card.mp4"
           muted
           loop
@@ -152,8 +156,6 @@ export default function CustomerDisplayPage() {
         />
       )}
 
-      {state.kind !== "paid" && state.invite && <InvitePanel bonus={state.invite.bonus} />}
-
       <div className="cd-panel">
         {state.kind === "cart" && <CartPanel state={state} />}
         {state.kind === "paid" && <PaidPanel state={state} />}
@@ -162,23 +164,7 @@ export default function CustomerDisplayPage() {
   );
 }
 
-// «Скачайте приложение»: shown when the cashier asks (a new customer registers
-// in the app, never at the till). Over the photographs / film, beside the order.
-const APP_URL = "https://ar-amir.com/app";
-function InvitePanel({ bonus }: { bonus: number | null }) {
-  return (
-    <div className="cd-invite">
-      <span className="cd-invite-eyebrow">Бонусная карта</span>
-      <h2>Скачайте приложение Ar Amir</h2>
-      {bonus ? <p className="cd-invite-bonus">{amount(bonus)} бонусов за первую покупку</p> : null}
-      <div className="cd-invite-qr">
-        <QRCodeSVG value={APP_URL} size={240} level="M" bgColor="#ffffff" fgColor="#000000" />
-      </div>
-      <p className="cd-invite-hint">Наведите камеру телефона на код</p>
-      <span className="cd-invite-url">ar-amir.com/app</span>
-    </div>
-  );
-}
+const FILM_ALWAYS = true;
 
 function CartPanel({ state }: { state: Extract<CustomerState, { kind: "cart" }> }) {
   // What the discounts on this order come to — markdown, coupon and points

@@ -38,18 +38,11 @@ export interface CustomerMember {
   redeemed: number;
 }
 
-// «Скачайте приложение»: the till asks the buyer's screen to show the app's QR
-// (a new customer registers there, not at the till). `bonus` = the welcome bonus, ₸.
-export interface CustomerInvite {
-  bonus: number | null;
-}
-
 export type CustomerState =
-  | { kind: "idle"; locationName: string | null; invite?: CustomerInvite | null }
+  | { kind: "idle"; locationName: string | null }
   | {
       kind: "cart";
       locationName: string | null;
-      invite?: CustomerInvite | null;
       lines: CustomerLine[];
       total: number;
       member?: CustomerMember | null;

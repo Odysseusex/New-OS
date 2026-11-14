@@ -228,6 +228,8 @@ after each customer, pauses and hides during an order). Its source is `marketing
 timeline rendered frame by frame: `node tools/render.js`; figures in `src/config.js` mirror `/api/club/info`; see its
 `BRIEF.md`, `STORYBOARD.md`, `MOCKS.md`). A change of percents / welcome bonus / sign-in channel = edit config, render,
 copy the MP4 over. Owner's rules for it: the poster's look, the QR permanently on screen, no slogans, no photos.
+**For now the film plays ALL the time, over the order too** (owner, 14.11.2026, «пока так, потом изменю»): `FILM_ALWAYS`
+in `app/customer/page.tsx`; set it to false to bring back the order / «Спасибо» panels (the code is all there).
 
 **Scrolling the till's grid on the monoblock** (cashier's complaint: scrolling by dragging over tiles added products):
 `components/pos-scroll.tsx` — `useTapGuard` on the grid counts a press as a tap only if the finger moved < 12 px and the
@@ -1818,10 +1820,9 @@ with the programme on (else the oldest non-sandbox org).
 - **No registration at the till** (owner, 14.11.2026: cashiers registered by number, and such members cannot be
   reached): `LoyaltyService.register` refuses `TILL_ROLES` (403 «…регистрируется сам в приложении Ar Amir…»); managers
   still register in Клиенты → Розница. The till's member block = «Сканируйте QR-код из приложения клиента» (the scan field,
-  2D scanner bought) + «По номеру» (find only) + «QR приложения»: `CustomerState.invite` makes `/customer` show
-  «Скачайте приложение Ar Amir» with a QR to ar-amir.com/app (full screen idle, the photo column during an order); a
-  number not found turns it on, a sale or a member with the app turns it off. `LoyaltyMemberDto.hasApp` (lookup / card
-  only: a USED/REVOKED `ClubLoginRequest`) — the till marks «Без приложения — показать QR».
+  2D scanner bought) + «Найти по номеру» (find only; a number not found says to register in the app). A «QR приложения»
+  button that pushed an invite screen to `/customer` was built and REMOVED the same day at the owner's request.
+  `LoyaltyMemberDto.hasApp` (lookup / card only: a USED/REVOKED `ClubLoginRequest`) — the till marks «Без приложения».
 - Still not built: (3) a 2D USB scanner at the till (code done; hardware not bought).
 - `/poster` (link on the programme card): ONE A4 design — warm paper, gold hairline frame, Tenor Sans, «Бонусная карта»,
   no slogan, no photo. The owner rejected photo posters, red fills, sage, Cormorant/Playfair titles and slogans.

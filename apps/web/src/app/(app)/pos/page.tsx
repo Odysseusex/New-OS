@@ -189,8 +189,6 @@ export default function PosPage() {
   // how much of a check points may pay; null until loaded (or when the role
   // cannot read them), which simply hides the block.
   const [loyaltySettings, setLoyaltySettings] = useState<LoyaltySettingsDto | null>(null);
-  // The app's QR on the buyer's screen (a customer without the app is asked to install it).
-  const [inviting, setInviting] = useState(false);
   const [loyaltyMember, setLoyaltyMember] = useState<LoyaltyMemberDto | null>(null);
   const [crmOrder, setCrmOrder] = useState<OpenCrmOrderDto | null>(null);
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
@@ -476,12 +474,10 @@ export default function PosPage() {
         pointsEarned: lastSale.loyalty ? lastSale.loyalty.pointsEarned : null,
       };
     }
-    const invite = inviting ? { bonus: loyaltySettings?.welcomeBonusPoints ? loyaltySettings.welcomeBonusPoints : null } : null;
-    if (cart.length === 0) return { kind: "idle", locationName: activeLocationName, invite };
+    if (cart.length === 0) return { kind: "idle", locationName: activeLocationName };
     return {
       kind: "cart",
       locationName: activeLocationName,
-      invite,
       total,
       member:
         loyaltyActive && loyaltyMember
@@ -503,7 +499,7 @@ export default function PosPage() {
     // couponPercentFor/displayUnitPrice are plain functions closing over
     // couponRuleByCategory, which IS listed — they need no dep of their own.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cart, total, lastSale, cashDetails, activeLocationName, couponRuleByCategory, pointsDiscount?.total, loyaltyActive, loyaltyMember, inviting, loyaltySettings?.welcomeBonusPoints]);
+  }, [cart, total, lastSale, cashDetails, activeLocationName, couponRuleByCategory, pointsDiscount?.total, loyaltyActive, loyaltyMember]);
 
   useCustomerDisplayPublisher(customerState);
 
@@ -621,7 +617,6 @@ export default function PosPage() {
           } else {
             setLoyaltyMember(found.member);
             setPointsToRedeem(0);
-            setInviting(false);
             setError(null);
           }
         })
@@ -697,7 +692,6 @@ export default function PosPage() {
         );
       }
       setLastSale(sale);
-      setInviting(false);
       setCashDetails(cashGiven !== undefined ? { given: cashGiven, change: cashGiven - total } : null);
       setCart([]);
       setQuery("");
@@ -1255,12 +1249,7 @@ export default function PosPage() {
             <div className="border-t border-border px-5 py-3">
               <PosLoyaltyBlock
                 member={loyaltyMember}
-                onMemberChange={(m) => {
-                  setLoyaltyMember(m);
-                  if (m?.hasApp) setInviting(false);
-                }}
-                inviting={inviting}
-                onInvite={setInviting}
+                onMemberChange={setLoyaltyMember}
                 pointsToRedeem={pointsToRedeem}
                 onPointsChange={setPointsToRedeem}
                 cap={pointsCap}
