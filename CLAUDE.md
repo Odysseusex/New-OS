@@ -1806,9 +1806,10 @@ with the programme on (else the oldest non-sandbox org).
   the icon): `app/_components/install.tsx` — in a PHONE's browser (not standalone, not signed in, no sign-in under way)
   `/app` shows `InstallGate` instead of the form: Android = one button «Установить приложение» (Chrome's
   `beforeinstallprompt`, caught at import; no offer within 3.5 s → the way by hand), iPhone = steps «Поделиться» → «На
-  экран „Домой“» (Safari 26+ starts with «•••»), inside Instagram/Telegram = «Откройте в Safari / Chrome». SOFT by the
-  owner's choice: the link «Продолжить в браузере» (sessionStorage) stays. A computer and the installed app go straight
-  to the form. Not seen on real phones yet.
+  экран „Домой“» (Safari 26+ starts with «•••»), inside Instagram/Telegram = «Откройте в Safari / Chrome». NO way past it in a
+  browser (owner, 14.11.2026, removed the «Продолжить в браузере» link: whoever does not install is registered at the
+  till by phone); a computer gets a QR to open `/app` on the phone. Only the installed app shows the sign-in form;
+  members already signed in in a browser keep working. Not seen on real phones yet.
 - Still not built: (3) a 2D USB scanner at the till (code done; hardware not bought).
 - `/poster` (link on the programme card): ONE A4 design — warm paper, gold hairline frame, Tenor Sans, «Бонусная карта»,
   no slogan, no photo. The owner rejected photo posters, red fills, sage, Cormorant/Playfair titles and slogans.

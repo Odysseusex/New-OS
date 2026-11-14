@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { ArrowDown, Check, Copy, Download, MoreHorizontal, MoreVertical, PlusSquare, Share } from "lucide-react";
 
 // Before sign-in in a phone's BROWSER: «add the app to your home screen first».
 // The sign-in form then appears in the app opened from its icon (on an iPhone a
 // home-screen app has its own storage, so a sign-in made in Safari would be
-// asked again there). Soft: «Продолжить в браузере» stays for a phone where
-// the installation did not work out.
+// asked again there). No way past it in a browser (owner, 14.11.2026): whoever
+// does not install is registered at the till by phone number. A computer gets
+// a QR to open the app on the phone.
 
 type InstallEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
 
@@ -30,7 +32,7 @@ if (typeof window !== "undefined") {
 }
 
 export interface InstallEnv {
-  os: "ios" | "android";
+  os: "ios" | "android" | "desktop";
   // Opened inside another app (Instagram, Telegram…): nothing can be installed from there.
   inApp: boolean;
   safari: boolean;
@@ -39,7 +41,6 @@ export interface InstallEnv {
   ipad: boolean;
 }
 
-const SKIP_KEY = "aa.club.installSkipped";
 const IN_APP = /Instagram|FBAN|FBAV|FB_IAB|Telegram|TikTok|musical_ly|Bytedance|Line\/|VKClient|; wv\)/i;
 
 export function isStandalone(): boolean {
@@ -56,11 +57,10 @@ export function isStandalone(): boolean {
 }
 
 // The phone this page is open on, or null when no gate is due (already the
-// installed app, a computer, or the person chose to stay in the browser).
+// installed app).
 export function installEnv(): InstallEnv | null {
   try {
     if (isStandalone()) return null;
-    if (sessionStorage.getItem(SKIP_KEY) === "1") return null;
     const ua = navigator.userAgent;
     const ipad = /ipad/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
     if (/iphone|ipod/i.test(ua) || ipad) {
@@ -70,22 +70,13 @@ export function installEnv(): InstallEnv | null {
       return { os: "ios", inApp, safari: !inApp && !other, compactSafari: version >= 26, ipad };
     }
     if (/android/i.test(ua)) return { os: "android", inApp: IN_APP.test(ua), safari: false, compactSafari: false, ipad: false };
-    return null;
+    return { os: "desktop", inApp: false, safari: false, compactSafari: false, ipad: false };
   } catch {
     return null;
   }
 }
 
-export function InstallGate({ env, onSkip }: { env: InstallEnv; onSkip: () => void }) {
-  const skip = () => {
-    try {
-      sessionStorage.setItem(SKIP_KEY, "1");
-    } catch {
-      // asked again after a reload, nothing worse
-    }
-    onSkip();
-  };
-
+export function InstallGate({ env }: { env: InstallEnv }) {
   return (
     <main className="aa-frame no-tabs aa-fade aa-install">
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, textAlign: "center", paddingTop: 18 }}>
@@ -95,15 +86,11 @@ export function InstallGate({ env, onSkip }: { env: InstallEnv; onSkip: () => vo
           Добавьте Ar Amir на экран телефона
         </h1>
         <p className="aa-sub" style={{ maxWidth: 340 }}>
-          Карта будет открываться со значка, как обычное приложение.
+          {env.os === "desktop" ? "Бонусная карта открывается на телефоне." : "Карта будет открываться со значка, как обычное приложение."}
         </p>
       </div>
 
-      {env.inApp ? <InApp env={env} /> : env.os === "android" ? <Android /> : <Ios env={env} />}
-
-      <button type="button" className="aa-link" style={{ alignSelf: "center" }} onClick={skip}>
-        Продолжить в браузере
-      </button>
+      {env.os === "desktop" ? <Desktop /> : env.inApp ? <InApp env={env} /> : env.os === "android" ? <Android /> : <Ios env={env} />}
       {env.os === "ios" && env.safari && !env.inApp && !env.ipad && (
         <div className="aa-install-arrow" aria-hidden>
           <ArrowDown size={26} />
@@ -260,6 +247,19 @@ function InApp({ env }: { env: InstallEnv }) {
       <button type="button" className="aa-btn ghost" onClick={copy}>
         {copied ? <Check size={18} /> : <Copy size={18} />} {copied ? "Ссылка скопирована" : "Скопировать ссылку"}
       </button>
+    </section>
+  );
+}
+
+// A computer: the card lives on the phone.
+function Desktop() {
+  const href = typeof window === "undefined" ? "" : `${window.location.origin}/app`;
+  return (
+    <section className="aa-panel" style={{ display: "flex", flexDirection: "column", gap: 14, alignItems: "center", textAlign: "center" }}>
+      <div style={{ background: "#fff", padding: 12, borderRadius: 12 }}>
+        <QRCodeSVG value={href} size={180} level="M" bgColor="#ffffff" fgColor="#000000" />
+      </div>
+      <p style={{ margin: 0 }}>Наведите камеру телефона на код.</p>
     </section>
   );
 }

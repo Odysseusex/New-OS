@@ -96,7 +96,7 @@ export default function ClubApp() {
       </div>
     );
   }
-  if (phase === "login" && gate) return <InstallGate env={gate} onSkip={() => setGate(null)} />;
+  if (phase === "login" && gate) return <InstallGate env={gate} />;
   if (phase === "login") {
     return (
       <>
