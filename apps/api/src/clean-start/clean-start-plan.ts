@@ -15,7 +15,10 @@ export const CLEAN_START_DELETES: string[] = [
   byOrg("stocktakes"),
   byOrg("stock_levels"),
   byOrg("fiscal_receipts"),
-  byOrg("loyalty_points_entries"),
+  // The bonus programme is not accounting: points stay, only their link to the deleted checks goes
+  // (the points ledger's trigger allows exactly this one change).
+  `UPDATE "loyalty_points_entries" SET "saleId" = NULL, "saleReturnId" = NULL
+     WHERE "organizationId" = $1 AND ("saleId" IS NOT NULL OR "saleReturnId" IS NOT NULL)`,
   byOrg("customer_advance_applications"),
   byOrg("cash_movements"),
   byParent("bank_statement_lines", "statementId", "bank_statements"),
@@ -70,7 +73,7 @@ export const CLEAN_START_RESETS: string[] = [
 
 // Tables with an organizationId that are deleted (above) …
 export const CLEAN_START_REMOVED_TABLES = [
-  "stock_void_lines", "stock_voids", "stock_movements", "stocktakes", "bank_statement_lines", "stock_levels", "fiscal_receipts", "loyalty_points_entries",
+  "stock_void_lines", "stock_voids", "stock_movements", "stocktakes", "bank_statement_lines", "stock_levels", "fiscal_receipts",
   "customer_advance_applications", "cash_movements", "bank_statements", "purchase_order_payments", "supplier_returns",
   "purchase_order_revisions", "purchase_orders", "invoices", "consignment_payments", "sale_payments", "sale_returns", "sales",
   "depreciation_entries", "fixed_assets", "expenses", "production_batches", "material_requisitions", "daily_reconciliations",
@@ -83,7 +86,7 @@ export const CLEAN_START_KEPT_TABLES = [
   "accounting_policies", "audit_logs", "bank_import_profiles", "bank_rules", "cash_accounts", "categories",
   "classification_batches", "club_chat_broadcasts", "club_chat_messages", "club_login_requests", "club_push_notices", "club_push_subscriptions", "crm_contacts", "crm_orders", "customers", "directions", "employee_compensations", "employees",
   "finance_categories", "financial_model_scenarios", "ledger_accounts", "locations", "loyalty_birthday_grants",
-  "loyalty_consents", "loyalty_family_members", "loyalty_members", "loyalty_message_logs", "loyalty_settings",
+  "loyalty_consents", "loyalty_family_members", "loyalty_points_entries", "loyalty_members", "loyalty_message_logs", "loyalty_settings",
   "loyalty_telegram_links", "management_plan_lines", "planned_fixed_costs", "product_location_prices", "product_photos",
   "products", "promotion_coupons", "promotions", "recipe_stage_types", "recipe_versions", "recipes", "regions", "standing_order_lines",
   "suppliers", "users", "vehicles",
@@ -108,7 +111,6 @@ export const CLEAN_START_REMOVE_GROUPS: { label: string; table: string }[] = [
   { label: "Основные средства", table: "fixed_assets" },
   { label: "Закрытые периоды", table: "financial_periods" },
   { label: "Проводки главной книги", table: "journal_entries" },
-  { label: "Бонусные баллы (начисления и списания)", table: "loyalty_points_entries" },
   { label: "Рейсы логистики", table: "delivery_routes" },
   { label: "Смены и учёт времени сотрудников", table: "time_entries" },
 ];
@@ -122,6 +124,8 @@ export const CLEAN_START_KEEP_GROUPS: { label: string; table: string }[] = [
   { label: "Оптовые клиенты", table: "customers" },
   { label: "Поставщики", table: "suppliers" },
   { label: "Бонусные клиенты", table: "loyalty_members" },
+  { label: "Бонусные баллы клиентов", table: "loyalty_points_entries" },
+  { label: "CRM: заказы и история сообщений", table: "crm_orders" },
   { label: "Статьи ДДС", table: "finance_categories" },
   { label: "Счета и кассы (остаток станет 0)", table: "cash_accounts" },
 ];

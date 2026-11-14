@@ -1085,11 +1085,16 @@ writes nothing) → `POST /clean-start {confirmation: "ОЧИСТИТЬ"}`, refu
 (`dataExport.download` audit row) in the last 24 h. ONE transaction (timeout 5 min): `clean-start-plan.ts` deletes every
 transactional table of the organization children-first (sales, returns, stock movements/levels, stocktakes, production,
 requisitions, purchases, invoices, cash movements, expenses, bank statements, till shifts, reconciliations, fixed assets,
-periods/snapshots/cost corrections, journal, loyalty points entries, routes, HR shifts/time) and resets cached figures
+periods/snapshots/cost corrections, journal, routes, HR shifts/time) and resets cached figures
 (cash account balances → 0, `Product.averageUnitCost` → null, `financeInitializedAt`/opening values/`ledgerStartsAt`/
 `journalEntrySequence`); then checks every removed table is empty or rolls back; audited `organization.cleanStart`.
 KEPT: products, prices, photos, categories, recipes + versions + stages, locations, users/PINs, customers, suppliers,
 loyalty members/consents/birthdays, finance categories, accounts, bank rules, promotions, CRM, planning, audit log.
+**The bonus programme and the CRM are NOT touched** (owner, 14.11.2026): `loyalty_points_entries` stay — the plan only
+sets their `saleId` / `saleReturnId` to NULL before the checks go (migration `20261202120000`: the points trigger allows
+exactly that one change, anything else is still refused). A detached EARN counts as «welcome already given», so the next
+purchase is not a «first» one again. What cannot survive because it is READ from sales: levels' spend (the level is
+held until `tierHeldUntil`, then recomputed), the CRM board «Кому написать», RFM/analytics, a member's purchase history.
 **Every table with `organizationId` must be listed as removed or kept** — `clean-start.spec.ts` fails otherwise; a new
 table needs a decision. Afterwards the opening stock goes in as Склад → «Приёмка» per point (raw materials first, WITH a
 unit price — that sets the moving average and the card price; then finished goods at recipe cost), NOT as a stocktake: a
