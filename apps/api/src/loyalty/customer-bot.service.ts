@@ -75,6 +75,9 @@ export class CustomerBotService implements OnModuleInit {
   // Why the bot is not connected, in words the owner can act on (never the token).
   private problem: string | null = null;
   private lastAttempt = 0;
+  // What Telegram itself says about delivering to us (getWebhookInfo), checked every few minutes.
+  private webhookProblem: string | null = null;
+  private lastWebhookCheck = 0;
 
   constructor(
     private prisma: PrismaService,
@@ -97,6 +100,35 @@ export class CustomerBotService implements OnModuleInit {
     this.transport = { send: async (chatId, text, extra) => void (await bot.telegram.sendMessage(chatId, text, { parse_mode: "HTML", ...(extra ?? {}) })) };
     this.registerHandlers(bot);
     await this.connect();
+    // Self-heal (15.11.2026: the bot stopped answering /start while the server was up): every
+    // 5 minutes ask Telegram where it delivers our updates; if not to us, register again.
+    setInterval(() => void this.checkWebhook().catch(() => undefined), 5 * 60_000).unref();
+  }
+
+  private webhookUrl(): string | null {
+    const base = process.env.CUSTOMER_BOT_WEBHOOK_BASE_URL || process.env.RENDER_EXTERNAL_URL;
+    return base ? `${base.replace(/\/$/, "")}/api/loyalty/telegram/webhook` : null;
+  }
+
+  // Telegram's own view of the webhook. A wrong / empty address (something else took the
+  // token, or it was deleted) is set back; a delivery error is kept for the programme card.
+  async checkWebhook(): Promise<void> {
+    if (!this.bot || !this.username) return;
+    this.lastWebhookCheck = Date.now();
+    const expected = this.webhookUrl();
+    if (!expected) return;
+    const info = await this.bot.telegram.getWebhookInfo();
+    if (info.url !== expected) {
+      this.logger.warn(`Customer bot webhook pointed to "${info.url || "(none)"}" — registering it again`);
+      await this.bot.telegram.setWebhook(expected, { secret_token: CustomerBotService.webhookSecret() });
+      this.webhookProblem = null;
+      return;
+    }
+    const recent = info.last_error_date && Date.now() / 1000 - info.last_error_date < 3600;
+    this.webhookProblem = recent
+      ? `Telegram не может доставить сообщения на сервер: ${info.last_error_message ?? "ошибка"}${info.pending_update_count ? ` (ждут доставки: ${info.pending_update_count})` : ""}`
+      : null;
+    if (recent) this.logger.warn(`Customer bot webhook error: ${info.last_error_message} (pending ${info.pending_update_count})`);
   }
 
   // Asks Telegram who the bot is and registers the webhook. Retried from status()
@@ -109,14 +141,14 @@ export class CustomerBotService implements OnModuleInit {
       this.username = this.bot.botInfo.username;
       // Render sets RENDER_EXTERNAL_URL itself; the webhook registers on every boot,
       // so the owner only ever sets the token.
-      const base = process.env.CUSTOMER_BOT_WEBHOOK_BASE_URL || process.env.RENDER_EXTERNAL_URL;
-      if (base) {
-        await this.bot.telegram.setWebhook(`${base.replace(/\/$/, "")}/api/loyalty/telegram/webhook`, { secret_token: CustomerBotService.webhookSecret() });
+      const url = this.webhookUrl();
+      if (url) {
+        await this.bot.telegram.setWebhook(url, { secret_token: CustomerBotService.webhookSecret() });
         this.problem = null;
       } else {
         this.problem = "Не задан адрес сервера для Telegram (RENDER_EXTERNAL_URL)";
       }
-      this.logger.log(`Customer bot ready: @${this.username}${base ? " (webhook set)" : " (no public URL — webhook not set)"}`);
+      this.logger.log(`Customer bot ready: @${this.username}${url ? " (webhook set)" : " (no public URL — webhook not set)"}`);
     } catch (err) {
       const code = (err as { response?: { error_code?: number; description?: string } }).response?.error_code;
       const description = (err as { response?: { description?: string } }).response?.description;
@@ -540,12 +572,13 @@ export class CustomerBotService implements OnModuleInit {
 
   async status(organizationId: string): Promise<LoyaltyTelegramStatusDto> {
     if (this.bot && (!this.username || this.problem) && Date.now() - this.lastAttempt > 30_000) await this.connect();
+    if (this.bot && this.username && Date.now() - this.lastWebhookCheck > 30_000) await this.checkWebhook().catch(() => undefined);
     const links = await this.prisma.loyaltyTelegramLink.findMany({ where: { organizationId }, select: { memberId: true } });
     const reachable = await this.reachableIds(links.map((l) => l.memberId));
     return {
       enabled: this.isEnabled() && this.username !== null,
       username: this.username,
-      problem: this.bot ? this.problem : null,
+      problem: this.bot ? (this.problem ?? this.webhookProblem) : null,
       linkedMembers: links.length,
       reachableMembers: reachable.size,
     };

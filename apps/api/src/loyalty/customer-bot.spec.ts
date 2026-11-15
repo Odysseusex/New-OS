@@ -142,3 +142,41 @@ describe("CustomerBotService (database)", () => {
     expect((await bot.onContact(CHAT, TG_USER, { phone_number: PHONE, user_id: Number(TG_USER) })).text).toMatch(/отозвали согласие/);
   });
 });
+
+describe("CustomerBotService webhook self-check", () => {
+  const ENV = { ...process.env };
+  afterEach(() => {
+    process.env = { ...ENV };
+  });
+
+  function withFakeTelegram(info: object) {
+    const svc = new CustomerBotService(new PrismaService(), {} as never);
+    const calls: string[] = [];
+    const telegram = {
+      getWebhookInfo: async () => info,
+      setWebhook: async (url: string) => void calls.push(url),
+    };
+    Object.assign(svc as unknown as Record<string, unknown>, { bot: { telegram }, username: "ar_amir_bot" });
+    return { svc, calls };
+  }
+
+  it("registers the webhook again when Telegram delivers elsewhere", async () => {
+    process.env.RENDER_EXTERNAL_URL = "https://api.example.test";
+    const { svc, calls } = withFakeTelegram({ url: "", pending_update_count: 6 });
+    await svc.checkWebhook();
+    expect(calls).toEqual(["https://api.example.test/api/loyalty/telegram/webhook"]);
+  });
+
+  it("keeps a recent delivery error for the programme card", async () => {
+    process.env.RENDER_EXTERNAL_URL = "https://api.example.test";
+    const { svc, calls } = withFakeTelegram({
+      url: "https://api.example.test/api/loyalty/telegram/webhook",
+      last_error_date: Math.floor(Date.now() / 1000) - 60,
+      last_error_message: "Wrong response from the webhook: 502 Bad Gateway",
+      pending_update_count: 6,
+    });
+    await svc.checkWebhook();
+    expect(calls).toEqual([]);
+    expect((svc as unknown as { webhookProblem: string }).webhookProblem).toMatch(/502 Bad Gateway.*ждут доставки: 6/);
+  });
+});

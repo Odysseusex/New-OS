@@ -1698,6 +1698,10 @@ bot is a normal `LoyaltyConsent` row (source `TELEGRAM_BOT`, «Клиент (Tel
 and records the withdrawal. Messages: after a sale/return (fired after commit, never awaited — must not slow the
 till), points expiring within 7 days (daily cron 12:05 Almaty; free Render sleeps, so a missed day is caught up next
 time, the key prevents repeats), and owner-written messages to the churn radar (OWNER/ADMIN). HTML-escaped.
+**Webhook self-check** (15.11.2026: the bot ignored /start while the API was up): every 5 min and on the programme
+card's status, `checkWebhook()` reads Telegram's `getWebhookInfo` — a different/empty URL is registered again; a delivery
+error of the last hour is shown as the card's `problem` («Telegram не может доставить сообщения…»). Spec in
+`customer-bot.spec.ts`. The cause of that incident was not seen from here (no production access).
 
 **Birthdays — built** (migration `20261016180000_loyalty_birthdays`, `loyalty/birthdays.ts` pure date maths,
 `loyalty/loyalty-birthday.service.ts`). One phone card holds up to 8 birthdays (`LoyaltyFamilyMember`: the holder
