@@ -118,7 +118,9 @@ function Start({ info, onStarted }: { info: ClubInfoDto | null; onStarted: (p: P
         )}
       </section>
       <p className="aa-muted" style={{ textAlign: "center", fontSize: 13, margin: 0 }}>
-        Пароль не нужен: вход подтверждается одним сообщением с вашего номера.
+        {info && info.telegram && !info.whatsapp
+          ? "Пароль не нужен: вход подтверждается через Telegram с вашего номера. Нужно приложение Telegram на телефоне."
+          : "Пароль не нужен: вход подтверждается одним сообщением с вашего номера."}
       </p>
     </main>
   );
@@ -213,6 +215,7 @@ function Confirm({ pending, onBack, onSignedIn }: { pending: PendingLogin; onBac
                 <Send size={18} /> {pending.whatsappUrl ? "Через Telegram" : "Открыть Telegram"}
               </a>
             )}
+            {pending.telegramUrl && !pending.whatsappUrl && <NoTelegram />}
           </section>
           <section className="aa-panel" style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "center" }}>
             <span className="aa-muted" style={{ fontSize: 13 }}>
@@ -227,5 +230,37 @@ function Confirm({ pending, onBack, onSignedIn }: { pending: PendingLogin; onBac
         </>
       )}
     </main>
+  );
+}
+
+// Telegram is the only way in while WhatsApp sign-in is off; a phone without the
+// Telegram app cannot open t.me (Safari: «адрес недействителен»). Point to the store.
+const TELEGRAM_IOS = "https://apps.apple.com/app/telegram-messenger/id686449807";
+const TELEGRAM_ANDROID = "https://play.google.com/store/apps/details?id=org.telegram.messenger";
+
+function NoTelegram() {
+  const [os, setOs] = useState<"ios" | "android" | "other">("other");
+  useEffect(() => {
+    const ua = navigator.userAgent;
+    const ipad = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+    setOs(/iphone|ipad|ipod/i.test(ua) || ipad ? "ios" : /android/i.test(ua) ? "android" : "other");
+  }, []);
+  return (
+    <div className="aa-no-tg">
+      <b>Нет Telegram на телефоне?</b>
+      <span>Установите его (бесплатно), откройте один раз, затем вернитесь сюда и нажмите «Открыть Telegram».</span>
+      <div className="aa-no-tg-links">
+        {os !== "android" && (
+          <a className="aa-btn ghost" href={TELEGRAM_IOS} target="_blank" rel="noreferrer">
+            Telegram в App Store
+          </a>
+        )}
+        {os !== "ios" && (
+          <a className="aa-btn ghost" href={TELEGRAM_ANDROID} target="_blank" rel="noreferrer">
+            Telegram в Google Play
+          </a>
+        )}
+      </div>
+    </div>
   );
 }

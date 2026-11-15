@@ -1839,6 +1839,9 @@ with the programme on (else the oldest non-sandbox org).
   CUSTOMER_APP) / По номеру на кассе (AT_TILL) / Сейчас в приложении». An app member counts for the cashier of their FIRST
   sale (`Sale.createdById`), a till registration for whoever registered; no purchase yet = «Ещё без покупки»; managers /
   import = «Другое». Excel/PDF; PeriodPicker. Spec in `loyalty-analytics.spec.ts`.
+- **No Telegram on the phone** (15.11.2026, three customers stuck: Safari «адрес недействителен» on t.me): while
+  Telegram is the only sign-in channel, the confirm screen shows «Нет Telegram на телефоне?» with an App Store / Google
+  Play link (`NoTelegram` in `app/_components/login.tsx`). The real fix is WhatsApp sign-in (Meta webhook).
 - Still not built: (3) a 2D USB scanner at the till (code done; hardware not bought).
 - `/poster` (link on the programme card): ONE A4 design — warm paper, gold hairline frame, Tenor Sans, «Бонусная карта»,
   no slogan, no photo. The owner rejected photo posters, red fills, sage, Cormorant/Playfair titles and slogans.
