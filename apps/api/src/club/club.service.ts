@@ -71,6 +71,7 @@ export class ClubService {
     const organizationId = await this.organizationId();
     const settings = await this.points.getSettings(organizationId);
     const whatsapp = settings.clubWhatsappLogin && (await this.whatsapp.businessPhoneDigits()) !== null;
+    if (this.bot.botUsername() === null) await this.bot.ensureConnected();
     const telegram = this.bot.botUsername() !== null;
     return { brand: BRAND, ready: settings.enabled && (whatsapp || telegram), whatsapp, telegram, programme: this.programme(settings) };
   }

@@ -103,6 +103,14 @@ export class CustomerBotService implements OnModuleInit {
     // Self-heal (15.11.2026: the bot stopped answering /start while the server was up): every
     // 5 minutes ask Telegram where it delivers our updates; if not to us, register again.
     setInterval(() => void this.checkWebhook().catch(() => undefined), 5 * 60_000).unref();
+    // A failed start (Telegram unreachable, a token being changed) is retried every minute —
+    // until it works the app shows «Вход временно недоступен».
+    setInterval(() => void this.ensureConnected(), 60_000).unref();
+  }
+
+  // Connects again when the bot is not running (at most every 30 s). Never throws.
+  async ensureConnected(): Promise<void> {
+    if (this.bot && (!this.username || this.problem) && Date.now() - this.lastAttempt > 30_000) await this.connect().catch(() => undefined);
   }
 
   private webhookUrl(): string | null {

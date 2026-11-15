@@ -1701,7 +1701,9 @@ time, the key prevents repeats), and owner-written messages to the churn radar (
 **Webhook self-check** (15.11.2026: the bot ignored /start while the API was up): every 5 min and on the programme
 card's status, `checkWebhook()` reads Telegram's `getWebhookInfo` — a different/empty URL is registered again; a delivery
 error of the last hour is shown as the card's `problem` («Telegram не может доставить сообщения…»). Spec in
-`customer-bot.spec.ts`. The cause of that incident was not seen from here (no production access).
+`customer-bot.spec.ts`. The cause of that incident was not seen from here (no production access). A failed bot start
+(`getMe` error) is retried every minute (`ensureConnected`) and by `/club/info` itself — while the bot is down the app
+says «Вход временно недоступен» (`ready: false`, the only sign-in channel is Telegram).
 
 **Birthdays — built** (migration `20261016180000_loyalty_birthdays`, `loyalty/birthdays.ts` pure date maths,
 `loyalty/loyalty-birthday.service.ts`). One phone card holds up to 8 birthdays (`LoyaltyFamilyMember`: the holder
