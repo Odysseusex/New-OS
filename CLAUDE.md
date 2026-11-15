@@ -1816,7 +1816,11 @@ with the programme on (else the oldest non-sandbox org).
   экран „Домой“» (Safari 26+ starts with «•••»), inside Instagram/Telegram = «Откройте в Safari / Chrome». NO way past it in a
   browser (owner, 14.11.2026, removed the «Продолжить в браузере» link: whoever does not install is registered at the
   till by phone); a computer gets a QR to open `/app` on the phone. Only the installed app shows the sign-in form;
-  members already signed in in a browser keep working. Not seen on real phones yet.
+  members already signed in in a browser keep working. **Android exception** (owner, 15.11.2026, a customer's phone:
+  Yandex/Opera/Mi browsers make only a plain shortcut that opens in the browser, so the gate never let them in): when no
+  real install offer comes, the steps end with «Значок добавлен — войти» → the form, remembered in localStorage
+  (`aa.club.androidIconAdded`) so the shortcut opens the form next time. Safe on Android: the shortcut shares the
+  browser's storage (unlike an iPhone home-screen app). Chrome / Samsung Internet still get the one-tap install.
 - **No registration at the till** (owner, 14.11.2026: cashiers registered by number, and such members cannot be
   reached): `LoyaltyService.register` refuses `TILL_ROLES` (403 «…регистрируется сам в приложении Ar Amir…»); managers
   still register in Клиенты → Розница. The till's member block = «Сканируйте QR-код из приложения клиента» (the scan field,

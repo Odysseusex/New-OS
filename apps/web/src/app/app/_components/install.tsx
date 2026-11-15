@@ -41,6 +41,11 @@ export interface InstallEnv {
   ipad: boolean;
 }
 
+// Android only: the person said the icon is on the screen. Some Android browsers
+// (Yandex, Opera, Mi…) make only a plain shortcut that opens in the browser
+// itself, so the app never looks "installed" — owner, 15.11.2026. On Android the
+// shortcut shares the browser's storage, so a sign-in here holds there too.
+const ICON_KEY = "aa.club.androidIconAdded";
 const IN_APP = /Instagram|FBAN|FBAV|FB_IAB|Telegram|TikTok|musical_ly|Bytedance|Line\/|VKClient|; wv\)/i;
 
 export function isStandalone(): boolean {
@@ -69,6 +74,7 @@ export function installEnv(): InstallEnv | null {
       const version = Number(/Version\/(\d+)/.exec(ua)?.[1] ?? 0);
       return { os: "ios", inApp, safari: !inApp && !other, compactSafari: version >= 26, ipad };
     }
+    if (/android/i.test(ua) && localStorage.getItem(ICON_KEY) === "1") return null;
     if (/android/i.test(ua)) return { os: "android", inApp: IN_APP.test(ua), safari: false, compactSafari: false, ipad: false };
     return { os: "desktop", inApp: false, safari: false, compactSafari: false, ipad: false };
   } catch {
@@ -76,7 +82,7 @@ export function installEnv(): InstallEnv | null {
   }
 }
 
-export function InstallGate({ env }: { env: InstallEnv }) {
+export function InstallGate({ env, onDone }: { env: InstallEnv; onDone: () => void }) {
   return (
     <main className="aa-frame no-tabs aa-fade aa-install">
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, textAlign: "center", paddingTop: 18 }}>
@@ -90,7 +96,7 @@ export function InstallGate({ env }: { env: InstallEnv }) {
         </p>
       </div>
 
-      {env.os === "desktop" ? <Desktop /> : env.inApp ? <InApp env={env} /> : env.os === "android" ? <Android /> : <Ios env={env} />}
+      {env.os === "desktop" ? <Desktop /> : env.inApp ? <InApp env={env} /> : env.os === "android" ? <Android onDone={onDone} /> : <Ios env={env} />}
       {env.os === "ios" && env.safari && !env.inApp && !env.ipad && (
         <div className="aa-install-arrow" aria-hidden>
           <ArrowDown size={26} />
@@ -100,7 +106,7 @@ export function InstallGate({ env }: { env: InstallEnv }) {
   );
 }
 
-function Android() {
+function Android({ onDone }: { onDone: () => void }) {
   const [, tick] = useState(0);
   const [state, setState] = useState<"idle" | "installing" | "manual">("idle");
   useEffect(() => {
@@ -160,11 +166,26 @@ function Android() {
           </li>
           <li>
             <b>3</b>
-            <span>Откройте Ar Amir со значка и войдите по номеру.</span>
+            <span>Когда значок Ar Amir появится на экране, нажмите кнопку ниже.</span>
           </li>
         </ol>
       )}
-      {state === "manual" && <p className="aa-muted" style={{ margin: 0, fontSize: 13 }}>Значок Ar Amir уже есть на экране телефона? Откройте приложение с него.</p>}
+      {state === "manual" && (
+        <button
+          type="button"
+          className="aa-btn ghost"
+          onClick={() => {
+            try {
+              localStorage.setItem(ICON_KEY, "1");
+            } catch {
+              // asked again next time, nothing worse
+            }
+            onDone();
+          }}
+        >
+          <Check size={18} /> Значок добавлен — войти
+        </button>
+      )}
     </section>
   );
 }
