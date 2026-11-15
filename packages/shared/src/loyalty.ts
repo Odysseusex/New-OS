@@ -775,3 +775,32 @@ export interface LoyaltyWhatsAppStatusDto {
   templates: LoyaltyWhatsAppTemplateDto[];
   last30Days: Record<LoyaltyMessageStatus, number>;
 }
+
+// Клиенты → «Регистрации»: who brought new bonus-programme members, per cashier and per day.
+// A member registered in the app counts for the cashier of their FIRST purchase; one registered
+// by number at the till counts for whoever registered them (before 14.11.2026 cashiers could).
+export interface LoyaltyRegistrationCountsDto {
+  total: number;
+  viaApp: number;
+  atTill: number;
+  // Of these, how many are signed in to the app today.
+  withAppNow: number;
+}
+
+export interface LoyaltyRegistrationCashierDto extends LoyaltyRegistrationCountsDto {
+  // null = registered in the app, no purchase yet («Ещё без покупки»); "other" = managers / import.
+  key: string;
+  name: string;
+}
+
+export interface LoyaltyRegistrationDayDto extends LoyaltyRegistrationCountsDto {
+  day: string; // YYYY-MM-DD, Almaty
+}
+
+export interface LoyaltyRegistrationsDto {
+  from: string;
+  to: string;
+  totals: LoyaltyRegistrationCountsDto;
+  cashiers: LoyaltyRegistrationCashierDto[];
+  days: LoyaltyRegistrationDayDto[];
+}

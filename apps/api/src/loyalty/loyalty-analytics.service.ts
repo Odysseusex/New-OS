@@ -1,3 +1,4 @@
+import { loyaltyRegistrations } from "./loyalty-registrations";
 import { BadRequestException, forwardRef, Inject, Injectable } from "@nestjs/common";
 import { DEFAULT_LOYALTY_CHURN_SETTINGS, LoyaltyAnalyticsDto, LoyaltyChurnSettings, LoyaltyMemberStatus } from "@bakery-os/shared";
 import { ownAmount } from "../common/own-sales";
@@ -22,6 +23,10 @@ export class LoyaltyAnalyticsService {
     @Inject(forwardRef(() => CustomerBotService)) private customerBot?: CustomerBotService,
     private whatsapp?: WhatsAppService,
   ) {}
+
+  registrations(organizationId: string, from: Date, to: Date) {
+    return loyaltyRegistrations(this.prisma, organizationId, from, to);
+  }
 
   async analytics(organizationId: string, from: Date, to: Date, churn: Partial<LoyaltyChurnSettings>): Promise<LoyaltyAnalyticsDto> {
     if (!(from < to)) throw new BadRequestException("Неверный период");

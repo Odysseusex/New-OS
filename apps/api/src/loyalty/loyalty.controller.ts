@@ -136,6 +136,16 @@ export class LoyaltyProgramController {
     private analyticsService: LoyaltyAnalyticsService,
   ) {}
 
+  // Клиенты → «Регистрации»: new members of the period by cashier and by day.
+  @Get("registrations")
+  @Roles(...LOYALTY_MANAGE_ROLES)
+  registrations(@CurrentUser() user: AuthenticatedUser, @Query("from") from?: string, @Query("to") to?: string) {
+    const end = to ? new Date(to) : new Date();
+    const start = from ? new Date(from) : new Date(end.getTime() - 30 * 86_400_000);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) throw new BadRequestException("Неверный период");
+    return this.analyticsService.registrations(user.organizationId, start, end);
+  }
+
   @Get("analytics")
   @Roles(...LOYALTY_MANAGE_ROLES)
   analytics(

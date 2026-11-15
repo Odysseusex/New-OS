@@ -32,6 +32,7 @@ import type {
   LoyaltyTelegramStatusDto,
   SendLoyaltyTelegramResultDto,
   LoyaltyAnalyticsDto,
+  LoyaltyRegistrationsDto,
   LoyaltyChurnSettings,
   AdjustLoyaltyPointsRequestDto,
   LoyaltySettingsDto,
@@ -739,6 +740,7 @@ export const api = {
       request<LoyaltyMemberDetailDto>("/loyalty/members/merge", { method: "POST", body: JSON.stringify(dto) }),
     previewImport: (rows: LoyaltyImportRowInput[]) =>
       request<LoyaltyImportPreviewDto>("/loyalty/members/import/preview", { method: "POST", body: JSON.stringify({ rows }) }),
+    registrations: (from: string, to: string) => request<LoyaltyRegistrationsDto>(withQuery("/loyalty/registrations", { from, to })),
     analytics: (from: string, to: string, churn: LoyaltyChurnSettings) =>
       request<LoyaltyAnalyticsDto>(
         withQuery("/loyalty/analytics", {

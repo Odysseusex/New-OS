@@ -1827,6 +1827,12 @@ with the programme on (else the oldest non-sandbox org).
   2D scanner bought) + «Найти по номеру» (find only; a number not found says to register in the app). A «QR приложения»
   button that pushed an invite screen to `/customer` was built and REMOVED the same day at the owner's request.
   `LoyaltyMemberDto.hasApp` (lookup / card only: a USED/REVOKED `ClubLoginRequest`) — the till marks «Без приложения».
+- **Клиенты → «Регистрации»** (owner, 15.11.2026: «сколько кассиры зарегистрировали клиентов по датам»; LOYALTY_MANAGE_ROLES,
+  `GET /loyalty/registrations?from&to`, `loyalty/loyalty-registrations.ts`, read-only, no schema change): members CREATED in
+  the period (merged duplicates left out) by cashier and by Almaty day — «Новых клиентов / Через приложение (consent source
+  CUSTOMER_APP) / По номеру на кассе (AT_TILL) / Сейчас в приложении». An app member counts for the cashier of their FIRST
+  sale (`Sale.createdById`), a till registration for whoever registered; no purchase yet = «Ещё без покупки»; managers /
+  import = «Другое». Excel/PDF; PeriodPicker. Spec in `loyalty-analytics.spec.ts`.
 - Still not built: (3) a 2D USB scanner at the till (code done; hardware not bought).
 - `/poster` (link on the programme card): ONE A4 design — warm paper, gold hairline frame, Tenor Sans, «Бонусная карта»,
   no slogan, no photo. The owner rejected photo posters, red fills, sage, Cormorant/Playfair titles and slogans.

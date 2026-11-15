@@ -161,4 +161,37 @@ describe("LoyaltyAnalyticsService (database)", () => {
   it("refuses nonsense radar settings", async () => {
     await expect(analytics.analytics(org.organizationId, new Date(Date.now() - DAY), new Date(), { minVisits: 0 })).rejects.toThrow(/Параметры радара/);
   });
+
+  it("registrations: app members count for the cashier of their first purchase", async () => {
+    const appMember = async (phone: string) => {
+      const m = await prisma.loyaltyMember.create({ data: { organizationId: org.organizationId, phone } });
+      await prisma.loyaltyConsent.create({
+        data: { organizationId: org.organizationId, memberId: m.id, purpose: "PERSONAL_DATA", granted: true, source: S.CUSTOMER_APP, recordedByName: "Клиент (приложение)" } as never,
+      });
+      return m.id;
+    };
+    const bought = await appMember("+77081000011");
+    await appMember("+77081000012");
+    await prisma.clubLoginRequest.create({
+      data: { organizationId: org.organizationId, phone: "+77081000011", code: "811011", secretHash: "x", status: "USED", memberId: bought, expiresAt: new Date() },
+    });
+    const product = await prisma.product.create({
+      data: { organizationId: org.organizationId, name: "Булка", sku: "LA-R1", price: 300, unit: Unit.PCS, type: ProductType.FINISHED_GOOD, trackInventory: false } as never,
+    });
+    await services.sales.create(org.user, {
+      locationId: org.storeId,
+      paymentMethod: PaymentMethod.CASH,
+      items: [{ productId: product.id, quantity: 1, unitPrice: 300 }],
+      loyaltyMemberId: bought,
+    } as never);
+
+    const r = await analytics.registrations(org.organizationId, new Date(Date.now() - 3600_000), new Date(Date.now() + 3600_000));
+    // The earlier test registered two at the till (one merged away, so one counts) by org.user.
+    expect(r.totals).toEqual({ total: 3, viaApp: 2, atTill: 1, withAppNow: 1 });
+    const mine = r.cashiers.find((c) => c.key === org.user.id);
+    expect(mine).toMatchObject({ total: 2, viaApp: 1, atTill: 1, withAppNow: 1 });
+    expect(r.cashiers.find((c) => c.key === "none")).toMatchObject({ name: "Ещё без покупки", total: 1, viaApp: 1 });
+    expect(r.days).toHaveLength(1);
+    expect(r.days[0].total).toBe(3);
+  });
 });
