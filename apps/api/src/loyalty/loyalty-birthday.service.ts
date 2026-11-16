@@ -6,6 +6,8 @@ import {
   LoyaltyFamilyMemberDto,
   LoyaltyMemberStatus,
   LoyaltyPointsEntryType,
+  LOYALTY_BIRTHDAY_REDEEM_AFTER_DAYS,
+  LOYALTY_BIRTHDAY_REDEEM_BEFORE_DAYS,
   SaveLoyaltyFamilyMemberRequestDto,
 } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
@@ -125,7 +127,11 @@ export class LoyaltyBirthdayService implements OnApplicationBootstrap {
       for (const row of rows) {
         const due = currentBirthday(now, row.birthMonth, row.birthDay);
         if (!due || row.grants.some((g) => g.year === due.year) || !giftEligible(row.dateSetAt, due.at)) continue;
-        const expiresAt = new Date(due.at.getTime() + s.birthdayBonusDays * DAY);
+        // Lives «birthdayBonusDays» from the first day it can be given, and at least
+        // to the end of the birthday days.
+        const windowStart = due.at.getTime() - LOYALTY_BIRTHDAY_REDEEM_BEFORE_DAYS * DAY;
+        const windowEnd = due.at.getTime() + (LOYALTY_BIRTHDAY_REDEEM_AFTER_DAYS + 1) * DAY;
+        const expiresAt = new Date(Math.max(windowStart + s.birthdayBonusDays * DAY, windowEnd));
         if (expiresAt <= now) continue;
         const points = s.birthdayBonusPoints.toNumber();
         try {
@@ -149,7 +155,11 @@ export class LoyaltyBirthdayService implements OnApplicationBootstrap {
           continue; // granted a moment ago by another run
         }
         granted += 1;
-        await this.customerBot?.notifyBirthday(row.memberId, row.name, points, new Date(expiresAt.getTime() - 1), `birthday:${row.id}:${due.year}`);
+        const redeem = s.birthdayRedeemPercent.toNumber();
+        await this.customerBot?.notifyBirthday(row.memberId, row.name, points, new Date(expiresAt.getTime() - 1), `birthday:${row.id}:${due.year}`, {
+          early: now.getTime() < due.at.getTime(),
+          redeemPercent: redeem > s.maxRedeemPercent.toNumber() ? redeem : null,
+        });
       }
     }
     if (granted) this.logger.log(`Birthday gifts granted: ${granted}`);

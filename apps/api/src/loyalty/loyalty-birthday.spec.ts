@@ -21,7 +21,9 @@ describe("birthday dates (pure)", () => {
     expect(currentBirthday(at(2026, 5, 10), 5, 10)?.year).toBe(2026);
     expect(currentBirthday(at(2026, 5, 17), 5, 10)?.year).toBe(2026);
     expect(currentBirthday(at(2026, 5, 19), 5, 10)).toBeNull();
-    expect(currentBirthday(at(2026, 5, 9), 5, 10)).toBeNull();
+    expect(currentBirthday(at(2026, 5, 3), 5, 10)?.year).toBe(2026); // a week early
+    expect(currentBirthday(at(2026, 5, 2), 5, 10)).toBeNull();
+    expect(currentBirthday(at(2026, 12, 28), 1, 2)?.year).toBe(2027);
     expect(currentBirthday(at(2027, 1, 2), 12, 30)?.year).toBe(2026);
   });
 
@@ -35,7 +37,8 @@ describe("birthday dates (pure)", () => {
     // across New Year, both ways
     expect(birthdayWindowEnd(at(2026, 12, 28), { birthMonth: 1, birthDay: 2, dateSetAt: old })).not.toBeNull();
     expect(birthdayWindowEnd(at(2027, 1, 3), { birthMonth: 12, birthDay: 30, dateSetAt: old })).not.toBeNull();
-    expect(birthdayWindowEnd(at(2026, 5, 10), { ...row, dateSetAt: new Date(localMidnight(2026, 5, 1)) })).toBeNull();
+    // A date put on the card today counts at once for the limit (not for the gift).
+    expect(birthdayWindowEnd(at(2026, 5, 10), { ...row, dateSetAt: new Date(localMidnight(2026, 5, 10)) })).not.toBeNull();
   });
 
   it("the 30-day rule", () => {
@@ -50,8 +53,11 @@ describe("LoyaltyBirthdayService (database)", () => {
   const points = new LoyaltyPointsService(prisma);
   const loyalty = new LoyaltyService(prisma, points);
   const sent: { memberId: string; name: string; points: number; lastDay: Date; key: string }[] = [];
+  const sentExtra: { early?: boolean; redeemPercent?: number | null }[] = [];
   const bot = {
-    notifyBirthday: async (memberId: string, name: string, points: number, lastDay: Date, key: string) => (sent.push({ memberId, name, points, lastDay, key }), true),
+    notifyBirthday: async (memberId: string, name: string, points: number, lastDay: Date, key: string, extra = {}) => (
+      sent.push({ memberId, name, points, lastDay, key }), sentExtra.push(extra), true
+    ),
   };
   const birthdays = new LoyaltyBirthdayService(prisma, points, bot as never);
   let org: IsolatedOrg;
@@ -110,10 +116,19 @@ describe("LoyaltyBirthdayService (database)", () => {
     expect(await birthdays.grantDue(day, org.organizationId)).toBe(0);
     const entry = await prisma.loyaltyPointsEntry.findFirstOrThrow({ where: { memberId, type: T.BIRTHDAY } });
     expect(entry.points.toNumber()).toBe(500);
-    expect(entry.expiresAt).toEqual(new Date(localMidnight(2026, 8, 20).getTime() + 14 * DAY));
+    // 14 days from a week before, but never before the birthday days end (a week after).
+    expect(entry.expiresAt).toEqual(new Date(localMidnight(2026, 8, 20).getTime() + 8 * DAY));
     expect(entry.reason).toBe("День рождения: Алия");
     // The last day it can be spent is the day before it expires (2 September).
     expect(sent).toEqual([{ memberId, name: "Алия", points: 500, lastDay: new Date(entry.expiresAt!.getTime() - 1), key: `birthday:${row.id}:2026` }]);
+
+    // A week early: given, and the message says «с наступающим».
+    const early = await birthdays.add(org.user, memberId, { name: "Ерлан", birthDay: 20, birthMonth: 9 });
+    await backdate(early.id, 400);
+    sent.length = 0;
+    expect(await birthdays.grantDue(at(2026, 9, 14), org.organizationId)).toBe(1);
+    expect(sentExtra.at(-1)).toMatchObject({ early: true });
+    await birthdays.remove(org.user, early.id);
     expect((await loyalty.findOne(org.organizationId, memberId)).family.find((f) => f.id === row.id)?.lastGiftYear).toBe(2026);
     await birthdays.remove(org.user, row.id);
   });
@@ -140,9 +155,8 @@ describe("LoyaltyBirthdayService (database)", () => {
     const [y, m, d] = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Almaty" }).format(new Date(now.getTime() + 3 * DAY)).split("-").map(Number);
     void y;
     const row = await birthdays.add(org.user, who, { name: "Именинник", relation: "Сам клиент", birthDay: d, birthMonth: m });
-    // Put on the card today: too late for this birthday.
-    expect((await memberRedeemLimit(prisma, who, settings)).percent).toBe(30);
-    await backdate(row.id, 400);
+    // Put on the card today: the limit opens at once.
+    void row;
     const limit = await memberRedeemLimit(prisma, who, settings);
     expect(limit.percent).toBe(50);
     expect(limit.birthdayUntil).toMatch(/^\d{4}-\d{2}-\d{2}$/);

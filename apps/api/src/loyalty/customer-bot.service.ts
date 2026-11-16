@@ -485,18 +485,29 @@ export class CustomerBotService implements OnModuleInit {
   }
 
   // A birthday gift was just granted.
-  async notifyBirthday(memberId: string, name: string, points: number, lastDay: Date, key: string): Promise<boolean> {
+  // `early`: given before the day itself; `redeemPercent`: the larger share of a
+  // check points pay in the birthday days (null = no such rule).
+  async notifyBirthday(
+    memberId: string,
+    name: string,
+    points: number,
+    lastDay: Date,
+    key: string,
+    extra: { early?: boolean; redeemPercent?: number | null } = {},
+  ): Promise<boolean> {
+    const greeting = extra.early ? `${name}, с наступающим днём рождения! 🎂` : `С днём рождения, ${name}! 🎂`;
+    const limit = extra.redeemPercent ? ` В эти дни бонусами можно оплатить до ${pointsFmt.format(extra.redeemPercent)}% чека.` : "";
     try {
       const told = await this.inApp(memberId, key, async () => ({
-        title: `С днём рождения, ${name}! 🎂`,
-        body: `Дарим ${pointsFmt.format(points)} бонусов — потратьте их до ${dateFmt.format(lastDay)}.`,
+        title: greeting,
+        body: `Дарим ${pointsFmt.format(points)} бонусов — потратьте их до ${dateFmt.format(lastDay)}.${limit}`,
       }));
       if (told) return true;
       if (await this.useWhatsApp(memberId, "whatsappBirthdayNotices", "birthday")) {
         return await this.viaWhatsApp(memberId, "birthday", () => [name, pointsFmt.format(points), dateFmt.format(lastDay)], key, null);
       }
       if (!(await this.viaTelegram(memberId))) return false;
-      const text = `С днём рождения, ${escapeHtml(name)}! 🎂\nДарим ${pointsFmt.format(points)} баллов — потратьте их до ${dateFmt.format(lastDay)}.`;
+      const text = `${escapeHtml(greeting)}\nДарим ${pointsFmt.format(points)} баллов — потратьте их до ${dateFmt.format(lastDay)}.${limit}`;
       return await this.sendToMember(memberId, text, key, null);
     } catch (err) {
       this.logger.error(`Birthday message for ${memberId} failed`, err instanceof Error ? err.stack : String(err));

@@ -1845,8 +1845,12 @@ with the programme on (else the oldest non-sandbox org).
 - **Birthday days: points pay more of the check** (owner, 16.11.2026; migration `20261203120000_birthday_redeem_percent`,
   additive, set 50 on running programmes): `LoyaltySettings.birthdayRedeemPercent` (0 = off; «Оплата баллами в дни
   рождения…» on the programme card). From 7 days before to 7 days after ANY birthday on the card (holder or family;
-  `LOYALTY_BIRTHDAY_REDEEM_*`, the gift's 30-day rule applies — a date added today opens nothing) the limit is that
-  percent instead of `maxRedeemPercent`. ONE rule: `loyalty/birthday-redeem.ts` `memberRedeemLimit` →
+  `LOYALTY_BIRTHDAY_REDEEM_*`) the limit is that percent instead of `maxRedeemPercent`. The 30-day rule does NOT apply
+  to the limit (owner, 16.11.2026: a birthday customer whose date was typed in that day got only 30 %) — it only spends
+  points the customer already has; the GIFT keeps the rule. The gift now comes a WEEK EARLY (`currentBirthday` = from
+  7 days before to 7 after) and lives `birthdayBonusDays` from that first day, at least to the end of the birthday days;
+  the message says «с наступающим…» before the day and names the larger limit (app/Telegram; the WhatsApp template is
+  Meta's fixed text). ONE rule: `loyalty/birthday-redeem.ts` `memberRedeemLimit` →
   `PreparedSaleLoyalty.redeemPercent` (the sale's check), `LoyaltyMemberDto.redeemPercent` / `birthdayRedeemUntil`
   (lookup / card: the till's cap and its green «День рождения: баллами до N% чека»), `ClubProfileDto.redeem` (the app).
   A new reader of the limit must use it, never `maxRedeemPercent` directly. Spec in `loyalty-birthday.spec.ts`.

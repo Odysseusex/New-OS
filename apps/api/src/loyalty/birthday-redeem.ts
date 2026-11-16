@@ -18,7 +18,7 @@ export async function memberRedeemLimit(db: Db, memberId: string, settings: Loya
   if (settings.birthdayRedeemPercent <= settings.maxRedeemPercent) return base;
   const rows = await db.loyaltyFamilyMember.findMany({
     where: { memberId, archivedAt: null },
-    select: { birthMonth: true, birthDay: true, dateSetAt: true },
+    select: { birthMonth: true, birthDay: true },
   });
   let until: Date | null = null;
   for (const row of rows) {
