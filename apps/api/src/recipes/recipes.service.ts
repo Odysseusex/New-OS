@@ -2,9 +2,22 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { audited, recordAudit } from "../audit/audit";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
-import { ProductType, rawMaterialUnitCost, RecipeBreakdownDto, RecipeDto, RecipeParameterKind, recipeNetQuantity, Unit } from "@bakery-os/shared";
+import {
+  CUT_PARTS_MAX,
+  CUT_PARTS_MIN,
+  CutSourceResultDto,
+  ProductType,
+  rawMaterialUnitCost,
+  RecipeBreakdownDto,
+  RecipeDto,
+  RecipeParameterKind,
+  recipeNetQuantity,
+  SetCutSourceRequestDto,
+  Unit,
+} from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { expandRecipe, findRecipeProblem, hasOwnRecipe, isStockedComponent, loadRecipeIndex, semiFinishedUnitCosts } from "./recipe-tree";
+import { loadCutLinks } from "./cut-link";
 import { CreateRecipeDto } from "./dto/create-recipe.dto";
 import { UpdateRecipeDto } from "./dto/update-recipe.dto";
 
@@ -346,6 +359,101 @@ export class RecipesService {
     return this.toDto(updated, await this.semiCostsFor(organizationId, [updated]));
   }
 
+  // «Нарезается из товара» on the product card: half a cake has its own card and price, but it is
+  // cut from a whole one at the point of sale. The link is the half's техкарта («1 whole → N parts»)
+  // plus `Product.makeOnSale`, so the sale can make the batch by itself (ProductionService.makeForSale)
+  // and the half costs what its share of the whole cost. Null takes the product off «made on sale»;
+  // its техкарта stays an ordinary one.
+  async setCutSource(actor: AuthenticatedUser, productId: string, dto: SetCutSourceRequestDto): Promise<CutSourceResultDto> {
+    const organizationId = actor.organizationId;
+    const product = await this.prisma.product.findFirst({ where: { id: productId, organizationId } });
+    if (!product) throw new NotFoundException("Товар не найден");
+    const before = (await loadCutLinks(this.prisma, organizationId, [productId])).get(productId) ?? null;
+    const beforeState = { makeOnSale: product.makeOnSale, sourceProductId: before?.productId ?? null, parts: before?.parts ?? null };
+
+    if (dto.sourceProductId === null) {
+      if (product.makeOnSale) {
+        await audited(
+          this.prisma,
+          { organizationId, actorId: actor.id, action: "product.cutSource", entityType: "Product", entityId: productId, before: beforeState },
+          async (tx) => {
+            await tx.product.update({ where: { id: productId }, data: { makeOnSale: false } });
+            return { result: true, after: { makeOnSale: false, sourceProductId: null, parts: null } };
+          },
+        );
+      }
+      return { makeOnSale: false, cutFrom: null };
+    }
+
+    if (product.type !== ProductType.FINISHED_GOOD) throw new BadRequestException("Нарезается только готовая продукция");
+    if (product.consignmentSupplierId) throw new BadRequestException("Товар под реализацию не нарезается из нашего товара");
+    if (!product.trackInventory || product.isOpenPrice) throw new BadRequestException("Товар должен учитываться на складе");
+    if (dto.sourceProductId === productId) throw new BadRequestException("Товар не может нарезаться из самого себя");
+    const parts = dto.parts ?? CUT_PARTS_MIN;
+    if (!Number.isInteger(parts) || parts < CUT_PARTS_MIN || parts > CUT_PARTS_MAX) {
+      throw new BadRequestException(`Частей из одного целого — целое число от ${CUT_PARTS_MIN} до ${CUT_PARTS_MAX}`);
+    }
+    const source = await this.prisma.product.findFirst({ where: { id: dto.sourceProductId, organizationId } });
+    if (!source) throw new NotFoundException("Целый товар не найден");
+    if (source.type !== ProductType.FINISHED_GOOD) throw new BadRequestException("Нарезать можно только из готовой продукции");
+    // No chains (a quarter from a half from a whole): the sale makes one step, so a part is always cut from a whole.
+    if (source.makeOnSale) {
+      throw new BadRequestException(`«${source.name}» сам нарезается из другого товара — выберите целый товар`);
+    }
+    const cutFromThis = await this.prisma.recipeItem.findMany({
+      where: { ingredientProductId: productId, recipe: { organizationId, isActive: true, product: { makeOnSale: true } } },
+      select: { recipe: { select: { product: { select: { name: true } } } } },
+    });
+    if (cutFromThis.length > 0) {
+      const names = [...new Set(cutFromThis.map((r) => r.recipe.product.name))].join(", ");
+      throw new BadRequestException(`Из этого товара уже нарезается: ${names} — он сам не может быть частью другого`);
+    }
+    const items = [{ ingredientProductId: source.id, quantity: 1 }];
+    await this.assertValidIngredients(organizationId, items);
+    await this.assertNoRecipeLoop(organizationId, productId, items);
+
+    const existing = await this.prisma.recipe.findUnique({
+      where: { productId },
+      include: { items: { include: { ingredientProduct: { select: { type: true } } } } },
+    });
+    const sameComposition =
+      !!existing &&
+      existing.items.length === 1 &&
+      existing.items[0].ingredientProductId === source.id &&
+      existing.items[0].quantity.toNumber() === 1 &&
+      existing.yieldQuantity.toNumber() === parts;
+    // Re-pointing a cut (another whole, another number of parts) is the same field edited; a техкарта
+    // with a composition of its own (raw materials) is replaced only when the person said so.
+    const isPlainCut =
+      !!existing && existing.items.length === 1 && existing.items[0].ingredientProduct.type === ProductType.FINISHED_GOOD;
+    if (existing && existing.items.length > 0 && !sameComposition && !isPlainCut && !dto.replace) {
+      throw new ConflictException(
+        `У товара «${product.name}» уже есть техкарта с другим составом. Она будет заменена: «${source.name}» → ${parts} шт.`,
+      );
+    }
+
+    if (!existing) {
+      await this.create(actor, { productId, yieldQuantity: parts, items });
+    } else {
+      if (!sameComposition) {
+        await this.update(actor, existing.id, { yieldQuantity: parts, items, ...(isPlainCut ? {} : { stages: [] }) });
+      }
+      if (!existing.isActive) await this.setActive(organizationId, existing.id, true, actor.id);
+    }
+    const cutFrom = { productId: source.id, productName: source.name, parts };
+    if (!product.makeOnSale || !sameComposition) {
+      await audited(
+        this.prisma,
+        { organizationId, actorId: actor.id, action: "product.cutSource", entityType: "Product", entityId: productId, before: beforeState },
+        async (tx) => {
+          await tx.product.update({ where: { id: productId }, data: { makeOnSale: true } });
+          return { result: true, after: { makeOnSale: true, sourceProductId: source.id, parts } };
+        },
+      );
+    }
+    return { makeOnSale: true, cutFrom };
+  }
+
   private stageCreateInput(stage: {
     stageTypeId: string;
     sequence: number;
@@ -545,7 +653,7 @@ export class RecipesService {
   private toDto = (recipe: {
     id: string;
     productId: string;
-    product: { name: string; unit: string; type: string; trackInventory: boolean; price: { toNumber: () => number } };
+    product: { name: string; unit: string; type: string; trackInventory: boolean; makeOnSale?: boolean; price: { toNumber: () => number } };
     yieldQuantity: { toNumber: () => number };
     isActive: boolean;
     generalNotes: string | null;
@@ -653,6 +761,7 @@ export class RecipesService {
       productName: recipe.product.name,
       productType: recipe.product.type as ProductType,
       productStocked: recipe.product.type === ProductType.SEMI_FINISHED && recipe.product.trackInventory,
+      makeOnSale: recipe.product.makeOnSale === true,
       productUnit: recipe.product.unit as Unit,
       productPrice,
       yieldQuantity,

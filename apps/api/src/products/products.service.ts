@@ -1,4 +1,5 @@
 import { loadRecipeIndex, recipeReaches } from "../recipes/recipe-tree";
+import { loadCutLinks } from "../recipes/cut-link";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { CATEGORY_WITH_PARENT, categoryLabel } from "../common/category-label";
@@ -92,13 +93,22 @@ export class ProductsService {
     ]);
 
     const priceByProduct = new Map(overrides.map((o) => [o.productId, o.price.toNumber()]));
+    // «Нарезается из товара» is read from the техкарта, and only when some product has it at all.
+    const cutLinks = products.some((p) => p.makeOnSale) ? await loadCutLinks(this.prisma, organizationId) : new Map();
     // Somebody else's goods tied to another point are not offered at this one (till, pickers).
     return products
       .filter((product) => !locationId || !product.consignmentSupplierId || !product.consignmentLocationId || product.consignmentLocationId === locationId)
       .map((product) => ({
       ...this.toDto(product),
+      cutFrom: cutLinks.get(product.id) ?? null,
       effectivePrice: priceByProduct.get(product.id) ?? product.price.toNumber(),
     }));
+  }
+
+  // One product's DTO with its «Нарезается из товара» link (a query only for a product that has one).
+  private async withCutLink(organizationId: string, dto: ProductDto): Promise<ProductDto> {
+    if (!dto.makeOnSale) return dto;
+    return { ...dto, cutFrom: (await loadCutLinks(this.prisma, organizationId, [dto.id])).get(dto.id) ?? null };
   }
 
   // Every sellable product with this point's own price alongside the default,
@@ -458,6 +468,10 @@ export class ProductsService {
       const supplier = dto.consignmentSupplierId !== undefined ? dto.consignmentSupplierId : product.consignmentSupplierId;
       if (supplier) throw new BadRequestException("Полуфабрикат не может быть товаром под реализацию");
     }
+    // «Нарезается из товара» is for our own stocked finished goods only: anything else drops it.
+    const dropsMakeOnSale =
+      product.makeOnSale &&
+      (finalType !== ProductType.FINISHED_GOOD || Boolean(finalSupplier) || (dto.trackInventory ?? product.trackInventory) === false);
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const saved = await tx.product.update({
@@ -484,6 +498,7 @@ export class ProductsService {
             : {}),
           ...(dto.consignmentPrice !== undefined ? { consignmentPrice: dto.consignmentPrice } : {}),
           ...(finalConsignmentLocation !== product.consignmentLocationId ? { consignmentLocationId: finalConsignmentLocation } : {}),
+          ...(dropsMakeOnSale ? { makeOnSale: false } : {}),
         },
         include: PRODUCT_INCLUDE,
       });
@@ -510,7 +525,7 @@ export class ProductsService {
       return saved;
     });
 
-    return this.toDto(updated);
+    return this.withCutLink(organizationId, this.toDto(updated));
   }
 
   async archive(organizationId: string, productId: string, actorId: string | null = null): Promise<ProductDto> {
@@ -630,7 +645,7 @@ export class ProductsService {
         return { result: saved, after: { isActive: saved.isActive } };
       },
     );
-    return this.toDto(updated);
+    return this.withCutLink(organizationId, this.toDto(updated));
   }
 
   // A category belongs to one product type; a product may only sit in a category
@@ -753,7 +768,7 @@ export class ProductsService {
 
   private async findOneDto(organizationId: string, productId: string): Promise<ProductDto> {
     const product = await this.prisma.product.findFirstOrThrow({ where: { id: productId, organizationId }, include: PRODUCT_INCLUDE });
-    return this.toDto(product);
+    return this.withCutLink(organizationId, this.toDto(product));
   }
 
   private toDto(product: {
@@ -779,6 +794,7 @@ export class ProductsService {
     consignmentLocation?: { name: string } | null;
     minQuantity: { toNumber: () => number };
     photo?: { updatedAt: Date } | null;
+    makeOnSale?: boolean;
   }): ProductDto {
     return {
       id: product.id,
@@ -806,6 +822,9 @@ export class ProductsService {
       // findAllForOrganization overwrites this when asked about a location.
       effectivePrice: product.price.toNumber(),
       minQuantity: product.minQuantity.toNumber(),
+      makeOnSale: product.makeOnSale === true,
+      // Filled where the техкарта is read too (the list, withCutLink).
+      cutFrom: null,
     };
   }
 }

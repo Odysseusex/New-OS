@@ -4,20 +4,33 @@ import { useEffect, useState } from "react";
 import { Image as ImageIcon } from "lucide-react";
 import type { CategoryDto, LocationDto, ProductDto, SupplierDto } from "@bakery-os/shared";
 import { LocationType } from "@bakery-os/shared";
-import { PRODUCT_TYPE_LABELS_RU, PRODUCT_TYPE_ORDER, ProductType, Unit, UNIT_LABELS_RU, categoryAcceptsType } from "@bakery-os/shared";
+import {
+  CUT_PARTS_MAX,
+  CUT_PARTS_MIN,
+  PRODUCT_TYPE_LABELS_RU,
+  PRODUCT_TYPE_ORDER,
+  ProductType,
+  Unit,
+  UNIT_LABELS_RU,
+  categoryAcceptsType,
+} from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { productPhotoUrl, resizeProductPhoto } from "@/lib/product-photo";
 import { Modal } from "@/components/modal";
+import { ProductSelect } from "@/components/product-select";
 import { formatMoneyPrecise } from "@/lib/format";
 
 export function NewProductModal({
   categories,
+  products = [],
   product,
   defaultCategoryId,
   onClose,
   onSaved,
 }: {
   categories: CategoryDto[];
+  // The catalogue, for «Нарезается из товара» (the whole cake a half is cut from).
+  products?: ProductDto[];
   product?: ProductDto;
   defaultCategoryId?: string;
   onClose: () => void;
@@ -60,6 +73,22 @@ export function NewProductModal({
       .then((all) => setStores(all.filter((l) => l.type === LocationType.STORE && (l.isActive || l.id === product?.consignmentLocationId))))
       .catch(() => setStores([]));
   }, [product?.consignmentLocationId]);
+  // «Нарезается из товара»: half a cake has its own card and price but is cut from a whole one at the
+  // point of sale. "" = not a part of anything.
+  const [cutFromId, setCutFromId] = useState(product?.cutFrom?.productId ?? "");
+  const [cutParts, setCutParts] = useState(String(product?.cutFrom?.parts ?? CUT_PARTS_MIN));
+  // Whole products a part can be cut from: our own stocked finished goods that are not parts themselves.
+  const cutSources = products.filter(
+    (p) =>
+      p.id !== product?.id &&
+      p.type === ProductType.FINISHED_GOOD &&
+      p.trackInventory &&
+      !p.isOpenPrice &&
+      !p.consignmentSupplierId &&
+      !p.makeOnSale &&
+      (p.isActive || p.id === cutFromId),
+  );
+  const cutSource = products.find((p) => p.id === cutFromId);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -94,6 +123,9 @@ export function NewProductModal({
     if (!isConsignment || suppliers.length > 0) return;
     api.suppliers.list().then(setSuppliers).catch(() => {});
   }, [isConsignment, suppliers.length]);
+
+  // Only our own finished goods kept in stock can be a part of another product.
+  const canBeCut = type === ProductType.FINISHED_GOOD && !isConsignment && trackInventory;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -146,6 +178,29 @@ export function NewProductModal({
         setError(
           "Товар сохранён, но признак «под реализацию» не записался — сервер работает на старой версии. Сообщите об этом и повторите после обновления.",
         );
+        return;
+      }
+      // «Нарезается из товара» is the product's техкарта, so it is written after the product itself
+      // and only when the field was really changed.
+      const wantsCut = canBeCut ? cutFromId : "";
+      const hadCut = product?.cutFrom ?? null;
+      const parts = Math.round(Number(cutParts));
+      try {
+        if (wantsCut) {
+          if (hadCut?.productId !== wantsCut || hadCut.parts !== parts) {
+            try {
+              await api.recipes.setCutSource(saved.id, { sourceProductId: wantsCut, parts });
+            } catch (err) {
+              // The product already has a техкарта of its own: replaced only on a plain «да».
+              if (!(err instanceof ApiError) || err.status !== 409 || !window.confirm(`${err.message}\n\nЗаменить техкарту?`)) throw err;
+              await api.recipes.setCutSource(saved.id, { sourceProductId: wantsCut, parts, replace: true });
+            }
+          }
+        } else if (hadCut) {
+          await api.recipes.setCutSource(saved.id, { sourceProductId: null });
+        }
+      } catch (err) {
+        setError(`Товар сохранён, но «Нарезается из товара» не записалось: ${err instanceof ApiError ? err.message : "ошибка связи"}`);
         return;
       }
       onSaved();
@@ -380,6 +435,51 @@ export function NewProductModal({
             </span>
           </label>
         </div>
+
+        {canBeCut && (cutSources.length > 0 || cutFromId) && (
+          <div className="mb-5">
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
+              Нарезается из товара <span className="text-muted">(необязательно)</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <ProductSelect
+                products={cutSources}
+                value={cutFromId}
+                onChange={setCutFromId}
+                placeholder="Не нарезается"
+                className="min-w-0 flex-1"
+              />
+              {cutFromId && (
+                <button
+                  type="button"
+                  onClick={() => setCutFromId("")}
+                  className="shrink-0 rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50"
+                >
+                  Убрать
+                </button>
+              )}
+            </div>
+            {cutFromId && (
+              <>
+                <label className="mb-1.5 mt-3 block text-sm font-medium text-foreground">Частей из одного целого</label>
+                <input
+                  type="number"
+                  min={CUT_PARTS_MIN}
+                  max={CUT_PARTS_MAX}
+                  step="1"
+                  required
+                  value={cutParts}
+                  onChange={(e) => setCutParts(e.target.value)}
+                  className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                />
+                <p className="mt-1.5 text-xs text-muted">
+                  При продаже, когда на точке нет остатка: «{cutSource?.name ?? "целый товар"}» −1,
+                  «{name.trim() || "этот товар"}» +{Math.round(Number(cutParts)) || CUT_PARTS_MIN}
+                </p>
+              </>
+            )}
+          </div>
+        )}
 
         {type === ProductType.FINISHED_GOOD && (
           <div className="mb-5">

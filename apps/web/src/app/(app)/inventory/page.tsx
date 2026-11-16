@@ -311,7 +311,9 @@ export default function InventoryPage() {
         <div className="mb-6 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
 
-      <div className="mb-6 flex items-center justify-between">
+      {/* The tabs and a tab's own controls share a line only where both fit: on a laptop
+          «Номенклатура» (search, archive switch, Excel, «Новый товар») goes under the tabs. */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-1 rounded-xl bg-surface-muted p-1">
           <TabButton active={tab === "stock"} onClick={() => openTab("stock")}>
             Остатки
@@ -588,7 +590,7 @@ export default function InventoryPage() {
       {tab === "stocktake" && <StocktakeTab locations={locations} />}
 
       {tab === "catalog" && (
-        <div className="rounded-2xl border border-border bg-surface shadow-card">
+        <div className="overflow-x-auto rounded-2xl border border-border bg-surface shadow-card">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
@@ -616,6 +618,7 @@ export default function InventoryPage() {
                         </span>
                       )}
                     </div>
+                    {p.cutFrom && <p className="mt-0.5 text-xs font-normal text-muted">нарезается из: {p.cutFrom.productName}</p>}
                   </td>
                   <td className="px-5 py-3 text-muted">{p.sku}</td>
                   <td className="px-5 py-3 text-muted">{p.barcode ?? "—"}</td>
@@ -752,6 +755,7 @@ export default function InventoryPage() {
                         </span>
                       )}
                     </div>
+                    {p.cutFrom && <p className="mt-0.5 text-xs font-normal text-muted">нарезается из: {p.cutFrom.productName}</p>}
                   </td>
                   <td className="px-5 py-3 text-muted">{p.sku}</td>
                   <td className="px-5 py-3 text-muted">{PRODUCT_TYPE_LABELS_RU[p.type]}</td>
@@ -846,6 +850,7 @@ export default function InventoryPage() {
       {modal === "product" && (
         <NewProductModal
           categories={categories}
+          products={products}
           product={editingProduct}
           defaultCategoryId={newProductCategoryId}
           onClose={() => setModal(null)}

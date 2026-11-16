@@ -165,6 +165,8 @@ export interface RecipeDto {
   productType: ProductType;
   // Semi-finished product held as stock (batches of its own, average cost).
   productStocked: boolean;
+  // The product is made by the sale itself when the shelf has none (a half cut from a whole cake).
+  makeOnSale: boolean;
   productUnit: Unit;
   productPrice: number;
   yieldQuantity: number;

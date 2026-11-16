@@ -56,6 +56,7 @@ import { OWN_ITEMS, ownAmount } from "../common/own-sales";
 import { allowsNegativeStock, decrementStock } from "../common/stock-guard";
 import { CashMovementsService } from "../finance/cash-movements.service";
 import { CostingService } from "../costing/costing.service";
+import { assertSalePlansCovered, ProductionService } from "../production/production.service";
 import { buildFiscalSaleRequest, FiscalService } from "../fiscal/fiscal.service";
 import { FiscalSettings } from "../fiscal/fiscal.settings";
 import { PromotionsService } from "../promotions/promotions.service";
@@ -142,6 +143,13 @@ export class SalesService {
     private loyaltyPoints: LoyaltyPointsService = new LoyaltyPointsService(prisma),
     private customerBot?: CustomerBotService,
   ) {}
+
+  // A half cake cut from a whole one is made by the sale itself (Product.makeOnSale). The production
+  // service keeps nothing but the database handle, so it is built here rather than wired in.
+  private productionService?: ProductionService;
+  private get production(): ProductionService {
+    return (this.productionService ??= new ProductionService(this.prisma));
+  }
 
   // CASH sales land in the selling location's own till, auto-created the
   // first time it's needed so a cashier never has to set up accounting
@@ -1449,6 +1457,13 @@ export class SalesService {
       }
       const productById = new Map(products.map((p) => [p.id, p]));
 
+      // Half a cake cut from a whole one (Product.makeOnSale): what this point's shelf lacks is made
+      // by the sale itself — the whole leaves stock, the parts arrive at its cost — BEFORE the stock
+      // check and the cost stamp below, which then see the shelf as it will be. An ordinary basket
+      // has no such line and costs nothing here.
+      const madeLines = items.filter((item) => productById.get(item.productId)?.makeOnSale);
+      const madeBatchIds = madeLines.length > 0 ? await this.production.makeForSale(tx, user, locationId, madeLines) : [];
+
       const stockLevels = await tx.stockLevel.findMany({
         where: { locationId, productId: { in: productIds } },
       });
@@ -1567,6 +1582,10 @@ export class SalesService {
 
       if (receipt) {
         await this.fiscalService.linkSale(tx, receipt.id, sale.id);
+      }
+      // What this sale cut for itself now names it, so the stock history opens the check.
+      if (madeBatchIds.length > 0) {
+        await tx.productionBatch.updateMany({ where: { id: { in: madeBatchIds } }, data: { saleId: sale.id } });
       }
 
       // Spend and earn points with the sale itself: one transaction, so a failed
@@ -1828,6 +1847,18 @@ export class SalesService {
     // is no stock to be short of.
     const stockByProduct = new Map(stockLevels.map((s) => [s.productId, s.quantity.toNumber()]));
     const allowNegative = await allowsNegativeStock(this.prisma as unknown as Prisma.TransactionClient, user.organizationId, locationId);
+    // A half the shelf lacks will be cut from a whole cake by the sale (Product.makeOnSale): count
+    // what that gives and takes here too, so the receipt is refused only when the whole is missing.
+    const madeLines = allowNegative ? [] : items.filter((item) => productById.get(item.productId)?.makeOnSale);
+    if (madeLines.length > 0) {
+      const plans = await this.production.planForSale(this.prisma, user.organizationId, locationId, madeLines);
+      const missing = [...new Set(plans.flatMap((p) => p.needs.map((n) => n.productId)))].filter((id) => !stockByProduct.has(id));
+      if (missing.length > 0) {
+        const extra = await this.prisma.stockLevel.findMany({ where: { locationId, productId: { in: missing } } });
+        for (const level of extra) stockByProduct.set(level.productId, level.quantity.toNumber());
+      }
+      assertSalePlansCovered(plans, stockByProduct);
+    }
     for (const item of allowNegative ? [] : items) {
       if (!productById.get(item.productId)?.trackInventory) continue;
       if ((stockByProduct.get(item.productId) ?? 0) < item.quantity) {

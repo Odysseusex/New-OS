@@ -217,6 +217,34 @@ export interface ProductDto {
   // Set when the product has a photo: its last change (ms), used to address the
   // cached picture `GET /products/:id/photo?v=…`. Null = no photo.
   photoVersion?: number | null;
+  // Made at the moment it is sold when the shelf has none (half a cake cut from a whole one).
+  makeOnSale: boolean;
+  // What it is cut from, when its техкарта is the plain «1 whole → N parts»; null otherwise.
+  cutFrom: ProductCutLinkDto | null;
+}
+
+// «Нарезается из товара»: the whole product and how many of THIS product one whole gives (2 = halves).
+export interface ProductCutLinkDto {
+  productId: string;
+  productName: string;
+  parts: number;
+}
+
+export const CUT_PARTS_MIN = 2;
+export const CUT_PARTS_MAX = 100;
+
+export interface SetCutSourceRequestDto {
+  // The whole product this one is cut from; null removes the link.
+  sourceProductId: string | null;
+  // How many of this product one whole gives; 2 when left out.
+  parts?: number;
+  // Replace a техкарта the product already has with another composition.
+  replace?: boolean;
+}
+
+export interface CutSourceResultDto {
+  makeOnSale: boolean;
+  cutFrom: ProductCutLinkDto | null;
 }
 
 // One row of the «Цены по точке» screen: the organization's default price

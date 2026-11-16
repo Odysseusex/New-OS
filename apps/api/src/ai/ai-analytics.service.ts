@@ -699,7 +699,8 @@ export class AiAnalyticsService {
 
     const [batches, saleItems] = await Promise.all([
       this.prisma.productionBatch.findMany({
-        where: { organizationId: user.organizationId, status: PrismaProductionBatchStatus.COMPLETED, completedAt: { gte: cutoff }, ...(locationId ? { locationId } : {}) },
+        // Not what a sale cut for itself (half a cake from a whole one): that is not baking.
+        where: { organizationId: user.organizationId, status: PrismaProductionBatchStatus.COMPLETED, completedAt: { gte: cutoff }, saleId: null, ...(locationId ? { locationId } : {}) },
         select: { actualQuantity: true, locationId: true, location: { select: { name: true } }, recipe: { select: { productId: true, product: { select: { name: true } } } } },
       }),
       this.prisma.saleItem.findMany({

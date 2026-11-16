@@ -1,4 +1,5 @@
 import type { RequisitionIssueReportDto } from "@bakery-os/shared";
+import type { CutSourceResultDto, SetCutSourceRequestDto } from "@bakery-os/shared";
 import type { CreateDirectionRequestDto, DirectionDto, UpdateDirectionRequestDto } from "@bakery-os/shared";
 import type { CleanStartPreviewDto, CleanStartResultDto } from "@bakery-os/shared";
 import type {
@@ -297,7 +298,10 @@ import { noteServerDate } from "./server-clock";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
 
-export class ApiError extends Error {}
+export class ApiError extends Error {
+  // HTTP status of the refused request (409 = «уже есть, заменить?» and the like).
+  status?: number;
+}
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = typeof window !== "undefined" ? localStorage.getItem("bakery_token") : null;
@@ -314,7 +318,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new ApiError(body.message ?? `Ошибка запроса: ${res.status}`);
+    const error = new ApiError(body.message ?? `Ошибка запроса: ${res.status}`);
+    error.status = res.status;
+    throw error;
   }
 
   return res.json() as Promise<T>;
@@ -786,6 +792,9 @@ export const api = {
     restore: (id: string) => request<RecipeDto>(`/recipes/${id}/restore`, { method: "POST" }),
     remove: (id: string) => request<{ deleted: true }>(`/recipes/${id}`, { method: "DELETE" }),
     breakdown: (id: string) => request<RecipeBreakdownDto>(`/recipes/${id}/breakdown`),
+    // «Нарезается из товара» on the product card (half a cake cut from a whole one).
+    setCutSource: (productId: string, dto: SetCutSourceRequestDto) =>
+      request<CutSourceResultDto>(`/recipes/cut-source/${productId}`, { method: "PUT", body: JSON.stringify(dto) }),
   },
 
   recipeStageTypes: {

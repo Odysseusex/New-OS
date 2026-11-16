@@ -950,6 +950,37 @@ material's «Факт» is split over the batches by their norm (`splitReleaseCo
 complete stay (the Telegram bot still uses them). Требование-накладная's «need» reads PLANNED tasks, so it is empty
 now — its lines are typed by hand. Spec `production/production-release.spec.ts`.
 
+## «Нарезается из товара» — half a cake is cut by the sale itself (built 16.11.2026)
+
+Cashiers cut a whole cake when a buyer asks; halves are SEPARATE products with their own price (not half the whole's).
+The operator used to fix the shelf by hand afterwards. Now the half's card (Склад → Номенклатура) has «Нарезается из
+товара» + «Частей из одного целого» (2…100; a slice = 8), and a sale that needs more halves than the point's shelf holds
+cuts a whole one by itself. Rules that are easy to break:
+
+- **No new accounting, no second link.** The link IS the half's техкарта («1 whole → N parts», a finished good as a
+  recipe ingredient) + `Product.makeOnSale` (migration `20261204120000_make_on_sale`). `PUT /recipes/cut-source/:productId`
+  (`RecipesService.setCutSource`, RECIPE_MANAGE_ROLES, audited `product.cutSource`) writes both through the ordinary
+  recipe create/update (versions kept); `loadCutLinks` (`recipes/cut-link.ts`) reads it back as `ProductDto.cutFrom`
+  (only for a plain one-line техкарта). A техкарта with a composition of its own is replaced only with `replace: true`
+  (409 → the form asks). Null only switches `makeOnSale` off; the техкарта stays. The whole must be our own stocked
+  finished good with an active техкарта; no chains (a part of a part) in either direction.
+- **The sale makes a real batch**: `ProductionService.makeForSale` (called in `SalesService.create`'s transaction BEFORE
+  its stock check and cost stamp, only when the basket has a `makeOnSale` product — an ordinary basket costs nothing)
+  locks the part's and the whole's product rows (two tills = one cake cut), plans whole runs of the recipe
+  (`planForSale`: short = wanted − max(shelf, 0), so an OLD minus on halves never cuts extra cakes), creates the batch
+  IN_PROGRESS and completes it with the same `completeLoadedBatch` as «Выпуск за день». So the whole leaves at its
+  average, the parts arrive at their share of it (`PRODUCTION_AVERAGE`), the unsold half stays in stock, and events /
+  ledger / month-end walk / ОСВ / «Сверка дня» need no special case. A point that may go below zero takes the WHOLE into
+  the minus (the half did come from a cake the books do not have yet); a strict point refuses: «…нет и «Торт», чтобы
+  нарезать». The fiscal pre-check runs the same plan (`assertSalePlansCovered`) before a receipt is punched.
+- **`ProductionBatch.saleId`** marks such a batch (set right after the sale row exists). Every report of BAKING leaves
+  them out (`NOT_MADE_BY_SALE`: journal, «Выпуск», unit-cost trend, deviations, summary; HR output KPI, AI idle-product,
+  the requisition issue report) — a new production report must too. Склад → Движения names the check («Нарезка по чеку
+  №N», reasons «Нарезка при продаже…»). A returned half goes back as a half.
+- The till is unchanged (it shows no stock): the cashier just rings up «Торт ½». Spec `sales/cut-on-sale.spec.ts`
+  (ledger on, diagnostics clean). The same mechanism would serve «made to order at the point» (coffee by a recipe) —
+  NOT built, needs the owner's word.
+
 ## «Распределение» + «Постоянный заказ» (built 09.11.2026)
 
 Производство → «Распределение» (`components/distribution-tab.tsx`): the day's output shared out from one point («Откуда»,

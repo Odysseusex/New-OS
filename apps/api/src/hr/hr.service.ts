@@ -275,6 +275,8 @@ export class HrService {
           organizationId: user.organizationId,
           type: StockMovementType.PRODUCTION_OUTPUT,
           createdAt: { gte: from, lte: to },
+          // A cake a cashier's sale cut into halves is not that cashier's production.
+          NOT: { batch: { saleId: { not: null } } },
           ...(locationId ? { locationId } : {}),
         },
         _count: { _all: true },

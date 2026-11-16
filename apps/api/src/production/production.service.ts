@@ -46,9 +46,145 @@ import { allowsNegativeStock, decrementStock } from "../common/stock-guard";
 import { recordAudit } from "../audit/audit";
 import { postLedgerSources, recordProductionEvent } from "../ledger/event-posting";
 
+// A batch a sale made by itself (a cake cut into halves at the till) is real for stock, cost and the
+// books, but nobody baked it: the production journal and the output reports leave it out.
+const NOT_MADE_BY_SALE = { saleId: null };
+
+// What a sale has to make before it can sell (see ProductionService.makeForSale).
+export interface SaleMakePlan {
+  productId: string;
+  productName: string;
+  recipeId: string;
+  // Whole runs of the техкарта: one cake cut gives two halves even when one is asked for.
+  quantity: number;
+  // What it takes off the shelf of this point.
+  needs: { productId: string; name: string; quantity: number }[];
+}
+
 @Injectable()
 export class ProductionService {
   constructor(private prisma: PrismaService) {}
+
+  // ── Made by the sale itself (Product.makeOnSale) ──
+  // Half a cake is its own product with its own price, but nobody bakes halves: a cashier cuts a
+  // whole one when a buyer asks. So when a sale needs more of such a product than this point's shelf
+  // holds, it is made there and then by its техкарта («1 whole → 2 halves»), in whole runs — the
+  // same batch, cost and stock rows as «Выпуск за день». The whole leaves the shelf, the parts
+  // arrive at its cost, the one not sold stays in stock. A level below zero counts as an empty
+  // shelf: an old minus is for the stock count to settle, not a reason to cut cakes nobody cut.
+  //
+  // Read-only: what would be made. Also used before a fiscal receipt is punched.
+  async planForSale(
+    db: Prisma.TransactionClient | PrismaService,
+    organizationId: string,
+    locationId: string,
+    wanted: { productId: string; quantity: number }[],
+  ): Promise<SaleMakePlan[]> {
+    const need = new Map<string, number>();
+    for (const line of wanted) need.set(line.productId, round3((need.get(line.productId) ?? 0) + line.quantity));
+    if (need.size === 0) return [];
+    const recipes = await db.recipe.findMany({
+      where: {
+        organizationId,
+        isActive: true,
+        productId: { in: [...need.keys()] },
+        product: { makeOnSale: true, trackInventory: true, type: ProductType.FINISHED_GOOD },
+      },
+      select: { id: true, productId: true, yieldQuantity: true, product: { select: { name: true } } },
+      orderBy: { productId: "asc" },
+    });
+    if (recipes.length === 0) return [];
+    const [levels, index] = await Promise.all([
+      db.stockLevel.findMany({ where: { locationId, productId: { in: recipes.map((r) => r.productId) } }, select: { productId: true, quantity: true } }),
+      loadRecipeIndex(db, organizationId, recipes.map((r) => r.productId)),
+    ]);
+    const onHand = new Map(levels.map((l) => [l.productId, l.quantity.toNumber()]));
+    const plans: SaleMakePlan[] = [];
+    for (const recipe of recipes) {
+      const node = index.get(recipe.productId);
+      const yieldQuantity = recipe.yieldQuantity.toNumber();
+      const short = round3((need.get(recipe.productId) ?? 0) - Math.max(onHand.get(recipe.productId) ?? 0, 0));
+      if (!node || !(yieldQuantity > 0) || short <= 0) continue;
+      const quantity = round3(Math.ceil(short / yieldQuantity - 1e-9) * yieldQuantity);
+      const needs = new Map<string, { productId: string; name: string; quantity: number }>();
+      for (const line of expandRecipe(node, quantity / yieldQuantity, index).lines) {
+        const taken = round3(line.quantity);
+        if (!line.ingredient.trackInventory || taken <= 0) continue;
+        const prev = needs.get(line.ingredient.productId);
+        needs.set(line.ingredient.productId, {
+          productId: line.ingredient.productId,
+          name: line.ingredient.name,
+          quantity: round3((prev?.quantity ?? 0) + taken),
+        });
+      }
+      // A техкарта that takes nothing off the shelf cannot make stock out of thin air: such a product
+      // is sold like any other (and refused when the shelf is empty).
+      if (needs.size === 0) continue;
+      plans.push({ productId: recipe.productId, productName: recipe.product.name, recipeId: recipe.id, quantity, needs: [...needs.values()] });
+    }
+    return plans;
+  }
+
+  // Inside the sale's own transaction, BEFORE its stock check and cost stamp: makes what the plan says
+  // and returns the batches (the sale then puts its id on them). `wanted` = the basket's lines of
+  // products marked makeOnSale; an ordinary basket never gets here.
+  async makeForSale(
+    tx: Prisma.TransactionClient,
+    user: AuthenticatedUser,
+    locationId: string,
+    wanted: { productId: string; quantity: number }[],
+  ): Promise<string[]> {
+    const organizationId = user.organizationId;
+    const composition = await tx.recipe.findMany({
+      where: { organizationId, isActive: true, productId: { in: wanted.map((w) => w.productId) }, product: { makeOnSale: true } },
+      select: { productId: true, items: { select: { ingredientProductId: true } } },
+    });
+    if (composition.length === 0) return [];
+    // Two tills selling the last half at once must not both cut a cake: whoever is first holds the
+    // product rows (the part and what it is cut from) until its sale commits, and only then is the
+    // shelf read.
+    await lockProductRows(tx, composition.flatMap((r) => [r.productId, ...r.items.map((i) => i.ingredientProductId)]));
+    const plans = await this.planForSale(tx, organizationId, locationId, wanted);
+    if (plans.length === 0) return [];
+
+    if (!(await allowsNegativeStock(tx, organizationId, locationId))) {
+      const ids = [...new Set(plans.flatMap((p) => p.needs.map((n) => n.productId)))];
+      const levels = await tx.stockLevel.findMany({ where: { locationId, productId: { in: ids } }, select: { productId: true, quantity: true } });
+      assertSalePlansCovered(plans, new Map(levels.map((l) => [l.productId, l.quantity.toNumber()])));
+    }
+
+    const now = new Date();
+    const batchIds: string[] = [];
+    for (const plan of plans) {
+      const created = await tx.productionBatch.create({
+        data: {
+          organizationId,
+          locationId,
+          recipeId: plan.recipeId,
+          plannedQuantity: plan.quantity,
+          scheduledFor: now,
+          startedAt: now,
+          status: PrismaProductionBatchStatus.IN_PROGRESS,
+          createdById: user.id,
+        },
+        include: { recipe: { include: { items: { include: { ingredientProduct: true } }, product: true } } },
+      });
+      try {
+        await this.completeLoadedBatch(
+          tx,
+          user,
+          created,
+          { actualQuantity: plan.quantity },
+          { consumption: `Нарезка при продаже: ${plan.productName}`, output: "Нарезка при продаже" },
+        );
+      } catch (err) {
+        if (err instanceof BadRequestException) throw new BadRequestException(`«${plan.productName}»: ${err.message}`);
+        throw err;
+      }
+      batchIds.push(created.id);
+    }
+    return batchIds;
+  }
 
   // Production per product over a period — what the batch list cannot answer
   // because it is one row per batch.
@@ -78,6 +214,7 @@ export class ProductionService {
       where: {
         organizationId: user.organizationId,
         scheduledFor: { gte: from, lte: to },
+        ...NOT_MADE_BY_SALE,
         ...(locationId ? { locationId } : {}),
       },
       select: {
@@ -159,6 +296,7 @@ export class ProductionService {
     const batches = await this.prisma.productionBatch.findMany({
       where: {
         organizationId: user.organizationId,
+        ...NOT_MADE_BY_SALE,
         ...(locationId ? { locationId } : {}),
       },
       include: { location: true, recipe: { include: { product: true } }, createdBy: true, costs: true, recipeVersion: { select: { number: true } } },
@@ -310,6 +448,8 @@ export class ProductionService {
     user: AuthenticatedUser,
     batch: LoadedBatch,
     dto: CompleteBatchDto,
+    // The wording of the stock rows when the batch is not a baker's (a cake cut by a sale).
+    notes?: { consumption: string; output: string },
   ): Promise<ProductionBatchDto> {
     {
       // A STOCKED semi-finished product (cream, filling) consumes what the plan
@@ -415,7 +555,7 @@ export class ProductionService {
             productId: item.ingredient.productId,
             type: StockMovementType.PRODUCTION_CONSUMPTION,
             quantity: item.quantity,
-            reason: "Расход на производственное задание",
+            reason: notes?.consumption ?? "Расход на производственное задание",
             batchId: batch.id,
             createdById: user.id,
             unitCost: round4(item.unitCost as number),
@@ -506,7 +646,7 @@ export class ProductionService {
           productId: batch.recipe.productId,
           type: StockMovementType.PRODUCTION_OUTPUT,
           quantity: dto.actualQuantity,
-          reason: `Выпуск по производственному заданию${outputNote}`,
+          reason: notes?.output ?? `Выпуск по производственному заданию${outputNote}`,
           batchId: batch.id,
           createdById: user.id,
           unitCost: dto.actualQuantity > 0 ? round4(ingredientTotal / dto.actualQuantity) : null,
@@ -805,6 +945,7 @@ export class ProductionService {
         organizationId: user.organizationId,
         status: PrismaProductionBatchStatus.COMPLETED,
         completedAt: { gte: from, lte: to },
+        ...NOT_MADE_BY_SALE,
         ...(locationId ? { locationId } : {}),
       },
       select: {
@@ -862,6 +1003,7 @@ export class ProductionService {
         status: PrismaProductionBatchStatus.COMPLETED,
         recipe: { productId },
         completedAt: { gte: ranges[0].from, lte: ranges.at(-1)!.to },
+        ...NOT_MADE_BY_SALE,
         ...(locationId ? { locationId } : {}),
       },
       select: { completedAt: true, actualQuantity: true, costs: { where: { component: ProductionCostComponent.INGREDIENT }, select: { amount: true } } },
@@ -986,6 +1128,7 @@ export class ProductionService {
         organizationId: user.organizationId,
         status: PrismaProductionBatchStatus.COMPLETED,
         completedAt: { gte: from, lte: to },
+        ...NOT_MADE_BY_SALE,
         ...(locationId ? { locationId } : {}),
       },
       orderBy: { completedAt: "desc" },
@@ -1195,6 +1338,22 @@ export function normByProduct(lines: ConsumedLine[]): Map<string, { name: string
     });
   }
   return out;
+}
+
+// A point that does not go below zero: every plan must find what it cuts on the shelf, one after
+// another (two parts of the same cake draw on the same stock). `onHand` is changed as the plans are
+// walked, so the caller can go on to check the basket itself against what is left.
+export function assertSalePlansCovered(plans: SaleMakePlan[], onHand: Map<string, number>): void {
+  for (const plan of plans) {
+    for (const need of plan.needs) {
+      const have = onHand.get(need.productId) ?? 0;
+      if (have < need.quantity) {
+        throw new BadRequestException(`Недостаточно товара «${plan.productName}» на складе точки: нет и «${need.name}», чтобы нарезать`);
+      }
+      onHand.set(need.productId, round3(have - need.quantity));
+    }
+    onHand.set(plan.productId, round3((onHand.get(plan.productId) ?? 0) + plan.quantity));
+  }
 }
 
 // A batch as `complete` loads it: the recipe with its lines and output product.
