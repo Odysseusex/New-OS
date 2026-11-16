@@ -3340,6 +3340,7 @@ model LoyaltySettings {
   birthdayBonusPoints      Decimal  @default(0) @db.Decimal(12, 2)
   // How long the gift can be spent, counted from the birthday.
   birthdayBonusDays        Int      @default(14)
+  birthdayRedeemPercent    Decimal  @default(0) @db.Decimal(5, 2)
   // Which automatic messages go to WhatsApp — each is paid to Meta, so the
   // most frequent one (after every purchase) is off until the owner turns it on.
   whatsappSaleNotices      Boolean  @default(false)

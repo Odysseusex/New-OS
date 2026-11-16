@@ -31,6 +31,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { LoyaltyPointsService } from "./loyalty-points.service";
 import { cardCodeValid, finalMemberByPhone } from "../club/club-confirm";
 import { memberTier } from "./loyalty-tier";
+import { memberRedeemLimit } from "./birthday-redeem";
 import { PointsPosition } from "./points-ledger";
 import { toFamilyDto } from "./birthdays";
 import {
@@ -285,6 +286,7 @@ export class LoyaltyService {
     return {
       ...this.toDto(member, positions.get(member.id), await this.tierOf(organizationId, member)),
       hasApp: await this.hasApp(member.id),
+      ...(await this.redeemOf(organizationId, member.id)),
       pointsHistory,
       welcomeBonusAvailable,
       family: member.family.map((f) => toFamilyDto(f)),
@@ -546,7 +548,16 @@ export class LoyaltyService {
 
   private async withBalance(organizationId: string, member: MemberWithConsents): Promise<LoyaltyMemberDto> {
     const positions = await this.points.positions(organizationId, [member.id]);
-    return { ...this.toDto(member, positions.get(member.id), await this.tierOf(organizationId, member)), hasApp: await this.hasApp(member.id) };
+    return {
+      ...this.toDto(member, positions.get(member.id), await this.tierOf(organizationId, member)),
+      hasApp: await this.hasApp(member.id),
+      ...(await this.redeemOf(organizationId, member.id)),
+    };
+  }
+
+  private async redeemOf(organizationId: string, memberId: string) {
+    const limit = await memberRedeemLimit(this.prisma, memberId, await this.points.getSettings(organizationId));
+    return { redeemPercent: limit.percent, birthdayRedeemUntil: limit.birthdayUntil };
   }
 
   // Signed in to the customer app at least once (a session was collected).

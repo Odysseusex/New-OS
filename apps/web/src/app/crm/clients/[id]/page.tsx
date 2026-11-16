@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Cake, CircleDot, Gift, MessageCircle, MessageSquare, MessagesSquare, Pencil, Phone, ShieldCheck, ShoppingBag, Sparkles, Undo2, UserPlus } from "lucide-react";
+import { Cake, CircleDot, Coins, Gift, MessageCircle, MessageSquare, MessagesSquare, Pencil, Phone, ShieldCheck, ShoppingBag, Sparkles, Undo2, UserPlus } from "lucide-react";
 import {
   CRM_ORDER_STAGE_LABELS_RU,
   CrmContactReason,
   CrmMemberProfileDto,
   CrmOrderStage,
   CrmTimelineKind,
+  LOYALTY_ADMIN_ROLES,
   LOYALTY_MANAGE_ROLES,
   LoyaltyMemberStatus,
 } from "@bakery-os/shared";
@@ -42,6 +43,14 @@ export default function CrmClientPage() {
   const [editing, setEditing] = useState(false);
   const { user } = useAuth();
   const canGiveWelcome = !!user && LOYALTY_MANAGE_ROLES.includes(user.role);
+  // Points given (or taken back) by hand: owner / admin, always with a reason.
+  const canAdjust = !!user && LOYALTY_ADMIN_ROLES.includes(user.role);
+  const [adjusting, setAdjusting] = useState(false);
+  const [adjustSign, setAdjustSign] = useState<1 | -1>(1);
+  const [adjustPoints, setAdjustPoints] = useState("");
+  const [adjustReason, setAdjustReason] = useState("");
+  const [adjustBusy, setAdjustBusy] = useState(false);
+  const [adjustError, setAdjustError] = useState<string | null>(null);
   const [welcoming, setWelcoming] = useState(false);
   const [welcomeBusy, setWelcomeBusy] = useState(false);
   const [welcomeError, setWelcomeError] = useState<string | null>(null);
@@ -110,6 +119,21 @@ export default function CrmClientPage() {
             }}
           >
             <Gift size={15} /> Активировать бонус
+          </button>
+        )}
+        {canAdjust && member.status !== LoyaltyMemberStatus.MERGED && (
+          <button
+            type="button"
+            className="crm-btn"
+            onClick={() => {
+              setAdjustSign(1);
+              setAdjustPoints("");
+              setAdjustReason("");
+              setAdjustError(null);
+              setAdjusting(true);
+            }}
+          >
+            <Coins size={15} /> Начислить бонусы
           </button>
         )}
         <Link className="crm-btn" href={`/crm/chats?m=${member.id}`}>
@@ -288,6 +312,67 @@ export default function CrmClientPage() {
           }}
         />
       )}
+      {adjusting &&
+        (() => {
+          const amount = Number(adjustPoints.replace(",", ".").replace(/\s/g, ""));
+          const valid = Number.isFinite(amount) && amount > 0 && adjustReason.trim().length >= 5;
+          return (
+            <CrmModal
+              title="Бонусы клиента"
+              onClose={() => setAdjusting(false)}
+              footer={
+                <>
+                  <button type="button" className="crm-btn" onClick={() => setAdjusting(false)}>
+                    Отмена
+                  </button>
+                  <button
+                    type="button"
+                    className="crm-btn primary"
+                    disabled={adjustBusy || !valid}
+                    onClick={async () => {
+                      setAdjustBusy(true);
+                      setAdjustError(null);
+                      try {
+                        await api.loyalty.adjustPoints(member.id, { points: adjustSign * amount, reason: adjustReason.trim() });
+                        setAdjusting(false);
+                        load();
+                      } catch (err) {
+                        setAdjustError(err instanceof ApiError ? err.message : "Не удалось изменить бонусы");
+                      } finally {
+                        setAdjustBusy(false);
+                      }
+                    }}
+                  >
+                    {adjustSign > 0 ? "Начислить" : "Списать"}
+                  </button>
+                </>
+              }
+            >
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <p style={{ margin: 0 }}>
+                  {fmtPhone(member.phone)} · сейчас {Math.floor(member.pointsBalance)} {plural(Math.floor(member.pointsBalance), "балл", "балла", "баллов")}
+                </p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button type="button" className={`crm-btn${adjustSign > 0 ? " primary" : ""}`} onClick={() => setAdjustSign(1)}>
+                    Начислить
+                  </button>
+                  <button type="button" className={`crm-btn${adjustSign < 0 ? " primary" : ""}`} onClick={() => setAdjustSign(-1)}>
+                    Списать
+                  </button>
+                </div>
+                <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span className="muted" style={{ fontSize: 13.5 }}>Сколько бонусов</span>
+                  <input className="crm-input" inputMode="decimal" autoFocus value={adjustPoints} onChange={(e) => setAdjustPoints(e.target.value)} placeholder="5000" />
+                </label>
+                <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span className="muted" style={{ fontSize: 13.5 }}>Причина</span>
+                  <input className="crm-input" value={adjustReason} onChange={(e) => setAdjustReason(e.target.value)} placeholder="Например: подарок ко дню рождения" maxLength={200} />
+                </label>
+                {adjustError && <p style={{ margin: 0, color: "var(--red)" }}>{adjustError}</p>}
+              </div>
+            </CrmModal>
+          );
+        })()}
       {welcoming && member.welcomeBonusAvailable !== null && (
         <CrmModal
           title="Приветственный бонус"

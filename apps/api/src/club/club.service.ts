@@ -16,6 +16,7 @@ import {
 } from "@bakery-os/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { memberTier } from "../loyalty/loyalty-tier";
+import { memberRedeemLimit } from "../loyalty/birthday-redeem";
 import { LoyaltyPointsService } from "../loyalty/loyalty-points.service";
 import { WhatsAppService } from "../loyalty/whatsapp.service";
 import { CustomerBotService } from "../loyalty/customer-bot.service";
@@ -226,6 +227,7 @@ export class ClubService {
       serverTime: new Date().toISOString(),
       visits,
       tier: await memberTier(this.prisma, memberId, settings),
+      redeem: await memberRedeemLimit(this.prisma, memberId, settings),
       chatUnread: await this.prisma.clubChatMessage.count({ where: { memberId, direction: "OUT", readAt: null } }),
       programme: this.programme(settings),
       history: items.slice(0, HISTORY_LIMIT),

@@ -89,6 +89,12 @@ export function PosLoyaltyBlock({
                 Без приложения
               </span>
             )}
+            {member.birthdayRedeemUntil && (
+              <span className="mt-0.5 inline-flex items-center gap-1 rounded-md bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-900">
+                <Cake className="h-3 w-3" strokeWidth={2} />
+                День рождения: баллами до {member.redeemPercent}% чека
+              </span>
+            )}
             <p className="text-xs text-muted">
               {member.tier && `${LOYALTY_TIER_LABELS_RU[member.tier.tier]} ${member.tier.percent}% · `}
               Баллов: {formatPoints(member.pointsBalance)}

@@ -1,7 +1,8 @@
 import { LoyaltyConsentSource as S, LoyaltyPointsEntryType as T } from "@bakery-os/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { createIsolatedOrg, destroyOrg, IsolatedOrg } from "../../test/support/isolated-org";
-import { currentBirthday, giftEligible, localMidnight, nextBirthday } from "./birthdays";
+import { birthdayWindowEnd, currentBirthday, giftEligible, localMidnight, nextBirthday } from "./birthdays";
+import { memberRedeemLimit } from "./birthday-redeem";
 import { LoyaltyBirthdayService } from "./loyalty-birthday.service";
 import { LoyaltyPointsService } from "./loyalty-points.service";
 import { LoyaltyService } from "./loyalty.service";
@@ -22,6 +23,19 @@ describe("birthday dates (pure)", () => {
     expect(currentBirthday(at(2026, 5, 19), 5, 10)).toBeNull();
     expect(currentBirthday(at(2026, 5, 9), 5, 10)).toBeNull();
     expect(currentBirthday(at(2027, 1, 2), 12, 30)?.year).toBe(2026);
+  });
+
+  it("the birthday days: a week before to a week after, not for a date set too late", () => {
+    const old = new Date(localMidnight(2025, 1, 1));
+    const row = { birthMonth: 5, birthDay: 10, dateSetAt: old };
+    expect(birthdayWindowEnd(at(2026, 5, 2), row)).toBeNull();
+    expect(birthdayWindowEnd(at(2026, 5, 3), row)).toEqual(new Date(localMidnight(2026, 5, 18).getTime() - 1));
+    expect(birthdayWindowEnd(at(2026, 5, 17), row)).not.toBeNull();
+    expect(birthdayWindowEnd(at(2026, 5, 18), row)).toBeNull();
+    // across New Year, both ways
+    expect(birthdayWindowEnd(at(2026, 12, 28), { birthMonth: 1, birthDay: 2, dateSetAt: old })).not.toBeNull();
+    expect(birthdayWindowEnd(at(2027, 1, 3), { birthMonth: 12, birthDay: 30, dateSetAt: old })).not.toBeNull();
+    expect(birthdayWindowEnd(at(2026, 5, 10), { ...row, dateSetAt: new Date(localMidnight(2026, 5, 1)) })).toBeNull();
   });
 
   it("the 30-day rule", () => {
@@ -114,6 +128,30 @@ describe("LoyaltyBirthdayService (database)", () => {
     const fresh = await prisma.loyaltyFamilyMember.findUniqueOrThrow({ where: { id: row.id } });
     expect(Date.now() - fresh.dateSetAt.getTime()).toBeLessThan(60_000);
     await birthdays.remove(org.user, row.id);
+  });
+
+  it("around a birthday points pay a larger share of the check; the sale takes the same limit", async () => {
+    const who = (await loyalty.register(org.user, { phone: "+77092000009", name: "Именинник", personalDataConsent: true, source: S.AT_TILL })).id;
+    await points.updateSettings(org.user, { enabled: true, maxRedeemPercent: 30, birthdayRedeemPercent: 50 });
+    const settings = await points.getSettings(org.organizationId);
+    expect(await memberRedeemLimit(prisma, who, settings)).toEqual({ percent: 30, birthdayUntil: null });
+
+    const now = new Date();
+    const [y, m, d] = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Almaty" }).format(new Date(now.getTime() + 3 * DAY)).split("-").map(Number);
+    void y;
+    const row = await birthdays.add(org.user, who, { name: "Именинник", relation: "Сам клиент", birthDay: d, birthMonth: m });
+    // Put on the card today: too late for this birthday.
+    expect((await memberRedeemLimit(prisma, who, settings)).percent).toBe(30);
+    await backdate(row.id, 400);
+    const limit = await memberRedeemLimit(prisma, who, settings);
+    expect(limit.percent).toBe(50);
+    expect(limit.birthdayUntil).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect((await points.prepareSale(org.organizationId, who)).redeemPercent).toBe(50);
+    expect((await loyalty.lookup(org.organizationId, "+77092000009")).member).toMatchObject({ redeemPercent: 50, birthdayRedeemUntil: limit.birthdayUntil });
+
+    // Switched off (0) — the ordinary limit again.
+    await points.updateSettings(org.user, { birthdayRedeemPercent: 0 });
+    expect((await points.prepareSale(org.organizationId, who)).redeemPercent).toBe(30);
   });
 
   it("birthdays move to the primary card on merge", async () => {

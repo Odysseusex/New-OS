@@ -1842,6 +1842,16 @@ with the programme on (else the oldest non-sandbox org).
 - **No Telegram on the phone** (15.11.2026, three customers stuck: Safari «адрес недействителен» on t.me): while
   Telegram is the only sign-in channel, the confirm screen shows «Нет Telegram на телефоне?» with an App Store / Google
   Play link (`NoTelegram` in `app/_components/login.tsx`). The real fix is WhatsApp sign-in (Meta webhook).
+- **Birthday days: points pay more of the check** (owner, 16.11.2026; migration `20261203120000_birthday_redeem_percent`,
+  additive, set 50 on running programmes): `LoyaltySettings.birthdayRedeemPercent` (0 = off; «Оплата баллами в дни
+  рождения…» on the programme card). From 7 days before to 7 days after ANY birthday on the card (holder or family;
+  `LOYALTY_BIRTHDAY_REDEEM_*`, the gift's 30-day rule applies — a date added today opens nothing) the limit is that
+  percent instead of `maxRedeemPercent`. ONE rule: `loyalty/birthday-redeem.ts` `memberRedeemLimit` →
+  `PreparedSaleLoyalty.redeemPercent` (the sale's check), `LoyaltyMemberDto.redeemPercent` / `birthdayRedeemUntil`
+  (lookup / card: the till's cap and its green «День рождения: баллами до N% чека»), `ClubProfileDto.redeem` (the app).
+  A new reader of the limit must use it, never `maxRedeemPercent` directly. Spec in `loyalty-birthday.spec.ts`.
+- **«Начислить бонусы» in CRM** (client page, OWNER/ADMIN): any amount, «Начислить / Списать», a reason — the existing
+  `POST /loyalty/members/:id/points/adjust` (ordinary lifetime, audited). The customer is not notified by it.
 - Still not built: (3) a 2D USB scanner at the till (code done; hardware not bought).
 - `/poster` (link on the programme card): ONE A4 design — warm paper, gold hairline frame, Tenor Sans, «Бонусная карта»,
   no slogan, no photo. The owner rejected photo posters, red fills, sage, Cormorant/Playfair titles and slogans.

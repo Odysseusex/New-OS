@@ -406,7 +406,7 @@ export default function PosPage() {
   const loyaltyActive = !!loyaltySettings?.enabled && !!loyaltyMember;
   const pointsCap =
     loyaltyActive && loyaltySettings && loyaltyMember
-      ? loyaltyRedeemCap(loyaltyLines, loyaltySettings.maxRedeemPercent, loyaltyMember.pointsBalance)
+      ? loyaltyRedeemCap(loyaltyLines, loyaltyMember.redeemPercent ?? loyaltySettings.maxRedeemPercent, loyaltyMember.pointsBalance)
       : 0;
   const pointsRequested = Math.min(pointsToRedeem, pointsCap);
   const pointsDiscount = loyaltyActive && pointsRequested > 0 ? distributePointsDiscount(loyaltyLines, pointsRequested) : null;

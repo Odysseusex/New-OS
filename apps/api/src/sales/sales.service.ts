@@ -1366,10 +1366,10 @@ export class SalesService {
       const requested = dto.loyaltyPointsToRedeem ?? 0;
       if (requested > 0) {
         const cart = items.map((i) => ({ ...i, consignment: consignmentById.get(i.productId) ?? false }));
-        const cap = loyaltyRedeemCap(cart, prepared.settings.maxRedeemPercent, prepared.available);
+        const cap = loyaltyRedeemCap(cart, prepared.redeemPercent, prepared.available);
         if (requested > cap + 1e-9) {
           throw new BadRequestException(
-            `Баллами можно оплатить не больше ${cap} ₸: до ${prepared.settings.maxRedeemPercent}% стоимости товаров без скидки и не больше, чем на счёте (${prepared.available})`,
+            `Баллами можно оплатить не больше ${cap} ₸: до ${prepared.redeemPercent}% стоимости товаров без скидки и не больше, чем на счёте (${prepared.available})`,
           );
         }
         const discount = distributePointsDiscount(cart, requested);

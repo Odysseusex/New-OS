@@ -251,8 +251,8 @@ function CardTab({ profile, offsetMs }: { profile: ClubProfileDto; offsetMs: num
           <span>бонусами с каждой покупки</span>
         </div>
         <div className="aa-fact">
-          <strong>{fmtPoints(p.maxRedeemPercent)}%</strong>
-          <span>чека можно оплатить бонусами</span>
+          <strong>{fmtPoints(profile.redeem?.percent ?? p.maxRedeemPercent)}%</strong>
+          <span>{profile.redeem?.birthdayUntil ? "чека бонусами в дни рождения" : "чека можно оплатить бонусами"}</span>
         </div>
         <div className="aa-fact">
           <strong>{p.pointsLifetimeMonths} мес.</strong>

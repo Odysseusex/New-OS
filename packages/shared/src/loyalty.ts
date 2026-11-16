@@ -113,6 +113,10 @@ export interface LoyaltyMemberDto {
   telegramLinked: boolean;
   // Has signed in to the customer app; only on the till's lookup and the card (absent in lists).
   hasApp?: boolean;
+  // The share of a check this member may pay with points right now (lookup /
+  // card only), and — when a birthday raised it — the last day of that (YYYY-MM-DD).
+  redeemPercent?: number;
+  birthdayRedeemUntil?: string | null;
   createdAt: string;
 }
 
@@ -254,6 +258,9 @@ export interface LoyaltySettingsDto {
   // Gift in points on every birthday on a card; 0 = no gift.
   birthdayBonusPoints: number;
   birthdayBonusDays: number;
+  // Around a birthday on the card (LOYALTY_BIRTHDAY_REDEEM_* days) points pay up
+  // to this share of a check instead of maxRedeemPercent; 0 = no birthday rule.
+  birthdayRedeemPercent: number;
   // Which automatic messages go to WhatsApp (each one is paid to Meta).
   whatsappSaleNotices: boolean;
   whatsappExpiryNotices: boolean;
@@ -287,6 +294,7 @@ export const DEFAULT_LOYALTY_SETTINGS: LoyaltySettingsDto = {
   pointsLifetimeMonths: 12,
   birthdayBonusPoints: 0,
   birthdayBonusDays: 14,
+  birthdayRedeemPercent: 0,
   whatsappSaleNotices: false,
   whatsappExpiryNotices: true,
   whatsappBirthdayNotices: true,
@@ -675,6 +683,10 @@ export interface SendLoyaltyTelegramResultDto {
 }
 
 // ── Birthdays (the card holder and family) ──────────────────────────────────
+
+// The raised points limit holds from this many days before a birthday to this many after.
+export const LOYALTY_BIRTHDAY_REDEEM_BEFORE_DAYS = 7;
+export const LOYALTY_BIRTHDAY_REDEEM_AFTER_DAYS = 7;
 
 export const LOYALTY_MAX_FAMILY_MEMBERS = 8;
 // A date put on the card later than this before the birthday earns no gift that year.

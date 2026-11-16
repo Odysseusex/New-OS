@@ -16,7 +16,7 @@ type NumericSetting =
   | "welcomeBonusDelayDays"
   | "welcomeBonusDays"
   | "firstPurchaseEarnPercent"
-  | "earnPercent" | "maxRedeemPercent" | "pointsLifetimeMonths" | "birthdayBonusPoints" | "birthdayBonusDays"
+  | "earnPercent" | "maxRedeemPercent" | "pointsLifetimeMonths" | "birthdayBonusPoints" | "birthdayBonusDays" | "birthdayRedeemPercent"
   | "silverThreshold" | "silverPercent" | "goldThreshold" | "goldPercent" | "platinumThreshold" | "platinumPercent" | "tierWindowDays" | "tierHoldDays";
 
 // Programme settings (owner/admin edit them) and the points figures. Points
@@ -48,6 +48,7 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
       pointsLifetimeMonths: String(s.pointsLifetimeMonths),
       birthdayBonusPoints: String(s.birthdayBonusPoints),
       birthdayBonusDays: String(s.birthdayBonusDays),
+      birthdayRedeemPercent: String(s.birthdayRedeemPercent),
       silverThreshold: String(s.silverThreshold),
       silverPercent: String(s.silverPercent),
       goldThreshold: String(s.goldThreshold),
@@ -116,6 +117,7 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
     ["pointsLifetimeMonths", "Срок жизни баллов за покупки, мес."],
     ["birthdayBonusPoints", "Подарок на день рождения, баллов"],
     ["birthdayBonusDays", "Подарок действует, дней"],
+    ["birthdayRedeemPercent", "Оплата баллами в дни рождения, не больше % чека (0 — как обычно)"],
   ];
   const changed = settings && draft ? fields.some(([key]) => num(draft[key]) !== settings[key]) : false;
   // Levels: the earn percent by the member's own spend over the window.

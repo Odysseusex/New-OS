@@ -21,6 +21,7 @@ import { resolveTillApproval } from "../auth/till-pin";
 import { startOfZonedDay } from "../common/zoned-day";
 import { PrismaService } from "../prisma/prisma.service";
 import { memberTier } from "./loyalty-tier";
+import { memberRedeemLimit } from "./birthday-redeem";
 import { addMonths, PointsPosition, pointsPosition, PointsRow } from "./points-ledger";
 
 type Db = Prisma.TransactionClient | PrismaService;
@@ -32,6 +33,8 @@ export interface PreparedSaleLoyalty {
   memberId: string;
   settings: LoyaltySettingsDto;
   available: number;
+  // The share of the check points may pay for this member today (birthday days raise it).
+  redeemPercent: number;
 }
 
 export interface SaleLoyaltyLine {
@@ -67,6 +70,7 @@ export class LoyaltyPointsService {
       pointsLifetimeMonths: row.pointsLifetimeMonths,
       birthdayBonusPoints: row.birthdayBonusPoints.toNumber(),
       birthdayBonusDays: row.birthdayBonusDays,
+      birthdayRedeemPercent: row.birthdayRedeemPercent.toNumber(),
       whatsappSaleNotices: row.whatsappSaleNotices,
       whatsappExpiryNotices: row.whatsappExpiryNotices,
       whatsappBirthdayNotices: row.whatsappBirthdayNotices,
@@ -84,7 +88,7 @@ export class LoyaltyPointsService {
   }
 
   async updateSettings(user: AuthenticatedUser, dto: Partial<LoyaltySettingsDto>): Promise<LoyaltySettingsDto> {
-    for (const key of ["firstPurchaseEarnPercent", "earnPercent", "maxRedeemPercent", "silverPercent", "goldPercent", "platinumPercent"] as const) {
+    for (const key of ["firstPurchaseEarnPercent", "earnPercent", "maxRedeemPercent", "birthdayRedeemPercent", "silverPercent", "goldPercent", "platinumPercent"] as const) {
       const value = dto[key];
       if (value !== undefined && (value < 0 || value > 100 || Math.round(value * 100) !== value * 100)) {
         throw new BadRequestException("Процент — число от 0 до 100, не больше двух знаков после запятой");
@@ -228,7 +232,7 @@ export class LoyaltyPointsService {
       throw new BadRequestException("Клиент не участвует в программе (нет согласия или запись объединена)");
     }
     const available = (await this.balances(organizationId, [memberId])).get(memberId) ?? 0;
-    return { memberId, settings, available };
+    return { memberId, settings, available, redeemPercent: (await memberRedeemLimit(this.prisma, memberId, settings)).percent };
   }
 
   // Inside the sale's transaction: spend, then earn on what was paid in money.

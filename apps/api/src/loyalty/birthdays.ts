@@ -1,4 +1,10 @@
-import { birthdayInYear, LOYALTY_BIRTHDAY_NOTICE_DAYS, LoyaltyFamilyMemberDto } from "@bakery-os/shared";
+import {
+  birthdayInYear,
+  LOYALTY_BIRTHDAY_NOTICE_DAYS,
+  LOYALTY_BIRTHDAY_REDEEM_AFTER_DAYS,
+  LOYALTY_BIRTHDAY_REDEEM_BEFORE_DAYS,
+  LoyaltyFamilyMemberDto,
+} from "@bakery-os/shared";
 import { startOfZonedDay } from "../common/zoned-day";
 
 // Pure date maths for birthdays on a loyalty card. Kept free of services so the
@@ -45,6 +51,23 @@ export function nextBirthday(now: Date, month: number, day: number): { year: num
 
 export const giftEligible = (dateSetAt: Date, birthdayAt: Date) =>
   dateSetAt.getTime() <= birthdayAt.getTime() - LOYALTY_BIRTHDAY_NOTICE_DAYS * DAY;
+
+// The birthday days around `now` (a week before to a week after): the last day
+// of that window, or null when `now` is outside it. A date put on the card too
+// late (the gift's 30-day rule) opens no window either.
+export function birthdayWindowEnd(now: Date, row: { birthMonth: number; birthDay: number; dateSetAt: Date }): Date | null {
+  const { y } = todayParts(now);
+  for (const year of [y - 1, y, y + 1]) {
+    const b = birthdayInYear(year, row.birthMonth, row.birthDay);
+    const at = localMidnight(year, b.month, b.day);
+    const from = at.getTime() - LOYALTY_BIRTHDAY_REDEEM_BEFORE_DAYS * DAY;
+    const end = at.getTime() + (LOYALTY_BIRTHDAY_REDEEM_AFTER_DAYS + 1) * DAY;
+    if (now.getTime() >= from && now.getTime() < end && giftEligible(row.dateSetAt, at)) return new Date(end - 1);
+  }
+  return null;
+}
+
+export const almatyDayKey = (at: Date) => dayKey.format(at);
 
 export function toFamilyDto(
   row: { id: string; name: string; relation: string | null; birthDay: number; birthMonth: number; birthYear: number | null; dateSetAt: Date; grants: { year: number }[] },

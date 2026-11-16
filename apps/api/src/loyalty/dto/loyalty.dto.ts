@@ -201,6 +201,12 @@ export class UpdateLoyaltySettingsDto {
   birthdayBonusDays?: number;
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  birthdayRedeemPercent?: number;
+
+  @IsOptional()
   @IsBoolean()
   whatsappSaleNotices?: boolean;
 

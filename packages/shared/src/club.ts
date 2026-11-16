@@ -137,6 +137,9 @@ export interface ClubProfileDto {
   visits: number;
   // The member's level; null when levels are off.
   tier: LoyaltyTierDto | null;
+  // What this member may pay with points right now; `until` (YYYY-MM-DD) is set
+  // while a birthday on the card raises it.
+  redeem: { percent: number; birthdayUntil: string | null };
   // Messages from the bakery not opened yet (the dot on «Чат»).
   chatUnread: number;
   programme: ClubProgrammeDto;
