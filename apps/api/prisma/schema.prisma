@@ -703,6 +703,10 @@ model Product {
   // Пакет) that would otherwise cost several taps to find. Not exclusive
   // with appearing in the normal grid too; purely an additional shortcut.
   isPosQuickItem Boolean     @default(false)
+  // Made at the point of sale at the moment it is sold, when the shelf has none of it: half a cake
+  // cut from a whole one (its техкарта = 1 whole → N parts). The sale itself makes the batch
+  // (ProductionService.makeForSale), so the whole leaves stock and the parts arrive at its cost.
+  makeOnSale     Boolean     @default(false)
   // The organization's chosen low-stock threshold for this product, copied
   // onto each StockLevel row (see stockLevel.minQuantity) the first time
   // that product is stocked at a given location, and re-propagated to all
@@ -940,6 +944,8 @@ model Sale {
   cashMovements  CashMovement[]
   fiscalReceipt  FiscalReceipt?
   returns        SaleReturn[]
+  // Batches this sale made by itself (a whole cake cut into halves — Product.makeOnSale).
+  madeBatches    ProductionBatch[]
   // Loyalty member the cashier attached at the till (null: anonymous retail).
   // Points earned/spent on this sale live in LoyaltyPointsEntry.
   loyaltyMemberId      String?
@@ -1556,11 +1562,17 @@ model ProductionBatch {
   createdById     String
   createdBy       User                    @relation(fields: [createdById], references: [id])
   createdAt       DateTime                @default(now())
+  // Set on a batch a SALE made by itself (Product.makeOnSale: a whole cake cut into halves at the
+  // till). Such a batch is in the stock history and the books like any other, but not in the
+  // production journal or the output reports — nobody baked anything.
+  saleId          String?
+  sale            Sale?                   @relation(fields: [saleId], references: [id], onDelete: SetNull)
 
   stockMovements StockMovement[]
   costs          ProductionBatchCost[]
 
   @@index([organizationId, locationId])
+  @@index([saleId])
   @@map("production_batches")
 }
 

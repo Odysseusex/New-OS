@@ -161,7 +161,8 @@ export class MaterialRequisitionsService {
         where: { ...base, type: StockMovementType.TRANSFER_IN, materialRequisition: { kind: MaterialRequisitionKind.REQUISITION } },
         select,
       }),
-      this.prisma.stockMovement.findMany({ where: { ...base, type: StockMovementType.PRODUCTION_CONSUMPTION, batchId: { not: null } }, select }),
+      // The norm of what was baked; a cake a sale cut into halves is not an issue of raw material.
+      this.prisma.stockMovement.findMany({ where: { ...base, type: StockMovementType.PRODUCTION_CONSUMPTION, batch: { saleId: null } }, select }),
       this.prisma.stockMovement.findMany({ where: { ...base, type: StockMovementType.WRITE_OFF, writeOffReason: "PRODUCTION_OVERUSE", batchId: { not: null } }, select }),
       this.prisma.stockMovement.findMany({ where: { ...base, type: StockMovementType.ADJUSTMENT, batchId: { not: null }, quantity: { gt: 0 } }, select }),
     ]);

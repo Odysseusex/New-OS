@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from "@nestjs/common";
 import { HARD_DELETE_ROLES, RECIPE_MANAGE_ROLES } from "@bakery-os/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
@@ -8,6 +8,7 @@ import { AuthenticatedUser } from "../auth/auth.types";
 import { RecipesService } from "./recipes.service";
 import { CreateRecipeDto } from "./dto/create-recipe.dto";
 import { UpdateRecipeDto } from "./dto/update-recipe.dto";
+import { SetCutSourceDto } from "./dto/set-cut-source.dto";
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("recipes")
@@ -35,6 +36,13 @@ export class RecipesController {
   @Roles(...RECIPE_MANAGE_ROLES)
   update(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: UpdateRecipeDto) {
     return this.recipesService.update(user, id, dto);
+  }
+
+  // «Нарезается из товара» on the product card (the half of a cake): writes that product's техкарта.
+  @Put("cut-source/:productId")
+  @Roles(...RECIPE_MANAGE_ROLES)
+  setCutSource(@CurrentUser() user: AuthenticatedUser, @Param("productId") productId: string, @Body() dto: SetCutSourceDto) {
+    return this.recipesService.setCutSource(user, productId, dto);
   }
 
   @Post(":id/archive")

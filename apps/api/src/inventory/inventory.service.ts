@@ -165,6 +165,7 @@ export class InventoryService {
         purchaseOrder: { select: { number: true } },
         supplierReturn: { select: { purchaseOrderId: true, purchaseOrder: { select: { number: true } } } },
         materialRequisition: { select: { kind: true, number: true } },
+        batch: { select: { saleId: true, sale: { select: { number: true } } } },
       },
       orderBy: { createdAt: "desc" },
       take: limit,
@@ -529,6 +530,7 @@ function movementDocument(m: {
   purchaseOrder: { number: number | null } | null;
   supplierReturn: { purchaseOrderId: string; purchaseOrder: { number: number | null } } | null;
   batchId: string | null;
+  batch: { saleId: string | null; sale: { number: number | null } | null } | null;
   materialRequisitionId: string | null;
   materialRequisition: { kind: string; number: number } | null;
   stocktakeId: string | null;
@@ -540,6 +542,8 @@ function movementDocument(m: {
   if (m.purchaseOrderId) return { kind: "PURCHASE_ORDER", id: m.purchaseOrderId, label: `Заказ поставщику${no(m.purchaseOrder?.number)}` };
   if (m.supplierReturn)
     return { kind: "PURCHASE_ORDER", id: m.supplierReturn.purchaseOrderId, label: `Возврат по заказу${no(m.supplierReturn.purchaseOrder.number)}` };
+  // A cake cut into halves by a sale: the check is the document, not a baker's batch.
+  if (m.batch?.saleId) return { kind: "SALE", id: m.batch.saleId, label: `Нарезка по чеку${no(m.batch.sale?.number)}` };
   if (m.batchId) return { kind: "BATCH", id: m.batchId, label: "Акт выпуска" };
   if (m.materialRequisitionId && m.materialRequisition) {
     const name = m.materialRequisition.kind === "TRANSFER" ? "Перемещение" : "Требование-накладная";
