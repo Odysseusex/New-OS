@@ -136,12 +136,39 @@ function Android({ onDone }: { onDone: () => void }) {
     }
   };
 
+  // Many Android phones (Huawei / Honor without Google services, Xiaomi, Oppo,
+  // Vivo…) report «installed» while no icon appears: the browser is not allowed
+  // to put shortcuts on the home screen, or cannot build the app without Google
+  // (owner, 17.11.2026). The customer must never be stuck here, so the way in
+  // from this very page is always offered (Android shares the browser's storage).
+  const enter = () => {
+    try {
+      localStorage.setItem(ICON_KEY, "1");
+    } catch {
+      // asked again next time, nothing worse
+    }
+    onDone();
+  };
+  const noIcon = (
+    <div className="aa-no-icon">
+      <b>Значка нет на экране?</b>
+      <span>
+        На некоторых телефонах браузеру нужно разрешение: Настройки → Приложения → ваш браузер → Права (Разрешения) → «Ярлыки
+        на рабочем столе». Или просто войдите здесь — карта будет работать в браузере.
+      </span>
+      <button type="button" className="aa-btn primary" onClick={enter}>
+        Войти здесь
+      </button>
+    </div>
+  );
+
   if (installed || state === "installing") {
     return (
       <section className="aa-panel aa-install-done">
         <Check size={28} />
         <b>{installed ? "Готово" : "Устанавливается…"}</b>
         <p>Значок Ar Amir {installed ? "уже на экране телефона" : "появится на экране телефона через несколько секунд"}. Откройте приложение с него и войдите по номеру.</p>
+        {noIcon}
       </section>
     );
   }
@@ -171,21 +198,11 @@ function Android({ onDone }: { onDone: () => void }) {
         </ol>
       )}
       {state === "manual" && (
-        <button
-          type="button"
-          className="aa-btn ghost"
-          onClick={() => {
-            try {
-              localStorage.setItem(ICON_KEY, "1");
-            } catch {
-              // asked again next time, nothing worse
-            }
-            onDone();
-          }}
-        >
+        <button type="button" className="aa-btn ghost" onClick={enter}>
           <Check size={18} /> Значок добавлен — войти
         </button>
       )}
+      {state === "manual" && noIcon}
     </section>
   );
 }

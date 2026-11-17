@@ -1858,6 +1858,10 @@ with the programme on (else the oldest non-sandbox org).
   real install offer comes, the steps end with «Значок добавлен — войти» → the form, remembered in localStorage
   (`aa.club.androidIconAdded`) so the shortcut opens the form next time. Safe on Android: the shortcut shares the
   browser's storage (unlike an iPhone home-screen app). Chrome / Samsung Internet still get the one-tap install.
+  **«Значка нет на экране?» — «Войти здесь»** (owner, 17.11.2026: on many Android phones — a Huawei without Google
+  services among them — Chrome said «installed» and no icon appeared; the customer was stuck on «Готово»). Under the
+  «Готово» panel AND under the manual steps: a hint (browser permission «Ярлыки на рабочем столе») + «Войти здесь» =
+  the same `aa.club.androidIconAdded` + the form. Android only; the iPhone gate is unchanged.
 - **No registration at the till** (owner, 14.11.2026: cashiers registered by number, and such members cannot be
   reached): `LoyaltyService.register` refuses `TILL_ROLES` (403 «…регистрируется сам в приложении Ar Amir…»); managers
   still register in Клиенты → Розница. The till's member block = «Сканируйте QR-код из приложения клиента» (the scan field,

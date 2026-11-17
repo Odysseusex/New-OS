@@ -1092,3 +1092,18 @@ body:has(.aa) {
   gap: 8px;
   margin-top: 4px;
 }
+.aa .aa-no-icon {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--aa-line);
+  font-size: 14px;
+  line-height: 1.45;
+  text-align: left;
+}
+.aa .aa-no-icon .aa-btn {
+  margin-top: 4px;
+}
