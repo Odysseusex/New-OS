@@ -78,13 +78,22 @@ export function NewRecipeModal({
   onSaved: () => void;
 }) {
   const source = recipe ?? duplicateFrom;
-  const outputOptions = products.filter(
+  // Drinks (category «Кофе» and its subcategories) are made at the counter, not baked: the owner asked
+  // to keep them out of the list (17.11.2026) until he decides to give them техкарты — then «Показать
+  // напитки» brings them back.
+  const [showDrinks, setShowDrinks] = useState(false);
+  const isDrink = (p: ProductDto) => /^кофе(\s|$)/i.test((p.categoryName ?? "").trim());
+  const allOutputOptions = products.filter(
     // Somebody else's goods «под реализацию» are not produced here, so they get no recipe.
     (p) =>
       (p.type === ProductType.FINISHED_GOOD || p.type === ProductType.SEMI_FINISHED) &&
       !p.consignmentSupplierId &&
+      // The till's «Произвольная сумма» line is not a product anyone makes.
+      !p.isOpenPrice &&
       !existingRecipeProductIds.includes(p.id),
   );
+  const hiddenDrinks = allOutputOptions.filter(isDrink).length;
+  const outputOptions = showDrinks ? allOutputOptions : allOutputOptions.filter((p) => !isDrink(p));
   // Raw materials, semi-finished products (a component with its own recipe) and our own finished goods
   // counted in stock (a plain croissant that goes into a filled one — taken from the shelf).
   const ingredientOptions = products.filter(
@@ -118,6 +127,12 @@ export function NewRecipeModal({
   }, []);
 
   const [productId, setProductId] = useState(recipe?.productId ?? outputOptions[0]?.id ?? "");
+  // Hiding the drinks again must not leave a hidden one chosen.
+  useEffect(() => {
+    if (recipe || outputOptions.some((p) => p.id === productId)) return;
+    setProductId(outputOptions[0]?.id ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showDrinks]);
   const [yieldQuantity, setYieldQuantity] = useState(recipe ? String(recipe.yieldQuantity) : "");
   const [pieceWeightG, setPieceWeightG] = useState(
     source?.pieceWeightG !== null && source?.pieceWeightG !== undefined ? String(source.pieceWeightG) : "",
@@ -368,7 +383,7 @@ export function NewRecipeModal({
     }
   }
 
-  if (!recipe && outputOptions.length === 0) {
+  if (!recipe && allOutputOptions.length === 0) {
     return (
       <Modal title="Новая рецептура" onClose={onClose}>
         <p className="text-sm text-muted">
@@ -420,6 +435,15 @@ export function NewRecipeModal({
                   </option>
                 ))}
               </select>
+            )}
+            {!recipe && hiddenDrinks > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowDrinks((v) => !v)}
+                className="mt-1.5 text-xs font-medium text-muted underline-offset-2 hover:text-foreground hover:underline"
+              >
+                {showDrinks ? "Скрыть напитки" : `Показать напитки (${hiddenDrinks})`}
+              </button>
             )}
           </div>
           <div>
