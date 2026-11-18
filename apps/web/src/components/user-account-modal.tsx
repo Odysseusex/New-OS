@@ -27,6 +27,28 @@ export function UserAccountModal({
   const [removePin, setRemovePin] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // «Помощник» works with a key instead of a password: issued here, shown once.
+  const [hasKey, setHasKey] = useState(Boolean(account?.hasAssistantKey));
+  const [newKey, setNewKey] = useState<string | null>(null);
+  const [keyBusy, setKeyBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  async function changeKey(revoke: boolean) {
+    if (!account) return;
+    if (hasKey && !window.confirm(revoke ? "Отозвать ключ? Помощник перестанет работать, пока не выпустите новый." : "Выпустить новый ключ? Прежний сразу перестанет работать.")) return;
+    setError(null);
+    setKeyBusy(true);
+    try {
+      const result = await api.users.assistantKey(account.id, revoke);
+      setNewKey(result.key);
+      setHasKey(result.key !== null);
+      setCopied(false);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось выпустить ключ");
+    } finally {
+      setKeyBusy(false);
+    }
+  }
 
   const needsLocation = !ORG_WIDE_ROLES.includes(role);
 
@@ -200,6 +222,60 @@ export function UserAccountModal({
             )}
           </div>
         </div>
+
+        {account?.role === Role.ASSISTANT && role === Role.ASSISTANT && (
+          <div className="mb-4 rounded-xl border border-border p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-medium text-foreground">
+                Ключ помощника <span className="font-normal text-muted">· {hasKey ? "выпущен" : "не выпущен"}</span>
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={keyBusy}
+                  onClick={() => changeKey(false)}
+                  className="rounded-xl border border-border bg-surface px-3 py-1.5 text-sm font-medium text-foreground transition hover:bg-surface-muted disabled:opacity-60"
+                >
+                  {hasKey ? "Выпустить новый" : "Выпустить ключ"}
+                </button>
+                {hasKey && (
+                  <button
+                    type="button"
+                    disabled={keyBusy}
+                    onClick={() => changeKey(true)}
+                    className="rounded-xl px-3 py-1.5 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-60"
+                  >
+                    Отозвать
+                  </button>
+                )}
+              </div>
+            </div>
+            {newKey && (
+              <div className="mt-3">
+                <textarea
+                  readOnly
+                  value={newKey}
+                  rows={4}
+                  onFocus={(e) => e.target.select()}
+                  className="w-full break-all rounded-xl border border-border bg-surface-muted px-3 py-2 font-mono text-xs text-foreground outline-none"
+                />
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <p className="text-xs text-muted">Показывается один раз. Вставьте его только в защищённую форму, не в чат.</p>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(newKey);
+                      setCopied(true);
+                    }}
+                    className="shrink-0 rounded-xl bg-accent px-3 py-1.5 text-sm font-medium text-accent-foreground transition hover:opacity-90"
+                  >
+                    {copied ? "Скопировано" : "Скопировать"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>

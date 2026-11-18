@@ -981,6 +981,25 @@ cuts a whole one by itself. Rules that are easy to break:
   (ledger on, diagnostics clean). The same mechanism would serve «made to order at the point» (coffee by a recipe) —
   NOT built, needs the owner's word.
 
+## «Помощник» — the owner's AI assistant working in live data (built 18.11.2026)
+
+The owner writes in chat what to enter / look up; a SEPARATE session does it in production through the API as the user
+«Помощник». **The procedure for such a session is `docs/ASSISTANT.md` — read it first when the request is an operation,
+not development.** What the code holds:
+- `Role.ASSISTANT` «Помощник» (migration `20261205120000_assistant_role`): in the day-to-day arrays (stock, production,
+  recipes, products, purchasing incl. revise/return, sales by document, customers, suppliers, bank import, ledger VIEW)
+  and `ORG_WIDE_ROLES` (finance view, expenses, supplier payments). NOT in hard delete, period close, users, voids,
+  ledger manage, cash adjustment, stocktake approve, sale returns, till shifts, loyalty.
+- **A second lock in one place**: `common/role-scope.ts` `ASSISTANT_REFUSALS` (checked by `JwtAuthGuard` with the
+  request method) — no DELETE anywhere, `closed` prefixes take no request, `readOnly` prefixes only GET. A new
+  sensitive controller must be added there; a route with too wide a role list still cannot be reached.
+- **Key, not password**: `POST /users/:id/assistant-key` (USER_MANAGE_ROLES, audited `user.assistantKey`; Настройки →
+  сотрудник «Помощник» → «Выпустить ключ», shown once) signs a 365-day JWT with claim `ak` = `User.assistantKeyId`;
+  `AuthService.validateUserById(id, ak)` lets an ASSISTANT in only with the current key and nobody else with any
+  key; password login is refused for the role; the id is redacted from backups. The operations session gets the key
+  through `request_credential` (host `bakery-os-api.onrender.com`) — never through chat.
+- Excluded from the staff Telegram bot. Spec `auth/assistant-role.spec.ts`.
+
 ## «Распределение» + «Постоянный заказ» (built 09.11.2026)
 
 Производство → «Распределение» (`components/distribution-tab.tsx`): the day's output shared out from one point («Откуда»,

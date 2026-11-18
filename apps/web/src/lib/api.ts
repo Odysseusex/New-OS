@@ -1081,6 +1081,9 @@ export const api = {
   },
 
   users: {
+    // «Помощник»: a new key (shown once; the earlier one stops working) or, with revoke, none.
+    assistantKey: (id: string, revoke = false) =>
+      request<{ key: string | null; expiresAt: string | null }>(`/users/${id}/assistant-key`, { method: "POST", body: JSON.stringify({ revoke }) }),
     setPin: (id: string, pin: string | null) => request<UserAccountDto>(`/users/${id}/pin`, { method: "PUT", body: JSON.stringify({ pin }) }),
     list: (includeArchived?: boolean) =>
       request<UserAccountDto[]>(withQuery("/users", { includeArchived: includeArchived ? "true" : undefined })),

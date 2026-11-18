@@ -22,6 +22,10 @@ export enum Role {
   // «Старший кассир» (ТЗ §5.4): a cashier who may also give a discount, take a
   // return and remove a line, and who approves those for a cashier with a PIN.
   SENIOR_CASHIER = "SENIOR_CASHIER",
+  // «Помощник»: the owner's AI assistant working through the API with a key (never a password,
+  // never a screen). Day-to-day documents and every report; nothing that cannot be undone —
+  // see ASSISTANT_REFUSALS in the API's role-scope and docs/ASSISTANT.md.
+  ASSISTANT = "ASSISTANT",
 }
 
 export const ROLE_LABELS_RU: Record<Role, string> = {
@@ -39,6 +43,7 @@ export const ROLE_LABELS_RU: Record<Role, string> = {
   [Role.OPERATOR]: "Оператор",
   [Role.CLIENT_MANAGER]: "Менеджер по клиентам",
   [Role.SENIOR_CASHIER]: "Старший кассир",
+  [Role.ASSISTANT]: "Помощник",
 };
 
 // The till's own people: kept on /pos, their price at the till is the point's.
@@ -59,6 +64,7 @@ export const ORG_WIDE_ROLES: Role[] = [
   Role.ACCOUNTANT,
   Role.HR_MANAGER,
   Role.CLIENT_MANAGER,
+  Role.ASSISTANT,
 ];
 
 // Who sees the business's takings as figures: today's/weekly revenue, average
@@ -76,6 +82,7 @@ export const SALE_CREATE_ROLES: Role[] = [
   Role.CASHIER,
   Role.SENIOR_CASHIER,
   Role.OPERATOR,
+  Role.ASSISTANT,
 ];
 
 // «Сверка дня» (till + shelf against the ledgers). Cashiers are deliberately left
@@ -88,6 +95,7 @@ export const RECONCILIATION_ROLES: Role[] = [
   Role.STORE_MANAGER,
   Role.ACCOUNTANT,
   Role.OPERATOR,
+  Role.ASSISTANT,
 ];
 
 // Refunds are money leaving the till against goods coming back, which is the
@@ -104,11 +112,12 @@ export const INVENTORY_MANAGE_ROLES: Role[] = [
   Role.STORE_MANAGER,
   Role.WAREHOUSE_STAFF,
   Role.PRODUCTION_MANAGER,
+  Role.ASSISTANT,
 ];
 
-export const PRODUCT_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.PRODUCTION_MANAGER];
+export const PRODUCT_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.PRODUCTION_MANAGER, Role.ASSISTANT];
 
-export const RECIPE_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.PRODUCTION_MANAGER];
+export const RECIPE_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.PRODUCTION_MANAGER, Role.ASSISTANT];
 
 // OPERATOR is here because in a small bakery the one person who does the documents also
 // bakes: she plans and completes production tasks. Production is a documented flow
@@ -120,6 +129,7 @@ export const PRODUCTION_MANAGE_ROLES: Role[] = [
   Role.PRODUCTION_MANAGER,
   Role.PRODUCTION_STAFF,
   Role.OPERATOR,
+  Role.ASSISTANT,
 ];
 
 // «Требование-накладная»: whoever plans production or keeps the store may draw one up;
@@ -133,6 +143,7 @@ export const MATERIAL_REQUISITION_CREATE_ROLES: Role[] = [
   Role.PRODUCTION_MANAGER,
   Role.PRODUCTION_STAFF,
   Role.OPERATOR,
+  Role.ASSISTANT,
 ];
 export const MATERIAL_REQUISITION_POST_ROLES: Role[] = [
   Role.OWNER,
@@ -141,9 +152,10 @@ export const MATERIAL_REQUISITION_POST_ROLES: Role[] = [
   Role.WAREHOUSE_STAFF,
   Role.PRODUCTION_MANAGER,
   Role.OPERATOR,
+  Role.ASSISTANT,
 ];
 
-export const SUPPLIER_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.WAREHOUSE_STAFF];
+export const SUPPLIER_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.WAREHOUSE_STAFF, Role.ASSISTANT];
 
 // OPERATOR is included here (and on invoices below) but deliberately left
 // out of INVENTORY_MANAGE_ROLES — receiving via a purchase order/invoice is
@@ -154,15 +166,16 @@ export const PURCHASE_ORDER_MANAGE_ROLES: Role[] = [
   Role.ADMIN,
   Role.WAREHOUSE_STAFF,
   Role.OPERATOR,
+  Role.ASSISTANT,
 ];
 
 // Correcting an order that is already on the shelf and in the payables changes
 // stock value and the supplier debt after the fact, so it is not day-to-day
 // receiving work: the roles that answer for the books.
-export const PURCHASE_ORDER_REVISE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT];
+export const PURCHASE_ORDER_REVISE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT, Role.ASSISTANT];
 // «Возврат поставщику»: goods leave the shelf and the supplier's debt (or money
 // handed back) changes — the same people who may correct a received order.
-export const SUPPLIER_RETURN_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT];
+export const SUPPLIER_RETURN_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT, Role.ASSISTANT];
 
 // Recording and confirming supplier delivery notes is the same day-to-day
 // receiving job as purchase orders, so it follows the same roles.
@@ -171,6 +184,7 @@ export const INVOICE_MANAGE_ROLES: Role[] = [
   Role.ADMIN,
   Role.WAREHOUSE_STAFF,
   Role.OPERATOR,
+  Role.ASSISTANT,
 ];
 
 // Roles that can create/cancel vehicles and delivery routes. Drivers don't
@@ -274,6 +288,7 @@ export const CUSTOMER_MANAGE_ROLES: Role[] = [
   Role.ADMIN,
   Role.STORE_MANAGER,
   Role.ACCOUNTANT,
+  Role.ASSISTANT,
 ];
 
 export const PAYMENT_RECORD_ROLES: Role[] = CUSTOMER_VIEW_ROLES;
@@ -299,6 +314,7 @@ export const QUALITY_VIEW_ROLES: Role[] = [
   Role.REGIONAL_MANAGER,
   Role.STORE_MANAGER,
   Role.PRODUCTION_MANAGER,
+  Role.ASSISTANT,
 ];
 
 // Deleting a record is permanent (unlike archiving, which can always be
@@ -372,7 +388,7 @@ export const PLANNING_MANAGE_ROLES: Role[] = ORG_WIDE_ROLES;
 // Posting manual entries / reversals / the opening balance is bookkeeping too;
 // switching the ledger on and creating its system accounts changes how the
 // whole organization is accounted for, so that is the narrow tier.
-export const LEDGER_VIEW_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT];
+export const LEDGER_VIEW_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT, Role.ASSISTANT];
 export const LEDGER_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT];
 export const LEDGER_SETUP_ROLES: Role[] = HARD_DELETE_ROLES;
 
@@ -384,7 +400,7 @@ export const STOCK_VOID_ROLES: Role[] = HARD_DELETE_ROLES;
 // finds a customer by phone, registers a new one and records what they agreed
 // to — including a withdrawal, which must never be harder to record than the
 // consent was.
-export const LOYALTY_TILL_ROLES: Role[] = [...SALE_CREATE_ROLES, Role.CLIENT_MANAGER];
+export const LOYALTY_TILL_ROLES: Role[] = [...SALE_CREATE_ROLES.filter((role) => role !== Role.ASSISTANT), Role.CLIENT_MANAGER];
 
 // Browsing the whole base is a list of people's phone numbers, so it is kept
 // to management rather than every cashier.
@@ -403,7 +419,7 @@ export const DEMO_COMPANY_ROLES: Role[] = [Role.OWNER];
 
 // Загрузка банковской выписки: it writes money into the books, so the people
 // who answer for them.
-export const BANK_IMPORT_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT];
+export const BANK_IMPORT_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT, Role.ASSISTANT];
 
 // Choosing how common costs are shared between directions («Прибыль по направлениям»).
 export const DIRECTION_ALLOCATION_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT];
@@ -411,7 +427,7 @@ export const DIRECTION_ALLOCATION_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.
 export const DIRECTION_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.ACCOUNTANT];
 
 // Кассовая смена: whoever sells at the till opens, moves cash in/out, prints X and closes with Z.
-export const TILL_SHIFT_ROLES: Role[] = SALE_CREATE_ROLES;
+export const TILL_SHIFT_ROLES: Role[] = SALE_CREATE_ROLES.filter((role) => role !== Role.ASSISTANT);
 // The shifts' history (differences per cashier) and the «смена обязательна» switch.
 export const TILL_SHIFT_HISTORY_ROLES: Role[] = RECONCILIATION_ROLES;
 export const TILL_SHIFT_SETTINGS_ROLES: Role[] = HARD_DELETE_ROLES;

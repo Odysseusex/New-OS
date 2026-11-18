@@ -9,8 +9,8 @@ import { AuthenticatedUser } from "./auth.types";
 export class JwtAuthGuard extends AuthGuard("jwt") {
   handleRequest<TUser = AuthenticatedUser>(err: unknown, user: unknown, info: unknown, context: ExecutionContext, status?: unknown): TUser {
     const authenticated = super.handleRequest<TUser>(err, user, info, context, status) as TUser & AuthenticatedUser;
-    const request = context.switchToHttp().getRequest<{ path?: string; url?: string }>();
-    if (!pathAllowedForRole(authenticated.role, request.path ?? request.url ?? "")) {
+    const request = context.switchToHttp().getRequest<{ path?: string; url?: string; method?: string }>();
+    if (!pathAllowedForRole(authenticated.role, request.path ?? request.url ?? "", request.method)) {
       throw new ForbiddenException("Этот раздел недоступен для вашей роли");
     }
     return authenticated;

@@ -109,6 +109,8 @@ export interface UserAccountDto {
   isActive: boolean;
   // A till PIN is set (the PIN itself is never sent back).
   hasPin: boolean;
+  // «Помощник» has a working key (the key itself is shown once, when issued).
+  hasAssistantKey?: boolean;
 }
 
 export interface CreateUserAccountRequestDto {

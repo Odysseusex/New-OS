@@ -29,6 +29,8 @@ enum Role {
   CLIENT_MANAGER
   // «Старший кассир»: the till, plus discounts, returns and line removal, and approves them for a cashier by PIN.
   SENIOR_CASHIER
+  // «Помощник»: the owner's AI assistant, API key only (see User.assistantKeyId).
+  ASSISTANT
 }
 
 enum LocationType {
@@ -506,6 +508,9 @@ model User {
   // organization so the PIN alone says who it is. Null = no PIN. Never exported in backups.
   pinDigest    String?
   pinSetAt     DateTime?
+  // «Помощник» (Role.ASSISTANT): the id of the one key that is valid now. A token carries it; issuing a
+  // new key or clearing this makes every earlier key worthless. Null = no key.
+  assistantKeyId String?
   // Optional custom display label shown instead of the role name in the
   // topbar (e.g. "Разработчик" for someone who's technically OWNER-level
   // but isn't "the bakery owner" in the everyday sense) — purely cosmetic,
