@@ -71,6 +71,7 @@ export const AUDIT_ACTION_GROUPS = {
   consignmentLocation: ["product.consignmentLocationAll"],
   productionRelease: ["production.release"],
   cutSource: ["product.cutSource"],
+  assistant: ["user.assistantKey"],
   standingOrders: ["standingOrder.update"],
   stocktake: ["stocktake.create", "stocktake.submit", "stocktake.reopen", "stocktake.approve", "stocktake.cancel"],
   stockVoid: ["stockVoid.create"],

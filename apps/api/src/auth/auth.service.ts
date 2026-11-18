@@ -28,6 +28,10 @@ export class AuthService {
     if (!passwordMatches) {
       throw new UnauthorizedException("Неверный email или пароль");
     }
+    // «Помощник» is not a person at a screen: it works only with the key the owner issued.
+    if (user.role === Role.ASSISTANT) {
+      throw new ForbiddenException("«Помощник» входит только по ключу — выпустите его в Настройках");
+    }
 
     const payload: JwtPayload = { sub: user.id, organizationId: user.organizationId };
     const accessToken = await this.jwtService.signAsync(payload);
@@ -71,9 +75,12 @@ export class AuthService {
     return { approvalToken, approverName: approver.fullName };
   }
 
-  async validateUserById(userId: string): Promise<AuthenticatedUser | null> {
+  async validateUserById(userId: string, assistantKeyId?: string): Promise<AuthenticatedUser | null> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || !user.isActive) return null;
+    // «Помощник» is let in by its current key alone; that key lets in nobody else.
+    const isAssistant = user.role === Role.ASSISTANT;
+    if (isAssistant ? !assistantKeyId || assistantKeyId !== user.assistantKeyId : assistantKeyId !== undefined) return null;
 
     return {
       id: user.id,

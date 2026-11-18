@@ -22,7 +22,7 @@ export const EXCLUDED_TABLES: ReadonlySet<string> = new Set(["_prisma_migrations
 
 // Columns left out of the rows. A restore asks for a temporary password instead.
 export const REDACTED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
-  users: ["passwordHash", "pinDigest"],
+  users: ["passwordHash", "pinDigest", "assistantKeyId"],
   // The key of a member's rotating card QR: a new one is issued when the app next opens.
   loyalty_members: ["cardSecret"],
 };

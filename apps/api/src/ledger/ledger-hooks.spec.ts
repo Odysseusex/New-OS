@@ -166,7 +166,8 @@ describe("D8: a mixed-tender refund can be explicitly overridden, and cannot be 
 
 describe("who may do what", () => {
   it("viewing and posting are bookkeeping roles; switching the ledger on is owner/admin only", () => {
-    expect(LEDGER_VIEW_ROLES).toEqual([Role.OWNER, Role.ADMIN, Role.ACCOUNTANT]);
+    // «Помощник» reads the books for analysis; it posts nothing (not in LEDGER_MANAGE_ROLES, and /ledger is read-only for it).
+    expect(LEDGER_VIEW_ROLES).toEqual([Role.OWNER, Role.ADMIN, Role.ACCOUNTANT, Role.ASSISTANT]);
     expect(LEDGER_MANAGE_ROLES).toEqual([Role.OWNER, Role.ADMIN, Role.ACCOUNTANT]);
     expect(LEDGER_SETUP_ROLES).toEqual([Role.OWNER, Role.ADMIN]);
     for (const role of [Role.CASHIER, Role.STORE_MANAGER, Role.REGIONAL_MANAGER, Role.HR_MANAGER, Role.WAREHOUSE_STAFF, Role.OPERATOR]) {

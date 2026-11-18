@@ -36,6 +36,12 @@ export class UsersController {
     return this.usersService.setPin(user, id, dto.pin ?? null);
   }
 
+  // «Помощник»: a new key (the earlier one stops working) or, with revoke, none at all.
+  @Post(":id/assistant-key")
+  assistantKey(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() body: { revoke?: boolean }) {
+    return this.usersService.issueAssistantKey(user, id, body?.revoke === true);
+  }
+
   @Post(":id/archive")
   archive(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
     return this.usersService.archive(user, id);

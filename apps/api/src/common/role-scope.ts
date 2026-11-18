@@ -10,11 +10,51 @@ export const ROLE_API_SCOPE: Partial<Record<Role, string[]>> = {
 
 // Roles kept out of the staff Telegram bot, which reads stock, sales and
 // finance through the services directly.
-export const STAFF_BOT_EXCLUDED_ROLES: Role[] = [Role.CLIENT_MANAGER];
+export const STAFF_BOT_EXCLUDED_ROLES: Role[] = [Role.CLIENT_MANAGER, Role.ASSISTANT];
 
-export function pathAllowedForRole(role: Role, path: string): boolean {
+// «Помощник» (the owner's AI assistant) does documents and reads reports. What cannot be undone, and
+// everything about people, access and settings, is refused HERE as well as by each route's own roles —
+// so a route added later with too wide a role list still cannot be reached by it.
+//   · nothing is ever deleted (DELETE anywhere);
+//   · `closed`: no request at all; `readOnly`: reading only.
+export const ASSISTANT_REFUSALS = {
+  closed: ["/users", "/clean-start", "/backup", "/demo-company", "/fiscal", "/audit", "/telegram", "/club", "/auth/pin-login", "/auth/till-approval"],
+  readOnly: [
+    "/finance/periods",
+    "/finance/setup",
+    "/finance/policy",
+    "/procurement/workflow",
+    "/ledger",
+    "/inventory/voids",
+    "/inventory/settings",
+    "/locations",
+    "/directions",
+    "/hr",
+    "/loyalty",
+    "/crm",
+    "/promotions",
+    "/till-shifts",
+    "/classification",
+    "/stocktakes",
+    "/fixed-assets",
+    "/planning",
+    "/vehicles",
+    "/logistics",
+  ],
+};
+
+const under = (clean: string, prefixes: string[]) => prefixes.some((prefix) => clean === prefix || clean.startsWith(`${prefix}/`));
+
+export function pathAllowedForRole(role: Role, path: string, method = "GET"): boolean {
+  const clean = path.split("?")[0].replace(/^\/api(?=\/|$)/, "") || "/";
+  if (role === Role.ASSISTANT) {
+    const reading = method.toUpperCase() === "GET";
+    if (method.toUpperCase() === "DELETE") return false;
+    if (under(clean, ASSISTANT_REFUSALS.closed)) return false;
+    if (!reading && under(clean, ASSISTANT_REFUSALS.readOnly)) return false;
+    return true;
+  }
   const scope = ROLE_API_SCOPE[role];
   if (!scope) return true;
-  const clean = path.split("?")[0].replace(/^\/api(?=\/|$)/, "") || "/";
-  return scope.some((prefix) => clean === prefix || clean.startsWith(`${prefix}/`));
+  return under(clean, scope);
 }

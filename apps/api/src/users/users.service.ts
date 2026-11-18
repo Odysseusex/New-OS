@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import * as bcrypt from "bcryptjs";
+import { randomUUID } from "crypto";
+import { JwtService } from "@nestjs/jwt";
 import { PrismaService } from "../prisma/prisma.service";
 import { ORG_WIDE_ROLES, Role, UserAccountDto } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
@@ -12,6 +14,9 @@ import { assertPinFormat, pinDigest } from "../auth/till-pin";
 // What the audit log keeps about an account. Never the password hash — a
 // password change is recorded only as the fact that it happened.
 const USER_AUDIT_FIELDS = ["fullName", "email", "role", "title", "locationId", "isActive"] as const;
+
+// How long a key of «Помощник» lives; a new one is issued in Настройки.
+const ASSISTANT_KEY_DAYS = 365;
 
 @Injectable()
 export class UsersService {
@@ -226,6 +231,32 @@ export class UsersService {
     }
   }
 
+  // The key «Помощник» works with: shown ONCE, valid a year, and the only one — a new key (or
+  // «Отозвать») makes the earlier one worthless at that moment. Nothing but its id is stored.
+  async issueAssistantKey(actor: AuthenticatedUser, userId: string, revoke = false): Promise<{ key: string | null; expiresAt: string | null }> {
+    const user = await this.prisma.user.findFirst({ where: { id: userId, organizationId: actor.organizationId } });
+    if (!user) throw new NotFoundException("Сотрудник не найден");
+    if (user.role !== Role.ASSISTANT) throw new BadRequestException("Ключ выпускается только для роли «Помощник»");
+    const keyId = revoke ? null : randomUUID();
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id: userId }, data: { assistantKeyId: keyId } });
+      await recordAudit(tx, {
+        organizationId: actor.organizationId,
+        actorId: actor.id,
+        action: "user.assistantKey",
+        entityType: "User",
+        entityId: userId,
+        after: { issued: !revoke },
+      });
+    });
+    if (!keyId) return { key: null, expiresAt: null };
+    const key = await new JwtService({ secret: process.env.JWT_SECRET ?? "dev-secret-change-me" }).signAsync(
+      { sub: user.id, organizationId: user.organizationId, ak: keyId },
+      { expiresIn: `${ASSISTANT_KEY_DAYS}d` },
+    );
+    return { key, expiresAt: new Date(Date.now() + ASSISTANT_KEY_DAYS * 86_400_000).toISOString() };
+  }
+
   private async assertLocationExists(organizationId: string, locationId: string) {
     const location = await this.prisma.location.findFirst({ where: { id: locationId, organizationId } });
     if (!location) {
@@ -243,8 +274,10 @@ export class UsersService {
     location: { name: string } | null;
     isActive: boolean;
     pinDigest?: string | null;
+    assistantKeyId?: string | null;
   }): UserAccountDto => ({
     hasPin: Boolean(user.pinDigest),
+    hasAssistantKey: user.role === Role.ASSISTANT ? Boolean(user.assistantKeyId) : undefined,
     id: user.id,
     fullName: user.fullName,
     email: user.email,

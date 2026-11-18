@@ -14,4 +14,6 @@ export interface AuthenticatedUser {
 export interface JwtPayload {
   sub: string;
   organizationId: string;
+  // Set only on the long-lived key of «Помощник»: must equal User.assistantKeyId.
+  ak?: string;
 }
