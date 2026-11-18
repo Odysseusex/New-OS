@@ -1890,7 +1890,8 @@ with the programme on (else the oldest non-sandbox org).
   **Switch** (owner, 18.11.2026, «на чуточку открой»): `LoyaltySettings.tillRegistration` (migration
   `20261205120000_till_registration`, set ON for existing programmes; checkbox «Кассиры могут регистрировать клиентов по
   номеру на кассе» on the programme card). While on, `register` lets TILL_ROLES through and the till's «Найти по номеру»
-  / top «Клиент» panel offer «Зарегистрировать» (`allowRegister`) with the old `LoyaltyRegisterModal keypad`.
+  / top «Клиент» panel offer «Зарегистрировать» (`allowRegister`) with the old `LoyaltyRegisterModal keypad`. Switched OFF again the same day
+  (owner: «не надо, убери»; migration `20261205130000_till_registration_off`); the checkbox stays for him.
 - **Клиенты → «Регистрации»** (owner, 15.11.2026: «сколько кассиры зарегистрировали клиентов по датам»; LOYALTY_MANAGE_ROLES,
   `GET /loyalty/registrations?from&to`, `loyalty/loyalty-registrations.ts`, read-only, no schema change): members CREATED in
   the period (merged duplicates left out) by cashier and by Almaty day — «Новых клиентов / Через приложение (consent source
