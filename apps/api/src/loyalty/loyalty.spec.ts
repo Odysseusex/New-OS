@@ -98,6 +98,17 @@ describe("LoyaltyService (database)", () => {
     expect(await prisma.loyaltyMember.count({ where: { organizationId: org.organizationId, phone: "+77010000077" } })).toBe(0);
   });
 
+  it("…unless the owner lets cashiers register by phone for a while", async () => {
+    const points = new LoyaltyPointsService(prisma);
+    await points.updateSettings(org.user, { tillRegistration: true });
+    try {
+      const m = await loyalty.register({ ...org.user, role: Role.CASHIER }, { phone: "+77010000076", personalDataConsent: true, source: S.AT_TILL });
+      expect(m.phone).toBe("+77010000076");
+    } finally {
+      await points.updateSettings(org.user, { tillRegistration: false });
+    }
+  });
+
   it("lookup tells whether the member has signed in to the app", async () => {
     const member = await loyalty.register(org.user, { phone: "+77010000078", personalDataConsent: true, source: S.AT_TILL });
     expect((await loyalty.lookup(org.organizationId, "+77010000078")).member?.hasApp).toBe(false);

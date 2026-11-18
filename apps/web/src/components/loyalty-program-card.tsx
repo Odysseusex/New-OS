@@ -231,6 +231,17 @@ export function LoyaltyProgramCard({ canEdit, refreshKey }: { canEdit: boolean; 
           )}
         </div>
       )}
+      {settings && (
+        <label className="mt-5 flex items-center gap-2 border-t border-border pt-4 text-sm text-foreground">
+          <input
+            type="checkbox"
+            checked={settings.tillRegistration}
+            disabled={!canEdit || busy}
+            onChange={(e) => save({ tillRegistration: e.target.checked })}
+          />
+          Кассиры могут регистрировать клиентов по номеру на кассе
+        </label>
+      )}
       {settings && draft && (
         <div className="mt-5 border-t border-border pt-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">

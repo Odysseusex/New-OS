@@ -267,6 +267,8 @@ export interface LoyaltySettingsDto {
   whatsappBirthdayNotices: boolean;
   // Customer app: offer sign-in by a WhatsApp message (needs the webhook set in Meta).
   clubWhatsappLogin: boolean;
+  // Cashiers may register a new customer by phone at the till (owner switches it).
+  tillRegistration: boolean;
   // Levels: the earn percent grows with the member's own spend over the last
   // `tierWindowDays` days. Off = everyone earns `earnPercent`.
   tiersEnabled: boolean;
@@ -299,6 +301,7 @@ export const DEFAULT_LOYALTY_SETTINGS: LoyaltySettingsDto = {
   whatsappExpiryNotices: true,
   whatsappBirthdayNotices: true,
   clubWhatsappLogin: false,
+  tillRegistration: false,
   tiersEnabled: false,
   tierWindowDays: 90,
   tierHoldDays: 30,

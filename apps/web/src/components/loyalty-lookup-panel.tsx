@@ -13,7 +13,18 @@ import { PhoneField } from "@/components/numeric-keypad";
 // Find a retail customer by phone, or register one. Used on Клиенты → Розница
 // and on the till, which is the only screen a cashier can reach.
 // `keypad`: the till — the phone is typed on the on-screen pad, not the system keyboard.
-export function LoyaltyLookupPanel({ role, onChanged, keypad = false }: { role: Role; onChanged?: () => void; keypad?: boolean }) {
+export function LoyaltyLookupPanel({
+  role,
+  onChanged,
+  keypad = false,
+  allowRegister = !keypad,
+}: {
+  role: Role;
+  onChanged?: () => void;
+  keypad?: boolean;
+  // On the till: only while the owner lets cashiers register by phone.
+  allowRegister?: boolean;
+}) {
   const [phone, setPhone] = useState("");
   const [lookup, setLookup] = useState<LoyaltyLookupDto | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +64,7 @@ export function LoyaltyLookupPanel({ role, onChanged, keypad = false }: { role: 
           <Search className="h-4 w-4" strokeWidth={1.75} />
           Найти
         </button>
-        {!keypad && (
+        {allowRegister && (
         <button
           type="button"
           onClick={() => setRegisterPhone(phone)}
@@ -86,7 +97,7 @@ export function LoyaltyLookupPanel({ role, onChanged, keypad = false }: { role: 
       {lookup && !lookup.member && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-surface-muted px-4 py-3 text-sm">
           <span className="text-foreground">Клиент с номером {formatKzPhone(lookup.phone)} не найден</span>
-          {keypad ? (
+          {!allowRegister ? (
             <span className="text-muted">Регистрация — в приложении Ar Amir</span>
           ) : (
             <button type="button" onClick={() => setRegisterPhone(lookup.phone)} className="font-medium text-accent hover:underline">

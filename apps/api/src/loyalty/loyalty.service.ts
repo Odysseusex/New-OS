@@ -133,8 +133,9 @@ export class LoyaltyService {
 
   async register(user: AuthenticatedUser, dto: RegisterLoyaltyMemberDto): Promise<LoyaltyMemberDto> {
     // The till's own staff do not register: a new customer signs up in the app
-    // (owner, 14.11.2026 — a member registered by number cannot be reached).
-    if (TILL_ROLES.includes(user.role as Role)) {
+    // (owner, 14.11.2026 — a member registered by number cannot be reached),
+    // unless the owner opens it for a while (`tillRegistration`, 18.11.2026).
+    if (TILL_ROLES.includes(user.role as Role) && !(await this.points.getSettings(user.organizationId)).tillRegistration) {
       throw new ForbiddenException("Новый клиент регистрируется сам в приложении Ar Amir — покажите ему QR-код на экране покупателя");
     }
     const phone = this.requirePhone(dto.phone);

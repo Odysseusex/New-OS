@@ -9,6 +9,7 @@ import { formatMoneyPrecise, formatPoints } from "@/lib/format";
 import { LoyaltyFamilySection } from "@/components/loyalty-family-section";
 import { Modal } from "@/components/modal";
 import { NumberKeypadModal, PhoneKeypadModal } from "@/components/numeric-keypad";
+import { LoyaltyRegisterModal } from "@/components/loyalty-register-modal";
 
 // The loyalty member on the current order: scanned from the customer app's card
 // (the till's scan field) or found by phone, then optionally
@@ -21,11 +22,14 @@ export function PosLoyaltyBlock({
   onPointsChange,
   cap,
   discount,
+  allowRegister = false,
 }: {
   member: LoyaltyMemberDto | null;
   onMemberChange: (member: LoyaltyMemberDto | null) => void;
   pointsToRedeem: number;
   onPointsChange: (points: number) => void;
+  // The owner's switch: cashiers may register a new customer by phone.
+  allowRegister?: boolean;
   cap: number;
   discount: number;
 }) {
@@ -37,6 +41,7 @@ export function PosLoyaltyBlock({
   const [busy, setBusy] = useState(false);
   const [pointsPad, setPointsPad] = useState(false);
   const [birthdaysOpen, setBirthdaysOpen] = useState(false);
+  const [registerPhone, setRegisterPhone] = useState<string | null>(null);
 
   function attach(found: LoyaltyMemberDto) {
     if (found.status !== LoyaltyMemberStatus.ACTIVE) {
@@ -199,17 +204,43 @@ export function PosLoyaltyBlock({
           {notFound && (
             <div className="mt-3 rounded-2xl bg-surface-muted px-4 py-3 text-center">
               <p className="text-sm font-medium text-foreground">Номер {formatKzPhone(notFound)} не зарегистрирован</p>
-              <p className="mt-1 text-sm text-muted">Клиент регистрируется сам в приложении Ar Amir: QR-код на экране покупателя.</p>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="mt-2 h-11 w-full rounded-xl border border-accent text-base font-semibold text-accent transition hover:bg-accent/10"
-              >
-                Понятно
-              </button>
+              {allowRegister ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    setRegisterPhone(notFound);
+                  }}
+                  className="mt-2 h-11 w-full rounded-xl border border-accent text-base font-semibold text-accent transition hover:bg-accent/10"
+                >
+                  Зарегистрировать
+                </button>
+              ) : (
+                <>
+                  <p className="mt-1 text-sm text-muted">Клиент регистрируется сам в приложении Ar Amir: QR-код на экране покупателя.</p>
+                  <button
+                    type="button"
+                    onClick={() => setOpen(false)}
+                    className="mt-2 h-11 w-full rounded-xl border border-accent text-base font-semibold text-accent transition hover:bg-accent/10"
+                  >
+                    Понятно
+                  </button>
+                </>
+              )}
             </div>
           )}
         </PhoneKeypadModal>
+      )}
+      {registerPhone !== null && (
+        <LoyaltyRegisterModal
+          initialPhone={registerPhone}
+          keypad
+          onClose={() => setRegisterPhone(null)}
+          onSaved={(saved) => {
+            setRegisterPhone(null);
+            attach(saved);
+          }}
+        />
       )}
     </div>
   );

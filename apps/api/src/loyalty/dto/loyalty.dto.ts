@@ -222,6 +222,10 @@ export class UpdateLoyaltySettingsDto {
   @IsBoolean()
   clubWhatsappLogin?: boolean;
 
+  @IsOptional()
+  @IsBoolean()
+  tillRegistration?: boolean;
+
   // Levels (Бронза = earnPercent → Серебро → Золото → Платина). The ranges are
   // checked again, with Russian messages, in LoyaltyPointsService.updateSettings.
   @IsOptional()

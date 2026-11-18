@@ -75,6 +75,7 @@ export class LoyaltyPointsService {
       whatsappExpiryNotices: row.whatsappExpiryNotices,
       whatsappBirthdayNotices: row.whatsappBirthdayNotices,
       clubWhatsappLogin: row.clubWhatsappLogin,
+      tillRegistration: row.tillRegistration,
       tiersEnabled: row.tiersEnabled,
       tierWindowDays: row.tierWindowDays,
       tierHoldDays: row.tierHoldDays,

@@ -1248,6 +1248,7 @@ export default function PosPage() {
           {loyaltySettings?.enabled && (
             <div className="border-t border-border px-5 py-3">
               <PosLoyaltyBlock
+                allowRegister={!!loyaltySettings?.tillRegistration}
                 member={loyaltyMember}
                 onMemberChange={setLoyaltyMember}
                 pointsToRedeem={pointsToRedeem}
@@ -1424,7 +1425,7 @@ export default function PosPage() {
           focusScan();
         }}
       >
-        <LoyaltyLookupPanel role={user.role} keypad />
+        <LoyaltyLookupPanel role={user.role} keypad allowRegister={!!loyaltySettings?.tillRegistration} />
       </Modal>
     )}
     {historyOpen && (
