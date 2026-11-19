@@ -82,9 +82,10 @@ export default function CrmTodayPage() {
         </section>
       )}
 
-      <div className="crm-tabs" style={{ paddingBottom: 0, borderBottom: 0 }}>
-        <span className="crm-tab on">Кому написать</span>
-      </div>
+      {/* A plain heading: as a pill it looked like a button that did nothing (owner, 19.11.2026). */}
+      <h2 className="crm-h2" style={{ margin: "4px 0 0" }}>
+        Кому написать <span className="muted" style={{ fontWeight: 400, fontSize: 13.5 }}>— нажмите на карточку клиента</span>
+      </h2>
 
       <section className="crm-board" aria-label="Кому написать сегодня">
         {COLUMNS.map((col) => {
