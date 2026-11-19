@@ -17,11 +17,16 @@ const COLUMNS: { key: keyof Pick<CrmTodayDto, "due" | "newcomers" | "lapsed" | "
   { key: "birthdays", name: "Дни рождения", tone: "purple", empty: "На этой неделе нет" },
 ];
 
+const COLUMN_PREVIEW = 4;
+
 export default function CrmTodayPage() {
   const { refreshCounts } = useCrm();
   const [data, setData] = useState<CrmTodayDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState<CrmTodayCardDto | null>(null);
+  // A long column (60 newcomers) pushed the row under it far down the page:
+  // each column shows its first cards, the rest on request.
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const load = useCallback(() => {
     setError(null);
@@ -92,9 +97,14 @@ export default function CrmTodayPage() {
               </div>
               {!data && !error && [0, 1].map((i) => <Skeleton key={i} height={96} />)}
               {data && cards.length === 0 && <div className="crm-empty">{col.empty}</div>}
-              {cards.map((card) => (
+              {(expanded[col.key] || cards.length <= COLUMN_PREVIEW + 2 ? cards : cards.slice(0, COLUMN_PREVIEW)).map((card) => (
                 <TodayCard key={card.key} card={card} onOpen={() => setActive(card)} />
               ))}
+              {cards.length > COLUMN_PREVIEW + 2 && (
+                <button type="button" className="crm-btn" style={{ justifyContent: "center" }} onClick={() => setExpanded((e) => ({ ...e, [col.key]: !e[col.key] }))}>
+                  {expanded[col.key] ? "Свернуть" : `Показать ещё ${cards.length - COLUMN_PREVIEW}`}
+                </button>
+              )}
             </div>
           );
         })}

@@ -1929,6 +1929,8 @@ backend `apps/api/src/crm/`, shared `packages/shared/src/crm.ts`, migration `202
 - **Everything is computed, nothing is typed in to make a figure appear** (the owner's explicit wish): the board
   «Кому написать» comes from sales + members + birthdays; RFM groups reuse `LoyaltyAnalyticsService`. Don't add
   manual segments/tags/condition builders without a fresh request — they were proposed and rejected.
+- The «Сегодня» board shows the first 4 cards of a column + «Показать ещё N» (owner, 19.11.2026: 60 newcomers pushed
+  «Дни рождения» far down the page); a column of ≤ 6 is shown whole.
 - Personal rhythm = median gap between purchase DAYS (≥3 days, `medianInterval`); DUE = ≥1 day late and within
   `max(3×rhythm, rhythm+7)`; LAPSED = later but ≤120 days; rhythms >30 days are not reminded. Wholesale customers
   (`Customer`) the same over 180 days. Pure maths in `crm/rhythm.ts` (tested). Only members with a current
