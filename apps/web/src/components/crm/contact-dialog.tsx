@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, MessageCircle, Phone } from "lucide-react";
+import { Copy, MessageCircle, Phone, Send } from "lucide-react";
 import {
   CRM_CONTACT_CHANNEL_LABELS_RU,
   CRM_CONTACT_OUTCOME_LABELS_RU,
@@ -24,11 +24,14 @@ export interface ContactTarget {
 }
 
 const OUTCOMES = [CrmContactOutcome.SENT, CrmContactOutcome.TALKED, CrmContactOutcome.NO_ANSWER, CrmContactOutcome.DECLINED, CrmContactOutcome.ORDERED];
-const CHANNELS = [CrmContactChannel.WHATSAPP, CrmContactChannel.CALL, CrmContactChannel.IN_PERSON, CrmContactChannel.TELEGRAM, CrmContactChannel.SMS];
+const CHANNELS = [CrmContactChannel.APP, CrmContactChannel.WHATSAPP, CrmContactChannel.CALL, CrmContactChannel.IN_PERSON, CrmContactChannel.TELEGRAM, CrmContactChannel.SMS];
 
 export function ContactDialog({ target, onClose, onSaved }: { target: ContactTarget; onClose: () => void; onSaved: () => void }) {
   const [text, setText] = useState(target.suggestedText);
-  const [channel, setChannel] = useState<CrmContactChannel>(target.channels.whatsapp ? CrmContactChannel.WHATSAPP : CrmContactChannel.CALL);
+  const [channel, setChannel] = useState<CrmContactChannel>(
+    target.channels.app ? CrmContactChannel.APP : target.channels.whatsapp ? CrmContactChannel.WHATSAPP : CrmContactChannel.CALL,
+  );
+  const [sending, setSending] = useState(false);
   const [outcome, setOutcome] = useState<CrmContactOutcome>(CrmContactOutcome.SENT);
   const [note, setNote] = useState("");
   const [copied, setCopied] = useState(false);
@@ -42,6 +45,36 @@ export function ContactDialog({ target, onClose, onSaved }: { target: ContactTar
       setTimeout(() => setCopied(false), 1500);
     } catch {
       setError("Не удалось скопировать — выделите текст вручную");
+    }
+  };
+
+  // Into the customer app's chat (with a notice on the phone), and the card is
+  // marked as written to in the same step. If only the mark fails, the message
+  // has still gone — say so instead of inviting a second send.
+  const sendToApp = async () => {
+    if (!target.memberId || !text.trim()) return;
+    setSending(true);
+    setError(null);
+    try {
+      await api.crm.chatReply(target.memberId, text.trim());
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Не удалось отправить");
+      setSending(false);
+      return;
+    }
+    try {
+      await api.crm.recordContact({
+        memberId: target.memberId,
+        channel: CrmContactChannel.APP,
+        outcome: CrmContactOutcome.SENT,
+        reason: target.reason,
+        note: note.trim() || undefined,
+      });
+      onSaved();
+    } catch (e) {
+      setChannel(CrmContactChannel.APP);
+      setError(`Сообщение отправлено, но отметка не сохранилась: ${e instanceof ApiError ? e.message : "ошибка"}. Нажмите «Отметить», не отправляйте повторно.`);
+      setSending(false);
     }
   };
 
@@ -87,9 +120,14 @@ export function ContactDialog({ target, onClose, onSaved }: { target: ContactTar
     >
       <label className="crm-label">
         Сообщение
-        <textarea className="crm-textarea" rows={4} value={text} onChange={(e) => setText(e.target.value)} />
+        <textarea className="crm-textarea" rows={9} value={text} onChange={(e) => setText(e.target.value)} />
       </label>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {target.memberId && target.channels.app && (
+          <button type="button" className="crm-btn primary" onClick={sendToApp} disabled={sending || saving || !text.trim()}>
+            <Send size={15} /> {sending ? "Отправляю…" : "Отправить в приложение"}
+          </button>
+        )}
         {target.phone && target.channels.whatsapp && (
           <a className="crm-btn" href={whatsappLink(target.phone, text)} target="_blank" rel="noreferrer" onClick={() => setChannel(CrmContactChannel.WHATSAPP)} style={{ color: "var(--green)" }}>
             <MessageCircle size={15} /> Открыть WhatsApp
@@ -104,7 +142,7 @@ export function ContactDialog({ target, onClose, onSaved }: { target: ContactTar
           <Copy size={15} /> {copied ? "Скопировано" : "Скопировать текст"}
         </button>
       </div>
-      {!target.channels.whatsapp && target.memberId && <span className="muted" style={{ fontSize: 13.5 }}>Нет согласия на сообщения в WhatsApp</span>}
+      {!target.channels.whatsapp && !target.channels.app && target.memberId && <span className="muted" style={{ fontSize: 13.5 }}>Нет согласия на сообщения в WhatsApp</span>}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <span className="crm-label">Как связались</span>

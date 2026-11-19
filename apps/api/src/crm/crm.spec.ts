@@ -54,10 +54,26 @@ describe("rhythm (pure)", () => {
   });
 
   it("the suggested message names the person and what they buy", () => {
+    // Kazakh first, then Russian — the same facts in both.
     expect(suggestedText("DUE", { brand: "Ар Амир", name: "Айгуль Нурланова", usual: ["Багет"], points: 0 })).toBe(
-      "Айгуль, добрый день! Это «Ар Амир». Багет сегодня из печи — отложить для вас?",
+      "Сәлеметсіз бе, Айгуль! Бұл «Ар Амир». Бүгін багет пештен жаңа шықты — сізге алып қояйық па?\n\n" +
+        "Айгуль, добрый день! Это «Ар Амир». Багет сегодня из печи — отложить для вас?",
     );
-    expect(suggestedText("LAPSED", { brand: "Ар Амир", name: null, usual: [], points: 240 })).toContain("240 бонусных баллов");
+    expect(suggestedText("LAPSED", { brand: "Ар Амир", name: null, usual: [], points: 240 })).toContain("У вас 240 бонусов");
+    // Points, the share of a check they pay, and the day they burn (Almaty).
+    const welcome = suggestedText("NEW", {
+      brand: "Ар Амир",
+      name: "Диана",
+      usual: ["Багет"],
+      points: 5000,
+      redeemPercent: 30,
+      expiring: { points: 5000, lastDay: new Date("2026-11-28T18:59:59.999Z") },
+    });
+    expect(welcome).toContain("Как вам багет? У вас 5 000 бонусов — ими можно оплатить до 30% чека. Они действуют до 28 ноября.");
+    expect(welcome).toContain("Картаңызда 5 000 бонус бар — олармен чектің 30%-ына дейін төлей аласыз. Бонустар 28 қарашаға дейін жарамды.");
+    expect(suggestedText("LAPSED", { brand: "Ар Амир", name: null, usual: [], points: 800, expiring: { points: 300, lastDay: new Date("2026-12-05T10:00:00Z") } })).toContain(
+      "Из них 300 действуют до 5 декабря.",
+    );
     expect(suggestedText("BIRTHDAY", { brand: "Ар Амир", name: "Гульнара", usual: [], points: 0, birthdayOf: { name: "Тимур", relation: "Сын", isHolder: false } })).toContain(
       "день рождения — Тимур (сын)",
     );
@@ -118,7 +134,7 @@ describe("CrmService (database)", () => {
     const board = await crm.today(org.organizationId, now);
     expect(board.due.map((c) => c.memberId)).toEqual([regular]); // the one without consent is not offered
     expect(board.due[0]).toMatchObject({ rhythmDays: 3, overdueDays: 2, usual: ["Багет"], channels: { whatsapp: true, call: true } });
-    expect(board.due[0].suggestedText).toMatch(/^Айгуль, добрый день!/);
+    expect(board.due[0].suggestedText).toMatch(/\n\nАйгуль, добрый день!/);
     expect(board.wholesale[0]).toMatchObject({ customerId: wholesaleCustomer.id, rhythmDays: 7, usual: ["Батон ×40"] });
     expect(board.birthdays[0]).toMatchObject({ memberId: regular, birthday: { name: "Алихан", inDays: 3 } });
 
@@ -161,7 +177,7 @@ describe("CrmService (database)", () => {
 
     const board = await crm.today(org.organizationId, now);
     expect(board.newcomers.map((c) => c.memberId)).toEqual([fresh]);
-    expect(board.newcomers[0].suggestedText).toMatch(/^Алия, добрый день! .*спасибо, что заглянули к нам! Как вам круассан\?/);
+    expect(board.newcomers[0].suggestedText).toMatch(/\n\nАлия, добрый день! .*спасибо, что заглянули к нам! Как вам круассан\?/);
 
     await crm.recordContact(org.user, { memberId: fresh, channel: CrmContactChannel.WHATSAPP, outcome: CrmContactOutcome.SENT, reason: CrmContactReason.NEW });
     expect((await crm.today(org.organizationId, now)).newcomers).toEqual([]);

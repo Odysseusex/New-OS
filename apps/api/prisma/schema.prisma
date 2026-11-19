@@ -3592,6 +3592,7 @@ enum CrmContactChannel {
   CALL
   SMS
   IN_PERSON
+  APP
 }
 
 enum CrmContactOutcome {

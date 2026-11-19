@@ -39,6 +39,8 @@ const MAX_MERGE_HOPS = 10;
 const RETAIL_HISTORY_DAYS = 365;
 const WHOLESALE_HISTORY_DAYS = 180;
 const RETURN_WINDOW_DAYS = 7;
+// Points burning within this many days are named in the suggested message.
+const EXPIRY_MENTION_DAYS = 30;
 const COLUMN_LIMIT = 60;
 const BIRTHDAY_AHEAD_DAYS = 7;
 const LIST_LIMIT = 300;
@@ -146,11 +148,22 @@ export class CrmService {
     return this.customerBot?.isEnabled() ? this.customerBot.reachableIds(memberIds) : new Set();
   }
 
-  private channels(isDemo: boolean, consents: { purpose: string; channel: string | null; granted: boolean }[], telegram: boolean): CrmChannelsDto {
+  // Signed in to the customer app (a collected session): the chat reaches them.
+  private async appReachable(memberIds: string[]): Promise<Set<string>> {
+    if (memberIds.length === 0) return new Set();
+    const rows = await this.prisma.clubLoginRequest.findMany({
+      where: { status: "USED", memberId: { in: memberIds } },
+      select: { memberId: true },
+      distinct: ["memberId"],
+    });
+    return new Set(rows.map((r) => r.memberId as string));
+  }
+
+  private channels(isDemo: boolean, consents: { purpose: string; channel: string | null; granted: boolean }[], telegram: boolean, app: boolean): CrmChannelsDto {
     // A sandbox customer's number is invented and may be somebody real's.
-    if (isDemo) return { whatsapp: false, telegram: false, call: false };
+    if (isDemo) return { whatsapp: false, telegram: false, call: false, app };
     const state = consentState(consents as never);
-    return { whatsapp: state.marketing.WHATSAPP, telegram, call: true };
+    return { whatsapp: state.marketing.WHATSAPP, telegram, call: true, app };
   }
 
   private async usualFor(saleIdsByKey: Map<string, string[]>, withQuantity: boolean): Promise<Map<string, string[]>> {
@@ -390,17 +403,24 @@ export class CrmService {
     }
 
     const memberIds = [...new Set(drafts.map((d) => d.memberId).filter((id): id is string => !!id))];
-    const [retailUsual, wholesaleUsual, balances, telegram] = await Promise.all([
+    const [retailUsual, wholesaleUsual, positions, telegram, inApp, loyaltySettings] = await Promise.all([
       // Keyed by person, not card: a birthday card and a «пора» card share the same purchases.
       this.usualFor(new Map(drafts.filter((d) => d.memberId).map((d) => [d.memberId as string, d.saleIds])), false),
       this.usualFor(new Map(drafts.filter((d) => d.customerId).map((d) => [d.customerId as string, d.saleIds])), true),
-      this.points.balances(organizationId, memberIds),
+      this.points.positions(organizationId, memberIds),
       this.telegramReachable(memberIds),
+      this.appReachable(memberIds),
+      this.points.getSettings(organizationId),
     ]);
+    const soonMs = now.getTime() + EXPIRY_MENTION_DAYS * DAY;
 
     const cards = drafts.map(({ saleIds: _saleIds, consentsOf, ...d }): CrmTodayCardDto => {
       const usual = (d.customerId ? wholesaleUsual.get(d.customerId) : retailUsual.get(d.memberId as string)) ?? [];
-      const pointsBalance = d.memberId ? balances.get(d.memberId) ?? 0 : 0;
+      const position = d.memberId ? positions.get(d.memberId) : undefined;
+      const pointsBalance = position?.available ?? 0;
+      // What burns first, if it is soon — the reason to write today.
+      const lot = position?.liveLots.find((l) => l.remaining > 0);
+      const expiring = lot && lot.expiresAt.getTime() <= soonMs ? { points: lot.remaining, lastDay: new Date(lot.expiresAt.getTime() - 1) } : null;
       const holderName = d.name?.trim().split(/\s+/)[0]?.toLowerCase();
       const contact = doneContact.get(d.key);
       return {
@@ -408,8 +428,8 @@ export class CrmService {
         usual,
         pointsBalance,
         channels: consentsOf
-          ? this.channels(org.isDemo, byId.get(consentsOf)!.consents, telegram.has(consentsOf))
-          : { whatsapp: !org.isDemo && !!d.phone, telegram: false, call: !org.isDemo && !!d.phone },
+          ? this.channels(org.isDemo, byId.get(consentsOf)!.consents, telegram.has(consentsOf), inApp.has(consentsOf))
+          : { whatsapp: !org.isDemo && !!d.phone, telegram: false, call: !org.isDemo && !!d.phone, app: false },
         contactedAt: contact?.at.toISOString() ?? null,
         contactOutcome: (contact?.outcome as CrmContactOutcome) ?? null,
         contactedByName: contact?.byName ?? null,
@@ -417,7 +437,10 @@ export class CrmService {
           brand: org.brand,
           name: d.customerId ? null : d.name,
           usual,
-          points: pointsBalance,
+          // Held, usable now or from tomorrow (a newcomer's welcome bonus waits a day).
+          points: pointsBalance + (position?.pending ?? 0),
+          redeemPercent: loyaltySettings.maxRedeemPercent,
+          expiring,
           birthdayOf: d.birthday
             ? { name: d.birthday.name, relation: d.birthday.relation, isHolder: !!holderName && d.birthday.name.trim().toLowerCase().startsWith(holderName) && !d.birthday.relation }
             : undefined,
@@ -566,7 +589,7 @@ export class CrmService {
     const member = await this.loyalty.findOne(organizationId, memberId);
     const today = startOfZonedDay(now).getTime();
     const ids = [member.id, ...member.mergedFrom.map((m) => m.id)];
-    const [org, segments, sales, messages, contacts, orders, telegram] = await Promise.all([
+    const [org, segments, sales, messages, contacts, orders, telegram, inApp] = await Promise.all([
       this.organization(organizationId),
       this.segments(organizationId, now),
       this.prisma.sale.findMany({
@@ -586,6 +609,7 @@ export class CrmService {
       this.prisma.crmContact.findMany({ where: { organizationId, memberId: { in: ids } }, orderBy: { at: "desc" }, take: 60 }),
       this.prisma.crmOrder.findMany({ where: { organizationId, memberId: { in: ids } }, include: ORDER_INCLUDE, orderBy: { dueAt: "desc" }, take: 30 }),
       this.telegramReachable([member.id]),
+      this.appReachable([member.id]),
     ]);
 
     const own = sales.filter((s) => ownAmount(s) > 0);
@@ -685,7 +709,7 @@ export class CrmService {
       segment: segments.of.get(member.id) ?? null,
       timeline: timeline.slice(0, 100),
       orders: orders.map(toOrderDto),
-      channels: this.channels(org.isDemo, member.history.slice().reverse().map((h) => ({ purpose: h.purpose, channel: h.channel, granted: h.granted })), telegram.has(member.id)),
+      channels: this.channels(org.isDemo, member.history.slice().reverse().map((h) => ({ purpose: h.purpose, channel: h.channel, granted: h.granted })), telegram.has(member.id), inApp.has(member.id)),
     };
   }
 }

@@ -1938,6 +1938,15 @@ backend `apps/api/src/crm/`, shared `packages/shared/src/crm.ts`, migration `202
 - «Написать» = a `wa.me` link with a suggested text (works today, no Meta account) + a recorded `CrmContact`
   (append-only, UPDATE rejected by trigger). Contacted today → «Написали сегодня»; then hidden for one rhythm
   (≥3 days). «Вернулись после сообщения» = contacts in 30 days followed by a purchase within 7 days.
+- **«Отправить в приложение»** (owner, 19.11.2026: WhatsApp is not connected yet, the in-app chat is): the contact
+  dialog's first button for a member signed in to the app (`CrmChannelsDto.app` = a USED `ClubLoginRequest`,
+  `CrmService.appReachable`) sends the text through the existing `POST /crm/chats/:memberId` and records the contact
+  with `CrmContactChannel.APP` «Приложение» (migration `20261206120000_crm_contact_app`, enum value only). If only the
+  mark fails the dialog says so and warns not to send twice. The reply arrives in «Чаты».
+- **Suggested texts are bilingual** (`crm/rhythm.ts` `suggestedText(reason, ctx)`): Kazakh first, then Russian, same
+  facts — name, what they usually buy, points held with the redeem limit (`maxRedeemPercent`) and, when a lot burns
+  within 30 days (`EXPIRY_MENTION_DAYS`), its last day. Wholesale stays Russian. The Kazakh wording was written
+  without a native speaker's review — the owner was asked to have it read.
 - «Новички»: exactly one purchase day in the year, 1–10 days ago (`isNewcomer`), and no purchase before the
   year either (one extra query) — one welcome each (reason `NEW`, migration `20261030120000`); after the message
   the card never returns. The owner deferred cake orders → production until production/finance are tidied.

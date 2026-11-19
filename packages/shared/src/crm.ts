@@ -11,6 +11,8 @@ export enum CrmContactChannel {
   CALL = "CALL",
   SMS = "SMS",
   IN_PERSON = "IN_PERSON",
+  // A message into the customer app's chat.
+  APP = "APP",
 }
 
 export const CRM_CONTACT_CHANNEL_LABELS_RU: Record<CrmContactChannel, string> = {
@@ -19,6 +21,7 @@ export const CRM_CONTACT_CHANNEL_LABELS_RU: Record<CrmContactChannel, string> = 
   [CrmContactChannel.CALL]: "Звонок",
   [CrmContactChannel.SMS]: "SMS",
   [CrmContactChannel.IN_PERSON]: "Лично",
+  [CrmContactChannel.APP]: "Приложение",
 };
 
 export enum CrmContactOutcome {
@@ -63,6 +66,8 @@ export interface CrmChannelsDto {
   // Linked to the customer Telegram bot with the Telegram consent.
   telegram: boolean;
   call: boolean;
+  // Signed in to the customer app: a message can go straight into its chat.
+  app: boolean;
 }
 
 export interface CrmBirthdayDto {
