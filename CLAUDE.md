@@ -28,6 +28,15 @@ originally connected to the old account. Current state:
 - **Database — Neon**, unchanged through the migration; both the old and new
   frontend point at the same `DATABASE_URL`, so user accounts/data are
   identical regardless of which frontend domain is used.
+  **Moved 20.11.2026 from AWS US East (N. Virginia) to Frankfurt** (Neon project `BakeryOS-Frankfurt`,
+  `eu-central-1`), next to the API (Render `frankfurt`): cashiers complained of slow sales, and a sale is ~60
+  database round trips, each of which crossed the Atlantic. Copied with `scripts/move-database.sh` (pg_dump /
+  pg_restore into an EMPTY target in one transaction, row counts compared; it was run by a one-off GitHub
+  workflow with two repository secrets, since removed — see commit d392910). The old Neon project `BakeryOS`
+  is a stale copy kept for a couple of weeks; never point anything at it. Both Render and Neon are on FREE
+  plans: Render sleeps after 15 idle minutes (the first sale of the morning is slow), Neon gives 100 compute
+  hours per project per month and STOPS the database beyond it (about 90 are used in a month) — the owner
+  knows and means to buy Neon «Launch» in December; remind him if «slow» or «does not work» comes up again.
 - Two env vars are the most common source of "it's live but doesn't work":
   - Render's `WEB_ORIGIN` must exactly equal the frontend's production
     domain (CORS) — a mismatch surfaces as a generic "Не удалось войти"
