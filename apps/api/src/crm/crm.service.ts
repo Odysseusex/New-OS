@@ -599,7 +599,7 @@ export class CrmService {
           soldAt: true,
           totalAmount: true,
           consignmentAmount: true,
-          items: { where: OWN_ITEMS, select: { quantity: true, product: { select: { name: true } } } },
+          items: { select: { quantity: true, product: { select: { name: true, consignmentSupplierId: true } } } },
           returns: { select: { id: true, returnedAt: true, totalAmount: true, consignmentAmount: true } },
         },
         orderBy: { soldAt: "desc" },
@@ -621,7 +621,7 @@ export class CrmService {
     const spend = round2(own.reduce((s, v) => s + netOf({ ...v, returns: v.returns }), 0));
 
     const favCount = new Map<string, number>();
-    for (const s of recent) for (const name of new Set(s.items.map((i) => i.product.name))) favCount.set(name, (favCount.get(name) ?? 0) + 1);
+    for (const s of recent) for (const name of new Set(s.items.filter((i) => !i.product.consignmentSupplierId).map((i) => i.product.name))) favCount.set(name, (favCount.get(name) ?? 0) + 1);
     const favorites = [...favCount]
       .sort(([an, a], [bn, b]) => b - a || an.localeCompare(bn, "ru"))
       .slice(0, 6)
@@ -630,8 +630,21 @@ export class CrmService {
     const qty = (q: number) => (Number.isInteger(q) ? String(q) : String(Math.round(q * 1000) / 1000).replace(".", ","));
     const timeline: CrmTimelineItemDto[] = [];
     for (const s of sales.slice(0, 40)) {
-      const items = s.items.map((i) => (i.quantity.toNumber() === 1 ? i.product.name : `${i.product.name} ×${qty(i.quantity.toNumber())}`));
-      timeline.push({ id: `sale:${s.id}`, kind: "SALE", at: s.soldAt.toISOString(), title: "Покупка", detail: items.join(", ") || null, byName: null, amount: round2(ownAmount(s)) });
+      // A check of somebody else's goods only («под реализацию») is no purchase of
+      // ours, but it must not read as «Покупка · 0 ₸»: say what it was, with its money.
+      const foreign = ownAmount(s) <= 0 && s.totalAmount.toNumber() > 0;
+      const items = s.items
+        .filter((i) => foreign || !i.product.consignmentSupplierId)
+        .map((i) => (i.quantity.toNumber() === 1 ? i.product.name : `${i.product.name} ×${qty(i.quantity.toNumber())}`));
+      timeline.push({
+        id: `sale:${s.id}`,
+        kind: "SALE",
+        at: s.soldAt.toISOString(),
+        title: foreign ? "Покупка товара под реализацию (бонусы не начисляются)" : "Покупка",
+        detail: items.join(", ") || null,
+        byName: null,
+        amount: round2(foreign ? s.totalAmount.toNumber() : ownAmount(s)),
+      });
       for (const r of s.returns) {
         timeline.push({ id: `return:${r.id}`, kind: "RETURN", at: r.returnedAt.toISOString(), title: "Возврат", detail: null, byName: null, amount: round2(ownAmount(r)) });
       }
