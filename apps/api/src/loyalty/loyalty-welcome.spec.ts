@@ -114,6 +114,18 @@ describe("welcome bonus on real sales (database)", () => {
     const memberId = await register("+77071000103");
     const sale = await sell([{ productId: consigned, quantity: 1, unitPrice: 1000 }], { loyaltyMemberId: memberId });
     expect(sale.loyalty?.pointsEarned ?? 0).toBe(0);
+    // Such a check is not the «first purchase»: the bonus comes with the first real one.
+    const real = await sell([{ productId: bread, quantity: 1, unitPrice: 590 }], { loyaltyMemberId: memberId });
+    expect(real.loyalty?.pointsEarned).toBe(5000);
+  });
+
+  it("a 0 ₸ check does not use up the first purchase", async () => {
+    const memberId = await register("+77071000109");
+    const free = await sell([{ productId: bread, quantity: 1, unitPrice: 0 }], { loyaltyMemberId: memberId });
+    expect(free.loyalty?.pointsEarned ?? 0).toBe(0);
+    expect(await points.welcomeBonusAvailable(org.organizationId, memberId)).toBe(5000);
+    const real = await sell([{ productId: bread, quantity: 1, unitPrice: 590 }], { loyaltyMemberId: memberId });
+    expect(real.loyalty?.pointsEarned).toBe(5000);
   });
 
   it("merging moves a waiting bonus, still waiting", async () => {

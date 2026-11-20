@@ -266,8 +266,10 @@ export class LoyaltyPointsService {
     // «First purchase» = the first sale this member was attached to — unless the
     // welcome bonus was already given by hand (that purchase was of goods not in the
     // system), in which case this sale earns like any later one.
+    // A check with none of our own money in it (0 ₸, or consignment goods only) is
+    // not a purchase here: it used to take the «first purchase» without giving anything.
     const earlier =
-      (await tx.sale.count({ where: { loyaltyMemberId: memberId, id: { not: saleId } } })) +
+      (await tx.sale.count({ where: { loyaltyMemberId: memberId, id: { not: saleId }, totalAmount: { gt: tx.sale.fields.consignmentAmount } } })) +
       ((await this.manualWelcomeGiven(tx, user.organizationId, memberId)) ? 1 : 0);
     const base = round2(input.lines.filter((l) => isPointsEarningLine({ ...l, quantity: l.quantity, unitPrice: 0 })).reduce((s, l) => s + l.subtotal, 0));
     // A fixed welcome bonus replaces the first-purchase percent. It still needs
@@ -474,7 +476,7 @@ export class LoyaltyPointsService {
     const member = await db.loyaltyMember.findFirst({ where: { id: memberId, organizationId }, select: { status: true } });
     if (!member || member.status !== LoyaltyMemberStatus.ACTIVE) return null;
     const ids = await this.withMerged(db, organizationId, memberId);
-    const sales = await db.sale.count({ where: { organizationId, loyaltyMemberId: { in: ids } } });
+    const sales = await db.sale.count({ where: { organizationId, loyaltyMemberId: { in: ids }, totalAmount: { gt: db.sale.fields.consignmentAmount } } });
     if (sales > 0) return null;
     if (await this.manualWelcomeGiven(db, organizationId, memberId)) return null;
     return round2(settings.welcomeBonusPoints);

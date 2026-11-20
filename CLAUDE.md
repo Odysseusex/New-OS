@@ -1725,7 +1725,7 @@ earning on consignment, markdown/coupon lines or the part paid by points — all
   `POST /loyalty/members/welcome-bonus/bulk {memberIds ≤ 50 | all + afterId}` (LOYALTY_MANAGE_ROLES,
   `activateWelcomeBonusBulk`): each member goes through the single button's own rule and audit; one who already has a
   purchase or the bonus is SKIPPED (counted), never an error. The browser sends portions of 50 and follows `nextAfterId`.
-- «First purchase» = the first sale the member is attached to. Sales attach a member via `Sale.loyaltyMemberId`
+- «First purchase» = the first sale the member is attached to that has some of OUR money in it (`totalAmount > consignmentAmount`; 20.11.2026: a 0 ₸ check rung the day before used up a customer's welcome bonus — such a check, or a consignment-only one, no longer counts, for the sale rule and for the hand button alike). Sales attach a member via `Sale.loyaltyMemberId`
   (till: «Клиент бонусной программы» in the cart). `SalesService`/`SaleReturnsService` take
   `LoyaltyPointsService` as their LAST constructor argument (defaulted) so hand-wired specs keep working.
 
