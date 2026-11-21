@@ -192,7 +192,7 @@ unit on that document (`salePrice`).
 withholds `systemQuantity`/differences/values (`StocktakeDto.blind`), so a counter cannot fit the count to the books;
 approvers always see everything. Counts are typed as expressions read by shared `parseCountInput` («3*25+12» sacks,
 «350г» for a kg product, never eval'd, null = not understood); Enter moves to the next field. «Печать бланка» prints the
-same two-column blind sheet as «Сверка дня» (`apps/web/src/lib/count-sheet.ts`, shared by both). A user tied to one
+same two-column blind sheet as «Сверка дня» (`apps/web/src/lib/count-sheet.ts`, shared by both). «Бланк на чековой ленте» (owner, 21.11.2026) = the same sheet for the till's receipt printer (`printCountSheet(…, "tape")`: one column, large bold names, a tall box for the count, no forced page size — the driver knows its roll — and no grey fills). A user tied to one
 location can only pick that location.
 
 **One period control for reports** (`components/period-picker.tsx` + `lib/period.ts`): Отчёты, Финансы (Сводка, P&L,
