@@ -812,10 +812,24 @@ export interface LoyaltyRegistrationDayDto extends LoyaltyRegistrationCountsDto 
   day: string; // YYYY-MM-DD, Almaty
 }
 
+// Retail checks of the period by whose card was on them: a member who joined in the
+// period, one who was in the programme before it, or nobody's.
+export interface LoyaltyCardChecksDto {
+  total: number;
+  newMembers: number;
+  existing: number;
+  noCard: number;
+}
+
 export interface LoyaltyRegistrationsDto {
   from: string;
   to: string;
   totals: LoyaltyRegistrationCountsDto;
   cashiers: LoyaltyRegistrationCashierDto[];
   days: LoyaltyRegistrationDayDto[];
+  checks: {
+    totals: LoyaltyCardChecksDto;
+    cashiers: (LoyaltyCardChecksDto & { key: string; name: string })[];
+    days: (LoyaltyCardChecksDto & { day: string })[];
+  };
 }

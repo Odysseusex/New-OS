@@ -193,5 +193,15 @@ describe("LoyaltyAnalyticsService (database)", () => {
     expect(r.cashiers.find((c) => c.key === "none")).toMatchObject({ name: "Ещё без покупки", total: 1, viaApp: 1 });
     expect(r.days).toHaveLength(1);
     expect(r.days[0].total).toBe(3);
+    // Checks of the hour: the one above carried a card of a member who joined in the period.
+    expect(r.checks.totals.total).toBe(r.checks.totals.newMembers + r.checks.totals.existing + r.checks.totals.noCard);
+    expect(r.checks.totals.newMembers).toBeGreaterThanOrEqual(1);
+    await services.sales.create(org.user, { locationId: org.storeId, paymentMethod: PaymentMethod.CASH, items: [{ productId: product.id, quantity: 1, unitPrice: 300 }] } as never);
+    const later = await analytics.registrations(org.organizationId, new Date(Date.now() - 3600_000), new Date(Date.now() + 3600_000));
+    expect(later.checks.totals.noCard).toBe(r.checks.totals.noCard + 1);
+    // Seen from a period that starts after the member joined, the same card is an old one.
+    const narrow = await analytics.registrations(org.organizationId, new Date(Date.now() + 1), new Date(Date.now() + 3600_000));
+    expect(narrow.checks.totals.total).toBe(0);
+    expect(later.checks.cashiers.find((c) => c.key === org.user.id)?.total).toBe(later.checks.totals.total);
   });
 });

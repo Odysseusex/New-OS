@@ -1,5 +1,6 @@
 import { LoyaltyConsentPurpose, LoyaltyConsentSource, LoyaltyMemberStatus } from "@prisma/client";
 import type {
+  LoyaltyCardChecksDto,
   LoyaltyRegistrationCashierDto,
   LoyaltyRegistrationCountsDto,
   LoyaltyRegistrationDayDto,
@@ -78,7 +79,29 @@ export async function loyaltyRegistrations(
     }
   }
 
-  const userIds = [...byCashier.keys()].filter((k) => k !== NO_PURCHASE && k !== OTHER);
+  // Retail checks of the period (a wholesale sale never carries a card) by the card on them.
+  const sales = await prisma.sale.findMany({
+    where: { organizationId, soldAt: { gte: from, lte: to }, customerId: null },
+    select: { createdById: true, soldAt: true, loyaltyMember: { select: { createdAt: true } } },
+  });
+  const noChecks = (): LoyaltyCardChecksDto => ({ total: 0, newMembers: 0, existing: 0, noCard: 0 });
+  const checkTotals = noChecks();
+  const checksByCashier = new Map<string, LoyaltyCardChecksDto>();
+  const checksByDay = new Map<string, LoyaltyCardChecksDto>();
+  const slot = (map: Map<string, LoyaltyCardChecksDto>, key: string) => {
+    const row = map.get(key) ?? noChecks();
+    map.set(key, row);
+    return row;
+  };
+  for (const s of sales) {
+    const field = !s.loyaltyMember ? "noCard" : s.loyaltyMember.createdAt >= from ? "newMembers" : "existing";
+    for (const row of [checkTotals, slot(checksByCashier, s.createdById), slot(checksByDay, almatyDay(s.soldAt))]) {
+      row.total += 1;
+      row[field] += 1;
+    }
+  }
+
+  const userIds = [...new Set([...byCashier.keys(), ...checksByCashier.keys()])].filter((k) => k !== NO_PURCHASE && k !== OTHER);
   const users = userIds.length
     ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, fullName: true } })
     : [];
@@ -94,5 +117,13 @@ export async function loyaltyRegistrations(
     .map(([day, row]) => ({ day, ...row }))
     .sort((a, b) => b.day.localeCompare(a.day));
 
-  return { from: from.toISOString(), to: to.toISOString(), totals, cashiers, days };
+  const checks = {
+    totals: checkTotals,
+    cashiers: [...checksByCashier.entries()]
+      .map(([key, row]) => ({ key, name: names.get(key) ?? "Сотрудник удалён", ...row }))
+      .sort((a, b) => b.total - a.total),
+    days: [...checksByDay.entries()].map(([day, row]) => ({ day, ...row })).sort((a, b) => b.day.localeCompare(a.day)),
+  };
+
+  return { from: from.toISOString(), to: to.toISOString(), totals, cashiers, days, checks };
 }

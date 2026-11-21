@@ -1898,6 +1898,9 @@ with the programme on (else the oldest non-sandbox org).
   CUSTOMER_APP) / По номеру на кассе (AT_TILL) / Сейчас в приложении». An app member counts for the cashier of their FIRST
   sale (`Sale.createdById`), a till registration for whoever registered; no purchase yet = «Ещё без покупки»; managers /
   import = «Другое». Excel/PDF; PeriodPicker. Spec in `loyalty-analytics.spec.ts`.
+  «Чеки с бонусной картой» on the same tab (owner, 21.11.2026; `LoyaltyRegistrationsDto.checks`): retail checks of the
+  period (no wholesale customer) by cashier and by day — with a card of a member who joined IN the period / one who
+  was in the programme before it / «Без карты», and «Доля с картой». The summary tiles sit above the tables.
 - **No Telegram on the phone** (15.11.2026, three customers stuck: Safari «адрес недействителен» on t.me): while
   Telegram is the only sign-in channel, the confirm screen shows «Нет Telegram на телефоне?» with an App Store / Google
   Play link (`NoTelegram` in `app/_components/login.tsx`). The real fix is WhatsApp sign-in (Meta webhook).
