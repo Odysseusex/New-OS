@@ -66,6 +66,17 @@ async function fresh() {
 }
 
 describe("stocktake", () => {
+  it("lists raw materials first and finished goods last", async () => {
+    await fresh();
+    const bread = await product(5, { name: "А хлеб" });
+    const box = await product(5, { name: "Б коробка", type: "PACKAGING" });
+    const flour = await product(5, { name: "Я мука", type: "RAW_MATERIAL" });
+    const st = await services.stocktake.create(org.user, { locationId: org.storeId });
+    const own = st.lines.filter((l) => [bread, box, flour].includes(l.productId)).map((l) => l.productId);
+    expect(own).toEqual([flour, box, bread]);
+    await services.stocktake.cancel(org.user, st.id, "проверка порядка");
+  });
+
   it("snapshots stock, keeps interim sales, and approval writes signed ADJUSTMENTs only", async () => {
     await fresh();
     const short = await product(10);

@@ -19,6 +19,8 @@ import { CostingService } from "../costing/costing.service";
 import { CreateStocktakeDto, UpdateStocktakeLineDto } from "./dto/stocktake.dto";
 import { postLedgerSources } from "../ledger/event-posting";
 
+const STOCKTAKE_TYPE_ORDER: string[] = ["RAW_MATERIAL", "SEMI_FINISHED", "PACKAGING", "FINISHED_GOOD"];
+
 const OPEN_STATUSES: PrismaStocktakeStatus[] = [PrismaStocktakeStatus.COUNTING, PrismaStocktakeStatus.REVIEW];
 
 const STOCKTAKE_INCLUDE = {
@@ -381,9 +383,18 @@ export class StocktakeService {
       this.costing.currentUnitCosts(row.organizationId),
       this.snapshotDrift(row),
     ]);
+    // The store is counted first, the shelf last (owner, 22.11.2026): raw materials, then fillings and
+    // packaging, finished goods at the end; inside a type by category, then by name. The screen, the
+    // printed sheets and the Excel all follow this order.
+    const typeRank = new Map(row.lines.map((l) => [l.productId, STOCKTAKE_TYPE_ORDER.indexOf(l.product.type)]));
     const lines = row.lines
       .map((l) => this.toLineDto(l, costs.get(l.productId)?.unitCost ?? null, blind))
-      .sort((a, b) => (a.categoryName ?? "").localeCompare(b.categoryName ?? "") || a.productName.localeCompare(b.productName));
+      .sort(
+        (a, b) =>
+          (typeRank.get(a.productId) ?? 0) - (typeRank.get(b.productId) ?? 0) ||
+          (a.categoryName ?? "").localeCompare(b.categoryName ?? "") ||
+          a.productName.localeCompare(b.productName),
+      );
     let shortageValue = 0;
     let surplusValue = 0;
     for (const l of lines) {

@@ -190,7 +190,7 @@ unit on that document (`salePrice`).
 **Stocktake (Склад → «Инвентаризация») for a store of raw materials:** created per location and optionally per
 `productType` (and category); while COUNTING it is **blind** for anyone outside `STOCKTAKE_APPROVE_ROLES` — the server
 withholds `systemQuantity`/differences/values (`StocktakeDto.blind`), so a counter cannot fit the count to the books;
-approvers always see everything. Counts are typed as expressions read by shared `parseCountInput` («3*25+12» sacks,
+approvers always see everything. Lines come raw materials first, then semi-finished, packaging, finished goods LAST (owner, 22.11.2026; `STOCKTAKE_TYPE_ORDER` in `stocktake.service.ts`), inside a type by category then name — screen, printed sheets and Excel alike. Counts are typed as expressions read by shared `parseCountInput` («3*25+12» sacks,
 «350г» for a kg product, never eval'd, null = not understood); Enter moves to the next field. «Печать бланка» prints the
 same two-column blind sheet as «Сверка дня» (`apps/web/src/lib/count-sheet.ts`, shared by both). «Бланк на чековой ленте» (owner, 21.11.2026) = the same sheet for the till's receipt printer (`printCountSheet(…, "tape")`: one column, large bold names, a tall box for the count, no forced page size — the driver knows its roll — and no grey fills). A user tied to one
 location can only pick that location.
