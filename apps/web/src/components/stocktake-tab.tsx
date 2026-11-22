@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import clsx from "clsx";
-import { Printer } from "lucide-react";
+import { Plus, Printer } from "lucide-react";
 import {
   convertUnitQuantity,
   getCompatibleUnits,
@@ -411,7 +412,7 @@ function StocktakeDetail({
         )}
       </div>
       {counting && canManage && (
-        <p className="mb-3 text-xs text-muted">Количество можно вводить так: 3*25+12 (мешки и россыпь), 350г — для товара в кг; кнопка «кг/г» у поля переключает единицу. Enter — к следующему.</p>
+        <p className="mb-3 text-xs text-muted">В поле можно считать: 3*25+12 (мешки и россыпь), 350г — для товара в кг. Кнопка «+» прибавляет к уже введённому. Кнопка «кг/г» переключает единицу. Enter — к следующему.</p>
       )}
 
       <div className="overflow-x-auto rounded-2xl border border-border bg-surface">
@@ -598,6 +599,22 @@ function CountRow({
     if (typed !== null) setValue(formatQuantity(Math.round(convertUnitQuantity(typed, line.unit, next) * 1000) / 1000));
   }
 
+  // The field is a small calculator: «+» adds another find to what is already there (shelf, then the
+  // back room), and while a sum is being typed its result is shown before it is saved.
+  const inputRef = useRef<HTMLInputElement>(null);
+  function addMore() {
+    const input = inputRef.current;
+    if (!input) return;
+    const next = value.trim() === "" || /[+\-*]$/.test(value.trim()) ? value : `${value.trim()}+`;
+    // Rendered at once, so the caret can be put at the end before the next key arrives.
+    flushSync(() => setValue(next));
+    input.focus();
+    input.setSelectionRange(next.length, next.length);
+  }
+  const typed = value.trim();
+  const isSum = /[+\-*×хx]/i.test(typed.replace(/^[+-]/, "")) && !/[+\-*×хx]$/i.test(typed);
+  const preview = isSum ? parseCountInput(value, line.unit, inputUnit) : null;
+
   const diff = line.difference;
   return (
     <tr className="border-b border-border last:border-0">
@@ -613,8 +630,22 @@ function CountRow({
       )}
       <td className="px-4 py-2.5 text-right">
         {editable ? (
+          <span className="inline-flex flex-col items-end gap-0.5">
           <span className="inline-flex items-center gap-1.5">
+            <button
+              type="button"
+              tabIndex={-1}
+              // Keeps the field's focus (and what is typed in it) while the button is pressed.
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={addMore}
+              title="Прибавить ещё"
+              aria-label="Прибавить ещё"
+              className="flex h-9 w-9 items-center justify-center rounded-md border border-border text-foreground transition hover:bg-surface-muted"
+            >
+              <Plus className="h-4 w-4" strokeWidth={2} />
+            </button>
             <input
+              ref={inputRef}
               type="text"
               data-count-input
               value={value}
@@ -645,6 +676,12 @@ function CountRow({
             ) : (
               <span className="w-9 text-center text-xs text-muted">{UNIT_LABELS_RU[line.unit]}</span>
             )}
+          </span>
+          {isSum && (
+            <span className={clsx("pr-11 text-xs font-medium", preview === null ? "text-red-700" : "text-foreground")}>
+              {preview === null ? "не понял" : `= ${formatQuantity(preview)} ${UNIT_LABELS_RU[line.unit]}`}
+            </span>
+          )}
           </span>
         ) : line.countedQuantity === null ? (
           "—"
