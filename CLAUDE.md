@@ -1000,7 +1000,9 @@ not development.** What the code holds:
   and `ORG_WIDE_ROLES` (finance view, expenses, supplier payments). NOT in hard delete, period close, users, voids,
   ledger manage, cash adjustment, stocktake approve, sale returns, till shifts, loyalty.
 - **A second lock in one place**: `common/role-scope.ts` `ASSISTANT_REFUSALS` (checked by `JwtAuthGuard` with the
-  request method) — no DELETE anywhere, `closed` prefixes take no request, `readOnly` prefixes only GET. A new
+  request method) — no DELETE anywhere, `closed` prefixes take no request, `readOnly` prefixes only GET. `refusedActions`
+  = single routes inside an open area: it fills a stock count (create, lines, submit — owner, 24.11.2026) but
+  `POST /stocktakes/:id/approve` is refused, «Провести» stays a person's press. A new
   sensitive controller must be added there; a route with too wide a role list still cannot be reached.
 - **Key, not password**: `POST /users/:id/assistant-key` (USER_MANAGE_ROLES, audited `user.assistantKey`; Настройки →
   сотрудник «Помощник» → «Выпустить ключ», shown once) signs a 365-day JWT with claim `ak` = `User.assistantKeyId`;

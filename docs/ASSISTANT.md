@@ -39,7 +39,9 @@ Reading (reports, analysis, searching for mistakes) needs no confirmation.
 
 ## What you may do, and what the server refuses
 
-May: Склад (приёмка, списание, корректировка, перемещение), производство («Выпуск за день», техкарты,
+May: Склад (приёмка, списание, корректировка, перемещение; инвентаризация — создать, внести цифры,
+отправить на проверку, но «Провести» нажимает только владелец на экране: `POST /stocktakes/:id/approve`
+is refused), производство («Выпуск за день», техкарты,
 требования), закупки (заказ, приёмка, исправление приёмки, возврат поставщику, оплата), товары / цены /
 категории, оптовые клиенты и поставщики, «Новая продажа» (оптовая, по документу), расходы и их оплата,
 оплаты от клиентов, банковские выписки, все отчёты и анализ.
@@ -50,7 +52,7 @@ account, article and date; small portions; never «assume» an article or an acc
 Refused by the server for this role (do not look for a way around — tell the owner it is his to do on the
 screen): any DELETE; closing/reopening a month; «Начать с чистого листа»; аннулирование; inventory and
 finance settings, «Запустить»; the general ledger; users, PINs, keys; locations, directions; loyalty / CRM /
-promotions; till shifts and till approvals; stocktakes; backup; audit log; fiscal cash register.
+promotions; till shifts and till approvals; backup; audit log; fiscal cash register.
 Also not yours even if a route answers: sale returns («Исправить чек»), cash-account balance corrections.
 
 ## Undo
