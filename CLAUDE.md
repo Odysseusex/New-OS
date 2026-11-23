@@ -1304,8 +1304,9 @@ Telegram bot still uses them.
 
 ## Кассовая смена (till shift, ТЗ §5.4) — built
 
-The till's «Смена» button (`components/till-shift-control.tsx`): open with the cash counted in the drawer → «Внесение» /
-«Выемка» with a comment → «X-отчёт» any time → «Закрыть смену» with the cash counted → Z-отчёт (printable via
+The till's «Смена» button (`components/till-shift-control.tsx`): open with the cash counted in the drawer → («Внесение» /
+«Выемка» with a comment — their buttons were REMOVED from the till on 23.11.2026, owner: cashiers neither add nor take
+cash, it is collected only after the shift is closed; the forms and the API stay) → «X-отчёт» any time → «Закрыть смену» with the cash counted → Z-отчёт (printable via
 `printSheets`). Продажи → «Смены» (`/sales/shifts`, `TILL_SHIFT_HISTORY_ROLES` = RECONCILIATION_ROLES): every shift with
 расчёт / посчитано / расхождение, Excel/PDF, and the switch «Продажа на кассе только в открытой смене»
 (`Organization.tillShiftsRequired`, default OFF, OWNER/ADMIN; when on, a CASHIER's sale without an open shift at that point

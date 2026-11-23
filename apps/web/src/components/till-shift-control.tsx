@@ -190,8 +190,9 @@ function ShiftModal({
         <>
           <ReportView shift={shift} report={report} />
           <div className="mt-4 grid grid-cols-2 gap-2">
-            <ActionButton onClick={() => { setMode("IN"); setAmount(""); setComment(""); }}>Внесение</ActionButton>
-            <ActionButton onClick={() => { setMode("OUT"); setAmount(""); setComment(""); }}>Выемка</ActionButton>
+            {/* «Внесение» / «Выемка» removed from the till (owner, 23.11.2026: cashiers neither add nor take
+                cash; money is collected only after the shift is closed). The IN/OUT forms below stay for a
+                fresh request: restore these two buttons. */}
             <ActionButton onClick={() => printReport("X-отчёт", shift, report)}>
               <Printer className="h-4 w-4" strokeWidth={1.75} />
               X-отчёт
