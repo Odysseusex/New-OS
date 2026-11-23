@@ -39,11 +39,10 @@ const CONSIGNMENT_GROUP = "Под реализацию";
 const groupOf = (line: { consignment: boolean; categoryName: string | null }) =>
   line.consignment ? CONSIGNMENT_GROUP : (line.categoryName ?? NO_CATEGORY);
 
-const printDaySheet = (day: DailyReconciliationDto, paper: "a4" | "tape" = "a4") =>
+const printDaySheet = (day: DailyReconciliationDto) =>
   printCountSheet(
     `Пересчёт витрины · ${day.locationName} · ${day.date.split("-").reverse().join(".")}`,
     day.lines.map((line) => ({ name: line.productName, unit: line.unit, group: groupOf(line) })),
-    paper,
   );
 
 const signTone = (value: number | null) =>
@@ -277,14 +276,6 @@ function ReconciliationScreen() {
           >
             <Printer className="h-4 w-4" strokeWidth={1.75} />
             Печать бланка
-          </button>
-          <button
-            onClick={() => day && printDaySheet(day, "tape")}
-            disabled={!day || day.lines.length === 0}
-            className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-muted disabled:opacity-50"
-          >
-            <Printer className="h-4 w-4" strokeWidth={1.75} />
-            Бланк на чековой ленте
           </button>
           <button
             onClick={handleSave}

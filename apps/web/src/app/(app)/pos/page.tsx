@@ -54,7 +54,6 @@ import {
   manualDiscountTarget,
   parseCardPayload,
   LoyaltyMemberStatus,
-  Unit,
 } from "@bakery-os/shared";
 import { CheckDiscountModal, PinLoginModal, SeniorPinModal, type AppliedDiscount } from "@/components/till-approval";
 import { Modal } from "@/components/modal";
@@ -83,8 +82,6 @@ import { PosLoyaltyBlock } from "@/components/pos-loyalty";
 import { PosOrderBlock } from "@/components/pos-order";
 import { formatMoney, formatPoints, formatQuantity } from "@/lib/format";
 import { productPhotoUrl } from "@/lib/product-photo";
-import { printCountSheet } from "@/lib/count-sheet";
-import { zonedDateKey } from "@/lib/reporting-period";
 import { ScrollButtons, useTapGuard } from "@/components/pos-scroll";
 
 // A cart line carries its own price rather than reading it off the product,
@@ -199,7 +196,6 @@ export default function PosPage() {
   const [checkDiscount, setCheckDiscount] = useState<AppliedDiscount | null>(null);
   const [discountOpen, setDiscountOpen] = useState(false);
   const [pinLoginOpen, setPinLoginOpen] = useState(false);
-  const [countSheetOpen, setCountSheetOpen] = useState(false);
   const [pendingLine, setPendingLine] = useState<{ key: string; quantity: number; detail: string } | null>(null);
   const [lineRemovalApproval, setLineRemovalApproval] = useState(false);
   // Set only when openCustomerDisplay() cannot tell which physical monitor is
@@ -838,16 +834,6 @@ export default function PosPage() {
         >
           <MonitorSmartphone className="h-4 w-4" strokeWidth={1.75} />
           Экран покупателя
-        </button>
-        {/* The blind count sheet on the till's own receipt printer (owner, 23.11.2026: the button lived only on
-            Продажи → «Сверка дня», which a till login cannot open). The point's own tracked goods in shelf order —
-            the same order «Сверка дня» uses; no expected quantities, so the count stays blind. */}
-        <button
-          onClick={() => setCountSheetOpen(true)}
-          className="flex shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted max-md:hidden"
-        >
-          <Printer className="h-4 w-4" strokeWidth={1.75} />
-          Бланк пересчёта
         </button>
         {locationId && <TillShiftControl locationId={locationId} reloadKey={lastSale} onState={(st) => setLineRemovalApproval(st.lineRemovalApproval)} />}
         <button
@@ -1495,13 +1481,6 @@ export default function PosPage() {
           setDiscountOpen(false);
         }}
         onClose={() => setDiscountOpen(false)}
-      />
-    )}
-    {countSheetOpen && (
-      <CountSheetModal
-        products={products}
-        locationName={activeLocationName}
-        onClose={() => setCountSheetOpen(false)}
       />
     )}
     {pinLoginOpen && <PinLoginModal fromDeviceLogin={!!user?.sharedTill} onClose={() => setPinLoginOpen(false)} />}
@@ -2224,68 +2203,5 @@ function QtyButton({
     >
       {children}
     </button>
-  );
-}
-
-// The till's own blind count sheet (owner, 23.11.2026: «Сверка дня», where the tape sheet lived, is closed to a till
-// login). The point's tracked goods in shelf order — the order «Сверка дня» uses — and no expected quantities, so the
-// count stays blind. «Пробная печать» prints three invented lines marked «ДЕМО», to set the printer up without
-// running out a long roll (owner's request).
-function CountSheetModal({
-  products,
-  locationName,
-  onClose,
-}: {
-  products: ProductDto[];
-  locationName: string | null;
-  onClose: () => void;
-}) {
-  const lines = products
-    .filter((p) => p.trackInventory)
-    .map((p) => ({ p, consignment: p.consignmentSupplierId !== null }))
-    .sort(
-      (x, y) =>
-        Number(x.consignment) - Number(y.consignment) ||
-        Number(x.p.categoryName === null) - Number(y.p.categoryName === null) ||
-        (x.p.categoryName ?? "").localeCompare(y.p.categoryName ?? "", "ru") ||
-        x.p.name.localeCompare(y.p.name, "ru"),
-    )
-    .map(({ p, consignment }) => ({
-      name: p.name,
-      unit: p.unit,
-      group: consignment ? "Под реализацию" : (p.categoryName ?? "Без категории"),
-    }));
-  const today = zonedDateKey().split("-").reverse().join(".");
-  const point = locationName ?? "";
-  return (
-    <Modal title="Бланк пересчёта" onClose={onClose} width="max-w-md">
-      <div className="space-y-3">
-        <button
-          onClick={() =>
-            printCountSheet(
-              `ДЕМО · Пробная печать · ${point} · ${today}`,
-              [
-                { name: "Демо товар 1", unit: Unit.PCS, group: "Демо" },
-                { name: "Демо товар 2", unit: Unit.PCS, group: "Демо" },
-                { name: "Демо товар 3", unit: Unit.KG, group: "Демо" },
-              ],
-              "tape",
-            )
-          }
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground transition hover:bg-surface-muted"
-        >
-          <Printer className="h-4 w-4" strokeWidth={1.75} />
-          Пробная печать (3 демо-товара)
-        </button>
-        <button
-          disabled={lines.length === 0}
-          onClick={() => printCountSheet(`Пересчёт витрины · ${point} · ${today}`, lines, "tape")}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-50"
-        >
-          <Printer className="h-4 w-4" strokeWidth={1.75} />
-          {lines.length === 0 ? "На точке нет товаров для пересчёта" : `Печать полного бланка · ${lines.length} поз.`}
-        </button>
-      </div>
-    </Modal>
   );
 }

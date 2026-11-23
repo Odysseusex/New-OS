@@ -384,19 +384,6 @@ function StocktakeDetail({
           <Printer className="h-4 w-4" strokeWidth={1.75} />
           Печать бланка
         </button>
-        <button
-          onClick={() =>
-            printCountSheet(
-              `Инвентаризация · ${st.locationName} · ${formatDateTime(st.snapshotAt)}`,
-              st.lines.map((l) => ({ name: l.productName, unit: l.unit, group: l.categoryName ?? "Без категории" })),
-              "tape",
-            )
-          }
-          className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
-        >
-          <Printer className="h-4 w-4" strokeWidth={1.75} />
-          Бланк на чековой ленте
-        </button>
         {!st.blind && (
           <>
             <button onClick={() => exportInventoryList(st)} className="rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted">

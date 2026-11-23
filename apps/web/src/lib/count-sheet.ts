@@ -14,8 +14,7 @@ export interface CountSheetLine {
 // expects, so the count is blind. Two columns: names are short, so one column
 // left half of every page empty. A group's heading travels with its first
 // product, never alone at a column's foot.
-export function printCountSheet(title: string, lines: CountSheetLine[], paper: "a4" | "tape" = "a4") {
-  if (paper === "tape") return printCountTape(title, lines);
+export function printCountSheet(title: string, lines: CountSheetLine[]) {
   const row = (line: CountSheetLine) =>
     `<div class="r"><span class="n">${escapeHtml(line.name)}</span><span class="b">${escapeHtml(UNIT_LABELS_RU[line.unit])}</span></div>`;
   const groups: { name: string; lines: CountSheetLine[] }[] = [];
@@ -35,36 +34,6 @@ export function printCountSheet(title: string, lines: CountSheetLine[], paper: "
 <h1>${escapeHtml(title)}</h1>
 <p>Считал(а): ______________________ &nbsp;&nbsp; Время: ________</p>
 <div class="cols">${body}</div>
-</body></html>`;
-  openAndPrint(html);
-}
-
-// The same blind sheet for the till's receipt printer: one column as wide as the roll, large letters,
-// a tall box to write the count in. No page size is forced — the printer's driver knows its roll (80 or
-// 58 mm) — and no grey fills (browsers drop backgrounds in print, thermal paper smears them).
-function printCountTape(title: string, lines: CountSheetLine[]) {
-  let body = "";
-  let group: string | null = null;
-  for (const line of lines) {
-    if (line.group !== group) {
-      group = line.group;
-      body += `<div class="g">${escapeHtml(group)}</div>`;
-    }
-    body += `<div class="r"><span class="n">${escapeHtml(line.name)}</span><span class="b">${escapeHtml(UNIT_LABELS_RU[line.unit])}</span></div>`;
-  }
-  const html = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Пересчёт</title>
-<style>@page{margin:0}html,body{margin:0;padding:0}
-body{font-family:Arial,sans-serif;font-size:15px;color:#000;padding:2mm 3mm 0}
-h1{font-size:17px;line-height:1.2;margin:0 0 2mm}p{margin:0 0 3mm;line-height:1.9}
-.g{font-weight:bold;font-size:16px;text-transform:uppercase;border-top:3px solid #000;border-bottom:1px solid #000;padding:1.5mm 0;margin-top:3mm;break-after:avoid}
-.r{display:flex;align-items:stretch;border-bottom:1px solid #000;min-height:10mm;break-inside:avoid}
-.n{flex:1;padding:1.5mm 1.5mm 1.5mm 0;line-height:1.2;font-weight:bold;align-self:center;overflow-wrap:anywhere}
-.b{flex:none;width:21mm;border-left:1px solid #000;font-size:11px;display:flex;align-items:flex-end;justify-content:flex-end;padding:0 0 1mm}
-.end{text-align:center;font-size:12px;padding:4mm 0 12mm}</style></head><body>
-<h1>${escapeHtml(title)}</h1>
-<p>Считал(а): ______________<br>Время: __________</p>
-${body}
-<div class="end">— конец бланка · позиций: ${lines.length} —</div>
 </body></html>`;
   openAndPrint(html);
 }
