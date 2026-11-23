@@ -116,6 +116,24 @@ describe("a day at the till", () => {
     expect((await service.get(org.user, org.storeId, today)).lines.some((l) => l.productId === spread.id)).toBe(false);
   });
 
+  it("lists every product the point's till offers, even one nothing happened to", async () => {
+    const id = org.organizationId;
+    const make = (name: string, sku: string, extra: object = {}) =>
+      prisma.product.create({ data: { organizationId: id, name, sku, type: ProductType.FINISHED_GOOD, price: 500, unit: Unit.PCS, ...extra } });
+    const cake = await make("Торт без движения", "R-10");
+    const archived = await make("Снято с продажи", "R-11", { isActive: false });
+    const untracked = await make("Без учёта остатков", "R-12", { trackInventory: false });
+    const supplierId = (await prisma.supplier.create({ data: { organizationId: id, name: "Чужая точка" } })).id;
+    const elsewhere = await make("Под реализацию на складе", "R-13", { consignmentSupplierId: supplierId, consignmentLocationId: org.warehouseId });
+    const here = await make("Под реализацию здесь", "R-14", { consignmentSupplierId: supplierId, consignmentLocationId: org.storeId });
+    const lines = (await service.get(org.user, org.storeId, today)).lines;
+    const has = (p: { id: string }) => lines.some((l) => l.productId === p.id);
+    const line = lines.find((l) => l.productId === cake.id)!;
+    expect([line.opening, line.closing, line.countedQuantity]).toEqual([0, 0, null]);
+    expect([has(here), has(archived), has(untracked), has(elsewhere)]).toEqual([true, false, false, false]);
+    expect(lines.find((l) => l.productId === here.id)!.consignment).toBe(true);
+  });
+
   it("knows what the drawer and the terminal should hold", async () => {
     const day = await service.get(org.user, org.storeId, today);
     expect(day.money.cashSales).toBe(1900); // goods «под реализацию» are money in the drawer too

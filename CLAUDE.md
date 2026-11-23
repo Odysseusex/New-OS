@@ -1279,7 +1279,10 @@ undone; uncounted lines untouched; `appliedAt` flipped conditionally (no double 
 (money stays editable); `INVENTORY_MANAGE_ROLES` (same as «Корректировка»). The worksheet's own adjustments are left out
 of its own day, so it keeps showing the shortage it found. Lines are in shelf order (category «Родитель › Под», then
 name, consignment last) — the printed count sheet (no expected column: blind count) and the screen read the same way,
-and Enter in a count jumps to the next one.
+and Enter in a count jumps to the next one. **Lines = every product the point's till offers** (owner, 23.11.2026: the sheet is printed in advance at another
+point, which has the printer): active tracked finished goods, not «Произвольная сумма», consignment only at its own point —
+plus anything else with stock or movement that day there. A blank line counts for nothing. The printed sheet carries a
+blank «Дата» instead of the day, so it can be printed the day before.
 
 **A cashier's price is the server's** (`SalesService.assertTillPrices`): a CASHIER line must be the point's price or its
 fixed markdown (`markdownPrice`, with `fullUnitPrice` = point price) — the only things the till sends; anything else is

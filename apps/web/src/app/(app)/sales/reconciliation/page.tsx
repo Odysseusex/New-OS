@@ -41,7 +41,7 @@ const groupOf = (line: { consignment: boolean; categoryName: string | null }) =>
 
 const printDaySheet = (day: DailyReconciliationDto) =>
   printCountSheet(
-    `Пересчёт витрины · ${day.locationName} · ${day.date.split("-").reverse().join(".")}`,
+    `Пересчёт витрины · ${day.locationName}`,
     day.lines.map((line) => ({ name: line.productName, unit: line.unit, group: groupOf(line) })),
   );
 

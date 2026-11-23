@@ -32,7 +32,7 @@ export function printCountSheet(title: string, lines: CountSheetLine[]) {
 .r{display:flex;align-items:stretch;border:1px solid #999;margin-top:-1px}
 .n{flex:1;padding:6px;line-height:1.25}.b{width:70px;border-left:1px solid #999;text-align:right;color:#666;font-size:11px;padding:2px 4px;display:flex;align-items:flex-end;justify-content:flex-end}</style></head><body>
 <h1>${escapeHtml(title)}</h1>
-<p>Считал(а): ______________________ &nbsp;&nbsp; Время: ________</p>
+<p>Дата: ____________ &nbsp;&nbsp; Считал(а): ______________________ &nbsp;&nbsp; Время: ________</p>
 <div class="cols">${body}</div>
 </body></html>`;
   openAndPrint(html);

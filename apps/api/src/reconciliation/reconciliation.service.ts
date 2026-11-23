@@ -375,7 +375,27 @@ export class ReconciliationService {
       else a.other += e;
     }
 
-    const ids = [...acc.entries()].filter(([, a]) => a.moved || Math.abs(a.opening) > 1e-9).map(([id]) => id);
+    // Every product the point's till offers is on the sheet too, even with nothing on the books and no movement
+    // that day (owner, 23.11.2026: the sheet is printed in advance at another point, and a product brought in
+    // later in the day must already be on the paper). Same rule as the till's catalogue: active, not the
+    // «Произвольная сумма» row, goods «под реализацию» only at their own point.
+    const offered = await this.prisma.product.findMany({
+      where: {
+        organizationId,
+        isActive: true,
+        isOpenPrice: false,
+        trackInventory: true,
+        type: "FINISHED_GOOD",
+        OR: [{ consignmentLocationId: null }, { consignmentLocationId: locationId }],
+      },
+      select: { id: true },
+    });
+    const ids = [
+      ...new Set([
+        ...[...acc.entries()].filter(([, a]) => a.moved || Math.abs(a.opening) > 1e-9).map(([id]) => id),
+        ...offered.map((p) => p.id),
+      ]),
+    ];
     if (ids.length === 0) return [];
     const products = await this.prisma.product.findMany({
       // Only what the shop sells (own goods and goods «под реализацию»): raw materials,
@@ -385,7 +405,7 @@ export class ReconciliationService {
     });
     return products
       .map((p) => {
-        const a = acc.get(p.id)!;
+        const a = acc.get(p.id) ?? { opening: 0, received: 0, sold: 0, returned: 0, other: 0, moved: false };
         const opening = round3(a.opening);
         const line: ReconciliationStockLineDto = {
           productId: p.id,
