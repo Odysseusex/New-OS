@@ -189,15 +189,12 @@ function ShiftModal({
       {report && mode === "view" && (
         <>
           <ReportView shift={shift} report={report} />
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            {/* «Внесение» / «Выемка» removed from the till (owner, 23.11.2026: cashiers neither add nor take
-                cash; money is collected only after the shift is closed). The IN/OUT forms below stay for a
-                fresh request: restore these two buttons. */}
-            <ActionButton onClick={() => printReport("X-отчёт", shift, report)}>
-              <Printer className="h-4 w-4" strokeWidth={1.75} />
-              X-отчёт
-            </ActionButton>
-            <button onClick={() => { setMode("close"); setAmount(""); setComment(""); }} className="rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition hover:opacity-90">
+          <div className="mt-4">
+            {/* «Внесение» / «Выемка» and «X-отчёт» removed from the till (owner, 23.11.2026: cashiers neither add
+                nor take cash; money is collected only after the shift is closed). The IN/OUT forms below and
+                printReport stay for a fresh request: restore the buttons (git history has them,
+                X-отчёт = printReport("X-отчёт", shift, report)). */}
+            <button onClick={() => { setMode("close"); setAmount(""); setComment(""); }} className="w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition hover:opacity-90">
               Закрыть смену
             </button>
           </div>
@@ -285,13 +282,6 @@ function ShiftModal({
   );
 }
 
-function ActionButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button onClick={onClick} className="flex items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted">
-      {children}
-    </button>
-  );
-}
 
 function ResultLine({ label, value, tone }: { label: string; value: number; tone?: string }) {
   return (
