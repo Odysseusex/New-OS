@@ -58,7 +58,13 @@ export function TillShiftControl({
   const [prompted, setPrompted] = useState(false);
   useEffect(() => {
     if (prompted || !state || !user || user.sharedTill) return;
-    if (state.required && !state.shift) {
+    // A shift open when the till loads means the day is under way: closing it must not pop «Открыть смену» right
+    // back up (owner, 23.11.2026: «после закрытия смены вышло открытие смены сразу»).
+    if (state.shift) {
+      setPrompted(true);
+      return;
+    }
+    if (state.required) {
       setPrompted(true);
       setClosed(null);
       setOpen(true);
