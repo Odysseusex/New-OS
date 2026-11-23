@@ -82,6 +82,8 @@ import { PosLoyaltyBlock } from "@/components/pos-loyalty";
 import { PosOrderBlock } from "@/components/pos-order";
 import { formatMoney, formatPoints, formatQuantity } from "@/lib/format";
 import { productPhotoUrl } from "@/lib/product-photo";
+import { printCountSheet } from "@/lib/count-sheet";
+import { zonedDateKey } from "@/lib/reporting-period";
 import { ScrollButtons, useTapGuard } from "@/components/pos-scroll";
 
 // A cart line carries its own price rather than reading it off the product,
@@ -834,6 +836,38 @@ export default function PosPage() {
         >
           <MonitorSmartphone className="h-4 w-4" strokeWidth={1.75} />
           Экран покупателя
+        </button>
+        {/* The blind count sheet on the till's own receipt printer (owner, 23.11.2026: the button lived only on
+            Продажи → «Сверка дня», which a till login cannot open). The point's own tracked goods in shelf order —
+            the same order «Сверка дня» uses; no expected quantities, so the count stays blind. */}
+        <button
+          onClick={() => {
+            const lines = products
+              .filter((p) => p.trackInventory)
+              .map((p) => ({ p, consignment: p.consignmentSupplierId !== null }))
+              .sort(
+                (x, y) =>
+                  Number(x.consignment) - Number(y.consignment) ||
+                  Number(x.p.categoryName === null) - Number(y.p.categoryName === null) ||
+                  (x.p.categoryName ?? "").localeCompare(y.p.categoryName ?? "", "ru") ||
+                  x.p.name.localeCompare(y.p.name, "ru"),
+              )
+              .map(({ p, consignment }) => ({
+                name: p.name,
+                unit: p.unit,
+                group: consignment ? "Под реализацию" : (p.categoryName ?? "Без категории"),
+              }));
+            if (lines.length === 0) {
+              setError("На этой точке нет товаров для пересчёта");
+              return;
+            }
+            const today = zonedDateKey().split("-").reverse().join(".");
+            printCountSheet(`Пересчёт витрины · ${activeLocationName ?? ""} · ${today}`, lines, "tape");
+          }}
+          className="flex shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted max-md:hidden"
+        >
+          <Printer className="h-4 w-4" strokeWidth={1.75} />
+          Бланк пересчёта
         </button>
         {locationId && <TillShiftControl locationId={locationId} reloadKey={lastSale} onState={(st) => setLineRemovalApproval(st.lineRemovalApproval)} />}
         <button
