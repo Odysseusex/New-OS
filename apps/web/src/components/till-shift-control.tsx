@@ -12,6 +12,7 @@ import { Modal } from "@/components/modal";
 import { formatMoney } from "@/lib/format";
 import { returnToDeviceLogin } from "@/components/till-approval";
 import { printSheets } from "@/lib/print-table";
+import { useAuth } from "@/lib/auth-context";
 
 const input =
   "w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
@@ -49,6 +50,20 @@ export function TillShiftControl({
   }, [locationId]);
 
   useEffect(load, [load, reloadKey]);
+
+  // A shift is required and none is open: the cashier who has just typed her PIN is asked for the opening
+  // count straight away (owner, 23.11.2026: «только пин ввели и зашли» — the button alone went unnoticed).
+  // Once per page; closing the window leaves the red button, and the server refuses a sale anyway.
+  const { user } = useAuth();
+  const [prompted, setPrompted] = useState(false);
+  useEffect(() => {
+    if (prompted || !state || !user || user.sharedTill) return;
+    if (state.required && !state.shift) {
+      setPrompted(true);
+      setClosed(null);
+      setOpen(true);
+    }
+  }, [state, user, prompted]);
 
   if (!state) return null;
   const shift = state.shift;

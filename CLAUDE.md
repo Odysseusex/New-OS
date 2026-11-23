@@ -1310,7 +1310,8 @@ cash, it is collected only after the shift is closed; the forms and the API stay
 `printSheets`). Продажи → «Смены» (`/sales/shifts`, `TILL_SHIFT_HISTORY_ROLES` = RECONCILIATION_ROLES): every shift with
 расчёт / посчитано / расхождение, Excel/PDF, and the switch «Продажа на кассе только в открытой смене»
 (`Organization.tillShiftsRequired`, default OFF, OWNER/ADMIN; when on, a CASHIER's sale without an open shift at that point
-is refused — `till-shifts/till-shift-guard.ts`, called in `SalesService.create`). `apps/api/src/till-shifts/`, shared
+is refused — `till-shifts/till-shift-guard.ts`, called in `SalesService.create`). With it on and no open shift, the till pops the open-shift window by itself once the cashier is signed in
+(not under a shared login; owner, 23.11.2026: cashiers «только пин ввели и зашли»). `apps/api/src/till-shifts/`, shared
 `till-shifts.ts`, migration `20261112120000_till_shifts` (additive table; one open shift per point by partial unique
 index; a closed shift cannot be updated — trigger).
 - **A shift owns nothing**: it is a time window over the point's own documents. Figures = `reconciliation/till-takings.ts`
