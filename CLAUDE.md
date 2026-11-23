@@ -259,7 +259,7 @@ Birthdays on the till: `components/birth-date-pad.tsx` — ДД.ММ(.ГГГГ) 
 («07 июл»), always read back in words; also offered right in till registration (saved as a «Сам клиент» row, name
 «Клиент» when none). Every other till field is on a pad too: PIN (`PinPad`, dots), check discount, shift amounts
 (`AmountField`) and comments (`TextField withDigits`), the till's return (`SaleReturnModal keypad`) and its history
-search. Physical keys go to the TOP window's pad even while the till's scan field keeps focus (`isInTopWindow`); a real
+search. The login page has a keyboard icon in the email and password fields (owner, 23.11.2026): `TextKeypadModal latin` (digits, @ . _ - and a few symbols, QWERTY, «@gmail.com», no automatic capitals, taken exactly as typed) and `secret` (dots + «Показать»); the inputs still take a real keyboard. Physical keys go to the TOP window's pad even while the till's scan field keeps focus (`isInTopWindow`); a real
 input inside that same window keeps its own typing. Elsewhere month selects read «05 — мая».
 CRM → client → «Изменить» (`components/crm/member-edit-dialog.tsx`): name, note, WhatsApp/Telegram consent (a new consent
 row each change, source OTHER «Изменено в CRM»), birthdays add / correct (PATCH keeps `dateSetAt` unless the date changes)
