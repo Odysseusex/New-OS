@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { LocationDto, UserAccountDto } from "@bakery-os/shared";
-import { ORG_WIDE_ROLES, ROLE_LABELS_RU, Role } from "@bakery-os/shared";
+import { ORG_WIDE_ROLES, ROLE_LABELS_RU, Role, TILL_ROLES } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
 
@@ -25,6 +25,7 @@ export function UserAccountModal({
   const [locationId, setLocationId] = useState(account?.locationId ?? "");
   const [pin, setPin] = useState("");
   const [removePin, setRemovePin] = useState(false);
+  const [sharedTill, setSharedTill] = useState(Boolean(account?.sharedTill));
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   // «Помощник» works with a key instead of a password: issued here, shown once.
@@ -79,6 +80,7 @@ export function UserAccountModal({
           title: title || null,
           locationId: needsLocation ? locationId : null,
           password: password || undefined,
+          sharedTill: TILL_ROLES.includes(role) ? sharedTill : false,
         });
       } else {
         const created = await api.users.create({
@@ -90,6 +92,7 @@ export function UserAccountModal({
           locationId: needsLocation ? locationId : undefined,
         });
         savedId = created.id;
+        if (sharedTill && TILL_ROLES.includes(role)) await api.users.update(created.id, { sharedTill: true });
       }
       // The till PIN is its own request: it is checked for uniqueness on its own.
       if (savedId && pin) await api.users.setPin(savedId, pin);
@@ -196,6 +199,17 @@ export function UserAccountModal({
           </p>
         </div>
 
+        {TILL_ROLES.includes(role) && (
+          <label className="mb-5 flex items-start gap-2.5 text-sm text-foreground">
+            <input type="checkbox" className="mt-0.5" checked={sharedTill} onChange={(e) => setSharedTill(e.target.checked)} />
+            <span>
+              <span className="font-medium">Общий вход кассы точки</span>
+              <span className="mt-0.5 block text-xs text-muted">Под этим входом продавать и вести смену нельзя — кассир вводит свой PIN</span>
+            </span>
+          </label>
+        )}
+
+        {!(TILL_ROLES.includes(role) && sharedTill) && (
         <div className="mb-4">
           <label className="mb-1.5 block text-sm font-medium text-foreground">
             PIN для кассы <span className="text-muted">(4–6 цифр)</span>
@@ -222,6 +236,7 @@ export function UserAccountModal({
             )}
           </div>
         </div>
+        )}
 
         {account?.role === Role.ASSISTANT && role === Role.ASSISTANT && (
           <div className="mb-4 rounded-xl border border-border p-3">

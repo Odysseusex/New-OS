@@ -21,6 +21,7 @@ import { cashEffectOf } from "../common/ledger-effects";
 import { round2 } from "../common/money";
 import { recordAudit } from "../audit/audit";
 import { tillTakings } from "../reconciliation/till-takings";
+import { assertPersonalTill } from "../common/shared-till";
 import { CashMovementsService } from "../finance/cash-movements.service";
 
 // Sales and returns are read from their own documents; a till movement of these kinds is their money leg.
@@ -62,6 +63,7 @@ export class TillShiftsService {
   }
 
   async open(user: AuthenticatedUser, dto: OpenTillShiftRequestDto): Promise<TillShiftDto> {
+    assertPersonalTill(user);
     const locationId = requireLocationScope(user, dto.locationId);
     if (!(dto.openingCash >= 0)) throw new BadRequestException("Остаток наличных — число не меньше нуля");
     const till = await this.tillAccount(user.organizationId, locationId);
@@ -99,6 +101,7 @@ export class TillShiftsService {
 
   // Внесение (IN: from another account into the drawer) or выемка (OUT: from the drawer to another account).
   async moveCash(user: AuthenticatedUser, shiftId: string, dto: TillShiftCashRequestDto): Promise<TillShiftReportDto> {
+    assertPersonalTill(user);
     const shift = await this.ownOpenShift(user, shiftId);
     const till = await this.tillAccount(user.organizationId, shift.locationId);
     if (!till) throw new BadRequestException("У точки нет кассы наличных");
@@ -117,6 +120,7 @@ export class TillShiftsService {
   }
 
   async close(user: AuthenticatedUser, shiftId: string, dto: CloseTillShiftRequestDto): Promise<TillShiftDetailDto> {
+    assertPersonalTill(user);
     const shift = await this.ownOpenShift(user, shiftId);
     if (!(dto.countedCash >= 0)) throw new BadRequestException("Наличные в кассе — число не меньше нуля");
     const closedAt = new Date();

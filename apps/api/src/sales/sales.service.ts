@@ -70,6 +70,7 @@ import { LoyaltyPointsService, PreparedSaleLoyalty } from "../loyalty/loyalty-po
 import { CustomerBotService } from "../loyalty/customer-bot.service";
 import { startOfZonedDay } from "../common/zoned-day";
 import { assertConsignmentAt } from "../common/consignment-location";
+import { assertPersonalTill } from "../common/shared-till";
 import { dueDateFor, dueKeyOf } from "../debts/due-date";
 
 // Calendar days in reports are the owner's days, not the server's. Render runs
@@ -1189,6 +1190,7 @@ export class SalesService {
   }
 
   async create(user: AuthenticatedUser, dto: CreateSaleDto): Promise<SaleDetailDto> {
+    assertPersonalTill(user);
     const locationId = requireLocationScope(user, dto.locationId);
 
     if (dto.customerId) {

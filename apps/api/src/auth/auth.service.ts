@@ -47,6 +47,7 @@ export class AuthService {
   async pinLogin(actor: AuthenticatedUser, pin: string): Promise<LoginResponseDto> {
     const found = await findUserByPin(this.prisma, actor, pin);
     if (!SALE_CREATE_ROLES.includes(found.role as Role)) throw new ForbiddenException("Этот сотрудник не работает на кассе");
+    if (found.sharedTill) throw new ForbiddenException("Это общий вход точки — введите PIN кассира");
     if (actor.locationId && found.locationId && actor.locationId !== found.locationId) {
       throw new ForbiddenException("Этот сотрудник работает на другой точке");
     }
@@ -91,6 +92,7 @@ export class AuthService {
       organizationId: user.organizationId,
       regionId: user.regionId,
       locationId: user.locationId,
+      sharedTill: user.sharedTill,
     };
   }
 
@@ -103,6 +105,7 @@ export class AuthService {
     organizationId: string;
     organization: { id: string; name: string; demoParentId: string | null };
     locationId: string | null;
+    sharedTill: boolean;
   }): CurrentUserDto {
     return {
       id: user.id,
@@ -113,6 +116,7 @@ export class AuthService {
       organizationId: user.organizationId,
       organization: { id: user.organization.id, name: user.organization.name, isDemo: !!user.organization.demoParentId },
       locationId: user.locationId,
+      sharedTill: user.sharedTill,
     };
   }
 }

@@ -739,6 +739,16 @@ export default function PosPage() {
     {/* The width cap is in pixels, not rem: a smaller screen scale (UiScaleControl)
         makes text and buttons smaller, not the till narrower. */}
     <div className="mx-auto max-w-[1280px] print:hidden">
+      {user?.sharedTill && (
+        <button
+          type="button"
+          onClick={() => setPinLoginOpen(true)}
+          className="mb-3 flex w-full items-center justify-between gap-3 rounded-2xl border-2 border-accent bg-surface px-5 py-4 text-left"
+        >
+          <span className="text-base font-semibold text-foreground">Кассир не выбран — продавать можно только под своим PIN</span>
+          <span className="shrink-0 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground">Ввести PIN</span>
+        </button>
+      )}
       {/* No «Касса» heading and no strapline. On a 768px-tall monoblock the
           title, its subtitle and their margins cost 72px — half a row of
           products — to tell a cashier, whose screen has nothing else on it,
@@ -832,7 +842,7 @@ export default function PosPage() {
           className="flex shrink-0 items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
         >
           <Users className="h-4 w-4" strokeWidth={1.75} />
-          {user?.fullName.split(" ")[0] ?? "Кассир"}
+          {user?.sharedTill ? "Введите PIN" : (user?.fullName.split(" ")[0] ?? "Кассир")}
         </button>
         <button
           onClick={reloadPage}
@@ -1293,7 +1303,8 @@ export default function PosPage() {
               {PAYMENT_BUTTONS.map(({ mode, label, icon: Icon }) => (
                 <button
                   key={mode}
-                  onClick={() => setPayMode(mode)}
+                  // The point's shared login never takes money: the PIN comes before any terminal is touched.
+                  onClick={() => (user?.sharedTill ? setPinLoginOpen(true) : setPayMode(mode))}
                   disabled={cart.length === 0 || isSubmitting || !locationId || chargedButUnrecorded !== null}
                   className={clsx(
                     "flex items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-base font-semibold transition hover:opacity-90 disabled:opacity-40",
@@ -1472,7 +1483,7 @@ export default function PosPage() {
         onClose={() => setDiscountOpen(false)}
       />
     )}
-    {pinLoginOpen && <PinLoginModal onClose={() => setPinLoginOpen(false)} />}
+    {pinLoginOpen && <PinLoginModal fromDeviceLogin={!!user?.sharedTill} onClose={() => setPinLoginOpen(false)} />}
     {pendingLine && (
       <SeniorPinModal
         action="LINE_REMOVAL"

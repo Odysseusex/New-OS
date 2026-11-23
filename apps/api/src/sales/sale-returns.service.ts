@@ -22,6 +22,7 @@ import { CreateSaleReturnDto } from "./dto/create-sale-return.dto";
 import { allocateRefund, validateRefundOverride } from "./refund-allocation";
 import { postLedgerSources } from "../ledger/event-posting";
 import { LoyaltyPointsService } from "../loyalty/loyalty-points.service";
+import { assertPersonalTill } from "../common/shared-till";
 import { CustomerBotService } from "../loyalty/customer-bot.service";
 
 const RETURN_INCLUDE = {
@@ -67,6 +68,7 @@ export class SaleReturnsService {
   // written, mirroring SalesService.create(): a SaleReturn row in this
   // database always means money actually went back.
   async create(user: AuthenticatedUser, saleId: string, dto: CreateSaleReturnDto): Promise<SaleReturnDto> {
+    assertPersonalTill(user);
     const sale = await this.prisma.sale.findFirst({
       where: { id: saleId, organizationId: user.organizationId },
       include: { items: { include: { product: true } }, location: true, fiscalReceipt: true, payments: true, returns: { include: { items: true } } },

@@ -167,6 +167,9 @@ export default function SettingsPage() {
                   <div className="flex items-center gap-2">
                     {a.fullName}
                     {!a.isActive && <ArchivedBadge />}
+                    {a.sharedTill && (
+                      <span className="rounded-full bg-surface-muted px-2 py-0.5 text-xs font-medium text-muted">Общий вход кассы</span>
+                    )}
                     {a.id === user?.id && (
                       <span className="rounded-full bg-surface-muted px-2 py-0.5 text-xs font-medium text-muted">
                         Это вы

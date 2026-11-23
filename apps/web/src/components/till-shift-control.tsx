@@ -10,6 +10,7 @@ import { PAYMENT_METHOD_LABELS_RU, PaymentMethod } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { Modal } from "@/components/modal";
 import { formatMoney } from "@/lib/format";
+import { returnToDeviceLogin } from "@/components/till-approval";
 import { printSheets } from "@/lib/print-table";
 
 const input =
@@ -75,7 +76,12 @@ export function TillShiftControl({
           locationId={locationId}
           state={state}
           closed={closed}
-          onClose={() => setOpen(false)}
+          onClose={() => {
+            setOpen(false);
+            // The cashier's day is over: the till goes back to the point's shared login, so the next
+            // one has to type her own PIN before selling.
+            if (closed && returnToDeviceLogin()) window.location.assign("/pos");
+          }}
           onChanged={(next) => {
             if (next) setClosed(next);
             load();

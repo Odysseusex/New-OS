@@ -9,6 +9,8 @@ export interface AuthenticatedUser {
   organizationId: string;
   regionId: string | null;
   locationId: string | null;
+  // The point's shared till login (User.sharedTill): may not sell or run a shift.
+  sharedTill?: boolean;
 }
 
 export interface JwtPayload {

@@ -86,6 +86,8 @@ export interface CurrentUserDto {
   organizationId: string;
   organization: OrganizationDto;
   locationId: string | null;
+  // The point's shared till login: nothing is sold under it until a cashier types her PIN.
+  sharedTill: boolean;
 }
 
 export interface LoginRequestDto {
@@ -109,6 +111,8 @@ export interface UserAccountDto {
   isActive: boolean;
   // A till PIN is set (the PIN itself is never sent back).
   hasPin: boolean;
+  // The point's shared till login (see CurrentUserDto.sharedTill).
+  sharedTill: boolean;
   // «Помощник» has a working key (the key itself is shown once, when issued).
   hasAssistantKey?: boolean;
 }
@@ -129,7 +133,11 @@ export interface UpdateUserAccountRequestDto {
   title?: string | null;
   locationId?: string | null;
   password?: string;
+  sharedTill?: boolean;
 }
+
+// Refused to the shared till login (see CurrentUserDto.sharedTill); the till shows the same words.
+export const SHARED_TILL_MESSAGE = "Нажмите «Кассир» и введите свой PIN — под общим входом точки продавать нельзя";
 
 export interface DashboardSummaryDto {
   organizationName: string;

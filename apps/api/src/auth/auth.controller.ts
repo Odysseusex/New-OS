@@ -48,6 +48,7 @@ export class AuthController {
       organizationId: user.organizationId,
       organization: { id: organization.id, name: organization.name, isDemo: !!organization.demoParentId },
       locationId: user.locationId,
+      sharedTill: Boolean(user.sharedTill),
     };
   }
 }

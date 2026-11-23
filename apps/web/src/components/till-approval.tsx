@@ -61,12 +61,41 @@ export function SeniorPinModal({
 }
 
 // «Сменить кассира»: another employee's PIN takes over this till.
-export function PinLoginModal({ onClose }: { onClose: () => void }) {
+// The point's shared till login (CurrentUserDto.sharedTill) is kept aside when a cashier types her PIN,
+// so closing her shift hands the till back to it and the next cashier must type her own PIN.
+const DEVICE_TOKEN_KEY = "bakery_device_token";
+function rememberDeviceLogin(fromDeviceLogin: boolean) {
+  try {
+    const token = localStorage.getItem("bakery_token");
+    if (fromDeviceLogin && token) localStorage.setItem(DEVICE_TOKEN_KEY, token);
+  } catch {
+    // Storage blocked: the till simply stays with the cashier until someone types another PIN.
+  }
+}
+export function forgetDeviceLogin() {
+  try {
+    localStorage.removeItem(DEVICE_TOKEN_KEY);
+  } catch {
+    // nothing to forget
+  }
+}
+export function returnToDeviceLogin(): boolean {
+  try {
+    const token = localStorage.getItem(DEVICE_TOKEN_KEY);
+    if (!token) return false;
+    localStorage.setItem("bakery_token", token);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function PinLoginModal({ onClose, fromDeviceLogin = false }: { onClose: () => void; fromDeviceLogin?: boolean }) {
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
-    <Modal title="Сменить кассира" onClose={onClose}>
+    <Modal title={fromDeviceLogin ? "Кассир: введите свой PIN" : "Сменить кассира"} onClose={onClose}>
       <form
         onSubmit={async (e) => {
           e.preventDefault();
@@ -74,6 +103,7 @@ export function PinLoginModal({ onClose }: { onClose: () => void }) {
           setBusy(true);
           try {
             const r = await api.tillPin.login(pin);
+            rememberDeviceLogin(fromDeviceLogin);
             localStorage.setItem("bakery_token", r.accessToken);
             window.location.assign("/pos");
           } catch (err) {

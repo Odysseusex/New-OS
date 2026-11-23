@@ -1,5 +1,5 @@
 import { Role } from "@bakery-os/shared";
-import { IsEmail, IsEnum, IsOptional, IsString, MinLength } from "class-validator";
+import { IsBoolean, IsEmail, IsEnum, IsOptional, IsString, MinLength } from "class-validator";
 
 export class UpdateUserAccountDto {
   @IsOptional()
@@ -27,4 +27,8 @@ export class UpdateUserAccountDto {
   @IsString()
   @MinLength(8)
   password?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  sharedTill?: boolean;
 }

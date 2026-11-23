@@ -508,6 +508,10 @@ model User {
   // organization so the PIN alone says who it is. Null = no PIN. Never exported in backups.
   pinDigest    String?
   pinSetAt     DateTime?
+  // The shared login a point's till device signs in with (owner, 23.11.2026): it may open the till but
+  // never sells or runs a shift — a cashier first types her own PIN («Кассир»), so every check and
+  // shift carries a person. Off by default; set by OWNER/ADMIN on a cashier account.
+  sharedTill   Boolean   @default(false)
   // «Помощник» (Role.ASSISTANT): the id of the one key that is valid now. A token carries it; issuing a
   // new key or clearing this makes every earlier key worthless. Null = no key.
   assistantKeyId String?

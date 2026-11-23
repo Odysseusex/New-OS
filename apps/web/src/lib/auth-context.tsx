@@ -51,6 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(() => {
     localStorage.removeItem("bakery_token");
+    localStorage.removeItem("bakery_device_token");
     setUser(null);
     router.push("/login");
   }, [router]);

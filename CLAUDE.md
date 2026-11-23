@@ -1343,6 +1343,15 @@ index; a closed shift cannot be updated — trigger).
     `discountApprovedByName`; audited `sale.manualDiscount`. Not combinable with a coupon or points.
   - Возврат: a CASHIER may return only with an approval (`SALE_RETURN_WITH_APPROVAL_ROLES` on the route, check in
     `SaleReturnsService.create`); `SaleReturn.approvedByName`. The till's «История» → a check → «Возврат» asks the PIN.
+  - **Общий вход кассы точки** (owner, 23.11.2026; migration `20261207120000_shared_till`, `User.sharedTill`, checkbox in
+    the employee card for till roles, «Общий вход кассы» tag in the list): the login a point's monoblock signs in with
+    opens the till but never sells, returns or opens/closes/moves a shift (`common/shared-till.ts` `assertPersonalTill`
+    in `SalesService.create`, `SaleReturnsService.create`, `TillShiftsService.open/moveCash/close`; shared
+    `SHARED_TILL_MESSAGE`); `pinLogin` refuses to switch INTO a shared login. The till shows a banner «Кассир не
+    выбран…», the pay buttons open the PIN pad BEFORE any terminal is touched, and the cashier button reads «Введите
+    PIN». The shared token is kept in localStorage (`bakery_device_token`, `till-approval.tsx`) when a cashier switches
+    in; dismissing the Z-report after closing a shift hands the till back to it, so the next cashier must type her PIN.
+    Off by default — nothing changes until the owner ticks it on each point's login.
   - Удаление позиции / уменьшение количества: only with the switch `Organization.tillLineRemovalApproval` (default OFF,
     Продажи → Смены) — then a cashier needs the senior's PIN, logged as `till.lineRemoval` (the cart is client-side, so the
     approval log IS the record).

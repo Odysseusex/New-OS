@@ -3,7 +3,7 @@ import * as bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
 import { JwtService } from "@nestjs/jwt";
 import { PrismaService } from "../prisma/prisma.service";
-import { ORG_WIDE_ROLES, Role, UserAccountDto } from "@bakery-os/shared";
+import { ORG_WIDE_ROLES, Role, TILL_ROLES, UserAccountDto } from "@bakery-os/shared";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { CreateUserAccountDto } from "./dto/create-user-account.dto";
 import { UpdateUserAccountDto } from "./dto/update-user-account.dto";
@@ -13,7 +13,7 @@ import { assertPinFormat, pinDigest } from "../auth/till-pin";
 
 // What the audit log keeps about an account. Never the password hash — a
 // password change is recorded only as the fact that it happened.
-const USER_AUDIT_FIELDS = ["fullName", "email", "role", "title", "locationId", "isActive"] as const;
+const USER_AUDIT_FIELDS = ["fullName", "email", "role", "title", "locationId", "isActive", "sharedTill"] as const;
 
 // How long a key of «Помощник» lives; a new one is issued in Настройки.
 const ASSISTANT_KEY_DAYS = 365;
@@ -120,6 +120,8 @@ export class UsersService {
           title: dto.title !== undefined ? dto.title || null : undefined,
           locationId: nextLocationId,
           passwordHash,
+          // Only a till account can be the point's shared login; any other role drops the mark.
+          sharedTill: TILL_ROLES.includes(nextRole) ? (dto.sharedTill ?? undefined) : false,
         },
         include: { location: true },
       });
@@ -275,8 +277,10 @@ export class UsersService {
     isActive: boolean;
     pinDigest?: string | null;
     assistantKeyId?: string | null;
+    sharedTill?: boolean;
   }): UserAccountDto => ({
     hasPin: Boolean(user.pinDigest),
+    sharedTill: Boolean(user.sharedTill),
     hasAssistantKey: user.role === Role.ASSISTANT ? Boolean(user.assistantKeyId) : undefined,
     id: user.id,
     fullName: user.fullName,
