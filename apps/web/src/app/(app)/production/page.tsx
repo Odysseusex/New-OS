@@ -5,6 +5,7 @@ import clsx from "clsx";
 import { Calculator, Copy, FileDown, Plus, Search, Trash2, XCircle } from "lucide-react";
 import type { LocationDto, ProductDto, ProductionBatchDto, RecipeDto } from "@bakery-os/shared";
 import {
+  BAKER_DAY_ROLES,
   HARD_DELETE_ROLES,
   ORG_WIDE_ROLES,
   PRODUCTION_BATCH_STATUS_LABELS_RU,
@@ -21,6 +22,7 @@ import { formatDate, formatDateTime, formatMoney, formatQuantity } from "@/lib/f
 import { AbortBatchModal } from "@/components/abort-batch-modal";
 import { ProductionReleaseModal } from "@/components/production-release-modal";
 import { DistributionTab } from "@/components/distribution-tab";
+import { BakerDayTab } from "@/components/baker-day-tab";
 import { ProductionDeviationsTab } from "@/components/production-deviations-tab";
 import { ProductionOutputTab } from "@/components/production-output-tab";
 import { RequisitionsTab } from "@/components/requisitions-tab";
@@ -30,7 +32,7 @@ import { ExportRecipesPdfModal } from "@/components/export-recipes-pdf-modal";
 import { RecipeScaleModal } from "@/components/recipe-scale-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 
-type Tab = "batches" | "distribution" | "recipes" | "requisitions" | "output" | "deviations";
+type Tab = "batches" | "baker" | "distribution" | "recipes" | "requisitions" | "output" | "deviations";
 
 export default function ProductionPage() {
   const { user } = useAuth();
@@ -39,7 +41,13 @@ export default function ProductionPage() {
   const canManageRecipes = user ? RECIPE_MANAGE_ROLES.includes(user.role) : false;
   const canDelete = user ? HARD_DELETE_ROLES.includes(user.role) : false;
 
+  const canSeeBakerNotes = user ? BAKER_DAY_ROLES.includes(user.role) : false;
+
   const [tab, setTab] = useState<Tab>("batches");
+  // A notification about a baker's note opens its tab directly (/production?tab=baker).
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("tab") === "baker") setTab("baker");
+  }, []);
   const [locations, setLocations] = useState<LocationDto[]>([]);
   const [products, setProducts] = useState<ProductDto[]>([]);
   const [recipes, setRecipes] = useState<RecipeDto[]>([]);
@@ -168,6 +176,11 @@ export default function ProductionPage() {
           <TabButton active={tab === "batches"} onClick={() => setTab("batches")}>
             Журнал выпуска
           </TabButton>
+          {canSeeBakerNotes && (
+            <TabButton active={tab === "baker"} onClick={() => setTab("baker")}>
+              Накладные пекарей
+            </TabButton>
+          )}
           <TabButton active={tab === "distribution"} onClick={() => setTab("distribution")}>
             Распределение
           </TabButton>
@@ -258,6 +271,7 @@ export default function ProductionPage() {
         </div>
       </div>
 
+      {tab === "baker" && canSeeBakerNotes && <BakerDayTab />}
       {tab === "distribution" && <DistributionTab locations={locations} />}
       {tab === "requisitions" && <RequisitionsTab locations={locations} products={products} />}
       {tab === "output" && <ProductionOutputTab locations={locations} isOrgWide={isOrgWide} />}

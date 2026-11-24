@@ -1,8 +1,9 @@
+import { createHash } from "crypto";
 import { ForbiddenException, Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcryptjs";
 import { PrismaService } from "../prisma/prisma.service";
-import { LoginResponseDto, CurrentUserDto, Role, SALE_CREATE_ROLES, TillApprovalAction, TillApprovalDto } from "@bakery-os/shared";
+import { BAKER_PHONE_ROLES, LoginResponseDto, CurrentUserDto, Role, SALE_CREATE_ROLES, TillApprovalAction, TillApprovalDto } from "@bakery-os/shared";
 import { findUserByPin, signTillApproval } from "./till-pin";
 import { recordAudit } from "../audit/audit";
 import { AuthenticatedUser, JwtPayload } from "./auth.types";
@@ -51,6 +52,58 @@ export class AuthService {
     if (actor.locationId && found.locationId && actor.locationId !== found.locationId) {
       throw new ForbiddenException("Этот сотрудник работает на другой точке");
     }
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: found.id }, include: { organization: true } });
+    const accessToken = await this.jwtService.signAsync({ sub: user.id, organizationId: user.organizationId } satisfies JwtPayload);
+    return { accessToken, user: this.toCurrentUserDto(user) };
+  }
+
+  // ── A baker's own phone (/baker) ──
+  // The phone is connected ONCE with the baker's email and password and keeps a year-long device
+  // key; after that the screen opens with a PIN alone. The key is signed with its own secret, so it
+  // is never accepted as a login, and it dies when that account's password changes or the account
+  // is switched off.
+  private bakerDeviceJwt() {
+    return new JwtService({ secret: `${process.env.JWT_SECRET ?? "dev-secret-change-me"}:baker-device` });
+  }
+
+  private passwordStamp(passwordHash: string): string {
+    return createHash("sha256").update(passwordHash).digest("hex").slice(0, 16);
+  }
+
+  async bakerDevice(actor: AuthenticatedUser): Promise<{ deviceToken: string }> {
+    if (!BAKER_PHONE_ROLES.includes(actor.role)) throw new ForbiddenException("Телефон подключается только для пекаря");
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: actor.id }, select: { passwordHash: true } });
+    const deviceToken = await this.bakerDeviceJwt().signAsync(
+      { typ: "baker-device", sub: actor.id, org: actor.organizationId, pv: this.passwordStamp(user.passwordHash) },
+      { expiresIn: "365d" },
+    );
+    return { deviceToken };
+  }
+
+  async bakerPinLogin(deviceToken: string, pin: string): Promise<LoginResponseDto> {
+    const again = new UnauthorizedException("Телефон нужно подключить заново");
+    let payload: { typ?: string; sub?: string; org?: string; pv?: string };
+    try {
+      payload = await this.bakerDeviceJwt().verifyAsync(deviceToken);
+    } catch {
+      throw again;
+    }
+    if (payload.typ !== "baker-device" || !payload.sub || !payload.org) throw again;
+    const device = await this.prisma.user.findFirst({ where: { id: payload.sub, organizationId: payload.org, isActive: true } });
+    if (!device || !BAKER_PHONE_ROLES.includes(device.role as Role) || this.passwordStamp(device.passwordHash) !== payload.pv) throw again;
+    const actor: AuthenticatedUser = {
+      id: device.id,
+      email: device.email,
+      fullName: device.fullName,
+      role: device.role as Role,
+      title: device.title,
+      organizationId: device.organizationId,
+      regionId: device.regionId,
+      locationId: device.locationId,
+    };
+    // Wrong PINs are counted per phone (findUserByPin locks it for 5 minutes after 5 misses).
+    const found = await findUserByPin(this.prisma, actor, pin);
+    if (!BAKER_PHONE_ROLES.includes(found.role as Role)) throw new ForbiddenException("Этот PIN не у пекаря");
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: found.id }, include: { organization: true } });
     const accessToken = await this.jwtService.signAsync({ sub: user.id, organizationId: user.organizationId } satisfies JwtPayload);
     return { accessToken, user: this.toCurrentUserDto(user) };

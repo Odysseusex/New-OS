@@ -8,6 +8,7 @@ import { OrganizationsModule } from "./organizations/organizations.module";
 import { LocationsModule } from "./locations/locations.module";
 import { DirectionsModule } from "./directions/directions.module";
 import { DistributionModule } from "./distribution/distribution.module";
+import { BakerModule } from "./baker/baker.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { ProductsModule } from "./products/products.module";
 import { CategoriesModule } from "./categories/categories.module";
@@ -60,6 +61,7 @@ import { DemoCompanyModule } from "./demo/demo-company.module";
     LocationsModule,
     DirectionsModule,
     DistributionModule,
+    BakerModule,
     DashboardModule,
     ProductsModule,
     CategoriesModule,

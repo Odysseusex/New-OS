@@ -1026,6 +1026,46 @@ prefilled from it; «Сохранить как постоянный заказ»
 /distribution/standing-orders`, INVENTORY_MANAGE_ROLES, audited `standingOrder.update`; a 0-quantity line is kept only
 when it carries a price). Customer prices: «цены» under the column header. Spec `distribution/standing-orders.spec.ts`.
 
+## «Накладные пекарей» — the bakers' phone screen + «Провести день» (built 24.11.2026)
+
+The two bakers used to write накладные on paper and photograph them; in the evening they were typed in from the photos
+(bad handwriting, «булочки по 650»). Now: `/baker` (outside `(app)`, own layout + manifest `public/baker/`, big buttons;
+`app/baker/page.tsx` = sign-in, `baker-app.tsx` = the screen), API `apps/api/src/baker/`, shared `baker.ts`, migration
+`20261208120000_baker_notes` (additive: `BakerNote`, `BakerNoteLine`, `Organization.bakerNoteSequence`). Spec
+`baker/baker-notes.spec.ts`. Rules that are easy to break:
+
+- **A note is a DRAFT: it moves no stock and no money**, and no report reads it. `BakerNoteKind` DELIVERY (to an own STORE
+  point or a wholesale customer) / FRIDGE («Холодильник на завтра», one per workshop and day — saving again replaces it,
+  partial unique index). Status SENT → POSTING → POSTED, or CANCELLED. Editable only while SENT: a baker their own, the
+  day roles any; the recipient never changes. Numbered per organization. Removed by clean start.
+- **A baker never types a price.** The server sets it on every save (`BakerNotesService.cleanLines`): a point = its price
+  list (through `price-source`), a wholesale customer = the agreed price (`StandingOrderLine.unitPrice`, the «цены» of
+  «Распределение»), else the product's base price. Only own, tracked, active finished goods can be put on a note.
+  «Как вчера» = the latest EARLIER note to that recipient (quantities only; prices are today's).
+- **Sign-in on a baker's own phone**: connected ONCE with the baker's email + password → `POST /auth/baker-device` gives a
+  365-day device key (JWT signed with `…:baker-device`, never valid as a login; dies when that account's password changes
+  or the account is switched off), kept in localStorage `baker_device_token`. After that `POST /auth/baker-pin
+  {deviceToken, pin}` → an ordinary 8-hour login for whichever `BAKER_PHONE_ROLES` user (PRODUCTION_STAFF «Пекарь»,
+  PRODUCTION_MANAGER) the PIN belongs to — so every note carries who sent it. A baker = a user with role «Пекарь», the
+  workshop as their point and a PIN (Настройки). `homeFor(PRODUCTION_STAFF)` is `/baker`. What is typed is kept in
+  localStorage until sent (a locked phone loses nothing).
+- **Operator**: Производство → «Накладные пекарей» (`components/baker-day-tab.tsx`, `BAKER_DAY_ROLES` = OWNER, ADMIN,
+  PRODUCTION_MANAGER, OPERATOR, ASSISTANT): the day's list, «Печать всех накладных» (one per sheet), «Изменить» opens the
+  note in `/baker?note=<id>`, other days with unposted notes are pointed out. A new note = a live notification
+  (`NotificationType.BAKER_NOTE`, until posted) and a Telegram line to linked users of those roles (never awaited).
+- **«Провести день»** (`BakerDayService`, `GET /baker/day/preview`, `POST /baker/day/post`): per product
+  **выпуск = отгружено (unposted notes) + холодильник − what the workshop's books hold now** (shared `bakerDayOutput`,
+  never below zero — books holding more is a warning and nothing is baked away). So a second run after late notes bakes
+  only their goods, and a lost response never bakes twice. Then, with the EXISTING services and nothing new:
+  `ProductionService.release` (one transaction; a product with no техкарта or — unless «уход в минус» — a raw-material
+  shortage is a BLOCKER shown in the preview, before anything is written), `MaterialRequisitionsService.transfer` per
+  point (note «Накладная пекаря № N»), `SalesService.create` per customer (`amountPaid: 0`, the note's prices). The post
+  must carry the preview's `signature` (notes, fridge, output) — anything changed since → 409 «проверьте заново». Each
+  note is claimed SENT → POSTING by one conditional UPDATE, so it can never become two documents; a refused one goes back
+  to SENT with `postError` and the rest go through; a POSTING note older than 3 min is resolved by finding its document
+  (`recoverStuck`). One posting at a time per workshop (in-memory — the API is one process). A user tied to a point must
+  be tied to the workshop (the sale and the transfer are made as that user).
+
 ## Actual raw material in production + «Отклонения» (built)
 
 «Завершить» shows the norm per ingredient (`GET /production/batches/:id/norm`: the recipe expanded to stocked items,

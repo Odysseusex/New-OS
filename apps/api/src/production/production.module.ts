@@ -8,6 +8,6 @@ import { StockTransfersController } from "./transfers.controller";
 @Module({
   providers: [ProductionService, MaterialRequisitionsService],
   controllers: [MaterialRequisitionsController, StockTransfersController, ProductionController],
-  exports: [ProductionService],
+  exports: [ProductionService, MaterialRequisitionsService],
 })
 export class ProductionModule {}

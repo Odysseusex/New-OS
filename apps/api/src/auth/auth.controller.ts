@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
 import { AuthService } from "./auth.service";
 import { LoginDto } from "./dto/login.dto";
-import { PinLoginDto, TillApprovalBodyDto } from "./dto/till-pin.dto";
+import { BakerPinLoginDto, PinLoginDto, TillApprovalBodyDto } from "./dto/till-pin.dto";
 import { JwtAuthGuard } from "./jwt-auth.guard";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { PrismaService } from "../prisma/prisma.service";
@@ -24,6 +24,18 @@ export class AuthController {
   @Post("pin-login")
   pinLogin(@CurrentUser() user: AuthenticatedUser, @Body() dto: PinLoginDto) {
     return this.authService.pinLogin(user, dto.pin);
+  }
+
+  // A baker's phone: a device key for the signed-in baker, then PIN sign-in with that key.
+  @UseGuards(JwtAuthGuard)
+  @Post("baker-device")
+  bakerDevice(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.bakerDevice(user);
+  }
+
+  @Post("baker-pin")
+  bakerPin(@Body() dto: BakerPinLoginDto) {
+    return this.authService.bakerPinLogin(dto.deviceToken, dto.pin);
   }
 
   @UseGuards(JwtAuthGuard)

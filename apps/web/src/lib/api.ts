@@ -3,6 +3,15 @@ import type { CutSourceResultDto, SetCutSourceRequestDto } from "@bakery-os/shar
 import type { CreateDirectionRequestDto, DirectionDto, UpdateDirectionRequestDto } from "@bakery-os/shared";
 import type { CleanStartPreviewDto, CleanStartResultDto } from "@bakery-os/shared";
 import type {
+  BakerCatalogDto,
+  BakerDayDto,
+  BakerDayPostRequestDto,
+  BakerDayPostResultDto,
+  BakerDayPreviewDto,
+  BakerNoteDto,
+  SaveBakerNoteRequestDto,
+} from "@bakery-os/shared";
+import type {
   CashFlowMonthlyDto,
   CashFlowOperationsDto,
   CounterpartyStatementDto,
@@ -348,6 +357,22 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   me: () => request<LoginResponseDto["user"]>("/auth/me"),
+  // «Накладные пекарей»: the phone screen (/baker) and the operator's day.
+  baker: {
+    device: () => request<{ deviceToken: string }>("/auth/baker-device", { method: "POST" }),
+    pinLogin: (deviceToken: string, pin: string) =>
+      request<LoginResponseDto>("/auth/baker-pin", { method: "POST", body: JSON.stringify({ deviceToken, pin }) }),
+    catalog: (sourceLocationId?: string) => request<BakerCatalogDto>(withQuery("/baker/catalog", { sourceLocationId })),
+    day: (day?: string, sourceLocationId?: string) => request<BakerDayDto>(withQuery("/baker/day", { day, sourceLocationId })),
+    note: (id: string) => request<BakerNoteDto>(`/baker/notes/${id}`),
+    previous: (params: { kind?: string; customerId?: string; locationId?: string; sourceLocationId?: string }) =>
+      request<{ note: BakerNoteDto | null }>(withQuery("/baker/notes/previous", params)),
+    create: (dto: SaveBakerNoteRequestDto) => request<BakerNoteDto>("/baker/notes", { method: "POST", body: JSON.stringify(dto) }),
+    update: (id: string, dto: SaveBakerNoteRequestDto) => request<BakerNoteDto>(`/baker/notes/${id}`, { method: "PUT", body: JSON.stringify(dto) }),
+    cancel: (id: string) => request<BakerNoteDto>(`/baker/notes/${id}/cancel`, { method: "POST" }),
+    preview: (day: string, sourceLocationId: string) => request<BakerDayPreviewDto>(withQuery("/baker/day/preview", { day, sourceLocationId })),
+    post: (dto: BakerDayPostRequestDto) => request<BakerDayPostResultDto>("/baker/day/post", { method: "POST", body: JSON.stringify(dto) }),
+  },
   tillPin: {
     login: (pin: string) => request<LoginResponseDto>("/auth/pin-login", { method: "POST", body: JSON.stringify({ pin }) }),
     approve: (dto: TillApprovalRequestDto) => request<TillApprovalDto>("/auth/till-approval", { method: "POST", body: JSON.stringify(dto) }),

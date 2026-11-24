@@ -37,5 +37,6 @@ import { TelegramNotificationsCron } from "./telegram-notifications.cron";
     TelegramChatStateService,
     TelegramNotificationsCron,
   ],
+  exports: [TelegramBotService],
 })
 export class TelegramModule {}

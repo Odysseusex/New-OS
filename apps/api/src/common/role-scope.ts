@@ -21,7 +21,7 @@ export const STAFF_BOT_EXCLUDED_ROLES: Role[] = [Role.CLIENT_MANAGER, Role.ASSIS
 //     (owner, 24.11.2026): it creates a count, types the figures in and sends it for review, but
 //     «Провести» sets the whole shelf at once and stays a person's press on the screen.
 export const ASSISTANT_REFUSALS = {
-  closed: ["/users", "/clean-start", "/backup", "/demo-company", "/fiscal", "/audit", "/telegram", "/club", "/auth/pin-login", "/auth/till-approval"],
+  closed: ["/users", "/clean-start", "/backup", "/demo-company", "/fiscal", "/audit", "/telegram", "/club", "/auth/pin-login", "/auth/till-approval", "/auth/baker-device", "/auth/baker-pin"],
   readOnly: [
     "/finance/periods",
     "/finance/setup",

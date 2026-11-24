@@ -48,3 +48,4 @@ export * from "./till-shifts";
 export * from "./requisitions";
 export * from "./clean-start";
 export * from "./club";
+export * from "./baker";

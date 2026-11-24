@@ -75,6 +75,11 @@ A closed month refuses writes dated in it: tell the owner, do not try another da
   `POST /inventory/transfers`, `GET /inventory/turnover?from&to&locationId`.
 - Production: `POST /production/batches/release/preview`, then `POST /production/batches/release`;
   `GET /production/batches/output|deviations`.
+- Bakers' notes (they type the day's накладные on their phones — no more photos): `GET /baker/day?day&sourceLocationId`
+  (the notes and «Холодильник на завтра»), `GET /baker/day/preview?day&sourceLocationId` (the output it will bake, raw
+  materials, shortages, `blockers`), then — after the owner's «да» — `POST /baker/day/post {day, sourceLocationId, signature}`
+  with the preview's `signature`. It makes the release, the transfers and the sales on account itself; do NOT also enter
+  them by hand. A wrong note: `PUT /baker/notes/:id` (quantities only, the server sets the prices) or `POST …/cancel`.
 - Purchasing: `GET|POST /procurement/orders`, `POST /procurement/orders/:id/receive|revise|supplier-return|payments|cancel`.
 - Sales: `GET /sales`, `GET /sales/:id`, `POST /sales` (wholesale), `POST /sales/customer-payments`,
   `GET /sales/report|profitability|dynamics`.
