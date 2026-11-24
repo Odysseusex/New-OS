@@ -444,9 +444,6 @@ export const api = {
           locationId: locationId || undefined,
         }),
       ),
-    // The till's «Произвольная сумма» line — created on first call, the same
-    // row on every call after that.
-    openPrice: () => request<ProductDto>("/products/open-price"),
     locationPrices: (locationId: string) =>
       request<LocationPriceRowDto[]>(`/products/location-prices/${locationId}`),
     setLocationPrice: (locationId: string, productId: string, price: number) =>

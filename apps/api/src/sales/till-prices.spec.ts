@@ -44,25 +44,19 @@ describe("till prices are the server's, not the cashier's", () => {
     expect((await sell(cashier, [{ productId: cakeId, quantity: 1, unitPrice: markdownPrice(1000), fullUnitPrice: 1000 }])).totalAmount).toBe(markdownPrice(1000));
   });
 
-  it("refuses «Произвольная сумма» from a cashier, alone or in a basket", async () => {
-    await expect(sell(cashier, [{ productId: openPriceId, quantity: 1, unitPrice: 437 }])).rejects.toThrow("Произвольная сумма на этой точке отключена");
-    await expect(
-      sell(cashier, [
-        { productId: cakeId, quantity: 1, unitPrice: 1000 },
-        { productId: openPriceId, quantity: 1, unitPrice: 437 },
-      ]),
-    ).rejects.toThrow("Произвольная сумма на этой точке отключена");
-  });
-
-  it("accepts «Произвольная сумма» where the point allows it, never at zero", async () => {
+  it("refuses «Произвольная сумма» for every role, even where a point once allowed it", async () => {
+    // Removed everywhere on the owner's request (24.11.2026); the old per-point switch no longer opens it.
     await prisma.location.update({ where: { id: org.storeId }, data: { tillOpenPrice: true } });
     try {
-      const sale = await sell(cashier, [
-        { productId: cakeId, quantity: 1, unitPrice: 1000 },
-        { productId: openPriceId, quantity: 1, unitPrice: 437 },
-      ]);
-      expect(sale.totalAmount).toBe(1437);
-      await expect(sell(cashier, [{ productId: openPriceId, quantity: 1, unitPrice: 0 }])).rejects.toThrow("больше нуля");
+      for (const who of [cashier, org.user]) {
+        await expect(sell(who, [{ productId: openPriceId, quantity: 1, unitPrice: 437 }])).rejects.toThrow("«Произвольная сумма» отключена");
+        await expect(
+          sell(who, [
+            { productId: cakeId, quantity: 1, unitPrice: 1000 },
+            { productId: openPriceId, quantity: 1, unitPrice: 437 },
+          ]),
+        ).rejects.toThrow("«Произвольная сумма» отключена");
+      }
     } finally {
       await prisma.location.update({ where: { id: org.storeId }, data: { tillOpenPrice: false } });
     }
@@ -82,7 +76,7 @@ describe("till prices are the server's, not the cashier's", () => {
     }
     // Nothing of the refused checks reached the shelf.
     const level = await prisma.stockLevel.findUniqueOrThrow({ where: { locationId_productId: { locationId: org.storeId, productId: cakeId } } });
-    expect(level.quantity.toNumber()).toBe(47);
+    expect(level.quantity.toNumber()).toBe(48);
   });
 
   it("an owner may still agree a price (wholesale on «Продажи»)", async () => {

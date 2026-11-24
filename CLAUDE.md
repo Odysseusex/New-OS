@@ -1286,7 +1286,10 @@ blank «Дата» instead of the day, so it can be printed the day before.
 
 **A cashier's price is the server's** (`SalesService.assertTillPrices`): a CASHIER line must be the point's price or its
 fixed markdown (`markdownPrice`, with `fullUnitPrice` = point price) — the only things the till sends; anything else is
-refused. **«Произвольная сумма» is per point** (owner, 11.11.2026, after first switching it off for «Сверка дня»: an
+refused. **«Произвольная сумма» is REMOVED everywhere** (owner, 24.11.2026, «чтобы не мучился с галочками»): no till tile, no
+point checkbox, no `/products/open-price` endpoint, the row is left out of `GET /products`, and `SalesService.create` refuses an
+`isOpenPrice` product for EVERY role; the columns (`Product.isOpenPrice`, `Location.tillOpenPrice`) stay for history. Before
+that it was per point (owner, 11.11.2026, after first switching it off for «Сверка дня»: an
 amount with no product cannot be checked against the shelf): `Location.tillOpenPrice` (default OFF, migration
 `20261126120000`, checkbox «"Произвольная сумма" на кассе» in the point form, STORE only) — the till shows the tile only
 there, and a CASHIER line on the `isOpenPrice` product is refused elsewhere (and at 0 ₸ everywhere); the product row itself stays (history, and other roles' sales on «Продажи») (a 0 ₸ check with the cash pocketed balances perfectly in «Сверка

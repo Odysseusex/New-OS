@@ -91,16 +91,6 @@ export class ProductsController {
     return this.productsService.clearLocationPrice(user.organizationId, locationId, productId, user.id);
   }
 
-  // The till needs this row to ring up an item that is not in the catalogue
-  // yet, so it is gated to whoever may sell — not to PRODUCT_MANAGE_ROLES —
-  // even though it can create a product. It creates exactly one, once, and
-  // returns the same one forever after.
-  @Get("open-price")
-  @Roles(...SALE_CREATE_ROLES)
-  openPrice(@CurrentUser() user: AuthenticatedUser) {
-    return this.productsService.getOrCreateOpenPrice(user.organizationId);
-  }
-
   @Post()
   @Roles(...PRODUCT_MANAGE_ROLES)
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateProductDto) {
