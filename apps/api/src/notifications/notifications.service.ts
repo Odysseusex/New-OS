@@ -11,6 +11,7 @@ import {
   NotificationSeverity,
   NotificationType,
   ORG_WIDE_ROLES,
+  BAKER_DAY_ROLES,
 } from "@bakery-os/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuthenticatedUser } from "../auth/auth.types";
@@ -113,6 +114,28 @@ export class NotificationsService {
     ]);
 
     const notifications: NotificationDto[] = [];
+    // A baker's note waiting for «Провести день» — for whoever posts the day.
+    if (BAKER_DAY_ROLES.includes(user.role)) {
+      const waiting = await this.prisma.bakerNote.findMany({
+        where: { organizationId: user.organizationId, kind: "DELIVERY", status: "SENT", ...(locationId ? { sourceLocationId: locationId } : {}) },
+        include: { customer: { select: { name: true } }, location: { select: { name: true } }, sourceLocation: { select: { name: true } }, _count: { select: { lines: true } } },
+        orderBy: { number: "desc" },
+        take: 50,
+      });
+      for (const note of waiting) {
+        notifications.push({
+          key: `baker-note:${note.id}:${now.toISOString().slice(0, 10)}`,
+          type: NotificationType.BAKER_NOTE,
+          severity: NotificationSeverity.INFO,
+          title: `Накладная пекаря № ${note.number}`,
+          message: `→ ${note.customer?.name ?? note.location?.name ?? ""}: позиций ${note._count.lines}, сумма ${Math.round(note.total.toNumber()).toLocaleString("ru-RU")} ₸ (${note.createdByName})`,
+          locationId: note.sourceLocationId,
+          locationName: note.sourceLocation.name,
+          link: "/production?tab=baker",
+          createdAt: note.createdAt.toISOString(),
+        });
+      }
+    }
     // Every key ends with today's date so a dismissal only means "seen
     // today" — if the underlying condition is still true tomorrow, it
     // resurfaces instead of staying hidden forever.

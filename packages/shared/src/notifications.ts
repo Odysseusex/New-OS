@@ -9,6 +9,8 @@ export enum NotificationType {
   MISSING_BANK_ACCOUNT = "MISSING_BANK_ACCOUNT",
   // A customer is past the agreed date of payment.
   OVERDUE_RECEIVABLE = "OVERDUE_RECEIVABLE",
+  // A baker sent a delivery note from the phone and it is not posted yet.
+  BAKER_NOTE = "BAKER_NOTE",
 }
 
 export enum NotificationSeverity {

@@ -39,7 +39,9 @@ Reading (reports, analysis, searching for mistakes) needs no confirmation.
 
 ## What you may do, and what the server refuses
 
-May: Склад (приёмка, списание, корректировка, перемещение), производство («Выпуск за день», техкарты,
+May: Склад (приёмка, списание, корректировка, перемещение; инвентаризация — создать, внести цифры,
+отправить на проверку, но «Провести» нажимает только владелец на экране: `POST /stocktakes/:id/approve`
+is refused), производство («Выпуск за день», техкарты,
 требования), закупки (заказ, приёмка, исправление приёмки, возврат поставщику, оплата), товары / цены /
 категории, оптовые клиенты и поставщики, «Новая продажа» (оптовая, по документу), расходы и их оплата,
 оплаты от клиентов, банковские выписки, все отчёты и анализ.
@@ -50,7 +52,7 @@ account, article and date; small portions; never «assume» an article or an acc
 Refused by the server for this role (do not look for a way around — tell the owner it is his to do on the
 screen): any DELETE; closing/reopening a month; «Начать с чистого листа»; аннулирование; inventory and
 finance settings, «Запустить»; the general ledger; users, PINs, keys; locations, directions; loyalty / CRM /
-promotions; till shifts and till approvals; stocktakes; backup; audit log; fiscal cash register.
+promotions; till shifts and till approvals; backup; audit log; fiscal cash register.
 Also not yours even if a route answers: sale returns («Исправить чек»), cash-account balance corrections.
 
 ## Undo
@@ -73,6 +75,11 @@ A closed month refuses writes dated in it: tell the owner, do not try another da
   `POST /inventory/transfers`, `GET /inventory/turnover?from&to&locationId`.
 - Production: `POST /production/batches/release/preview`, then `POST /production/batches/release`;
   `GET /production/batches/output|deviations`.
+- Bakers' notes (they type the day's накладные on their phones — no more photos): `GET /baker/day?day&sourceLocationId`
+  (the notes and «Холодильник на завтра»), `GET /baker/day/preview?day&sourceLocationId` (the output it will bake, raw
+  materials, shortages, `blockers`), then — after the owner's «да» — `POST /baker/day/post {day, sourceLocationId, signature}`
+  with the preview's `signature`. It makes the release, the transfers and the sales on account itself; do NOT also enter
+  them by hand. A wrong note: `PUT /baker/notes/:id` (quantities only, the server sets the prices) or `POST …/cancel`.
 - Purchasing: `GET|POST /procurement/orders`, `POST /procurement/orders/:id/receive|revise|supplier-return|payments|cancel`.
 - Sales: `GET /sales`, `GET /sales/:id`, `POST /sales` (wholesale), `POST /sales/customer-payments`,
   `GET /sales/report|profitability|dynamics`.

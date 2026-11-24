@@ -16,9 +16,12 @@ export const STAFF_BOT_EXCLUDED_ROLES: Role[] = [Role.CLIENT_MANAGER, Role.ASSIS
 // everything about people, access and settings, is refused HERE as well as by each route's own roles —
 // so a route added later with too wide a role list still cannot be reached by it.
 //   · nothing is ever deleted (DELETE anywhere);
-//   · `closed`: no request at all; `readOnly`: reading only.
+//   · `closed`: no request at all; `readOnly`: reading only;
+//   · `refusedActions`: single routes refused inside an area it otherwise works in. Stock counts
+//     (owner, 24.11.2026): it creates a count, types the figures in and sends it for review, but
+//     «Провести» sets the whole shelf at once and stays a person's press on the screen.
 export const ASSISTANT_REFUSALS = {
-  closed: ["/users", "/clean-start", "/backup", "/demo-company", "/fiscal", "/audit", "/telegram", "/club", "/auth/pin-login", "/auth/till-approval"],
+  closed: ["/users", "/clean-start", "/backup", "/demo-company", "/fiscal", "/audit", "/telegram", "/club", "/auth/pin-login", "/auth/till-approval", "/auth/baker-device", "/auth/baker-pin"],
   readOnly: [
     "/finance/periods",
     "/finance/setup",
@@ -35,12 +38,12 @@ export const ASSISTANT_REFUSALS = {
     "/promotions",
     "/till-shifts",
     "/classification",
-    "/stocktakes",
     "/fixed-assets",
     "/planning",
     "/vehicles",
     "/logistics",
   ],
+  refusedActions: [/^\/stocktakes\/[^/]+\/approve$/],
 };
 
 const under = (clean: string, prefixes: string[]) => prefixes.some((prefix) => clean === prefix || clean.startsWith(`${prefix}/`));
@@ -52,6 +55,7 @@ export function pathAllowedForRole(role: Role, path: string, method = "GET"): bo
     if (method.toUpperCase() === "DELETE") return false;
     if (under(clean, ASSISTANT_REFUSALS.closed)) return false;
     if (!reading && under(clean, ASSISTANT_REFUSALS.readOnly)) return false;
+    if (!reading && ASSISTANT_REFUSALS.refusedActions.some((route) => route.test(clean))) return false;
     return true;
   }
   const scope = ROLE_API_SCOPE[role];

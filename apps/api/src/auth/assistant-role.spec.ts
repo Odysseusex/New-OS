@@ -74,6 +74,12 @@ it("the server refuses deletes, people, settings and month closing whatever the 
   expect(pathAllowedForRole(A, "/api/inventory/settings", "PUT")).toBe(false);
   expect(pathAllowedForRole(A, "/api/ledger/entries", "POST")).toBe(false);
   expect(pathAllowedForRole(A, "/api/locations/x", "PATCH")).toBe(false);
+  // A stock count: it creates one, types the figures and sends it for review; approving stays a person's.
+  expect(pathAllowedForRole(A, "/api/stocktakes", "POST")).toBe(true);
+  expect(pathAllowedForRole(A, "/api/stocktakes/x/lines/y", "PUT")).toBe(true);
+  expect(pathAllowedForRole(A, "/api/stocktakes/x/submit", "POST")).toBe(true);
+  expect(pathAllowedForRole(A, "/api/stocktakes/x/approve", "POST")).toBe(false);
+  expect(pathAllowedForRole(A, "/api/stocktakes/x/approve?opening=1", "POST")).toBe(false);
   // Nothing is ever deleted, anywhere.
   expect(pathAllowedForRole(A, "/api/products/x", "DELETE")).toBe(false);
   expect(pathAllowedForRole(A, "/api/production/batches/x", "DELETE")).toBe(false);

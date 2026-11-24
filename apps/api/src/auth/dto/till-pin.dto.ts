@@ -31,3 +31,13 @@ export class SetUserPinDto {
   @MaxLength(12)
   pin!: string | null;
 }
+
+export class BakerPinLoginDto {
+  @IsString()
+  @MaxLength(1000)
+  deviceToken!: string;
+
+  @IsString()
+  @MaxLength(12)
+  pin!: string;
+}

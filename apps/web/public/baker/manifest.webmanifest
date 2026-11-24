@@ -1,0 +1,15 @@
+{
+  "name": "Ar Amir — накладные пекаря",
+  "short_name": "Накладные",
+  "description": "Накладные пекаря: кому, что и сколько отгружено",
+  "start_url": "/baker",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f7f5f2",
+  "theme_color": "#a85333",
+  "icons": [
+    { "src": "/logo.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/logo.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
