@@ -2028,7 +2028,7 @@ with the programme on (else the oldest non-sandbox org).
   `ClubPushNotice`. Endpoints `GET /club/push/key`, `POST /club/push/subscribe|unsubscribe` (club token; only the browsers'
   own push hosts are accepted — the server sends requests there). Worker `public/app/sw.js` (scope `/app/`, the page is
   `/app`, so the code waits for ITS registration, never `serviceWorker.ready`). In the app: an offer on the card screen and
-  a section in «Профиль» (`_components/push.ts`); iPhone only once the app is on the home screen. **Channel order is now
+  a section in «Профиль» (`_components/push.ts`); iPhone only once the app is on the home screen. «Профиль» has NO «Выключить» (owner, 25.11.2026: keep notifications on) — only «Включены» + what they bring, or «Включить»; the phone's settings still switch them off. **Channel order is now
   app → WhatsApp → Telegram** (`CustomerBotService.viaPush`, decided before sending, one channel per notice): purchase,
   return, expiring points, birthday, owner's manual message, plus «Новый уровень» (`recordSale` returns `tierUp`,
   `notifySale(detail, tierUp)`). Verified with a fake transport (`club-push.spec.ts`) and in a browser with the push
