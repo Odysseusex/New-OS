@@ -20,7 +20,6 @@ export interface Waybill {
   number: string;
   // «25.11.2026, 14:05»
   dateTime: string;
-  from: string;
   recipient: string;
   // Goods going to one of our own points, not to a customer.
   transfer: boolean;
@@ -82,7 +81,6 @@ export function bakerNoteWaybill(note: BakerNoteDto, brand = WAYBILL_BRAND): Way
     brand,
     number: String(note.number),
     dateTime: stamp(note.createdAt),
-    from: note.sourceLocationName,
     recipient: note.recipient?.name ?? "",
     transfer: note.recipient?.kind === "location",
     lines: note.lines.map((l) => ({ name: l.productName, quantity: l.quantity, unit: UNIT_LABELS_RU[l.unit], price: l.unitPrice, sum: l.subtotal })),
@@ -102,7 +100,6 @@ export function saleWaybill(sale: SaleDetailDto, units: UnitByProduct, brand = W
     brand,
     number: sale.number !== null ? String(sale.number) : sale.id.slice(-8).toUpperCase(),
     dateTime: stamp(sale.soldAt),
-    from: sale.locationName,
     recipient: sale.customerName ?? "Розничный покупатель",
     transfer: false,
     lines: sale.items.map((i) => ({
@@ -135,8 +132,8 @@ function waybillHtml(w: Waybill): string {
       : "";
   return `<section>
 <header>
-<div><p class="brand">${esc(w.brand)}</p><p class="doc">Накладная № ${esc(w.number)}</p><p class="when">${esc(w.dateTime)}</p></div>
-<div class="from"><span>Отгружено с</span><b>${esc(w.from)}</b></div>
+<div><p class="doc">Накладная № ${esc(w.number)}</p><p class="when">${esc(w.dateTime)}</p></div>
+<p class="brand">${esc(w.brand)}</p>
 </header>
 <div class="to"><span>${waybillRecipientLabel(w)}</span><b>${esc(w.recipient)}</b></div>
 <table>
@@ -169,11 +166,9 @@ section{width:100%}
 section+section{break-before:page;page-break-before:always}
 header{display:flex;justify-content:space-between;align-items:flex-start;gap:8mm;margin-bottom:6mm}
 .brand{font-size:14pt;font-weight:600;line-height:1.1}
-.doc{font-size:11pt;margin-top:1.6mm}
+.doc{font-size:12pt;font-weight:500;line-height:1.1}
 .when{font-size:9pt;color:#78716c;margin-top:0.8mm}
-.from{text-align:right;max-width:70mm}
-.from span,.to span{display:block;font-size:8.5pt;color:#78716c}
-.from b{display:block;font-size:11pt;font-weight:500;margin-top:0.8mm;line-height:1.2}
+.to span{display:block;font-size:8.5pt;color:#78716c}
 .to{background:#f6f1ea;border-radius:3mm;padding:3.4mm 5mm 3.8mm;margin-bottom:4.5mm;break-inside:avoid;page-break-inside:avoid}
 .to b{display:block;font-family:"${WAYBILL_DISPLAY_FAMILY}",Georgia,serif;font-size:20pt;font-weight:400;line-height:1.15;margin-top:0.8mm;color:#1c1917}
 table{width:100%;border-collapse:collapse;table-layout:fixed}
@@ -199,7 +194,6 @@ body.pack section:last-child{padding-bottom:0;margin-bottom:0;border-bottom:0}
 body.pack section:last-child::after{content:none}
 body.pack header{margin-bottom:2.2mm}
 body.pack .brand{font-size:12pt}
-body.pack .doc{margin-top:0.6mm}
 body.pack .when{margin-top:0.3mm}
 body.pack .to{padding:1.6mm 4mm 2mm;margin-bottom:2mm}
 body.pack .to b{font-size:16pt;margin-top:0.2mm}

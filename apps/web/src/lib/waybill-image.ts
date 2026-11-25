@@ -92,15 +92,11 @@ function draw(ctx: CanvasRenderingContext2D, w: Waybill, dry: boolean): number {
   };
   let y = PAD;
 
-  // Header: who we are and the document on the left, where it left from on the right.
-  ctx.font = font(26, 500);
-  const fromLines = wrap(ctx, w.from, 400);
-  text(w.brand, PAD, y + 36, font(34, 600));
-  text(`Накладная № ${w.number}`, PAD, y + 80, font(26, 400));
-  text(w.dateTime, PAD, y + 114, font(22), MUTED);
-  text("Отгружено с", W - PAD, y + 28, font(20), MUTED, "right");
-  fromLines.forEach((l, i) => text(l, W - PAD, y + 64 + i * 34, font(26, 500), INK, "right"));
-  y += Math.max(126, 40 + fromLines.length * 34) + 34;
+  // Header (owner, 25.11.2026): the document and its date on the left, our name on the right — no «Отгружено с».
+  text(`Накладная № ${w.number}`, PAD, y + 36, font(30, 500));
+  text(w.dateTime, PAD, y + 74, font(22), MUTED);
+  text(w.brand, W - PAD, y + 36, font(34, 600), INK, "right");
+  y += 74 + 40;
 
   // Recipient: the line the box is sorted by — Forum on a soft warm ground.
   ctx.font = display(54);

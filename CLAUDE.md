@@ -1096,7 +1096,7 @@ Only the bakers' notes (owner's choice); sales typed by hand in «Продажи
 
 ## One look for every накладная — picture for WhatsApp + print (built 25.11.2026)
 
-`lib/waybill.ts` (`Waybill` = brand, number, date and time, «Отгружено с», recipient, lines, total, paid / debt;
+`lib/waybill.ts` (`Waybill` = brand, number, date and time, recipient, lines, total, paid / debt;
 NO person's name and NO signature lines — owner, 25.11.2026: neither «Сдал» nor «Принял») is the ONE description of a накладная, made by `bakerNoteWaybill(note)` or `saleWaybill(sale, units)` (a
 sale's lines carry no unit — `lib/sale-waybills.ts` reads the products' units once, archived ones too). Two forms of it:
 - **The look is deliberately quiet** (owner, 25.11.2026, after a first version with a filled recipient block, large
@@ -1106,6 +1106,8 @@ sale's lines carry no unit — `lib/sale-waybills.ts` reads the products' units 
   rejected, Tenor Sans has no ӘҒҚҢӨҰҮҺ) on a soft warm rounded ground. The face is served from `public/fonts/Forum-*`
   (`WAYBILL_DISPLAY_FACES`): loaded with `FontFace` before a picture is drawn, and the print window gets `@font-face` with
   the page's origin and prints via `printWhenReady` (waits ≤ 2.5 s for the face).
+- **Header** (owner, 25.11.2026): «Накладная № N» + date on the left, «Ar-Amir» on the right; no «Отгружено с» (the
+  number stays: it is how a point and the operator name one накладная).
 - **Print** `waybillsPrintHtml(list, pack)` / `printWaybills`: A4, 15 mm margins, full width — header, the
   «Получатель» block between two hairlines (for an own point «Перемещение на точку»), table № / Товар / Кол-во / Ед. / Цена / Сумма, «Итого: N
   позиций, M шт — сумма», «Оплачено» / «Остаток долга» for a sale to a customer; no signature lines. `pack` = «Несколько на
