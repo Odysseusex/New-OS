@@ -1076,6 +1076,27 @@ The two bakers used to write накладные on paper and photograph them; in
   (`recoverStuck`). One posting at a time per workshop (in-memory — the API is one process). A user tied to a point must
   be tied to the workshop (the sale and the transfer are made as that user).
 
+## One look for every накладная — picture for WhatsApp + print (built 25.11.2026)
+
+`lib/waybill.ts` (`Waybill` = brand, number, date and time, «Отгружено с», recipient, lines, total, paid / debt, who
+handed over) is the ONE description of a накладная, made by `bakerNoteWaybill(note)` or `saleWaybill(sale, units)` (a
+sale's lines carry no unit — `lib/sale-waybills.ts` reads the products' units once, archived ones too). Two forms of it:
+- **Print** `waybillsPrintHtml(list, pack)` / `printWaybills`: A4, 15 mm margins, full width — header, the soft
+  «Получатель» block (for an own point «Перемещение на точку»), table № / Товар / Кол-во / Ед. / Цена / Сумма, «Итого: N
+  позиций, M шт — сумма», «Оплачено» / «Остаток долга» for a sale to a customer, «Сдал / Принял». `pack` = «Несколько на
+  листе» with the same measuring script as before (as many as fit whole — two of the usual length — never a break inside
+  one; preference in localStorage `baker_print_pack`). It replaced `baker-note-print.ts` and the sale card's `window.print()`.
+- **Picture** `lib/waybill-image.ts` `renderWaybillPng`: drawn on a canvas by hand (1080 wide × 2, white; less sharp only
+  when a very long one would exceed a phone's canvas limit). NOT html→svg→canvas (Safari on an iPad taints / refuses it)
+  and no library. The two renderers share only the data and the wording helpers — change the look in BOTH.
+- `components/waybill-share-modal.tsx` «Отправить в WhatsApp»: prepares the pictures first, THEN the person presses
+  «Поделиться» (Web Share with every file at once; the press must be fresh — loading a list of sales first would lose the
+  browser's permission to open the menu) or «Скачать» (one PNG, several = a zip by `fflate`). The program never posts into
+  a chat itself: the person picks WhatsApp and the chat in the system menu.
+- Where: Производство → «Накладные пекарей» (ticked notes, and in an opened note), the sale card («Печать накладной» for
+  any sale, «Отправить в WhatsApp» for a wholesale one), Продажи list — a checkbox in the «Время» cell of wholesale sales →
+  «Отправить в WhatsApp» / «Печать». Never on a накладная: cost, gross profit, margin, markup, staff notes.
+
 ## «Приход от поставщика» — photos of suppliers' накладные from the bakers' phones (built 25.11.2026)
 
 The bakers used to send photos of suppliers' накладные to WhatsApp and «Помощник» typed the receipt in from them. Now

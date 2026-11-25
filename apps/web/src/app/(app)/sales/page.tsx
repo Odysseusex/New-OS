@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ClipboardCheck, Coins, Package, Plus, Receipt, TrendingUp, Wallet, X } from "lucide-react";
+import { ClipboardCheck, Coins, Package, Plus, Printer, Receipt, Send, TrendingUp, Wallet, X } from "lucide-react";
 import type { CustomerDto, LocationDto, ProductDto, SaleDto, SalesReportDto, SalesSummaryDto } from "@bakery-os/shared";
 import {
   ORG_WIDE_ROLES,
@@ -23,8 +23,19 @@ import { SaleDetailModal } from "@/components/sale-detail-modal";
 import { PaymentStatusBadge } from "@/components/payment-status-badge";
 import { RecordSalePaymentModal, type SalePaymentContext } from "@/components/record-sale-payment-modal";
 import { ProductSelect } from "@/components/product-select";
+import { WaybillShareModal } from "@/components/waybill-share-modal";
+import { waybillsPrintHtml } from "@/lib/waybill";
+import { saleWaybillsById } from "@/lib/sale-waybills";
 
 const PAGE_SIZE = 50;
+const packPreferred = () => {
+  try {
+    return localStorage.getItem("baker_print_pack") !== "0";
+  } catch {
+    return true;
+  }
+};
+const pickButton = "flex items-center gap-1.5 rounded-xl border border-border px-3 py-1.5 text-sm text-foreground hover:bg-surface-muted";
 const filterClass =
   "rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
 
@@ -76,6 +87,9 @@ export default function SalesPage() {
   const [periodSummary, setPeriodSummary] = useState<SalesReportDto | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
+  // Накладные to wholesale customers ticked in the list, to send or print together.
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [sharingIds, setSharingIds] = useState<string[] | null>(null);
   const [payingSale, setPayingSale] = useState<SalePaymentContext | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -173,6 +187,28 @@ export default function SalesPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Only what is still in the list counts (a filter may have taken a ticked row away).
+  const pickedIds = sales.filter((s) => picked.has(s.id)).map((s) => s.id);
+  function printPicked() {
+    // The window opens inside the click; the checks' lines are loaded after it.
+    const win = window.open("", "_blank");
+    if (!win) return window.alert("Браузер заблокировал окно печати — разрешите всплывающие окна для этого сайта");
+    win.document.write("<p style='font-family:sans-serif'>Готовим накладные…</p>");
+    saleWaybillsById(pickedIds)
+      .then((list) => {
+        win.document.open();
+        // «Несколько на листе» as chosen on «Накладные пекарей» (on unless switched off there).
+        win.document.write(waybillsPrintHtml(list, packPreferred()));
+        win.document.close();
+        win.focus();
+        win.print();
+      })
+      .catch(() => {
+        win.close();
+        setError("Не удалось подготовить накладные к печати");
+      });
+  }
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -371,6 +407,22 @@ export default function SalesPage() {
             </p>
           )}
         </div>
+        {pickedIds.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3">
+            <span className="text-sm text-foreground">Выбрано накладных: {pickedIds.length}</span>
+            <button type="button" onClick={() => setSharingIds(pickedIds)} className={pickButton}>
+              <Send className="h-4 w-4" strokeWidth={1.75} />
+              Отправить в WhatsApp
+            </button>
+            <button type="button" onClick={printPicked} className={pickButton}>
+              <Printer className="h-4 w-4" strokeWidth={1.75} />
+              Печать
+            </button>
+            <button type="button" onClick={() => setPicked(new Set())} className={pickButton}>
+              Снять выбор
+            </button>
+          </div>
+        )}
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
@@ -391,8 +443,29 @@ export default function SalesPage() {
                 className="cursor-pointer transition hover:bg-surface-muted"
               >
                 <td className="px-5 py-3 text-foreground">
-                  {sale.number && <div className="font-medium">№{sale.number}</div>}
-                  {formatDateTime(sale.soldAt)}
+                  <div className="flex items-center gap-3">
+                    {sale.customerId && (
+                      <input
+                        type="checkbox"
+                        aria-label={`Выбрать накладную${sale.number ? ` № ${sale.number}` : ""}`}
+                        checked={picked.has(sale.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) =>
+                          setPicked((cur) => {
+                            const next = new Set(cur);
+                            if (e.target.checked) next.add(sale.id);
+                            else next.delete(sale.id);
+                            return next;
+                          })
+                        }
+                        className="h-4 w-4 shrink-0 rounded border-border accent-accent"
+                      />
+                    )}
+                    <div>
+                      {sale.number && <div className="font-medium">№{sale.number}</div>}
+                      {formatDateTime(sale.soldAt)}
+                    </div>
+                  </div>
                 </td>
                 {isOrgWide && <td className="px-5 py-3 text-muted">{sale.locationName}</td>}
                 <td className="px-5 py-3 text-muted">{sale.customerName ?? "Розница"}</td>
@@ -463,6 +536,8 @@ export default function SalesPage() {
           }}
         />
       )}
+
+      {sharingIds && <WaybillShareModal load={() => saleWaybillsById(sharingIds)} onClose={() => setSharingIds(null)} />}
 
       {selectedSaleId && (
         <SaleDetailModal

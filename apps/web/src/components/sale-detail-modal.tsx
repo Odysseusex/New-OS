@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CreditCard, PencilLine, Printer, Undo2 } from "lucide-react";
+import { CreditCard, PencilLine, Printer, Send, Undo2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import type { SaleDetailDto, SaleFiscalReceiptDto, SaleReturnDto } from "@bakery-os/shared";
 import { FiscalReceiptStatus, PAYMENT_METHOD_LABELS_RU, SALE_RETURN_ROLES } from "@bakery-os/shared";
@@ -12,6 +12,9 @@ import { formatDateTime, formatMoney, formatQuantity } from "@/lib/format";
 import { RecordSalePaymentModal } from "@/components/record-sale-payment-modal";
 import { SaleReturnModal } from "@/components/sale-return-modal";
 import { SaleCorrectionModal } from "@/components/sale-correction-modal";
+import { WaybillShareModal } from "@/components/waybill-share-modal";
+import { waybillsPrintHtml } from "@/lib/waybill";
+import { saleWaybills } from "@/lib/sale-waybills";
 
 export function SaleDetailModal({
   saleId,
@@ -31,6 +34,7 @@ export function SaleDetailModal({
   const [returns, setReturns] = useState<SaleReturnDto[]>([]);
   const [isReturning, setIsReturning] = useState(false);
   const [isCorrecting, setIsCorrecting] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
   const canReturn = user ? SALE_RETURN_ROLES.includes(user.role) : false;
 
   function load() {
@@ -209,7 +213,7 @@ export function SaleDetailModal({
             </div>
           </div>
 
-          <div className="mt-5 flex gap-3 print:hidden">
+          <div className="mt-5 flex flex-wrap gap-3 print:hidden">
             {canRecordPayment && sale.balanceDue > 0 && (
               <button
                 onClick={() => setIsPaying(true)}
@@ -238,15 +242,40 @@ export function SaleDetailModal({
               </button>
             )}
             <button
-              onClick={() => window.print()}
+              onClick={() => {
+                // The print window has to open inside the click, so the units are asked for after it.
+                const win = window.open("", "_blank");
+                if (!win) return window.alert("Браузер заблокировал окно печати — разрешите всплывающие окна для этого сайта");
+                win.document.write("<p style='font-family:sans-serif'>Готовим накладную…</p>");
+                saleWaybills([sale])
+                  .then((list) => {
+                    win.document.open();
+                    win.document.write(waybillsPrintHtml(list));
+                    win.document.close();
+                    win.focus();
+                    win.print();
+                  })
+                  .catch(() => win.close());
+              }}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
             >
               <Printer className="h-4 w-4" strokeWidth={1.75} />
               Печать накладной
             </button>
+            {sale.customerId && (
+              <button
+                onClick={() => setIsSharing(true)}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-muted"
+              >
+                <Send className="h-4 w-4" strokeWidth={1.75} />
+                Отправить в WhatsApp
+              </button>
+            )}
           </div>
         </>
       )}
+
+      {isSharing && sale && <WaybillShareModal load={() => saleWaybills([sale])} onClose={() => setIsSharing(false)} />}
 
       {isReturning && sale && (
         <SaleReturnModal

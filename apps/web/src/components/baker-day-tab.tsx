@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
-import { Pencil, Printer, RefreshCw } from "lucide-react";
+import { Pencil, Printer, RefreshCw, Send } from "lucide-react";
 import type { BakerDayDto, BakerDayPostResultDto, BakerDayPreviewDto, BakerNoteDto } from "@bakery-os/shared";
 import { BAKER_DAY_ROLES, BAKER_NOTE_STATUS_LABELS_RU, BakerNoteStatus, UNIT_LABELS_RU } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatMoney, formatQuantity } from "@/lib/format";
-import { printBakerNotes } from "@/lib/baker-note-print";
+import { bakerNoteWaybill, printWaybills } from "@/lib/waybill";
+import { WaybillShareModal } from "@/components/waybill-share-modal";
 import { zonedDateKey } from "@/lib/reporting-period";
 import { Modal } from "@/components/modal";
 
@@ -34,6 +35,7 @@ export function BakerDayTab() {
   const [pack, setPack] = useState(true);
   // Notes ticked for printing; none ticked = print them all.
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [sharing, setSharing] = useState<BakerNoteDto[] | null>(null);
   // Another day or workshop starts with nothing ticked.
   useEffect(() => setPicked(new Set()), [dayKey, sourceId]);
   useEffect(() => {
@@ -171,13 +173,19 @@ export function BakerDayTab() {
           </label>
           <button
             type="button"
-            onClick={() => printBakerNotes(chosen.length > 0 ? chosen : day.notes, pack)}
+            onClick={() => printWaybills((chosen.length > 0 ? chosen : day.notes).map((n) => bakerNoteWaybill(n)), pack)}
             disabled={day.notes.length === 0}
             className={button}
           >
             <Printer className="h-4 w-4" strokeWidth={1.75} />
             {chosen.length > 0 ? `Печать выбранных (${chosen.length})` : "Печать всех накладных"}
           </button>
+          {chosen.length > 0 && (
+            <button type="button" onClick={() => setSharing(chosen)} className={button}>
+              <Send className="h-4 w-4" strokeWidth={1.75} />
+              Отправить в WhatsApp ({chosen.length})
+            </button>
+          )}
           {chosen.length > 0 && (
             <button type="button" onClick={() => setPicked(new Set())} className={button}>
               Снять выбор
@@ -344,9 +352,13 @@ export function BakerDayTab() {
                 Изменить
               </a>
             )}
-            <button type="button" onClick={() => printBakerNotes([opened])} className={button}>
+            <button type="button" onClick={() => printWaybills([bakerNoteWaybill(opened)])} className={button}>
               <Printer className="h-4 w-4" strokeWidth={1.75} />
               Печать
+            </button>
+            <button type="button" onClick={() => setSharing([opened])} className={button}>
+              <Send className="h-4 w-4" strokeWidth={1.75} />
+              Отправить в WhatsApp
             </button>
           </div>
         </Modal>
@@ -461,6 +473,7 @@ export function BakerDayTab() {
           </div>
         </Modal>
       )}
+      {sharing && <WaybillShareModal load={async () => sharing.map((n) => bakerNoteWaybill(n))} onClose={() => setSharing(null)} />}
     </div>
   );
 }
