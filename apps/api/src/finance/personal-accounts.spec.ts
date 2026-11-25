@@ -89,30 +89,30 @@ afterAll(async () => {
 
 describe("личные средства участника", () => {
   it("a personal account is its own kind: no point, no opening balance, never the default", async () => {
-    gauharId = (await accounts.create(org.user, { name: "Гаухар апа (личные)", type: CashAccountType.PERSONAL })).id;
+    gauharId = (await accounts.create(org.user, { name: "Гауһар (личные)", type: CashAccountType.PERSONAL })).id;
     amirId = (await accounts.create(org.user, { name: "Амир (личные)", type: CashAccountType.PERSONAL })).id;
     await expect(accounts.create(org.user, { name: "Х", type: CashAccountType.PERSONAL, openingBalance: 5 })).rejects.toThrow(/начального остатка/);
     await expect(accounts.create(org.user, { name: "Х", type: CashAccountType.PERSONAL, locationId: org.storeId })).rejects.toThrow(/не привязывается/);
     await expect(accounts.setDefault(org.user, gauharId)).rejects.toThrow(/банковский/);
     expect(await accounts.partnerDebts(org.organizationId)).toEqual([
       { accountId: amirId, name: "Амир", owed: 0 },
-      { accountId: gauharId, name: "Гаухар апа", owed: 0 },
+      { accountId: gauharId, name: "Гауһар", owed: 0 },
     ]);
     await expectCleanBooks();
   });
 
   it("paying a supplier from it: the business owes the participant, its own money is untouched", async () => {
     const po = await services.procurement.create(org.user, { supplierId, locationId: org.storeId, items: [{ productId: flourId, quantity: 100, unitCost: 500 }] } as never);
-    // Received and paid at once out of Гаухар апа's pocket — far more than any account holds.
+    // Received and paid at once out of Гауһар's pocket — far more than any account holds.
     await services.procurement.receive(org.user, po.id, { payNow: { accountId: gauharId } } as never);
 
     const sheet = await expectCleanBooks();
     expect(asset(sheet, BalanceLine.CASH_AND_BANK)).toBe(100_000);
     expect(asset(sheet, BalanceLine.INVENTORY)).toBe(50_000);
     expect(liability(sheet, BalanceLine.SUPPLIER_PAYABLES)?.amount).toBe(0);
-    expect(liability(sheet, BalanceLine.PARTNER_PAYABLES)).toMatchObject({ amount: 50_000, label: "Задолженность перед участниками", breakdown: [{ label: "Гаухар апа", amount: 50_000 }] });
+    expect(liability(sheet, BalanceLine.PARTNER_PAYABLES)).toMatchObject({ amount: 50_000, label: "Задолженность перед участниками", breakdown: [{ label: "Гауһар", amount: 50_000 }] });
     // The breakdown of money lists the business's accounts only.
-    expect(sheet.assets.lines.find((l) => l.line === BalanceLine.CASH_AND_BANK)?.breakdown?.map((b) => b.label)).not.toContain("Гаухар апа (личные)");
+    expect(sheet.assets.lines.find((l) => l.line === BalanceLine.CASH_AND_BANK)?.breakdown?.map((b) => b.label)).not.toContain("Гауһар (личные)");
     expect(await glBalance(ledger, org, SystemAccountKey.PARTNER_PAYABLES)).toBe(50_000);
     expect(await glBalance(ledger, org, SystemAccountKey.BANK)).toBe(100_000);
     expect((await accounts.partnerDebts(org.organizationId)).find((d) => d.accountId === gauharId)?.owed).toBe(50_000);
@@ -129,7 +129,7 @@ describe("личные средства участника", () => {
     expect(liability(sheet, BalanceLine.PARTNER_PAYABLES)).toMatchObject({
       amount: 62_000,
       breakdown: [
-        { label: "Гаухар апа", amount: 50_000 },
+        { label: "Гауһар", amount: 50_000 },
         { label: "Амир", amount: 12_000 },
       ],
     });
@@ -156,13 +156,13 @@ describe("личные средства участника", () => {
   it("paying the participant back is an ordinary transfer: financing, not an expense, and the debt goes to zero", async () => {
     const to = () => new Date(Date.now() + 60_000);
     const before = await services.finance.getProfitAndLoss(org.organizationId, from, to());
-    await services.cash.transfer(org.user, { fromAccountId: org.bankAccountId, toAccountId: gauharId, amount: 30_000, reason: "Возврат Гаухар апа" });
+    await services.cash.transfer(org.user, { fromAccountId: org.bankAccountId, toAccountId: gauharId, amount: 30_000, reason: "Возврат Гауһар" });
 
     let sheet = await expectCleanBooks();
     expect(asset(sheet, BalanceLine.CASH_AND_BANK)).toBe(70_000);
     expect(liability(sheet, BalanceLine.PARTNER_PAYABLES)?.amount).toBe(32_000);
 
-    await services.cash.transfer(org.user, { fromAccountId: org.bankAccountId, toAccountId: gauharId, amount: 20_000, reason: "Возврат Гаухар апа" });
+    await services.cash.transfer(org.user, { fromAccountId: org.bankAccountId, toAccountId: gauharId, amount: 20_000, reason: "Возврат Гауһар" });
     await services.cash.transfer(org.user, { fromAccountId: org.bankAccountId, toAccountId: amirId, amount: 12_000, reason: "Возврат Амиру" });
 
     sheet = await expectCleanBooks();
@@ -171,7 +171,7 @@ describe("личные средства участника", () => {
     expect(await glBalance(ledger, org, SystemAccountKey.PARTNER_PAYABLES)).toBe(0);
     expect(await accounts.partnerDebts(org.organizationId)).toEqual([
       { accountId: amirId, name: "Амир", owed: 0 },
-      { accountId: gauharId, name: "Гаухар апа", owed: 0 },
+      { accountId: gauharId, name: "Гауһар", owed: 0 },
     ]);
 
     // Nothing of the repayment reached the P&L.
@@ -224,7 +224,7 @@ describe("личные средства участника", () => {
     await expect(services.cash.transfer(assistant, { fromAccountId: org.bankAccountId, toAccountId: org.cashAccountId, amount: 100, reason: "x" })).rejects.toThrow(/личным счётом участника/);
     // A payment out of the participant's pocket and the transfer that pays them back.
     await services.finance.createExpense(assistant, { amount: 4_000, categoryId: rentId, accountId: gauharId, description: "Коммунальные" } as never);
-    await services.cash.transfer(assistant, { fromAccountId: org.bankAccountId, toAccountId: gauharId, amount: 4_000, reason: "Возврат Гаухар апа" });
+    await services.cash.transfer(assistant, { fromAccountId: org.bankAccountId, toAccountId: gauharId, amount: 4_000, reason: "Возврат Гауһар" });
     const sheet = await expectCleanBooks();
     expect(liability(sheet, BalanceLine.PARTNER_PAYABLES)?.amount).toBe(0);
     expect(asset(sheet, BalanceLine.CASH_AND_BANK)).toBe(34_000);
@@ -236,13 +236,13 @@ describe("личные средства участника", () => {
     const catalog = await notes.catalog(org.user);
     expect(catalog.personalAccounts).toEqual([
       { id: amirId, name: "Амир" },
-      { id: gauharId, name: "Гаухар апа" },
+      { id: gauharId, name: "Гауһар" },
     ]);
     const intakes = new SupplierIntakesService(prisma);
     await expect(intakes.create(org.user, { locationId: org.storeId, payment: SupplierIntakePayment.PERSONAL })).rejects.toThrow(/чьими деньгами/);
     await expect(intakes.create(org.user, { locationId: org.storeId, payment: SupplierIntakePayment.PERSONAL, paymentAccountId: org.bankAccountId })).rejects.toThrow(/чьими деньгами/);
     const intake = await intakes.create(org.user, { locationId: org.storeId, payment: SupplierIntakePayment.PERSONAL, paymentAccountId: gauharId });
-    expect(intake).toMatchObject({ payment: SupplierIntakePayment.PERSONAL, paymentLabel: "Гаухар апа", paymentAccountId: gauharId });
+    expect(intake).toMatchObject({ payment: SupplierIntakePayment.PERSONAL, paymentLabel: "Гауһар", paymentAccountId: gauharId });
     // Still a draft: nothing was owed to anyone by it.
     expect((await accounts.partnerDebts(org.organizationId)).every((d) => d.owed === 0)).toBe(true);
   });

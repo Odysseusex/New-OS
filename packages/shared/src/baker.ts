@@ -253,7 +253,7 @@ export interface SupplierIntakeDto {
   locationId: string;
   locationName: string;
   payment: SupplierIntakePayment;
-  // How it was paid, in words: «Наличные», «В долг», or the participant who paid — «Гаухар апа».
+  // How it was paid, in words: «Наличные», «В долг», or the participant who paid — «Гауһар».
   paymentLabel: string;
   // PERSONAL: the participant's personal account the payment is to be recorded on.
   paymentAccountId: string | null;

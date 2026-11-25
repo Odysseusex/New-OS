@@ -1289,7 +1289,7 @@ unrecorded выемки do not become a loss in the P&L. Built after a till's bo
 
 ## «Личные кошельки» — a participant pays with their own money (built 25.11.2026)
 
-Raw materials are often paid for out of pocket by two participants (Амир, Гаухар апа) and the business pays them back
+Raw materials are often paid for out of pocket by two participants (Амир, Гауһар) and the business pays them back
 later, usually from Kaspi. `CashAccountType.PERSONAL` «Личные средства участника» (migration
 `20261210120000_personal_accounts`, additive: two enum values + two columns on `supplier_intakes`), one account per
 person, made in Финансы → Банк и касса → «Новый счёт». Spec `finance/personal-accounts.spec.ts` (ledger on, diagnostics
