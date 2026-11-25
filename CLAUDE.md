@@ -1091,8 +1091,10 @@ sale's lines carry no unit — `lib/sale-waybills.ts` reads the products' units 
 - **Print** `waybillsPrintHtml(list, pack)` / `printWaybills`: A4, 15 mm margins, full width — header, the
   «Получатель» block between two hairlines (for an own point «Перемещение на точку»), table № / Товар / Кол-во / Ед. / Цена / Сумма, «Итого: N
   позиций, M шт — сумма», «Оплачено» / «Остаток долга» for a sale to a customer, «Сдал / Принял». `pack` = «Несколько на
-  листе» with the same measuring script as before (as many as fit whole — two of the usual length — never a break inside
-  one; preference in localStorage `baker_print_pack`). It replaced `baker-note-print.ts` and the sale card's `window.print()`.
+  листе»: the BROWSER places them (`break-inside: avoid` on each, a dashed «✂» line under each) — three one-line ones fit
+  on A4 at 100 %, five at 70 %. NO script that measures and forces page breaks (the first version had one: it fixed two
+  per sheet and the print dialog's «Масштаб» could not change it — operator, 25.11.2026). Preference in localStorage
+  `baker_print_pack`. It replaced `baker-note-print.ts` and the sale card's `window.print()`.
 - **Picture** `lib/waybill-image.ts` `renderWaybillPng`: drawn on a canvas by hand (1080 wide × 2, white; less sharp only
   when a very long one would exceed a phone's canvas limit). NOT html→svg→canvas (Safari on an iPad taints / refuses it)
   and no library. The two renderers share only the data and the wording helpers — change the look in BOTH.

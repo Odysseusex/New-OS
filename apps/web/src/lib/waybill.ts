@@ -153,24 +153,11 @@ ${money}
 </section>`;
 }
 
-// Lays the накладные out on sheets before printing: measured on the screen at the printed width (the body is
-// exactly 180 mm wide there), one that does not fit the rest of the sheet starts the next sheet; one taller
-// than a whole sheet runs over. A cut line goes under every накладная that has another below it on the sheet.
-const PACK_SCRIPT = `(function(){function place(){
-var probe=document.createElement("div");probe.style.height="100mm";document.body.appendChild(probe);
-var mm=probe.getBoundingClientRect().height/100;probe.remove();
-var PAGE=267*mm-2,GAP=9*mm,used=0,prev=null,list=document.querySelectorAll("section");
-for(var i=0;i<list.length;i++){var s=list[i];
-s.className="";var h=s.getBoundingClientRect().height;
-if(prev){var free=PAGE-used-GAP;
-if(h<=free||(h>PAGE&&free>PAGE*0.35)){prev.className+=" cut";used+=GAP+h;}
-else{s.className+=" newpage";used=h;}}else{used=h;}
-while(used>PAGE)used-=PAGE;prev=s;}
-if(prev)prev.className+=" last";}
-place();window.addEventListener("beforeprint",place);})();`;
-
-// `pack`: several накладные on one sheet with a cut line between them (as many as fit whole — two of the
-// usual length), to save paper; otherwise one per sheet.
+// `pack`: several накладные on one sheet with a cut line between them, to save paper; otherwise one per sheet.
+// The browser places them itself and never breaks one across sheets (break-inside: avoid) — so the print
+// dialog's own «Масштаб» works: at 70 % more of them fit on a sheet. The earlier version measured the notes on
+// the screen and forced the page breaks itself, which a smaller print scale could not undo (operator,
+// 25.11.2026: «только две на одну страницу, даже если уменьшить размер»).
 export function waybillsPrintHtml(list: Waybill[], pack = false, origin = typeof window === "undefined" ? "" : window.location.origin): string {
   const title = list.length === 1 ? `Накладная № ${list[0].number}` : "Накладные";
   return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${esc(title)}</title>
@@ -213,24 +200,27 @@ th:first-child,td:first-child{padding-left:0}
 .sign p{min-height:4.5mm;margin-bottom:8mm}
 .sign i{display:block;border-top:0.2mm solid #a8a29e;padding-top:1mm;font-style:normal;font-size:8pt;color:#78716c}
 body.pack section+section{break-before:auto;page-break-before:auto}
-body.pack section{position:relative;padding-bottom:4.5mm;margin-bottom:4.5mm}
-body.pack section.cut{border-bottom:0.4mm dashed #78716c}
-body.pack section.cut::after{content:"✂";position:absolute;left:-1mm;bottom:-3.4mm;background:#fff;font-size:12pt;line-height:1;color:#78716c}
-body.pack section.newpage{break-before:page;page-break-before:always}
-body.pack section.last{padding-bottom:0;margin-bottom:0}
-body.pack header{margin-bottom:3.5mm}
-body.pack .to{padding:2.2mm 4mm 2.6mm;margin-bottom:2.5mm}
-body.pack .to b{font-size:18pt}
-body.pack th,body.pack td{height:6.2mm;padding:0.4mm 2mm;line-height:1.15}
+body.pack section{position:relative;padding-bottom:3.5mm;margin-bottom:3.5mm;border-bottom:0.4mm dashed #78716c;break-inside:avoid;page-break-inside:avoid}
+body.pack section::after{content:"✂";position:absolute;left:-1mm;bottom:-3.4mm;background:#fff;font-size:12pt;line-height:1;color:#78716c}
+body.pack section:last-child{padding-bottom:0;margin-bottom:0;border-bottom:0}
+body.pack section:last-child::after{content:none}
+body.pack header{margin-bottom:2.2mm}
+body.pack .brand{font-size:12pt}
+body.pack .doc{margin-top:0.6mm}
+body.pack .when{margin-top:0.3mm}
+body.pack .to{padding:1.6mm 4mm 2mm;margin-bottom:2mm}
+body.pack .to b{font-size:16pt;margin-top:0.2mm}
+body.pack th,body.pack td{height:5.8mm;padding:0.3mm 2mm;line-height:1.15}
 body.pack th:first-child,body.pack td:first-child{padding-left:0}
-body.pack .total{margin-top:2.5mm}
-body.pack .total b{font-size:14pt}
-body.pack .sign{margin-top:6mm}
-body.pack .sign p{margin-bottom:6mm}
+body.pack .total{margin-top:2mm}
+body.pack .total b{font-size:13pt}
+body.pack .pay{margin-top:0.8mm}
+body.pack .pay p{padding:0.2mm 0}
+body.pack .sign{margin-top:4mm}
+body.pack .sign p{margin-bottom:4.5mm}
 @media screen{body{padding:15mm;width:210mm;margin:0 auto}}
 </style></head><body${pack ? ' class="pack"' : ""}>
 ${list.map(waybillHtml).join("\n")}
-${pack ? `<script>${PACK_SCRIPT}</script>` : ""}
 </body></html>`;
 }
 
