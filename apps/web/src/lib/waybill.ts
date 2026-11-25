@@ -34,18 +34,18 @@ export interface Waybill {
 
 export const WAYBILL_BRAND = "Ar-Amir";
 
-// The recipient's name is set in Cormorant Garamond SemiBold — the bakery site's own face, and one that has
-// every Kazakh letter (Tenor Sans, the poster's face, has none of ӘҒҚҢӨҰҮҺ). Served from our own /fonts,
-// the same three files Google gives, so no outside service is asked at print or picture time.
+// The recipient's name is set in Forum (owner's pick of eight, 25.11.2026): thin, classical, close to the poster's
+// Tenor Sans — which itself has none of ӘҒҚҢӨҰҮҺ, Forum has them all. Served from our own /fonts, the same files
+// Google gives, so no outside service is asked at print or picture time. One weight only (400).
 export const WAYBILL_DISPLAY_FAMILY = "Waybill Display";
 export const WAYBILL_DISPLAY_FACES: { file: string; range: string }[] = [
-  { file: "/fonts/CormorantGaramond-SemiBold-cyrillic-ext.woff2", range: "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F" },
-  { file: "/fonts/CormorantGaramond-SemiBold-cyrillic.woff2", range: "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116" },
-  { file: "/fonts/CormorantGaramond-SemiBold-latin.woff2", range: "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD" },
+  { file: "/fonts/Forum-cyrillic-ext.woff2", range: "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F" },
+  { file: "/fonts/Forum-cyrillic.woff2", range: "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116" },
+  { file: "/fonts/Forum-latin.woff2", range: "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD" },
 ];
 const displayFaceCss = (origin: string) =>
   WAYBILL_DISPLAY_FACES.map(
-    (f) => `@font-face{font-family:"${WAYBILL_DISPLAY_FAMILY}";font-weight:600;font-style:normal;src:url(${origin}${f.file}) format("woff2");unicode-range:${f.range}}`,
+    (f) => `@font-face{font-family:"${WAYBILL_DISPLAY_FAMILY}";font-weight:400;font-style:normal;src:url(${origin}${f.file}) format("woff2");unicode-range:${f.range}}`,
   ).join("\n");
 
 const nbsp = (text: string) => text.replace(/[   ]/g, " ");
@@ -191,7 +191,7 @@ header{display:flex;justify-content:space-between;align-items:flex-start;gap:8mm
 .from span,.to span{display:block;font-size:8.5pt;color:#78716c}
 .from b{display:block;font-size:11pt;font-weight:500;margin-top:0.8mm;line-height:1.2}
 .to{background:#f6f1ea;border-radius:3mm;padding:3.4mm 5mm 3.8mm;margin-bottom:4.5mm;break-inside:avoid;page-break-inside:avoid}
-.to b{display:block;font-family:"${WAYBILL_DISPLAY_FAMILY}",Georgia,serif;font-size:21pt;font-weight:600;line-height:1.1;margin-top:0.6mm;color:#292524}
+.to b{display:block;font-family:"${WAYBILL_DISPLAY_FAMILY}",Georgia,serif;font-size:20pt;font-weight:400;line-height:1.15;margin-top:0.8mm;color:#1c1917}
 table{width:100%;border-collapse:collapse;table-layout:fixed}
 th,td{padding:0.8mm 2mm;height:7.6mm;vertical-align:middle;overflow-wrap:anywhere;border-bottom:0.2mm solid #d6d0c8}
 th{text-align:left;font-size:7.5pt;font-weight:500;color:#78716c;text-transform:uppercase;letter-spacing:0.06em;border-bottom:0.2mm solid #a8a29e}
@@ -222,6 +222,7 @@ body.pack header{margin-bottom:3.5mm}
 body.pack .to{padding:2.2mm 4mm 2.6mm;margin-bottom:2.5mm}
 body.pack .to b{font-size:18pt}
 body.pack th,body.pack td{height:6.2mm;padding:0.4mm 2mm;line-height:1.15}
+body.pack th:first-child,body.pack td:first-child{padding-left:0}
 body.pack .total{margin-top:2.5mm}
 body.pack .total b{font-size:14pt}
 body.pack .sign{margin-top:6mm}

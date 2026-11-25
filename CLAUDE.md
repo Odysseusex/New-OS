@@ -1084,8 +1084,8 @@ sale's lines carry no unit — `lib/sale-waybills.ts` reads the products' units 
 - **The look is deliberately quiet** (owner, 25.11.2026, after a first version with a filled recipient block, large
   bold type and heavy rules: «не такими большими и жирными… минимализма и эстетики»): regular weights, semibold only for
   the brand and the total; hairlines instead of frames; small grey captions; no № column. Don't make it louder. The ONE
-  accent (owner, same day): the recipient's name in Cormorant Garamond SemiBold (the bakery site's face; Tenor Sans was
-  tried — it has no ӘҒҚҢӨҰҮҺ) on a soft warm rounded ground. The face is served from `public/fonts/CormorantGaramond-*`
+  accent (owner, same day): the recipient's name in **Forum** (the owner picked it from eight; Cormorant Garamond was
+  rejected, Tenor Sans has no ӘҒҚҢӨҰҮҺ) on a soft warm rounded ground. The face is served from `public/fonts/Forum-*`
   (`WAYBILL_DISPLAY_FACES`): loaded with `FontFace` before a picture is drawn, and the print window gets `@font-face` with
   the page's origin and prints via `printWhenReady` (waits ≤ 2.5 s for the face).
 - **Print** `waybillsPrintHtml(list, pack)` / `printWaybills`: A4, 15 mm margins, full width — header, the

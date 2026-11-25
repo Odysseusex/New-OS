@@ -1,0 +1,3 @@
+Forum — designed by Denis Masharov. Licensed under the SIL Open Font License, Version 1.1 — https://openfontlicense.org
+Files here: Latin / Cyrillic / Cyrillic-ext subsets as served by Google Fonts (they cover every Kazakh letter).
+Used for the recipient's name on накладные (lib/waybill.ts, lib/waybill-image.ts).

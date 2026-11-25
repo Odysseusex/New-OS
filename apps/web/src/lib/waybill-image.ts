@@ -15,7 +15,7 @@ const LINE = "#d6d0c8";
 const MAX_PIXELS = 16_000_000;
 
 const font = (px: number, weight = 400) => `${weight} ${px}px ${FONT}`;
-const display = (px: number) => `600 ${px}px "${WAYBILL_DISPLAY_FAMILY}", Georgia, serif`;
+const display = (px: number) => `400 ${px}px "${WAYBILL_DISPLAY_FAMILY}", Georgia, serif`;
 const SOFT = "#f6f1ea";
 
 // The recipient's face, loaded once into the page before the first picture is drawn.
@@ -24,7 +24,7 @@ function loadDisplayFace(): Promise<void> {
   if (typeof FontFace === "undefined" || !document.fonts) return Promise.resolve();
   faces ??= Promise.all(
     WAYBILL_DISPLAY_FACES.map((f) => {
-      const face = new FontFace(WAYBILL_DISPLAY_FAMILY, `url(${f.file}) format("woff2")`, { weight: "600", unicodeRange: f.range });
+      const face = new FontFace(WAYBILL_DISPLAY_FAMILY, `url(${f.file}) format("woff2")`, { weight: "400", unicodeRange: f.range });
       document.fonts.add(face);
       return face.load();
     }),
@@ -102,8 +102,8 @@ function draw(ctx: CanvasRenderingContext2D, w: Waybill, dry: boolean): number {
   fromLines.forEach((l, i) => text(l, W - PAD, y + 64 + i * 34, font(26, 500), INK, "right"));
   y += Math.max(126, 40 + fromLines.length * 34) + 34;
 
-  // Recipient: the line the box is sorted by — the bakery's own serif on a soft warm ground.
-  ctx.font = display(58);
+  // Recipient: the line the box is sorted by — Forum on a soft warm ground.
+  ctx.font = display(54);
   const toLines = wrap(ctx, w.recipient, INNER - 72);
   const toHeight = 64 + toLines.length * 62 + 26;
   if (!dry) {
@@ -112,7 +112,7 @@ function draw(ctx: CanvasRenderingContext2D, w: Waybill, dry: boolean): number {
     ctx.fill();
   }
   text(waybillRecipientLabel(w), PAD + 36, y + 46, font(20), MUTED);
-  toLines.forEach((l, i) => text(l, PAD + 36, y + 106 + i * 62, display(58), "#292524"));
+  toLines.forEach((l, i) => text(l, PAD + 36, y + 106 + i * 62, display(54), INK));
   y += toHeight + 34;
 
   // Table.
