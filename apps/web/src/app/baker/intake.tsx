@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import clsx from "clsx";
-import { ArrowLeft, Camera, Images, X } from "lucide-react";
+import { ArrowLeft, Camera, ChevronRight, Images, X } from "lucide-react";
 import type { BakerCatalogDto, SupplierIntakeDto } from "@bakery-os/shared";
 import {
   SUPPLIER_INTAKE_MAX_PHOTOS,
@@ -14,6 +14,7 @@ import {
 import { api, ApiError } from "@/lib/api";
 import { formatMoney } from "@/lib/format";
 import { shrinkIntakePhoto } from "@/lib/intake-photo";
+import { AuthedImage } from "@/components/authed-image";
 
 const PAYMENTS = [SupplierIntakePayment.CASH, SupplierIntakePayment.KASPI, SupplierIntakePayment.BCC, SupplierIntakePayment.CREDIT];
 const timeLabel = (iso: string) =>
@@ -231,36 +232,127 @@ export function IntakeForm({
   );
 }
 
-// The baker's own intakes of the last days with what became of each.
-export function MyIntakes({ intakes }: { intakes: SupplierIntakeDto[] }) {
+// The baker's own intakes of the last days with what became of each; a tap opens one.
+export function MyIntakes({ intakes, onOpen }: { intakes: SupplierIntakeDto[]; onOpen: (intake: SupplierIntakeDto) => void }) {
   if (intakes.length === 0) return null;
   return (
     <section className="mt-6">
       <h2 className="mb-2 text-lg font-semibold text-foreground">Мои приходы</h2>
       <ul className="space-y-2">
         {intakes.map((i) => (
-          <li key={i.id} className="rounded-2xl border border-border bg-surface px-4 py-3">
-            <p className="text-lg font-semibold leading-snug text-foreground">
-              № {i.number} · {i.locationName}
-            </p>
-            <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-base text-muted">
-              <span>
-                {timeLabel(i.createdAt)} · фото {i.photos.length} · {i.paymentLabel}
-                {i.total !== null ? ` · ${formatMoney(i.total)}` : ""}
+          <li key={i.id}>
+            <button
+              type="button"
+              onClick={() => onOpen(i)}
+              className="flex w-full items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3 text-left active:bg-surface-muted"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-lg font-semibold leading-snug text-foreground">
+                  № {i.number} · {i.locationName}
+                </span>
+                <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-base text-muted">
+                  <span>
+                    {timeLabel(i.createdAt)} · фото {i.photos.length} · {i.paymentLabel}
+                    {i.total !== null ? ` · ${formatMoney(i.total)}` : ""}
+                  </span>
+                  <IntakeStatus status={i.status} />
+                </span>
+                {i.status === SupplierIntakeStatus.REJECTED && i.rejectReason && <span className="mt-2 block text-base text-red-700">Причина: {i.rejectReason}</span>}
               </span>
-              <span
-                className={clsx(
-                  "rounded-full px-3 py-1 text-sm font-medium",
-                  i.status === SupplierIntakeStatus.POSTED ? "bg-green-50 text-green-700" : i.status === SupplierIntakeStatus.REJECTED ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700",
-                )}
-              >
-                {SUPPLIER_INTAKE_STATUS_LABELS_RU[i.status]}
-              </span>
-            </p>
-            {i.status === SupplierIntakeStatus.REJECTED && i.rejectReason && <p className="mt-2 text-base text-red-700">Причина: {i.rejectReason}</p>}
+              <ChevronRight className="h-6 w-6 shrink-0 text-muted" strokeWidth={1.75} />
+            </button>
           </li>
         ))}
       </ul>
     </section>
+  );
+}
+
+function IntakeStatus({ status }: { status: SupplierIntakeStatus }) {
+  return (
+    <span
+      className={clsx(
+        "rounded-full px-3 py-1 text-sm font-medium",
+        status === SupplierIntakeStatus.POSTED ? "bg-green-50 text-green-700" : status === SupplierIntakeStatus.REJECTED ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700",
+      )}
+    >
+      {SUPPLIER_INTAKE_STATUS_LABELS_RU[status]}
+    </span>
+  );
+}
+
+// One sent intake, read back: where, how paid, what became of it, and its photos (a tap shows one full screen).
+export function IntakeView({ intake, onBack }: { intake: SupplierIntakeDto; onBack: () => void }) {
+  const [zoom, setZoom] = useState<number | null>(null);
+  const row = (label: string, value: string) => (
+    <div className="flex justify-between gap-4 border-b border-border py-2.5 text-base last:border-0">
+      <span className="text-muted">{label}</span>
+      <span className="text-right font-medium text-foreground">{value}</span>
+    </div>
+  );
+  return (
+    <main className="mx-auto flex min-h-screen min-h-[100dvh] w-full max-w-xl flex-col">
+      <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-background px-3 py-3">
+        <button type="button" onClick={onBack} aria-label="Назад" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-border bg-surface text-foreground">
+          <ArrowLeft className="h-6 w-6" strokeWidth={1.75} />
+        </button>
+        <div className="min-w-0">
+          <h1 className="truncate text-xl font-semibold text-foreground">Приход № {intake.number}</h1>
+          <p className="truncate text-base text-muted">{timeLabel(intake.createdAt)}</p>
+        </div>
+      </header>
+      <div className="flex-1 px-4 pb-10 pt-4">
+        <div className="mb-4 flex"><IntakeStatus status={intake.status} /></div>
+        {intake.status === SupplierIntakeStatus.REJECTED && intake.rejectReason && (
+          <p className="mb-4 rounded-2xl bg-red-50 px-4 py-3 text-base text-red-700">Причина: {intake.rejectReason}</p>
+        )}
+        {intake.status === SupplierIntakeStatus.POSTED && intake.document && (
+          <p className="mb-4 rounded-2xl bg-green-50 px-4 py-3 text-base text-green-700">{intake.document}</p>
+        )}
+        <div className="mb-5 rounded-2xl border border-border bg-surface px-4">
+          {row("Куда привезли", intake.locationName)}
+          {row("Как оплатили", intake.paymentLabel)}
+          {intake.supplierName && row("Поставщик", intake.supplierName)}
+          {intake.total !== null && row("Итог с накладной", formatMoney(intake.total))}
+        </div>
+        <h2 className="mb-2 text-base font-semibold text-muted">Фото ({intake.photos.length})</h2>
+        <div className="grid grid-cols-2 gap-2">
+          {intake.photos.map((p, index) => (
+            <AuthedImage
+              key={p.id}
+              path={p.path}
+              alt={`Приход № ${intake.number}, фото ${index + 1}`}
+              onClick={() => setZoom(index)}
+              className="aspect-[3/4] w-full rounded-2xl border border-border bg-surface-muted object-cover text-muted"
+            />
+          ))}
+        </div>
+      </div>
+      {zoom !== null && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-black" role="dialog" aria-label="Фото накладной">
+          <div className="flex items-center justify-between px-3 py-3 text-white">
+            <span className="text-base">
+              Фото {zoom + 1} из {intake.photos.length}
+            </span>
+            <button type="button" onClick={() => setZoom(null)} aria-label="Закрыть" className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-black">
+              <X className="h-6 w-6" strokeWidth={2} />
+            </button>
+          </div>
+          <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto">
+            <AuthedImage path={intake.photos[zoom].path} alt={`Фото ${zoom + 1}`} className="max-h-full max-w-full object-contain text-white" />
+          </div>
+          {intake.photos.length > 1 && (
+            <div className="grid grid-cols-2 gap-2 p-3">
+              <button type="button" disabled={zoom === 0} onClick={() => setZoom(zoom - 1)} className="h-14 rounded-2xl bg-white text-lg font-medium text-black disabled:opacity-30">
+                Назад
+              </button>
+              <button type="button" disabled={zoom === intake.photos.length - 1} onClick={() => setZoom(zoom + 1)} className="h-14 rounded-2xl bg-white text-lg font-medium text-black disabled:opacity-30">
+                Дальше
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </main>
   );
 }

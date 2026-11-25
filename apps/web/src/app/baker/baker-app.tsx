@@ -7,11 +7,12 @@ import type { BakerCatalogDto, BakerDayDto, BakerNoteDto, BakerRecipientDto, Cur
 import { BAKER_NOTE_STATUS_LABELS_RU, BakerNoteKind, BakerNoteStatus, UNIT_LABELS_RU, bakerRecipientKey, bakerSearchMatches, parseBakerQuantity } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { formatMoney, formatQuantity } from "@/lib/format";
-import { IntakeForm, MyIntakes } from "./intake";
+import { IntakeForm, IntakeView, MyIntakes } from "./intake";
 
 type View =
   | { name: "home" }
   | { name: "intake" }
+  | { name: "intakeView"; intake: SupplierIntakeDto }
   | { name: "recipient" }
   | { name: "edit"; kind: BakerNoteKind; recipient: BakerRecipientDto | null; note: BakerNoteDto | null };
 
@@ -103,6 +104,9 @@ export function BakerApp({ user, onLock }: { user: CurrentUserDto; onLock: () =>
   }
   if (view.name === "intake") {
     return <IntakeForm catalog={catalog} onBack={() => home()} onDone={home} onExpired={onLock} />;
+  }
+  if (view.name === "intakeView") {
+    return <IntakeView intake={view.intake} onBack={() => setView({ name: "home" })} />;
   }
   if (view.name === "edit") {
     return <NoteEditor key={view.note?.id ?? `${view.kind}:${view.recipient?.id ?? ""}`} catalog={catalog} kind={view.kind} recipient={view.recipient} note={view.note} onBack={() => home()} onDone={home} onExpired={onLock} />;
@@ -208,7 +212,7 @@ export function BakerApp({ user, onLock }: { user: CurrentUserDto; onLock: () =>
           ))}
         </ul>
       )}
-      <MyIntakes intakes={intakes} />
+      <MyIntakes intakes={intakes} onOpen={(intake) => setView({ name: "intakeView", intake })} />
     </main>
   );
 }

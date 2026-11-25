@@ -1130,6 +1130,9 @@ migration `20261209120000_supplier_intakes` (additive: `SupplierIntake`, `Suppli
   (`GET /baker/intakes/:id/photos/:photoId`; the web shows it through `components/authed-image.tsx`, fetch → blob) — a
   supplier's paper is not public the way a product photo is. They take database space (~0.2–0.4 MB each): on Neon's free
   0.5 GB that is months, not years — no automatic deletion was built (the owner was told).
+- Baker: «Мои приходы» (last 7 days, under the day's notes) — a tap opens `IntakeView` (status, reason / document, where,
+  how paid, the photos, full screen on a tap). Until 25.11.2026 the list could not be opened (owner: the bakers «не могут
+  снова зайти и проверить свои приходы»).
 - Operator: Производство → «Приходы» (`components/supplier-intakes-tab.tsx`): a day or «Все непроведённые», photos
   enlarge on click (arrows / Escape), «Отметить „Проведён“» / «Отклонить». A waiting intake = a live notification
   (`NotificationType.SUPPLIER_INTAKE`) and a Telegram line «Приход от <пекарь>: N фото, <куда>, <оплата>».
