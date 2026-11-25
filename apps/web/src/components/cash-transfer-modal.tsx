@@ -7,17 +7,20 @@ import { Modal } from "@/components/modal";
 
 export function CashTransferModal({
   accounts,
+  repay,
   onClose,
   onSaved,
 }: {
   accounts: CashAccountDto[];
+  // Paying a participant back: the transfer goes to their personal account, for what is owed.
+  repay?: CashAccountDto;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [fromAccountId, setFromAccountId] = useState(accounts[0]?.id ?? "");
-  const [toAccountId, setToAccountId] = useState(accounts[1]?.id ?? accounts[0]?.id ?? "");
-  const [amount, setAmount] = useState("");
-  const [reason, setReason] = useState("");
+  const [toAccountId, setToAccountId] = useState(repay?.id ?? accounts[1]?.id ?? accounts[0]?.id ?? "");
+  const [amount, setAmount] = useState(repay && repay.currentBalance < 0 ? String(-repay.currentBalance) : "");
+  const [reason, setReason] = useState(repay ? "Возврат средств участнику" : "");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -45,7 +48,7 @@ export function CashTransferModal({
   }
 
   return (
-    <Modal title="Перевод между счетами" onClose={onClose}>
+    <Modal title={repay ? `Вернуть деньги · ${repay.name}` : "Перевод между счетами"} onClose={onClose}>
       <form onSubmit={handleSubmit}>
         <div className="mb-4">
           <label className="mb-1.5 block text-sm font-medium text-foreground">Со счёта</label>

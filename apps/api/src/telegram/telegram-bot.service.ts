@@ -5,6 +5,8 @@ import {
   BREAK_EVEN_STATUS_LABELS_RU,
   BreakEvenStatus,
   CASH_ACCOUNT_TYPE_LABELS_RU,
+  isPersonalAccount,
+  partnerShortName,
   CASH_MOVEMENT_INFLOW_TYPES,
   CASH_MOVEMENT_TYPE_LABELS_RU,
   CashMovementType,
@@ -1260,8 +1262,11 @@ export class TelegramBotService implements OnModuleInit {
       await this.ackCallback(ctx);
       return;
     }
-    const lines = accounts.map(
-      (a) => `${CASH_ACCOUNT_TYPE_LABELS_RU[a.type]} «${escapeHtml(a.name)}»: ${formatMoney(a.currentBalance)}`,
+    // A participant's personal account is a debt, not money of the business.
+    const lines = accounts.map((a) =>
+      isPersonalAccount(a)
+        ? `${a.currentBalance > 0 ? "Должен" : "Должны"}: ${escapeHtml(partnerShortName(a.name))} — ${formatMoney(Math.abs(a.currentBalance))}`
+        : `${CASH_ACCOUNT_TYPE_LABELS_RU[a.type]} «${escapeHtml(a.name)}»: ${formatMoney(a.currentBalance)}`,
     );
     await this.reply(ctx, `💰 <b>Баланс счетов</b>\n\n${lines.join("\n")}`);
     await this.ackCallback(ctx);

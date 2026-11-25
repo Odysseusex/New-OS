@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { priceListLocationMap } from "../common/price-source";
-import { DashboardFinanceDto, DashboardPeriodFiguresDto, DashboardTopProductDto, debtDateKey, directionIdOfSale, DirectionPnlRowDto, LocationType, ProductType, ProfitAndLossDto } from "@bakery-os/shared";
+import { DashboardFinanceDto, DashboardPeriodFiguresDto, DashboardTopProductDto, debtDateKey, directionIdOfSale, isPersonalAccount, partnerShortName, DirectionPnlRowDto, LocationType, ProductType, ProfitAndLossDto } from "@bakery-os/shared";
 import { loadDirectionContext } from "../directions/direction-context";
 import { OWN_ITEMS } from "../common/own-sales";
 import { PrismaService } from "../prisma/prisma.service";
@@ -47,10 +47,13 @@ export class DashboardFinanceService {
     ]);
 
     // With a point chosen: its own accounts (its drawer, and the bank account its card money goes to).
-    let shown = accounts;
+    // The participants' personal accounts are not money of the business: they are shown as debts.
+    const own = accounts.filter((a) => !isPersonalAccount(a));
+    const partnerDebts = accounts.filter(isPersonalAccount).map((a) => ({ accountId: a.id, name: partnerShortName(a.name), owed: round2(-a.currentBalance) }));
+    let shown = own;
     if (locationId) {
       const nonCash = await this.prisma.location.findUnique({ where: { id: locationId }, select: { nonCashAccountId: true } });
-      shown = accounts.filter((a) => a.locationId === locationId || a.id === nonCash?.nonCashAccountId);
+      shown = own.filter((a) => a.locationId === locationId || a.id === nonCash?.nonCashAccountId);
     }
 
     let todayFigures = period(today);
@@ -89,6 +92,7 @@ export class DashboardFinanceService {
       month: monthFigures,
       cashTotal: round2(shown.reduce((s, a) => s + a.currentBalance, 0)),
       cashAccounts: shown.map((a) => ({ id: a.id, name: a.name, balance: a.currentBalance })).sort((a, b) => b.balance - a.balance),
+      partnerDebts,
       payables: { total: payables.total, overdue: payables.overdue },
       receivables: { total: receivables.total, overdue: receivables.overdue },
       finishedGoods,

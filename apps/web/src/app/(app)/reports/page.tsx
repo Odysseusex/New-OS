@@ -38,6 +38,7 @@ import {
   QUALITY_VIEW_ROLES,
   UNIT_LABELS_RU,
   WRITE_OFF_REASON_LABELS_RU,
+  isPersonalAccount,
 } from "@bakery-os/shared";
 import { api, ApiError, type CashScope } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -192,7 +193,7 @@ export default function ReportsPage() {
               className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
             >
               <option value="">Все счета</option>
-              {accounts.map((a) => (
+              {accounts.filter((a) => !isPersonalAccount(a)).map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}
                 </option>

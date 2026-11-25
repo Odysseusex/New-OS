@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
 import { ChevronLeft, ChevronRight, RefreshCw, X } from "lucide-react";
 import type { SupplierIntakeDto } from "@bakery-os/shared";
-import { SUPPLIER_INTAKE_PAYMENT_LABELS_RU, SUPPLIER_INTAKE_STATUS_LABELS_RU, SupplierIntakeStatus } from "@bakery-os/shared";
+import { SUPPLIER_INTAKE_STATUS_LABELS_RU, SupplierIntakeStatus } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { formatMoney } from "@/lib/format";
 import { zonedDateKey } from "@/lib/reporting-period";
@@ -118,7 +118,7 @@ export function SupplierIntakesTab() {
             <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
               <div className="min-w-0 flex-1">
                 <p className="text-base font-semibold text-foreground">
-                  Приход № {i.number} · {i.locationName} · {SUPPLIER_INTAKE_PAYMENT_LABELS_RU[i.payment]}
+                  Приход № {i.number} · {i.locationName} · {i.paymentLabel}
                 </p>
                 <p className="mt-0.5 text-sm text-muted">
                   {dayLabel(i.day)}, {timeLabel(i.createdAt)} · {i.createdByName}

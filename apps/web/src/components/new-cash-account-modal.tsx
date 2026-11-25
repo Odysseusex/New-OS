@@ -46,8 +46,8 @@ export function NewCashAccountModal({
   return (
     <Modal title="Новый счёт" onClose={onClose}>
       <form onSubmit={handleSubmit}>
-        <div className="mb-4 grid grid-cols-2 gap-1 rounded-xl bg-surface-muted p-1">
-          {([CashAccountType.BANK, CashAccountType.CASH] as const).map((t) => (
+        <div className="mb-4 grid grid-cols-3 gap-1 rounded-xl bg-surface-muted p-1">
+          {([CashAccountType.BANK, CashAccountType.CASH, CashAccountType.PERSONAL] as const).map((t) => (
             <button
               key={t}
               type="button"
@@ -56,7 +56,7 @@ export function NewCashAccountModal({
                 type === t ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground"
               }`}
             >
-              {t === CashAccountType.BANK ? "Банковский счёт" : "Касса"}
+              {t === CashAccountType.BANK ? "Банковский счёт" : t === CashAccountType.CASH ? "Касса" : "Личные средства участника"}
             </button>
           ))}
         </div>
@@ -67,7 +67,7 @@ export function NewCashAccountModal({
             type="text"
             required
             autoFocus
-            placeholder={type === CashAccountType.BANK ? "Расчётный счёт" : "Касса точки"}
+            placeholder={type === CashAccountType.BANK ? "Расчётный счёт" : type === CashAccountType.CASH ? "Касса точки" : "Амир (личные)"}
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
@@ -92,7 +92,12 @@ export function NewCashAccountModal({
           </div>
         )}
 
-        <div className="mb-4">
+        {type === CashAccountType.PERSONAL && (
+          <p className="mb-4 rounded-xl bg-surface-muted px-3 py-2 text-sm text-muted">
+            Оплата с этого счёта увеличивает задолженность перед участником, перевод на него — уменьшает.
+          </p>
+        )}
+        <div className={type === CashAccountType.PERSONAL ? "hidden" : "mb-4"}>
           <label className="mb-1.5 block text-sm font-medium text-foreground">
             Начальное сальдо, ₸ <span className="text-muted">(необязательно)</span>
           </label>

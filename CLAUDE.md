@@ -1287,6 +1287,49 @@ fully classified article of the right kind; for a SHORTAGE `ownerWithdrawal: tru
 (found by name, else created EXPENSE / NOT_IN_PNL / FINANCING / OWNER_WITHDRAWAL — the bank import's preset), so years of
 unrecorded выемки do not become a loss in the P&L. Built after a till's books showed 4.3 M ₸ that was not in the drawer.
 
+## «Личные кошельки» — a participant pays with their own money (built 25.11.2026)
+
+Raw materials are often paid for out of pocket by two participants (Амир, Гаухар апа) and the business pays them back
+later, usually from Kaspi. `CashAccountType.PERSONAL` «Личные средства участника» (migration
+`20261210120000_personal_accounts`, additive: two enum values + two columns on `supplier_intakes`), one account per
+person, made in Финансы → Банк и касса → «Новый счёт». Spec `finance/personal-accounts.spec.ts` (ledger on, diagnostics
+clean at every step). Rules that are easy to break:
+
+- **It is a `CashAccount` and its movements are ordinary `CashMovement`s** — so every existing payment form (supplier
+  payment, «Оплачено сразу», «Новый расход», invoice, fixed asset…) takes it with no change. But it is **never the
+  business's money**: balance below zero = the business owes the participant, above zero = the participant holds the
+  business's money. No point, never default, no opening balance; transfers and withdrawals from it skip the
+  «недостаточно денег» guard. **Every sum over cash accounts must leave it out** (`type: { not: "PERSONAL" }` /
+  shared `isPersonalAccount`): done in the balance sheet, ДДС reconciliation, both dashboards, planning, AI-центр,
+  till shift targets, the consignment fallback account, ledger diagnostics. A new reader of account balances must too.
+- **Events (`finance/events/cash-events.ts`), no plug:** a movement on a personal account is the same event its type
+  gives, passed through `viaPersonalAccount`: the `CASH_AND_BANK` leg becomes `BalanceLine.PARTNER_PAYABLES`
+  «Задолженность перед участниками» (liability, sign turned), and beside the payment's own cash leg (operating:
+  «Оплата поставщику», the expense's article) stands a FINANCING leg of the opposite sign labelled
+  `PARTNER_FUNDS_LABEL` «Средства участников (личные)» (`CashLeg.label`). The two net to zero, so the statement's
+  closing is the business's accounts and I2 holds. A transfer with a personal account on one side is NOT an internal
+  transfer: `partnerTransferEvent` (`FinancialEventType.PARTNER_SETTLEMENT`) — the business account's leg is FINANCING
+  («Возврат средств участнику» / «Поступление средств от участника») against the liability. Nothing of this reaches
+  the P&L: the expense itself is the business's expense once (its own accrual event), the payment and the repayment
+  are not.
+- **Ledger:** `SystemAccountKey.PARTNER_PAYABLES`; `decideEvent` skips cash legs on a PERSONAL account (they only place
+  the payment in the statement). Creating a personal account adds the ledger account when the organization's system
+  accounts already exist (`ensurePartnerLedgerAccount`). Diagnostics: `PARTNER_SUBLEDGER` (personal accounts = GL),
+  `CASH_BANK_SUBLEDGER` without them. `proposeOpening` carries what was owed at the launch.
+- **Balance sheet:** «Денежные средства» excludes them; the liability line (with a per-participant breakdown, shown
+  whenever a personal account exists) comes from the accounts' own ledger, CONTROL compares it with the events. Debts
+  that existed before «Запустить» enter the opening position (liability up, opening equity down).
+- **Shown as a debt**: Банк и касса has its own block «Личные средства участников» («Должны: 87 000 ₸», «Вернуть
+  деньги» = the transfer form prefilled), Финансы → Сводка and the main dashboard show «Должны: <имя>» cards
+  (`PartnerDebtDto`, `partnerShortName` strips «(личные)»), the staff Telegram bot likewise.
+- **Bakers:** `SupplierIntakePayment.PERSONAL` + `paymentAccountId` / `paymentAccountName`; the buttons come from
+  `BakerCatalogDto.personalAccounts`, never from code; `SupplierIntakeDto.paymentLabel` is what every list shows.
+- **«Помощник»:** `CASH_TRANSFER_ROLES` lets it reach `POST /finance/movements/transfer`, and the service refuses it
+  any transfer that has no personal account on either side.
+- Not built: entering a debt that already exists today (there is no opening balance; «Корректировка остатка» is not
+  offered on a personal account in the UI) — needs the owner's word on what the other side is; a personal account in
+  the bank import's suggestions (a line can still be posted by hand as «Перевод» to it).
+
 ## Phone layout + product photos (built)
 
 **Phone (below `md`, 768 px) was redone on 11.11.2026** (owner: «всё большое и широкое, нужно крутить в стороны»). One

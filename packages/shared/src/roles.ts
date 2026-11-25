@@ -238,6 +238,9 @@ export const CASH_REGISTER_MANAGE_ROLES: Role[] = [
   Role.CASHIER,
   Role.SENIOR_CASHIER,
 ];
+// A transfer between own accounts. «Помощник» is let in only for a transfer to or from a participant's
+// personal account (paying a participant back) — the service checks that, not the route.
+export const CASH_TRANSFER_ROLES: Role[] = [...CASH_REGISTER_MANAGE_ROLES, Role.ASSISTANT];
 
 // Correcting a cash movement after the fact (the CashMovement ledger is
 // append-only — see CashMovement's schema comment) is materially more

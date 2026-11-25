@@ -14,6 +14,7 @@ import {
   SaveBakerNoteRequestDto,
   Unit,
   bakerRecipientKey,
+  partnerShortName,
   debtDateKey,
 } from "@bakery-os/shared";
 import { PrismaService } from "../prisma/prisma.service";
@@ -140,6 +141,13 @@ export class BakerNotesService {
       products: products.map((p) => ({ id: p.id, name: p.name, sku: p.sku, unit: p.unit as Unit, price: p.price.toNumber() })),
       prices,
       seesAll: this.seesAll(user),
+      personalAccounts: (
+        await this.prisma.cashAccount.findMany({
+          where: { organizationId: user.organizationId, type: "PERSONAL", isActive: true },
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+        })
+      ).map((a) => ({ id: a.id, name: partnerShortName(a.name) })),
     };
   }
 

@@ -48,7 +48,7 @@ export class TillShiftsService {
       this.prisma.organization.findUniqueOrThrow({ where: { id: user.organizationId }, select: { tillShiftsRequired: true, tillLineRemovalApproval: true } }),
       this.openShift(user.organizationId, locationId),
       this.tillAccount(user.organizationId, locationId),
-      this.prisma.cashAccount.findMany({ where: { organizationId: user.organizationId, isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, locationId: true, type: true } }),
+      this.prisma.cashAccount.findMany({ where: { organizationId: user.organizationId, isActive: true, type: { not: "PERSONAL" } }, orderBy: { name: "asc" }, select: { id: true, name: true, locationId: true, type: true } }),
       this.prisma.tillShift.findFirst({ where: { locationId }, orderBy: { number: "desc" }, select: { number: true } }),
     ]);
     return {

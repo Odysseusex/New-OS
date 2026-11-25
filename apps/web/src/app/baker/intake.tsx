@@ -40,7 +40,9 @@ export function IntakeForm({
   ];
   const [shots, setShots] = useState<Shot[]>([]);
   const [locationId, setLocationId] = useState(places[0].id);
+  // «Как оплатили»: one of the fixed ways, or a participant's own money (their personal account).
   const [payment, setPayment] = useState<SupplierIntakePayment | null>(null);
+  const [personalId, setPersonalId] = useState<string | null>(null);
   const [supplier, setSupplier] = useState("");
   const [total, setTotal] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -82,6 +84,7 @@ export function IntakeForm({
         const created = await api.baker.createIntake({
           locationId,
           payment,
+          paymentAccountId: payment === SupplierIntakePayment.PERSONAL ? (personalId ?? undefined) : undefined,
           supplierName: supplier.trim() || undefined,
           total: sum === undefined ? undefined : Math.round(sum * 100) / 100,
         });
@@ -170,8 +173,33 @@ export function IntakeForm({
         <h2 className="mb-2 text-base font-semibold text-muted">Как оплатили</h2>
         <div className="mb-5 grid grid-cols-2 gap-2">
           {PAYMENTS.map((p) => (
-            <button key={p} type="button" disabled={locked} onClick={() => { setPayment(p); setError(null); }} className={choice(payment === p)}>
+            <button
+              key={p}
+              type="button"
+              disabled={locked}
+              onClick={() => {
+                setPayment(p);
+                setPersonalId(null);
+                setError(null);
+              }}
+              className={choice(payment === p)}
+            >
               {SUPPLIER_INTAKE_PAYMENT_LABELS_RU[p]}
+            </button>
+          ))}
+          {catalog.personalAccounts.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              disabled={locked}
+              onClick={() => {
+                setPayment(SupplierIntakePayment.PERSONAL);
+                setPersonalId(a.id);
+                setError(null);
+              }}
+              className={choice(payment === SupplierIntakePayment.PERSONAL && personalId === a.id)}
+            >
+              {a.name}
             </button>
           ))}
         </div>
@@ -217,7 +245,7 @@ export function MyIntakes({ intakes }: { intakes: SupplierIntakeDto[] }) {
             </p>
             <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-base text-muted">
               <span>
-                {timeLabel(i.createdAt)} · фото {i.photos.length} · {SUPPLIER_INTAKE_PAYMENT_LABELS_RU[i.payment]}
+                {timeLabel(i.createdAt)} · фото {i.photos.length} · {i.paymentLabel}
                 {i.total !== null ? ` · ${formatMoney(i.total)}` : ""}
               </span>
               <span

@@ -8,6 +8,8 @@ import {
   BalanceSheetDto,
   BalanceSource,
   BalanceStatus,
+  CashAccountType,
+  partnerShortName,
   COSTING_METHOD_LABEL_RU,
   FinancialEventType,
   InventoryRollForwardDto,
@@ -81,9 +83,12 @@ export class BalanceService implements OnModuleInit {
       for (const e of allEvents) {
         if (e.type === FinancialEventType.OPENING_BALANCE || e.occurredAt >= goLive.toISOString()) continue;
         const cashDelta = e.balance.filter((l) => l.line === BalanceLine.CASH_AND_BANK).reduce((s, l) => s + l.delta, 0);
-        if (cashDelta === 0) continue;
+        // What was owed to a participant at the launch is part of the opening position the same way.
+        const partnerDelta = e.balance.filter((l) => l.line === BalanceLine.PARTNER_PAYABLES).reduce((s, l) => s + l.delta, 0);
+        if (cashDelta === 0 && partnerDelta === 0) continue;
         projected.set(BalanceLine.CASH_AND_BANK, (projected.get(BalanceLine.CASH_AND_BANK) ?? 0) + cashDelta);
-        projected.set(BalanceLine.OPENING_EQUITY, (projected.get(BalanceLine.OPENING_EQUITY) ?? 0) + cashDelta);
+        projected.set(BalanceLine.PARTNER_PAYABLES, (projected.get(BalanceLine.PARTNER_PAYABLES) ?? 0) + partnerDelta);
+        projected.set(BalanceLine.OPENING_EQUITY, (projected.get(BalanceLine.OPENING_EQUITY) ?? 0) + cashDelta - partnerDelta);
       }
     }
     const proj = (line: BalanceLine) => round2(projected.get(line) ?? 0);
@@ -133,6 +138,10 @@ export class BalanceService implements OnModuleInit {
       line(BalanceLine.CONSIGNMENT_PAYABLES, payables?.consignment ?? proj(BalanceLine.CONSIGNMENT_PAYABLES), payables ? "DOCUMENTS" : "EVENTS"),
       // No register of loans exists: the figure IS the events'.
       line(BalanceLine.LOANS, proj(BalanceLine.LOANS), "EVENTS"),
+      // The participants' personal accounts with the sign turned: what the business owes each of them.
+      ...(cashParts.hasPartners || proj(BalanceLine.PARTNER_PAYABLES) !== 0
+        ? [{ ...line(BalanceLine.PARTNER_PAYABLES, cashParts.partnersOwed, "LEDGER"), breakdown: cashParts.partners }]
+        : []),
       ...(advances.received > 0 ? [line(BalanceLine.ADVANCES_RECEIVED, advances.received, "DOCUMENTS")] : []),
     ];
     const equityLines = [
@@ -161,6 +170,7 @@ export class BalanceService implements OnModuleInit {
     };
     if (goLive) {
       compare("Денежные средства: журнал и события", cash, proj(BalanceLine.CASH_AND_BANK), 1);
+      compare("Задолженность перед участниками: личные счета и события", cashParts.partnersOwed, proj(BalanceLine.PARTNER_PAYABLES), -1);
       compare("Запасы: оценка складских остатков и события", inventory, proj(BalanceLine.INVENTORY), 1);
       // Advances are inside receivables / payables in the events (net).
       compare("Дебиторская задолженность: документы и события", assetLines[2].amount - advances.received, proj(BalanceLine.RECEIVABLES), 1);
@@ -350,22 +360,37 @@ export class BalanceService implements OnModuleInit {
   }
 
   // Money on `asOf`, and per account (ТЗ §8.3 «Денежные средства (по счетам)»).
-  async cashByAccountAt(organizationId: string, asOf: Date): Promise<{ total: number; breakdown: { label: string; amount: number }[] }> {
-    const rows = await this.prisma.cashMovement.findMany({
-      where: { organizationId, occurredAt: { lte: asOf } },
-      select: { type: true, amount: true, account: { select: { name: true } } },
-    });
+  // A participant's personal account is not the business's money: it is left out of the total and
+  // returned apart, sign turned, as what the business owes each participant.
+  async cashByAccountAt(
+    organizationId: string,
+    asOf: Date,
+  ): Promise<{ total: number; breakdown: { label: string; amount: number }[]; partnersOwed: number; partners: { label: string; amount: number }[]; hasPartners: boolean }> {
+    const [rows, personalAccounts] = await Promise.all([
+      this.prisma.cashMovement.findMany({
+        where: { organizationId, occurredAt: { lte: asOf } },
+        select: { type: true, amount: true, account: { select: { name: true, type: true } } },
+      }),
+      this.prisma.cashAccount.count({ where: { organizationId, type: CashAccountType.PERSONAL, isActive: true } }),
+    ]);
     const byAccount = new Map<string, number>();
+    const byPartner = new Map<string, number>();
     let total = 0;
+    let owed = 0;
     for (const m of rows) {
       const v = cashEffectOf({ type: m.type, amount: m.amount.toNumber() });
+      if (m.account.type === CashAccountType.PERSONAL) {
+        owed -= v;
+        const name = partnerShortName(m.account.name);
+        byPartner.set(name, (byPartner.get(name) ?? 0) - v);
+        continue;
+      }
       total += v;
       byAccount.set(m.account.name, (byAccount.get(m.account.name) ?? 0) + v);
     }
-    return {
-      total: round2(total),
-      breakdown: [...byAccount].map(([label, amount]) => ({ label, amount: round2(amount) })).filter((l) => l.amount !== 0).sort((a, b) => b.amount - a.amount),
-    };
+    const lines = (map: Map<string, number>) =>
+      [...map].map(([label, amount]) => ({ label, amount: round2(amount) })).filter((l) => l.amount !== 0).sort((a, b) => b.amount - a.amount);
+    return { total: round2(total), breakdown: lines(byAccount), partnersOwed: round2(owed), partners: lines(byPartner), hasPartners: personalAccounts > 0 };
   }
 
   // Stock on hand at a moment × the costing service's cost. Anchored at today's

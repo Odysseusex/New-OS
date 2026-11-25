@@ -169,6 +169,8 @@ export class LedgerReportsService {
           return "Кредиторская задолженность";
         case SystemAccountKey.LOANS:
           return "Займы и кредиты";
+        case SystemAccountKey.PARTNER_PAYABLES:
+          return "Задолженность перед участниками";
         case SystemAccountKey.OPENING_EQUITY:
           return "Начальный капитал";
         case SystemAccountKey.OWNER_CONTRIBUTIONS:

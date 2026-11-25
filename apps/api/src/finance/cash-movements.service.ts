@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import {
@@ -7,7 +7,9 @@ import {
   CashMovementType,
   CategoryClassification,
   BalanceTreatment,
+  CashAccountType,
   CashActivity,
+  Role,
   FinanceCategoryKind,
   isFullyClassified,
   PnlTreatment,
@@ -170,7 +172,9 @@ export class CashMovementsService {
 
   async withdraw(user: AuthenticatedUser, dto: CashWithdrawalDto): Promise<CashMovementDto> {
     const account = await this.assertAccount(user.organizationId, dto.accountId);
-    if (account.currentBalance.toNumber() < dto.amount) {
+    // A participant's personal account may go below zero: that is what the business owes them.
+    const guarded = account.type !== CashAccountType.PERSONAL;
+    if (guarded && account.currentBalance.toNumber() < dto.amount) {
       throw new BadRequestException("Недостаточно денег на счёте для снятия");
     }
     if (dto.categoryId) await this.assertCategory(user.organizationId, dto.categoryId, FinanceCategoryKind.EXPENSE);
@@ -185,7 +189,7 @@ export class CashMovementsService {
         reason: dto.reason,
         categoryId: dto.categoryId,
         createdById: user.id,
-        insufficientBalanceMessage: "Недостаточно денег на счёте для снятия",
+        ...(guarded ? { insufficientBalanceMessage: "Недостаточно денег на счёте для снятия" } : {}),
       }),
     );
     return this.toDto(movement);
@@ -196,8 +200,13 @@ export class CashMovementsService {
       throw new BadRequestException("Счёт списания и зачисления должны отличаться");
     }
     const fromAccount = await this.assertAccount(user.organizationId, dto.fromAccountId);
-    await this.assertAccount(user.organizationId, dto.toAccountId);
-    if (fromAccount.currentBalance.toNumber() < dto.amount) {
+    const toAccount = await this.assertAccount(user.organizationId, dto.toAccountId);
+    const fromPersonal = fromAccount.type === CashAccountType.PERSONAL;
+    // «Помощник» moves money only to pay a participant back (or to record what a participant put in).
+    if (user.role === Role.ASSISTANT && !fromPersonal && toAccount.type !== CashAccountType.PERSONAL) {
+      throw new ForbiddenException("Помощник может записать только перевод с личным счётом участника");
+    }
+    if (!fromPersonal && fromAccount.currentBalance.toNumber() < dto.amount) {
       throw new BadRequestException("Недостаточно денег на счёте списания");
     }
 
@@ -214,7 +223,7 @@ export class CashMovementsService {
         createdById: user.id,
         // Checked at the moment of the write, not only in the read above, so two
         // transfers racing past it cannot overdraw the source account together.
-        insufficientBalanceMessage: "Недостаточно денег на счёте списания",
+        ...(fromPersonal ? {} : { insufficientBalanceMessage: "Недостаточно денег на счёте списания" }),
       });
       const inMovement = await this.recordMovement(tx, {
         organizationId: user.organizationId,

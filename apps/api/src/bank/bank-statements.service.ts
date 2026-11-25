@@ -138,6 +138,7 @@ export class BankStatementsService {
   async upload(user: AuthenticatedUser, dto: UploadBankStatementRequestDto): Promise<BankStatementDto> {
     const account = await this.prisma.cashAccount.findFirst({ where: { id: dto.accountId, organizationId: user.organizationId } });
     if (!account || !account.isActive) throw new BadRequestException("Счёт не найден или заархивирован");
+    if (account.type === "PERSONAL") throw new BadRequestException("Выписка загружается на счёт бизнеса, а не на личный счёт участника");
     if (!dto.lines?.length) throw new BadRequestException("В выписке нет операций");
     if (dto.lines.length > MAX_LINES) throw new BadRequestException(`Слишком много операций в одном файле (больше ${MAX_LINES})`);
     const periodFrom = new Date(dto.periodFrom);

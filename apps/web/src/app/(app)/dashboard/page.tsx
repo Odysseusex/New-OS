@@ -219,6 +219,18 @@ function FinanceBlock({ money, lowStockCount }: { money: DashboardFinanceDto | n
             tone={money && money.payables.overdue > 0 ? "warning" : "default"}
           />
         </Link>
+        {(money?.partnerDebts ?? [])
+          .filter((d) => d.owed !== 0)
+          .map((d) => (
+            <Link key={d.accountId} href="/finance?tab=bank">
+              <StatCard
+                icon={HandCoins}
+                label={d.owed > 0 ? `Должны: ${d.name}` : `Должен: ${d.name}`}
+                value={formatMoney(Math.abs(d.owed))}
+                tone={d.owed > 0 ? "warning" : "default"}
+              />
+            </Link>
+          ))}
         <Link href="/inventory">
           <StatCard
             icon={Croissant}

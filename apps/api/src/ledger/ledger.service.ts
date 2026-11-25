@@ -28,6 +28,7 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { recordAudit } from "../audit/audit";
+import { cashEffectOf } from "../common/ledger-effects";
 import { CostingService } from "../costing/costing.service";
 import { FinancialEventProjector } from "../finance/events/projector";
 import { Dec, exactAmount, LedgerRejectedError, num, onNormalSide, sum, ZERO } from "./journal-math";
@@ -428,6 +429,12 @@ export class LedgerService {
       }),
       this.prisma.fixedAsset.findMany({ where: { organizationId, isOpening: true }, select: { acquisitionCost: true } }),
     ]);
+    // What was already owed to participants (their personal accounts) when the opening was declared.
+    const partnerRows = await this.prisma.cashMovement.findMany({
+      where: { organizationId, account: { type: "PERSONAL" }, occurredAt: { lt: org.financeInitializedAt } },
+      select: { type: true, amount: true },
+    });
+    const partners = sum(partnerRows.map((r) => new Prisma.Decimal(-cashEffectOf({ type: r.type, amount: r.amount.toNumber() })).toDecimalPlaces(2)));
     const cash = sum(cashRows.filter((r) => r.account.type === "CASH").map((r) => r.amount));
     const bank = sum(cashRows.filter((r) => r.account.type === "BANK").map((r) => r.amount));
     const inventory = dec(org.openingInventoryValue);
@@ -444,7 +451,8 @@ export class LedgerService {
     add(SystemAccountKey.RECEIVABLES, receivables, "Заявленная дебиторская задолженность");
     add(SystemAccountKey.FIXED_ASSETS, fixed, "Основные средства, внесённые как начальные");
     add(SystemAccountKey.SUPPLIER_PAYABLES, payables, "Заявленная кредиторская задолженность");
-    const equity = cash.plus(bank).plus(inventory).plus(receivables).plus(fixed).minus(payables);
+    add(SystemAccountKey.PARTNER_PAYABLES, partners, "Задолженность перед участниками на дату запуска");
+    const equity = cash.plus(bank).plus(inventory).plus(receivables).plus(fixed).minus(payables).minus(partners);
     add(SystemAccountKey.OPENING_EQUITY, equity, "Активы за вычетом обязательств, как заявлено");
     notes.push("Полнота заявленного остатка не подтверждена (решение D3): проверьте цифры до проведения.");
     return { startsAt: org.ledgerStartsAt?.toISOString() ?? null, lines, notes };

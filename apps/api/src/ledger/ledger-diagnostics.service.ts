@@ -112,7 +112,11 @@ export class LedgerDiagnosticsService {
       severity: "ERROR",
     });
     push({ check: "AR_SUBLEDGER", title: "Дебиторская задолженность: продажи = главная книга", expected: r2(receivables - advances.received), actual: gl(SystemAccountKey.RECEIVABLES), source: "Продажи и платежи / главная книга", details: openingNote, tolerance: BALANCE_TOLERANCE, severity: "ERROR" });
-    const cashExpected = r2(cashRows.reduce((s, c) => s + c.currentBalance.toNumber(), 0));
+    const cashExpected = r2(cashRows.filter((c) => c.type !== "PERSONAL").reduce((s, c) => s + c.currentBalance.toNumber(), 0));
+    const partnersExpected = r2(-cashRows.filter((c) => c.type === "PERSONAL").reduce((s, c) => s + c.currentBalance.toNumber(), 0));
+    if (cashRows.some((c) => c.type === "PERSONAL")) {
+      push({ check: "PARTNER_SUBLEDGER", title: "Задолженность перед участниками: личные счета = главная книга", expected: partnersExpected, actual: gl(SystemAccountKey.PARTNER_PAYABLES), source: "Личные счета участников / главная книга", details: openingNote, tolerance: BALANCE_TOLERANCE, severity: "ERROR" });
+    }
     push({ check: "CASH_BANK_SUBLEDGER", title: "Касса и банк: денежный журнал = главная книга", expected: cashExpected, actual: r2(gl(SystemAccountKey.CASH_ON_HAND) + gl(SystemAccountKey.BANK)), source: "Остатки счетов / главная книга", details: openingNote, tolerance: BALANCE_TOLERANCE, severity: "ERROR" });
     push({ check: "FIXED_ASSETS_SUBLEDGER", title: "Основные средства: реестр = главная книга", expected: fixedAssets, actual: gl(SystemAccountKey.FIXED_ASSETS), source: "Реестр основных средств / главная книга", details: openingNote, tolerance: BALANCE_TOLERANCE, severity: "ERROR" });
 

@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, Query, UseGuards } from "@nestjs/common";
-import { CASH_ADJUSTMENT_ROLES, CASH_REGISTER_MANAGE_ROLES, FINANCE_VIEW_ROLES } from "@bakery-os/shared";
+import { CASH_ADJUSTMENT_ROLES, CASH_REGISTER_MANAGE_ROLES, CASH_TRANSFER_ROLES, FINANCE_VIEW_ROLES } from "@bakery-os/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
 import { Roles } from "../common/decorators/roles.decorator";
@@ -44,7 +44,7 @@ export class CashMovementsController {
   }
 
   @Post("transfer")
-  @Roles(...CASH_REGISTER_MANAGE_ROLES)
+  @Roles(...CASH_TRANSFER_ROLES)
   transfer(@CurrentUser() user: AuthenticatedUser, @Body() dto: CashTransferDto) {
     return this.cashMovementsService.transfer(user, dto);
   }

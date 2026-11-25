@@ -91,8 +91,8 @@ export function cashFlowOperations(
   const found: CashFlowOperationsDto["operations"] = [];
   for (const e of events) {
     if (e.occurredAt < fromIso || e.occurredAt > toIso) continue;
-    if (lineLabel(e) !== label) continue;
     for (const leg of e.cash) {
+      if ((leg.label ?? lineLabel(e)) !== label) continue;
       if (leg.section !== section || leg.amount === 0) continue;
       found.push({ occurredAt: e.occurredAt, description: e.description, sourceType: e.sourceType, sourceId: e.sourceId, amount: round2(leg.amount) });
     }

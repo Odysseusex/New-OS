@@ -263,7 +263,7 @@ export class ConsignmentService {
       where: { organizationId, type: CashAccountType.BANK, isDefault: true, isActive: true },
     });
     if (preferred) return preferred.id;
-    const any = await this.prisma.cashAccount.findFirst({ where: { organizationId, isActive: true } });
+    const any = await this.prisma.cashAccount.findFirst({ where: { organizationId, isActive: true, type: { not: CashAccountType.PERSONAL } } });
     return any?.id ?? null;
   }
 }

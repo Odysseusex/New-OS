@@ -60,6 +60,10 @@ export class CreateSupplierIntakeInput {
 
   @IsOptional()
   @IsString()
+  paymentAccountId?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(120)
   supplierName?: string;
 

@@ -1,5 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { CashMovementType, FinancialEvent } from "@bakery-os/shared";
+import { CashAccountType, CashMovementType, FinancialEvent } from "@bakery-os/shared";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CashMovementSource, cashMovementEvent, transferEvent } from "./cash-events";
 import { CategoryLike } from "./rules";
@@ -51,7 +51,7 @@ export class FinancialEventProjector {
     if (ids && ids.length === 0) return [];
     let rows = await this.prisma.cashMovement.findMany({
       where: { organizationId, ...(ids ? { id: { in: ids } } : {}), ...(opts.upTo ? { occurredAt: { lte: opts.upTo } } : {}) },
-      include: { categoryRef: true, expense: { include: { categoryRef: true } } },
+      include: { categoryRef: true, expense: { include: { categoryRef: true } }, account: { select: { type: true } } },
       orderBy: [{ occurredAt: "asc" }, { id: "asc" }],
     });
     if (ids) {
@@ -61,7 +61,7 @@ export class FinancialEventProjector {
         const known = new Set(rows.map((r) => r.id));
         const legs = await this.prisma.cashMovement.findMany({
           where: { organizationId, transferGroupId: { in: groups }, id: { notIn: [...known] } },
-          include: { categoryRef: true, expense: { include: { categoryRef: true } } },
+          include: { categoryRef: true, expense: { include: { categoryRef: true } }, account: { select: { type: true } } },
         });
         rows = [...rows, ...legs];
       }
@@ -85,6 +85,7 @@ export class FinancialEventProjector {
         fixedAssetId: row.fixedAssetId,
         saleId: row.saleId,
         transferGroupId: row.transferGroupId,
+        personal: row.account.type === CashAccountType.PERSONAL,
       };
       if (row.type === CashMovementType.TRANSFER_IN || row.type === CashMovementType.TRANSFER_OUT) {
         if (row.transferGroupId) {

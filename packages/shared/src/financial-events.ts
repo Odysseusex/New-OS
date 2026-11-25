@@ -34,6 +34,10 @@ export enum BalanceLine {
   EXPENSE_PAYABLES = "EXPENSE_PAYABLES",
   CONSIGNMENT_PAYABLES = "CONSIGNMENT_PAYABLES",
   LOANS = "LOANS",
+  // What the business owes its participants for supplier bills and expenses they paid out of their
+  // own pocket (the personal accounts, sign turned). Below zero for a participant who holds more of
+  // the business's money than they spent.
+  PARTNER_PAYABLES = "PARTNER_PAYABLES",
   // Unpaid expenses on articles marked «Оплата труда». Presentation only: the events
   // keep them inside EXPENSE_PAYABLES; the balance sheet shows them on their own line.
   PAYROLL_PAYABLES = "PAYROLL_PAYABLES",
@@ -58,6 +62,7 @@ export const BALANCE_LINE_SIDE: Record<BalanceLine, BalanceSide> = {
   [BalanceLine.EXPENSE_PAYABLES]: "LIABILITY",
   [BalanceLine.CONSIGNMENT_PAYABLES]: "LIABILITY",
   [BalanceLine.LOANS]: "LIABILITY",
+  [BalanceLine.PARTNER_PAYABLES]: "LIABILITY",
   [BalanceLine.PAYROLL_PAYABLES]: "LIABILITY",
   [BalanceLine.ADVANCES_RECEIVED]: "LIABILITY",
   [BalanceLine.OPENING_EQUITY]: "EQUITY",
@@ -75,6 +80,7 @@ export const BALANCE_LINE_LABELS_RU: Record<BalanceLine, string> = {
   [BalanceLine.EXPENSE_PAYABLES]: "Кредиторская задолженность — расходы",
   [BalanceLine.CONSIGNMENT_PAYABLES]: "Кредиторская задолженность — консигнация",
   [BalanceLine.LOANS]: "Займы и кредиты",
+  [BalanceLine.PARTNER_PAYABLES]: "Задолженность перед участниками",
   [BalanceLine.PAYROLL_PAYABLES]: "Задолженность по оплате труда",
   [BalanceLine.ADVANCES_RECEIVED]: "Авансы полученные",
   [BalanceLine.OPENING_EQUITY]: "Начальный капитал",
@@ -114,6 +120,8 @@ export enum FinancialEventType {
   OWNER_WITHDRAWAL = "OWNER_WITHDRAWAL",
   LOAN_PROCEEDS = "LOAN_PROCEEDS",
   LOAN_REPAYMENT = "LOAN_REPAYMENT",
+  // A transfer between a business account and a participant's personal account.
+  PARTNER_SETTLEMENT = "PARTNER_SETTLEMENT",
   CASH_RESULT = "CASH_RESULT",
   CASH_UNCLASSIFIED = "CASH_UNCLASSIFIED",
   // Accrual-side events (added with the full catalogue)
@@ -142,6 +150,8 @@ export interface CashLeg {
   section: CashSection;
   // Signed: + money in, − money out.
   amount: number;
+  // The statement line of this leg when it is not the event's own («Средства участников»).
+  label?: string;
 }
 export interface BalanceLeg {
   line: BalanceLine;

@@ -13,6 +13,7 @@ import {
   DismissAiInsightResponseDto,
   CashMovementType,
   CASH_MOVEMENT_INFLOW_TYPES,
+  isPersonalAccount,
   WRITE_OFF_REASON_LABELS_RU,
   LocationType,
 } from "@bakery-os/shared";
@@ -111,7 +112,7 @@ export class AiAnalyticsService {
       this.cashAccountsService.findAll(user.organizationId),
     ]);
 
-    const cashTotal = accounts.filter((a) => a.isActive).reduce((sum, a) => sum + a.currentBalance, 0);
+    const cashTotal = accounts.filter((a) => a.isActive && !isPersonalAccount(a)).reduce((sum, a) => sum + a.currentBalance, 0);
     const revenueConfidence = pnlPrevious.revenue > 0 ? AiConfidence.HIGH : AiConfidence.LOW;
     // Margin is a percentage already — comparing it to the previous period
     // is a percentage-POINT difference, never a "percent change of a
@@ -637,7 +638,7 @@ export class AiAnalyticsService {
   // ── 7. Кассовый запас хода ─────────────────────────────────────────
 
   private async computeCashRunwayInsights(user: AuthenticatedUser): Promise<AiInsightDto[]> {
-    const accounts = (await this.cashAccountsService.findAll(user.organizationId)).filter((a) => a.isActive);
+    const accounts = (await this.cashAccountsService.findAll(user.organizationId)).filter((a) => a.isActive && !isPersonalAccount(a));
     if (accounts.length === 0) return [];
 
     const cutoff = new Date();

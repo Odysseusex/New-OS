@@ -12,7 +12,7 @@ import {
   NotificationType,
   ORG_WIDE_ROLES,
   BAKER_DAY_ROLES,
-  SUPPLIER_INTAKE_PAYMENT_LABELS_RU,
+  supplierIntakePaymentLabel,
   SupplierIntakePayment,
 } from "@bakery-os/shared";
 import { PrismaService } from "../prisma/prisma.service";
@@ -151,7 +151,7 @@ export class NotificationsService {
           type: NotificationType.SUPPLIER_INTAKE,
           severity: NotificationSeverity.INFO,
           title: `Приход от ${intake.createdByName}`,
-          message: `${intake._count.photos} фото, ${intake.location.name}, ${SUPPLIER_INTAKE_PAYMENT_LABELS_RU[intake.payment as SupplierIntakePayment]}${intake.supplierName ? ` · ${intake.supplierName}` : ""}`,
+          message: `${intake._count.photos} фото, ${intake.location.name}, ${supplierIntakePaymentLabel(intake.payment as SupplierIntakePayment, intake.paymentAccountName)}${intake.supplierName ? ` · ${intake.supplierName}` : ""}`,
           locationId: intake.locationId,
           locationName: intake.location.name,
           link: "/production?tab=intakes",

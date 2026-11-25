@@ -274,7 +274,7 @@ export class PlanningService {
     const [pnl, breakEven, accounts] = await Promise.all([
       this.finance.getProfitAndLoss(organizationId, from, to),
       this.finance.getBreakEven(organizationId, from, to),
-      this.prisma.cashAccount.findMany({ where: { organizationId, isActive: true }, select: { currentBalance: true } }),
+      this.prisma.cashAccount.findMany({ where: { organizationId, isActive: true, type: { not: "PERSONAL" } }, select: { currentBalance: true } }),
     ]);
     const notes: string[] = [];
     if (pnl.netRevenue <= 0) notes.push("В базовом периоде нет выручки — прогноз будет нулевым");

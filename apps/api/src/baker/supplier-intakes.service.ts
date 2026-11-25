@@ -6,7 +6,8 @@ import {
   ResolveSupplierIntakeRequestDto,
   Role,
   SUPPLIER_INTAKE_MAX_PHOTOS,
-  SUPPLIER_INTAKE_PAYMENT_LABELS_RU,
+  partnerShortName,
+  supplierIntakePaymentLabel,
   SUPPLIER_INTAKE_PHOTO_MAX_CHARS,
   SupplierIntakeDto,
   SupplierIntakePayment,
@@ -52,6 +53,17 @@ export class SupplierIntakesService {
       select: { id: true },
     });
     if (!location) throw new NotFoundException("Выберите, куда привезли");
+    // Paid out of a participant's pocket: which participant is one of the organization's personal accounts.
+    let personal: { id: string; name: string } | null = null;
+    if (dto.payment === SupplierIntakePayment.PERSONAL) {
+      personal = dto.paymentAccountId
+        ? await this.prisma.cashAccount.findFirst({
+            where: { id: dto.paymentAccountId, organizationId: user.organizationId, type: "PERSONAL", isActive: true },
+            select: { id: true, name: true },
+          })
+        : null;
+      if (!personal) throw new BadRequestException("Выберите, чьими деньгами оплатили");
+    }
     if (dto.total !== undefined && dto.total !== null && !(dto.total >= 0 && dto.total < 1e11)) throw new BadRequestException("Проверьте итог с накладной");
     const row = await this.prisma.$transaction(async (tx) => {
       const org = await tx.organization.update({
@@ -65,6 +77,8 @@ export class SupplierIntakesService {
           number: org.supplierIntakeSequence,
           locationId: location.id,
           payment: dto.payment as PrismaPayment,
+          paymentAccountId: personal?.id ?? null,
+          paymentAccountName: personal ? partnerShortName(personal.name) : null,
           supplierName: text(dto.supplierName, 120),
           total: dto.total === undefined || dto.total === null ? null : round2(dto.total),
           comment: text(dto.comment, 300),
@@ -110,7 +124,7 @@ export class SupplierIntakesService {
           action: "supplierIntake.send",
           entityType: "SupplierIntake",
           entityId: id,
-          after: { number: intake.number, locationId: intake.locationId, payment: intake.payment, photos: intake.photos.length, supplierName: intake.supplierName, total: intake.total?.toNumber() ?? null },
+          after: { number: intake.number, locationId: intake.locationId, payment: intake.payment, paymentAccountId: intake.paymentAccountId, photos: intake.photos.length, supplierName: intake.supplierName, total: intake.total?.toNumber() ?? null },
         });
       }
       return tx.supplierIntake.findUniqueOrThrow({ where: { id }, include: INCLUDE });
@@ -226,6 +240,8 @@ export class SupplierIntakesService {
       locationId: row.locationId,
       locationName: row.location.name,
       payment: row.payment as SupplierIntakePayment,
+      paymentLabel: supplierIntakePaymentLabel(row.payment as SupplierIntakePayment, row.paymentAccountName),
+      paymentAccountId: row.paymentAccountId,
       supplierName: row.supplierName,
       total: row.total?.toNumber() ?? null,
       comment: row.comment,
@@ -257,7 +273,7 @@ export class SupplierIntakesService {
       });
       const message =
         `📦 <b>Приход от ${escapeHtml(row.createdByName)}</b>: ${row.photos.length} фото, ` +
-        `${escapeHtml(row.location.name)}, ${SUPPLIER_INTAKE_PAYMENT_LABELS_RU[row.payment as SupplierIntakePayment]}` +
+        `${escapeHtml(row.location.name)}, ${escapeHtml(supplierIntakePaymentLabel(row.payment as SupplierIntakePayment, row.paymentAccountName))}` +
         (row.supplierName ? `\nПоставщик: ${escapeHtml(row.supplierName)}` : "") +
         (row.total ? `\nИтог: ${Math.round(row.total.toNumber()).toLocaleString("ru-RU")} ₸` : "");
       for (const u of users) {

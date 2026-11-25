@@ -107,6 +107,8 @@ export interface BakerCatalogDto {
   prices: Record<string, Record<string, number>>;
   // May the user see every baker's notes (operator) or only their own.
   seesAll: boolean;
+  // Participants who pay suppliers with their own money («Как оплатили» on a supplier intake).
+  personalAccounts: { id: string; name: string }[];
 }
 
 export interface BakerDayDto {
@@ -215,6 +217,8 @@ export enum SupplierIntakePayment {
   KASPI = "KASPI",
   BCC = "BCC",
   CREDIT = "CREDIT",
+  // Out of a participant's own pocket: which one is `paymentAccountId` (a personal account).
+  PERSONAL = "PERSONAL",
 }
 
 export const SUPPLIER_INTAKE_PAYMENT_LABELS_RU: Record<SupplierIntakePayment, string> = {
@@ -222,7 +226,12 @@ export const SUPPLIER_INTAKE_PAYMENT_LABELS_RU: Record<SupplierIntakePayment, st
   [SupplierIntakePayment.KASPI]: "Kaspi",
   [SupplierIntakePayment.BCC]: "BCC",
   [SupplierIntakePayment.CREDIT]: "В долг",
+  [SupplierIntakePayment.PERSONAL]: "Личные средства",
 };
+
+// «Как оплатили» in words: the participant's name when it was their own money.
+export const supplierIntakePaymentLabel = (payment: SupplierIntakePayment, personalAccountName?: string | null): string =>
+  payment === SupplierIntakePayment.PERSONAL && personalAccountName ? personalAccountName : SUPPLIER_INTAKE_PAYMENT_LABELS_RU[payment];
 
 export const SUPPLIER_INTAKE_MAX_PHOTOS = 8;
 // One photo as it travels (a JPEG data URL): the API's JSON body limit is 1 MB.
@@ -244,6 +253,10 @@ export interface SupplierIntakeDto {
   locationId: string;
   locationName: string;
   payment: SupplierIntakePayment;
+  // How it was paid, in words: «Наличные», «В долг», or the participant who paid — «Гаухар апа».
+  paymentLabel: string;
+  // PERSONAL: the participant's personal account the payment is to be recorded on.
+  paymentAccountId: string | null;
   supplierName: string | null;
   // The total written on the supplier's paper, as the baker read it.
   total: number | null;
@@ -263,6 +276,8 @@ export interface SupplierIntakeDto {
 export interface CreateSupplierIntakeRequestDto {
   locationId: string;
   payment: SupplierIntakePayment;
+  // Required with PERSONAL: one of the catalogue's `personalAccounts`.
+  paymentAccountId?: string;
   supplierName?: string;
   total?: number;
   comment?: string;

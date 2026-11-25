@@ -58,6 +58,9 @@ export function decideEvent(event: FinancialEvent, cashAccountKinds: CashAccount
     const amount = fromComputed(Math.abs(leg.amount));
     if (amount.isZero()) continue;
     const kind = cashAccountKinds.get(leg.accountId);
+    // A participant's personal account holds none of the business's money: its legs only place the
+    // payment in the cash-flow statement (they net to zero), and the balance legs carry the entry.
+    if (kind === "PERSONAL") continue;
     const accountKey = kind === "CASH" ? SystemAccountKey.CASH_ON_HAND : SystemAccountKey.BANK;
     if (kind === undefined) {
       return { status: AccountingEventStatus.NOT_POSTED, reason: NotPostedReason.ACCOUNT_NOT_MAPPED, detail: `cash:${leg.accountId}` };

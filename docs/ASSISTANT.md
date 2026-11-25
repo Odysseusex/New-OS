@@ -88,6 +88,13 @@ A closed month refuses writes dated in it: tell the owner, do not try another da
   `POST /baker/intakes/:id/resolve {status:"POSTED", purchaseOrderId?, document?}` (name the order and/or say what was
   entered) or `{status:"REJECTED", reason}` when a photo cannot be read — the baker sees the reason. Marking moves
   nothing by itself; never mark «POSTED» before the goods are really in.
+- **Paid with a participant's own money** («Амир (личные)», «Гаухар апа (личные)» — accounts of type `PERSONAL` in
+  `GET /finance/accounts`; an intake says so with `payment: "PERSONAL"` + `paymentAccountId`): record the payment
+  exactly as any other, with that account's id as `accountId` — `receive {payNow:{accountId}}`, `…/payments`, or
+  `POST /finance/expenses`. Nothing leaves the business's money; the account goes below zero = the business owes that
+  participant. Paying them back is `POST /finance/movements/transfer {fromAccountId: <Kaspi / касса>, toAccountId:
+  <personal>, amount, reason}` — the only transfers this key may make are to or from a personal account. Never record
+  a repayment as an expense.
 - Purchasing: `GET|POST /procurement/orders`, `POST /procurement/orders/:id/receive|revise|supplier-return|payments|cancel`.
 - Sales: `GET /sales`, `GET /sales/:id`, `POST /sales` (wholesale), `POST /sales/customer-payments`,
   `GET /sales/report|profitability|dynamics`.

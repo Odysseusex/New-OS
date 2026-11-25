@@ -193,6 +193,8 @@ enum CompensationType {
 enum CashAccountType {
   BANK
   CASH
+  // A participant's own pocket: below zero = the business owes them. Never the business's money.
+  PERSONAL
 }
 
 enum FinanceCategoryKind {
@@ -915,6 +917,7 @@ enum SupplierIntakePayment {
   KASPI
   BCC
   CREDIT
+  PERSONAL
 }
 
 model SupplierIntake {
@@ -925,6 +928,9 @@ model SupplierIntake {
   locationId      String
   location        Location              @relation(fields: [locationId], references: [id], onDelete: Cascade)
   payment         SupplierIntakePayment
+  // PERSONAL: the participant's personal account and its name as it read then (plain columns).
+  paymentAccountId   String?
+  paymentAccountName String?
   supplierName    String?
   total           Decimal?              @db.Decimal(14, 2)
   comment         String?

@@ -30,12 +30,31 @@ export const PAYMENT_METHOD_LABELS_RU: Record<PaymentMethod, string> = {
 export enum CashAccountType {
   BANK = "BANK",
   CASH = "CASH",
+  // «Личные средства участника»: not the business's money. A participant pays a supplier or an expense
+  // out of their own pocket (the balance goes below zero = the business owes them) and is paid back by
+  // an ordinary transfer from a bank account or a till. Never part of «Денежные средства».
+  PERSONAL = "PERSONAL",
 }
 
 export const CASH_ACCOUNT_TYPE_LABELS_RU: Record<CashAccountType, string> = {
   [CashAccountType.BANK]: "Банковский счёт",
   [CashAccountType.CASH]: "Касса",
+  [CashAccountType.PERSONAL]: "Личные средства участника",
 };
+
+export const isPersonalAccount = (account: { type: string }): boolean => account.type === CashAccountType.PERSONAL;
+
+// What the business owes a participant (and, below zero, what the participant holds of the business's
+// money), read off the personal account: the account's balance with the sign turned.
+export interface PartnerDebtDto {
+  accountId: string;
+  name: string;
+  // > 0: the business owes the participant; < 0: the participant owes the business.
+  owed: number;
+}
+
+// «Амир (личные)» → «Амир»: the short name shown on a button.
+export const partnerShortName = (accountName: string): string => accountName.replace(/\s*\((?:личн|персон)[^)]*\)\s*$/i, "").trim() || accountName;
 
 export interface CashAccountDto {
   id: string;
@@ -727,6 +746,8 @@ export interface FinanceDashboardDto {
   todayOutflow: number;
   accountsReceivable: number;
   accountsPayable: number;
+  // Per participant with a personal account: what the business owes them.
+  partnerDebts: PartnerDebtDto[];
   grossProfit: number;
   operatingProfit: number;
   // After other results and tax. PRELIMINARY while anything is not configured.

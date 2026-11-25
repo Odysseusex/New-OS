@@ -177,7 +177,7 @@ export async function checkLedgerConsistency(
       accountsChecked: accounts.length,
       drifts: cashDrifts,
       negativeBalances: accounts
-        .filter((a) => a.currentBalance.isNegative())
+        .filter((a) => a.currentBalance.isNegative() && a.type !== "PERSONAL")
         .map((a) => ({ accountName: a.name, balance: a.currentBalance.toNumber() })),
     },
     isConsistent: stockDrifts.length === 0 && cashDrifts.length === 0,

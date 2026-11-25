@@ -1,4 +1,5 @@
 import { Role } from "./roles";
+import type { PartnerDebtDto } from "./finance";
 import { LocationOwnership, LocationType } from "./location";
 
 export interface LocationDto {
@@ -181,6 +182,8 @@ export interface DashboardFinanceDto {
   // Balances of the active accounts (with a point chosen: the accounts tied to it).
   cashTotal: number;
   cashAccounts: { id: string; name: string; balance: number }[];
+  // What the business owes each participant who pays with their own money (personal accounts).
+  partnerDebts: PartnerDebtDto[];
   // Network-wide: debts are kept per counterparty, not per point.
   payables: { total: number; overdue: number };
   receivables: { total: number; overdue: number };

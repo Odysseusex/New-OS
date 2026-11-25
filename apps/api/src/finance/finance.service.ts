@@ -33,6 +33,7 @@ import {
   CashSection,
   CASH_MOVEMENT_INFLOW_TYPES,
   CashAccountType,
+  partnerShortName,
   CashMovementType,
   CompensationType,
   CostCoverageDto,
@@ -1523,7 +1524,8 @@ export class FinanceService {
         },
         include: { categoryRef: true },
       }),
-      this.prisma.cashAccount.findMany({ where: { organizationId }, select: { id: true, currentBalance: true } }),
+      // The statement closes on the business's own money: the participants' personal accounts are not it.
+      this.prisma.cashAccount.findMany({ where: { organizationId, type: { not: CashAccountType.PERSONAL } }, select: { id: true, currentBalance: true } }),
       this.cashScopeIndex(organizationId, scope),
     ]);
     const movements = allMovements.filter(
@@ -1676,13 +1678,17 @@ export class FinanceService {
 
     const [accounts, todayMovements, accountsReceivable, accountsPayable, pnl] = await Promise.all([
       this.prisma.cashAccount.findMany({ where: { organizationId, isActive: true } }),
-      this.prisma.cashMovement.findMany({ where: { organizationId, occurredAt: { gte: startOfToday } } }),
+      this.prisma.cashMovement.findMany({ where: { organizationId, occurredAt: { gte: startOfToday }, account: { type: { not: CashAccountType.PERSONAL } } } }),
       this.getAccountsReceivable(organizationId),
       this.getAccountsPayable(organizationId),
       this.getProfitAndLoss(organizationId, periodFrom, periodTo),
     ]);
 
-    const cashOnHand = accounts.reduce((sum, a) => sum + a.currentBalance.toNumber(), 0);
+    const partnerDebts = accounts
+      .filter((a) => a.type === CashAccountType.PERSONAL)
+      .map((a) => ({ accountId: a.id, name: partnerShortName(a.name), owed: roundMoney(-a.currentBalance.toNumber()) }))
+      .sort((a, b) => a.name.localeCompare(b.name, "ru"));
+    const cashOnHand = bankAndTills(accounts).reduce((sum, a) => sum + a.currentBalance.toNumber(), 0);
     const bankBalance = accounts
       .filter((a) => a.type === CashAccountType.BANK)
       .reduce((sum, a) => sum + a.currentBalance.toNumber(), 0);
@@ -1712,6 +1718,7 @@ export class FinanceService {
       todayOutflow,
       accountsReceivable,
       accountsPayable,
+      partnerDebts,
       grossProfit: pnl.grossProfit,
       operatingProfit: pnl.operatingProfit,
       netProfit: pnl.netProfit,
@@ -1778,3 +1785,5 @@ function owedByArticle(expenses: { amount: Prisma.Decimal; amountPaid: Prisma.De
     }, new Map<string, number>()),
   );
 }
+
+const bankAndTills = <T extends { type: string }>(accounts: T[]): T[] => accounts.filter((a) => a.type !== CashAccountType.PERSONAL);

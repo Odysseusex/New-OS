@@ -1,6 +1,17 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { CashAccountDto, CashAccountType, CashMovementType, LocationNonCashAccountDto } from "@bakery-os/shared";
+import {
+  CashAccountDto,
+  CashAccountType,
+  CashMovementType,
+  LocationNonCashAccountDto,
+  PartnerDebtDto,
+  partnerShortName,
+  SYSTEM_ACCOUNT_DEFS,
+  SystemAccountKey,
+} from "@bakery-os/shared";
+import { Prisma } from "@prisma/client";
+import { round2 } from "../common/money";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { CreateCashAccountDto } from "./dto/create-cash-account.dto";
 import { UpdateCashAccountDto } from "./dto/update-cash-account.dto";
@@ -31,6 +42,13 @@ export class CashAccountsService {
     }
     if (dto.type === CashAccountType.BANK && dto.locationId) {
       throw new BadRequestException("Банковский счёт не привязывается к точке");
+    }
+    if (dto.type === CashAccountType.PERSONAL) {
+      // A participant's own pocket: not a place of the business, never the default, and what is
+      // already owed is entered with «Корректировка остатка», not as money the business holds.
+      if (dto.locationId) throw new BadRequestException("Личный счёт участника не привязывается к точке");
+      if (dto.isDefault) throw new BadRequestException("Личный счёт участника не может быть основным");
+      if (dto.openingBalance) throw new BadRequestException("У личного счёта участника нет начального остатка: долг вносится корректировкой остатка");
     }
     if (dto.locationId) {
       const location = await this.prisma.location.findFirst({
@@ -77,6 +95,7 @@ export class CashAccountsService {
         },
         include: ACCOUNT_INCLUDE,
       });
+      if (dto.type === CashAccountType.PERSONAL) await ensurePartnerLedgerAccount(tx, user.organizationId);
 
       await recordAudit(tx, {
         organizationId: user.organizationId,
@@ -244,6 +263,16 @@ export class CashAccountsService {
     return this.toDto(updated);
   }
 
+  // What the business owes each participant with a personal account (active ones).
+  async partnerDebts(organizationId: string): Promise<PartnerDebtDto[]> {
+    const accounts = await this.prisma.cashAccount.findMany({
+      where: { organizationId, type: CashAccountType.PERSONAL, isActive: true },
+      select: { id: true, name: true, currentBalance: true },
+      orderBy: { name: "asc" },
+    });
+    return accounts.map((a) => ({ accountId: a.id, name: partnerShortName(a.name), owed: round2(-a.currentBalance.toNumber()) }));
+  }
+
   private toDto = (account: {
     id: string;
     name: string;
@@ -263,4 +292,18 @@ export class CashAccountsService {
     currentBalance: account.currentBalance.toNumber(),
     isActive: account.isActive,
   });
+}
+
+// An organization whose chart of accounts already exists gets the account the personal accounts post
+// to, so the first payment out of a participant's pocket is journalised like any other. An
+// organization that has not created its system accounts yet gets it with the rest, on request.
+async function ensurePartnerLedgerAccount(tx: Prisma.TransactionClient, organizationId: string): Promise<void> {
+  const existing = await tx.ledgerAccount.findMany({ where: { organizationId }, select: { code: true, systemAccountKey: true } });
+  const key = SystemAccountKey.PARTNER_PAYABLES;
+  if (!existing.some((a) => a.systemAccountKey) || existing.some((a) => a.systemAccountKey === key)) return;
+  const codes = new Set(existing.map((a) => a.code));
+  let code: string = key;
+  for (let n = 2; codes.has(code); n += 1) code = `${key}_${n}`;
+  const def = SYSTEM_ACCOUNT_DEFS[key];
+  await tx.ledgerAccount.create({ data: { organizationId, code, name: def.name, type: def.type, normalBalance: def.normalBalance, systemAccountKey: key } });
 }

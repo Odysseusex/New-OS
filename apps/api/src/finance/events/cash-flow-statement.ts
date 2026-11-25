@@ -59,7 +59,7 @@ export function buildCashFlowFromEvents(events: FinancialEvent[], from: Date, to
       }
       if (leg.amount === 0) continue;
       const lines = sections.get(leg.section)!;
-      const label = lineLabel(e);
+      const label = leg.label ?? lineLabel(e);
       const entry = lines.get(label) ?? { label, inflow: 0, outflow: 0, count: 0 };
       if (leg.amount > 0) entry.inflow += leg.amount;
       else entry.outflow += -leg.amount;

@@ -229,6 +229,7 @@ export default function FinancePage() {
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [movementModalOpen, setMovementModalOpen] = useState(false);
   const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [repayAccount, setRepayAccount] = useState<CashAccountDto | null>(null);
   const [categoryModal, setCategoryModal] = useState<"income" | "expense" | FinanceCategoryDto | null>(null);
   const [classifyModal, setClassifyModal] = useState<FinanceCategoryDto | null>(null);
   const [payingDebt, setPayingDebt] = useState<PayableRow | null>(null);
@@ -516,6 +517,7 @@ export default function FinancePage() {
   const activeAccounts = accounts.filter((a) => a.isActive);
   const bankAccounts = accounts.filter((a) => a.type === CashAccountType.BANK);
   const cashAccounts = accounts.filter((a) => a.type === CashAccountType.CASH);
+  const personalAccounts = accounts.filter((a) => a.type === CashAccountType.PERSONAL);
 
   function refreshAfterDebtPayment() {
     loadExpenses();
@@ -647,6 +649,20 @@ export default function FinancePage() {
             />
           </SummarySection>
 
+          {(dashboard?.partnerDebts.length ?? 0) > 0 && (
+            <SummarySection title="Задолженность перед участниками">
+              {dashboard!.partnerDebts.map((d) => (
+                <StatCard
+                  key={d.accountId}
+                  icon={Wallet}
+                  label={d.owed < 0 ? `Должен: ${d.name}` : `Должны: ${d.name}`}
+                  value={formatMoney(Math.abs(d.owed))}
+                  tone={d.owed > 0 ? "warning" : "default"}
+                />
+              ))}
+            </SummarySection>
+          )}
+
           <SummarySection title={`Финансовый результат — ${periodLabel(period).toLowerCase()}`} last>
             <StatCard icon={Wallet} label="Валовая прибыль" value={formatMoney(dashboard?.grossProfit ?? 0)} />
             <StatCard
@@ -763,6 +779,50 @@ export default function FinancePage() {
               </tbody>
             </table>
           </div>
+          {personalAccounts.length > 0 && (
+            <div className="mt-6 rounded-2xl border border-border bg-surface shadow-card">
+              <div className="border-b border-border px-5 py-4">
+                <h2 className="text-sm font-semibold text-foreground">Личные средства участников</h2>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+                    <th className="px-5 py-3 font-medium">Счёт</th>
+                    <th className="px-5 py-3 text-right font-medium">Задолженность перед участником</th>
+                    <th className="px-5 py-3 text-right font-medium">Действия</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {personalAccounts.map((a) => (
+                    <tr key={a.id} className={!a.isActive ? "opacity-50" : undefined}>
+                      <td className="px-5 py-3 font-medium text-foreground">{a.name}</td>
+                      <td className="px-5 py-3 text-right font-medium text-foreground">
+                        {a.currentBalance < 0 ? (
+                          <span className="text-amber-700">Должны: {formatMoney(-a.currentBalance)}</span>
+                        ) : a.currentBalance > 0 ? (
+                          <span>Участник должен: {formatMoney(a.currentBalance)}</span>
+                        ) : (
+                          <span className="text-muted">Расчётов нет</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center justify-end gap-2">
+                          {canManageAccounts && a.isActive && a.currentBalance < 0 && (
+                            <button onClick={() => setRepayAccount(a)} className="text-xs font-medium text-accent hover:opacity-80">
+                              Вернуть деньги
+                            </button>
+                          )}
+                          {canManageAccounts && (
+                            <RowActions isActive={a.isActive} onArchive={() => handleArchiveAccount(a)} onRestore={() => handleRestoreAccount(a)} />
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           <NonCashAccountsCard accounts={accounts} canManage={canManageAccounts} />
         </>
       )}
@@ -1383,6 +1443,20 @@ export default function FinancePage() {
           onClose={() => setTransferModalOpen(false)}
           onSaved={() => {
             setTransferModalOpen(false);
+            loadAccounts();
+            loadMovements();
+            loadDashboard();
+          }}
+        />
+      )}
+
+      {repayAccount && (
+        <CashTransferModal
+          accounts={activeAccounts}
+          repay={repayAccount}
+          onClose={() => setRepayAccount(null)}
+          onSaved={() => {
+            setRepayAccount(null);
             loadAccounts();
             loadMovements();
             loadDashboard();
