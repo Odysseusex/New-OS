@@ -13,7 +13,7 @@ import { RecordSalePaymentModal } from "@/components/record-sale-payment-modal";
 import { SaleReturnModal } from "@/components/sale-return-modal";
 import { SaleCorrectionModal } from "@/components/sale-correction-modal";
 import { WaybillShareModal } from "@/components/waybill-share-modal";
-import { waybillsPrintHtml } from "@/lib/waybill";
+import { printWhenReady, waybillsPrintHtml } from "@/lib/waybill";
 import { saleWaybills } from "@/lib/sale-waybills";
 
 export function SaleDetailModal({
@@ -252,8 +252,7 @@ export function SaleDetailModal({
                     win.document.open();
                     win.document.write(waybillsPrintHtml(list));
                     win.document.close();
-                    win.focus();
-                    win.print();
+                    printWhenReady(win);
                   })
                   .catch(() => win.close());
               }}

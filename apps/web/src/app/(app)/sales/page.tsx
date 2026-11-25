@@ -24,7 +24,7 @@ import { PaymentStatusBadge } from "@/components/payment-status-badge";
 import { RecordSalePaymentModal, type SalePaymentContext } from "@/components/record-sale-payment-modal";
 import { ProductSelect } from "@/components/product-select";
 import { WaybillShareModal } from "@/components/waybill-share-modal";
-import { waybillsPrintHtml } from "@/lib/waybill";
+import { printWhenReady, waybillsPrintHtml } from "@/lib/waybill";
 import { saleWaybillsById } from "@/lib/sale-waybills";
 
 const PAGE_SIZE = 50;
@@ -201,8 +201,7 @@ export default function SalesPage() {
         // «Несколько на листе» as chosen on «Накладные пекарей» (on unless switched off there).
         win.document.write(waybillsPrintHtml(list, packPreferred()));
         win.document.close();
-        win.focus();
-        win.print();
+        printWhenReady(win);
       })
       .catch(() => {
         win.close();

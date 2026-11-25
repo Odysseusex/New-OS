@@ -34,6 +34,20 @@ export interface Waybill {
 
 export const WAYBILL_BRAND = "Ar-Amir";
 
+// The recipient's name is set in Cormorant Garamond SemiBold — the bakery site's own face, and one that has
+// every Kazakh letter (Tenor Sans, the poster's face, has none of ӘҒҚҢӨҰҮҺ). Served from our own /fonts,
+// the same three files Google gives, so no outside service is asked at print or picture time.
+export const WAYBILL_DISPLAY_FAMILY = "Waybill Display";
+export const WAYBILL_DISPLAY_FACES: { file: string; range: string }[] = [
+  { file: "/fonts/CormorantGaramond-SemiBold-cyrillic-ext.woff2", range: "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F" },
+  { file: "/fonts/CormorantGaramond-SemiBold-cyrillic.woff2", range: "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116" },
+  { file: "/fonts/CormorantGaramond-SemiBold-latin.woff2", range: "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD" },
+];
+const displayFaceCss = (origin: string) =>
+  WAYBILL_DISPLAY_FACES.map(
+    (f) => `@font-face{font-family:"${WAYBILL_DISPLAY_FAMILY}";font-weight:600;font-style:normal;src:url(${origin}${f.file}) format("woff2");unicode-range:${f.range}}`,
+  ).join("\n");
+
 const nbsp = (text: string) => text.replace(/[   ]/g, " ");
 // Tenge without «,00»; тиын only when there really are some.
 export const waybillMoney = (n: number) =>
@@ -114,8 +128,8 @@ const esc = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").
 function waybillHtml(w: Waybill): string {
   const rows = w.lines
     .map(
-      (l, i) =>
-        `<tr><td class="c">${i + 1}</td><td>${esc(l.name)}</td><td class="n">${waybillQty(l.quantity)}</td><td class="c">${esc(l.unit)}</td><td class="n">${waybillMoney(l.price)}</td><td class="n b">${waybillMoney(l.sum)}</td></tr>`,
+      (l) =>
+        `<tr><td>${esc(l.name)}</td><td class="n">${waybillQty(l.quantity)}</td><td class="c">${esc(l.unit)}</td><td class="n">${waybillMoney(l.price)}</td><td class="n b">${waybillMoney(l.sum)}</td></tr>`,
     )
     .join("");
   const money =
@@ -129,8 +143,8 @@ function waybillHtml(w: Waybill): string {
 </header>
 <div class="to"><span>${waybillRecipientLabel(w)}</span><b>${esc(w.recipient)}</b></div>
 <table>
-<colgroup><col style="width:11mm"><col><col style="width:22mm"><col style="width:13mm"><col style="width:24mm"><col style="width:30mm"></colgroup>
-<thead><tr><th class="c">№</th><th>Товар</th><th class="n">Кол-во</th><th class="c">Ед.</th><th class="n">Цена</th><th class="n">Сумма</th></tr></thead>
+<colgroup><col><col style="width:22mm"><col style="width:13mm"><col style="width:24mm"><col style="width:30mm"></colgroup>
+<thead><tr><th>Товар</th><th class="n">Кол-во</th><th class="c">Ед.</th><th class="n">Цена</th><th class="n">Сумма</th></tr></thead>
 <tbody>${rows}</tbody>
 </table>
 <div class="total"><p>${esc(waybillSummary(w))}</p><b>${waybillMoney(w.total)} ₸</b></div>
@@ -157,10 +171,11 @@ place();window.addEventListener("beforeprint",place);})();`;
 
 // `pack`: several накладные on one sheet with a cut line between them (as many as fit whole — two of the
 // usual length), to save paper; otherwise one per sheet.
-export function waybillsPrintHtml(list: Waybill[], pack = false): string {
+export function waybillsPrintHtml(list: Waybill[], pack = false, origin = typeof window === "undefined" ? "" : window.location.origin): string {
   const title = list.length === 1 ? `Накладная № ${list[0].number}` : "Накладные";
   return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${esc(title)}</title>
 <style>
+${displayFaceCss(origin)}
 @page{size:A4 portrait;margin:15mm}
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -175,8 +190,8 @@ header{display:flex;justify-content:space-between;align-items:flex-start;gap:8mm
 .from{text-align:right;max-width:70mm}
 .from span,.to span{display:block;font-size:8.5pt;color:#78716c}
 .from b{display:block;font-size:11pt;font-weight:500;margin-top:0.8mm;line-height:1.2}
-.to{border-top:0.2mm solid #d6d0c8;border-bottom:0.2mm solid #d6d0c8;padding:3.2mm 0 3.6mm;margin-bottom:4mm;break-inside:avoid;page-break-inside:avoid}
-.to b{display:block;font-size:16pt;font-weight:600;line-height:1.2;margin-top:0.8mm}
+.to{background:#f6f1ea;border-radius:3mm;padding:3.4mm 5mm 3.8mm;margin-bottom:4.5mm;break-inside:avoid;page-break-inside:avoid}
+.to b{display:block;font-family:"${WAYBILL_DISPLAY_FAMILY}",Georgia,serif;font-size:21pt;font-weight:600;line-height:1.1;margin-top:0.6mm;color:#292524}
 table{width:100%;border-collapse:collapse;table-layout:fixed}
 th,td{padding:0.8mm 2mm;height:7.6mm;vertical-align:middle;overflow-wrap:anywhere;border-bottom:0.2mm solid #d6d0c8}
 th{text-align:left;font-size:7.5pt;font-weight:500;color:#78716c;text-transform:uppercase;letter-spacing:0.06em;border-bottom:0.2mm solid #a8a29e}
@@ -185,6 +200,7 @@ tr{break-inside:avoid;page-break-inside:avoid}
 .n{text-align:right;white-space:nowrap}
 .c{text-align:center;white-space:nowrap;padding:0 1mm}
 td.c{color:#78716c;font-size:9.5pt}
+th:first-child,td:first-child{padding-left:0}
 .b{font-weight:500}
 .total{display:flex;justify-content:space-between;align-items:baseline;gap:6mm;margin-top:4mm;break-inside:avoid;page-break-inside:avoid}
 .total p{font-size:10pt;color:#57534e}
@@ -203,8 +219,8 @@ body.pack section.cut::after{content:"✂";position:absolute;left:-1mm;bottom:-3
 body.pack section.newpage{break-before:page;page-break-before:always}
 body.pack section.last{padding-bottom:0;margin-bottom:0}
 body.pack header{margin-bottom:3.5mm}
-body.pack .to{padding:2.2mm 0 2.6mm;margin-bottom:2.5mm}
-body.pack .to b{font-size:14pt}
+body.pack .to{padding:2.2mm 4mm 2.6mm;margin-bottom:2.5mm}
+body.pack .to b{font-size:18pt}
 body.pack th,body.pack td{height:6.2mm;padding:0.4mm 2mm;line-height:1.15}
 body.pack .total{margin-top:2.5mm}
 body.pack .total b{font-size:14pt}
@@ -226,6 +242,17 @@ export function printWaybills(list: Waybill[], pack = false): void {
   }
   win.document.write(waybillsPrintHtml(list, pack));
   win.document.close();
-  win.focus();
-  win.print();
+  printWhenReady(win);
+}
+
+// The recipient's face is a file: printing before it arrives would print the fallback serif. Waits for it
+// (at most a couple of seconds — a slow line must not hold the printer back for good).
+export function printWhenReady(win: Window): void {
+  const go = () => {
+    win.focus();
+    win.print();
+  };
+  const fonts = win.document.fonts;
+  if (!fonts) return go();
+  Promise.race([fonts.ready, new Promise((r) => setTimeout(r, 2500))]).then(go, go);
 }

@@ -1,5 +1,5 @@
 import type { Waybill } from "@/lib/waybill";
-import { waybillMoney, waybillQty, waybillRecipientLabel, waybillSummary } from "@/lib/waybill";
+import { WAYBILL_DISPLAY_FACES, WAYBILL_DISPLAY_FAMILY, waybillMoney, waybillQty, waybillRecipientLabel, waybillSummary } from "@/lib/waybill";
 
 // The накладная as a picture for a messenger: drawn straight on a canvas (no library, no outside
 // service — a page turned into a picture through SVG does not survive Safari on an iPad), 1080 points
@@ -15,6 +15,35 @@ const LINE = "#d6d0c8";
 const MAX_PIXELS = 16_000_000;
 
 const font = (px: number, weight = 400) => `${weight} ${px}px ${FONT}`;
+const display = (px: number) => `600 ${px}px "${WAYBILL_DISPLAY_FAMILY}", Georgia, serif`;
+const SOFT = "#f6f1ea";
+
+// The recipient's face, loaded once into the page before the first picture is drawn.
+let faces: Promise<void> | null = null;
+function loadDisplayFace(): Promise<void> {
+  if (typeof FontFace === "undefined" || !document.fonts) return Promise.resolve();
+  faces ??= Promise.all(
+    WAYBILL_DISPLAY_FACES.map((f) => {
+      const face = new FontFace(WAYBILL_DISPLAY_FAMILY, `url(${f.file}) format("woff2")`, { weight: "600", unicodeRange: f.range });
+      document.fonts.add(face);
+      return face.load();
+    }),
+  )
+    .then(() => undefined)
+    // Without the file the name is drawn in the fallback serif: still readable, never a failed picture.
+    .catch(() => undefined);
+  return faces;
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
 
 // Words wrapped to a width; a single word wider than the line is cut by letters.
 function wrap(ctx: CanvasRenderingContext2D, text: string, width: number): string[] {
@@ -40,14 +69,13 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, width: number): strin
 }
 
 // Columns: № | Товар | Кол-во | Ед. | Цена | Сумма (right edges for the numbers).
-const COL = { num: 64, qty: 150, unit: 84, price: 150, sum: 190 };
+const COL = { qty: 150, unit: 84, price: 150, sum: 190 };
 const INNER = W - PAD * 2;
-const NAME_W = INNER - COL.num - COL.qty - COL.unit - COL.price - COL.sum - 16;
+const NAME_W = INNER - COL.qty - COL.unit - COL.price - COL.sum - 16;
 const X = {
-  num: PAD + COL.num / 2,
-  name: PAD + COL.num + 8,
-  qty: PAD + COL.num + 16 + NAME_W + COL.qty - 12,
-  unit: PAD + COL.num + 16 + NAME_W + COL.qty + COL.unit / 2,
+  name: PAD,
+  qty: PAD + 16 + NAME_W + COL.qty - 12,
+  unit: PAD + 16 + NAME_W + COL.qty + COL.unit / 2,
   price: PAD + INNER - COL.sum - 12,
   sum: PAD + INNER - 12,
 };
@@ -74,28 +102,21 @@ function draw(ctx: CanvasRenderingContext2D, w: Waybill, dry: boolean): number {
   fromLines.forEach((l, i) => text(l, W - PAD, y + 64 + i * 34, font(26, 500), INK, "right"));
   y += Math.max(126, 40 + fromLines.length * 34) + 34;
 
-  // Recipient: the line the box is sorted by — set apart by air and two hairlines, not by weight.
-  const hair = (yy: number) => {
-    if (dry) return;
-    ctx.strokeStyle = LINE;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(PAD, yy);
-    ctx.lineTo(PAD + INNER, yy);
-    ctx.stroke();
-  };
-  hair(y);
-  ctx.font = font(40, 600);
-  const toLines = wrap(ctx, w.recipient, INNER);
-  text(waybillRecipientLabel(w), PAD, y + 46, font(20), MUTED);
-  toLines.forEach((l, i) => text(l, PAD, y + 98 + i * 50, font(40, 600)));
-  y += 76 + toLines.length * 50 + 6;
-  hair(y);
-  y += 30;
+  // Recipient: the line the box is sorted by — the bakery's own serif on a soft warm ground.
+  ctx.font = display(58);
+  const toLines = wrap(ctx, w.recipient, INNER - 72);
+  const toHeight = 64 + toLines.length * 62 + 26;
+  if (!dry) {
+    ctx.fillStyle = SOFT;
+    roundRect(ctx, PAD, y, INNER, toHeight, 20);
+    ctx.fill();
+  }
+  text(waybillRecipientLabel(w), PAD + 36, y + 46, font(20), MUTED);
+  toLines.forEach((l, i) => text(l, PAD + 36, y + 106 + i * 62, display(58), "#292524"));
+  y += toHeight + 34;
 
   // Table.
   const head = font(18, 500);
-  text("№", X.num, y + 34, head, MUTED, "center");
   text("ТОВАР", X.name, y + 34, head, MUTED);
   text("КОЛ-ВО", X.qty, y + 34, head, MUTED, "right");
   text("ЕД.", X.unit, y + 34, head, MUTED, "center");
@@ -112,12 +133,11 @@ function draw(ctx: CanvasRenderingContext2D, w: Waybill, dry: boolean): number {
     ctx.stroke();
   };
   rule(y, "#a8a29e", 1);
-  w.lines.forEach((l, i) => {
+  w.lines.forEach((l) => {
     ctx.font = font(27);
     const name = wrap(ctx, l.name, NAME_W);
     const h = Math.max(60, 24 + name.length * 35);
     const base = y + (h - name.length * 35) / 2 + 26;
-    text(String(i + 1), X.num, base, font(22), MUTED, "center");
     name.forEach((line, k) => text(line, X.name, base + k * 35, font(27)));
     text(waybillQty(l.quantity), X.qty, base, font(27), INK, "right");
     text(l.unit, X.unit, base, font(22), MUTED, "center");
@@ -169,6 +189,7 @@ function draw(ctx: CanvasRenderingContext2D, w: Waybill, dry: boolean): number {
 }
 
 export async function renderWaybillPng(w: Waybill): Promise<Blob> {
+  await loadDisplayFace();
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Браузер не умеет рисовать картинку");
