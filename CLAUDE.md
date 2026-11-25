@@ -1097,7 +1097,7 @@ Only the bakers' notes (owner's choice); sales typed by hand in «Продажи
 ## One look for every накладная — picture for WhatsApp + print (built 25.11.2026)
 
 `lib/waybill.ts` (`Waybill` = brand, number, date and time, «Отгружено с», recipient, lines, total, paid / debt;
-NO person's name and NO «Сдал» — owner, 25.11.2026: only «Принял:» with a line to sign) is the ONE description of a накладная, made by `bakerNoteWaybill(note)` or `saleWaybill(sale, units)` (a
+NO person's name and NO signature lines — owner, 25.11.2026: neither «Сдал» nor «Принял») is the ONE description of a накладная, made by `bakerNoteWaybill(note)` or `saleWaybill(sale, units)` (a
 sale's lines carry no unit — `lib/sale-waybills.ts` reads the products' units once, archived ones too). Two forms of it:
 - **The look is deliberately quiet** (owner, 25.11.2026, after a first version with a filled recipient block, large
   bold type and heavy rules: «не такими большими и жирными… минимализма и эстетики»): regular weights, semibold only for
@@ -1108,7 +1108,7 @@ sale's lines carry no unit — `lib/sale-waybills.ts` reads the products' units 
   the page's origin and prints via `printWhenReady` (waits ≤ 2.5 s for the face).
 - **Print** `waybillsPrintHtml(list, pack)` / `printWaybills`: A4, 15 mm margins, full width — header, the
   «Получатель» block between two hairlines (for an own point «Перемещение на точку»), table № / Товар / Кол-во / Ед. / Цена / Сумма, «Итого: N
-  позиций, M шт — сумма», «Оплачено» / «Остаток долга» for a sale to a customer, «Сдал / Принял». `pack` = «Несколько на
+  позиций, M шт — сумма», «Оплачено» / «Остаток долга» for a sale to a customer; no signature lines. `pack` = «Несколько на
   листе»: the BROWSER places them (`break-inside: avoid` on each, a dashed «✂» line under each) — three one-line ones fit
   on A4 at 100 %, five at 70 %. NO script that measures and forces page breaks (the first version had one: it fixed two
   per sheet and the print dialog's «Масштаб» could not change it — operator, 25.11.2026). Preference in localStorage

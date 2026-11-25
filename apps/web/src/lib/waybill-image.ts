@@ -165,25 +165,7 @@ function draw(ctx: CanvasRenderingContext2D, w: Waybill, dry: boolean): number {
     }
   }
 
-  // Signatures.
-  y += 60;
-  const half = (INNER - 60) / 2;
-  const sign = (x: number, caption: string) => {
-    ctx.font = font(23);
-    text(wrap(ctx, caption, half)[0], x, y + 26, font(23), "#57534e");
-    if (!dry) {
-      ctx.strokeStyle = "#a8a29e";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(x, y + 100);
-      ctx.lineTo(x + half, y + 100);
-      ctx.stroke();
-    }
-    text("Подпись", x, y + 128, font(19), MUTED);
-  };
-  // Only the receiver signs (owner, 25.11.2026): no «Сдал», no baker's or cashier's name on the накладная.
-  sign(PAD + half + 60, "Принял:");
-  y += 138;
+  // No signature lines at all (owner, 25.11.2026): neither «Сдал» nor «Принял».
 
   return y + PAD;
 }

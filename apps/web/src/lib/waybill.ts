@@ -146,7 +146,7 @@ function waybillHtml(w: Waybill): string {
 </table>
 <div class="total"><p>${esc(waybillSummary(w))}</p><b>${waybillMoney(w.total)} ₸</b></div>
 ${money}
-<div class="sign"><div></div><div><p>Принял:</p><i>Подпись</i></div></div>
+
 </section>`;
 }
 
@@ -192,10 +192,6 @@ th:first-child,td:first-child{padding-left:0}
 .pay{margin-top:1.5mm;break-inside:avoid;page-break-inside:avoid}
 .pay p{display:flex;justify-content:space-between;font-size:10pt;font-weight:500;padding:0.6mm 0}
 .pay span{font-weight:400;color:#78716c}
-.sign{display:flex;gap:12mm;margin-top:11mm;font-size:9.5pt;color:#57534e;break-inside:avoid;page-break-inside:avoid}
-.sign div{flex:1}
-.sign p{min-height:4.5mm;margin-bottom:8mm}
-.sign i{display:block;border-top:0.2mm solid #a8a29e;padding-top:1mm;font-style:normal;font-size:8pt;color:#78716c}
 body.pack section+section{break-before:auto;page-break-before:auto}
 body.pack section{position:relative;padding-bottom:3.5mm;margin-bottom:3.5mm;border-bottom:0.4mm dashed #78716c;break-inside:avoid;page-break-inside:avoid}
 body.pack section::after{content:"✂";position:absolute;left:-1mm;bottom:-3.4mm;background:#fff;font-size:12pt;line-height:1;color:#78716c}
@@ -213,8 +209,6 @@ body.pack .total{margin-top:2mm}
 body.pack .total b{font-size:13pt}
 body.pack .pay{margin-top:0.8mm}
 body.pack .pay p{padding:0.2mm 0}
-body.pack .sign{margin-top:4mm}
-body.pack .sign p{margin-bottom:4.5mm}
 @media screen{body{padding:15mm;width:210mm;margin:0 auto}}
 </style></head><body${pack ? ' class="pack"' : ""}>
 ${list.map(waybillHtml).join("\n")}
