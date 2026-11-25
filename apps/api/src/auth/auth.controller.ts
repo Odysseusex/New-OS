@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Ip, Post, UseGuards } from "@nestjs/common";
 import { AuthService } from "./auth.service";
 import { LoginDto } from "./dto/login.dto";
 import { BakerPinLoginDto, PinLoginDto, TillApprovalBodyDto } from "./dto/till-pin.dto";
@@ -16,8 +16,8 @@ export class AuthController {
   ) {}
 
   @Post("login")
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto.email, dto.password);
+  login(@Body() dto: LoginDto, @Ip() ip: string) {
+    return this.authService.login(dto.email, dto.password, ip);
   }
 
   @UseGuards(JwtAuthGuard)

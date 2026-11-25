@@ -109,4 +109,18 @@ describe("till PIN and senior cashier", () => {
     const logged = new Set((await prisma.auditLog.findMany({ where: { organizationId: org.organizationId } })).map((e) => e.action));
     expect(AUDIT_ACTION_GROUPS.tillApprovals.filter((a) => !logged.has(a))).toEqual([]);
   });
+
+  it("a right PIN between wrong ones does not wipe the count: four guesses and one's own PIN cannot go on for ever", async () => {
+    resetPinThrottle();
+    const guesser = await person(Role.CASHIER, "Кассир Проба", org.storeId);
+    for (let round = 0; round < 2; round++) {
+      await expect(auth.pinLogin(guesser, `11${round}1`)).rejects.toThrow(/Неверный PIN/);
+      await expect(auth.pinLogin(guesser, `22${round}2`)).rejects.toThrow(/Неверный PIN/);
+      await auth.pinLogin(guesser, "1234"); // a right PIN in between
+    }
+    await expect(auth.pinLogin(guesser, "3333")).rejects.toThrow(/Неверный PIN/);
+    // Five misses within five minutes: even the right PIN waits now.
+    await expect(auth.pinLogin(guesser, "1234")).rejects.toThrow(/подождите 5 минут/);
+    resetPinThrottle();
+  });
 });

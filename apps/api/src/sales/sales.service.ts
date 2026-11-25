@@ -171,7 +171,7 @@ export class SalesService {
       });
       if (existing) return existing.id;
 
-      const location = await tx.location.findUnique({ where: { id: locationId } });
+      const location = await tx.location.findFirst({ where: { id: locationId, organizationId } });
       const created = await tx.cashAccount.create({
         data: {
           organizationId,
@@ -1820,7 +1820,7 @@ export class SalesService {
       this.prisma.product.findMany({
         where: { id: { in: productIds }, organizationId: user.organizationId },
       }),
-      this.prisma.location.findUnique({ where: { id: locationId } }),
+      this.prisma.location.findFirst({ where: { id: locationId, organizationId: user.organizationId } }),
       this.prisma.stockLevel.findMany({ where: { locationId, productId: { in: productIds } } }),
     ]);
 

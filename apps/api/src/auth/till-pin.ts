@@ -29,22 +29,25 @@ export function pinDigest(organizationId: string, pin: string): string {
   return createHmac("sha256", `${baseSecret()}:till-pin`).update(`${organizationId}:${pin}`).digest("hex");
 }
 
-// Wrong PINs in a row per organization + device user: 5 within 5 minutes locks for 5 minutes.
+// Wrong PINs per organization + device user: 5 within 5 minutes locks for 5 minutes, 30 within a
+// day locks until the day's misses age out. A RIGHT PIN does not wipe the count: otherwise a cashier
+// could try four PINs, type their own, and go on for ever until a senior's PIN is found.
 const failures = new Map<string, number[]>();
 const WINDOW_MS = 5 * 60_000;
 const LIMIT = 5;
+const DAY_MS = 24 * 60 * 60_000;
+const DAY_LIMIT = 30;
 
 function checkThrottle(key: string): void {
   const now = Date.now();
-  const recent = (failures.get(key) ?? []).filter((t) => now - t < WINDOW_MS);
-  failures.set(key, recent);
-  if (recent.length >= LIMIT) throw new ForbiddenException("Слишком много неверных PIN — подождите 5 минут");
+  const day = (failures.get(key) ?? []).filter((t) => now - t < DAY_MS);
+  if (day.length) failures.set(key, day);
+  else failures.delete(key);
+  if (day.length >= DAY_LIMIT) throw new ForbiddenException("Слишком много неверных PIN за день — обратитесь к руководителю");
+  if (day.filter((t) => now - t < WINDOW_MS).length >= LIMIT) throw new ForbiddenException("Слишком много неверных PIN — подождите 5 минут");
 }
 function noteFailure(key: string): void {
   failures.set(key, [...(failures.get(key) ?? []), Date.now()]);
-}
-function clearFailures(key: string): void {
-  failures.delete(key);
 }
 
 export async function findUserByPin(db: Db, actor: AuthenticatedUser, pin: string) {
@@ -59,7 +62,6 @@ export async function findUserByPin(db: Db, actor: AuthenticatedUser, pin: strin
     noteFailure(key);
     throw new UnauthorizedException("Неверный PIN");
   }
-  clearFailures(key);
   return found;
 }
 

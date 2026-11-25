@@ -1,4 +1,4 @@
-import { Role } from "@bakery-os/shared";
+import { Role, TILL_ROLES } from "@bakery-os/shared";
 
 // Roles whose whole job is one part of the app. For them the server refuses
 // every other route — not only the screen: most GET routes here are open to
@@ -7,6 +7,38 @@ import { Role } from "@bakery-os/shared";
 export const ROLE_API_SCOPE: Partial<Record<Role, string[]>> = {
   [Role.CLIENT_MANAGER]: ["/auth", "/crm", "/loyalty"],
 };
+
+// The till's own staff (cashier, senior cashier) are kept on /pos by the screen, but a login token
+// is a login token: asked directly, the server used to hand a cashier the техкарты, purchase prices,
+// margins and suppliers (security review, 25.11.2026). These areas the till never calls, so they are
+// refused for till roles here. A deny-list on purpose: a till call missed by an allow-list would
+// stop sales at the counter.
+export const TILL_REFUSED_PREFIXES = [
+  "/recipes",
+  "/recipe-stage-types",
+  "/procurement",
+  "/suppliers",
+  "/invoices",
+  "/finance",
+  "/ledger",
+  "/production",
+  "/planning",
+  "/debts",
+  "/bank-statements",
+  "/fixed-assets",
+  "/consignment",
+  "/reference-data",
+  "/distribution",
+  "/crm",
+  "/hr/employees",
+  "/sales/profitability",
+  "/sales/report",
+  "/sales/summary",
+  "/sales/dynamics",
+  "/sales/demand",
+  "/inventory/turnover",
+  "/dashboard",
+];
 
 // Roles kept out of the staff Telegram bot, which reads stock, sales and
 // finance through the services directly.
@@ -58,6 +90,7 @@ export function pathAllowedForRole(role: Role, path: string, method = "GET"): bo
     if (!reading && ASSISTANT_REFUSALS.refusedActions.some((route) => route.test(clean))) return false;
     return true;
   }
+  if ((TILL_ROLES as readonly Role[]).includes(role) && under(clean, TILL_REFUSED_PREFIXES)) return false;
   const scope = ROLE_API_SCOPE[role];
   if (!scope) return true;
   return under(clean, scope);

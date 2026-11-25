@@ -1453,7 +1453,7 @@ there, and a CASHIER line on the `isOpenPrice` product is refused elsewhere (and
 дня»). Coupons/points are applied by the server after this. Other roles keep a free price (wholesale on «Продажи»).
 The till's «История» loads the whole Almaty day (not the latest 50) and filters by product (`GET /sales?productId=`).
 
-**The operator does not see the takings as totals** (owner's decision): `REVENUE_VIEW_ROLES` = every role but OPERATOR
+**The operator does not see the takings as totals** (owner's decision): `REVENUE_VIEW_ROLES` = every role but OPERATOR, CLIENT_MANAGER and the till's staff
 gates `/sales/summary|report|profitability|dynamics|demand`, `/dashboard/summary`, the map's revenue and the staff bot's
 sales figures/«Средние продажи». The web hides Дашборд/Отчёты (`NavItem.roles`, `isBlockedRoute`/`homeFor` in `lib/nav.ts`
 — an operator lands on /sales) and the cards on Продажи. The list of checks, «Новая продажа», the till and its history stay.
@@ -2159,6 +2159,34 @@ settings by hand. Domain **ar-amir.com** (bought in Vercel, `.com` on purpose �
 servers inside Kazahstan, which Vercel is not): `src/middleware.ts` serves the site at its root for that host
 (`/` → `/ar-amir`, `/privacy` → `/ar-amir/privacy`, `/ar-amir…` 308-redirects to the clean path) and every ERP route
 there is a 404; the ERP stays on the vercel.app address only.
+
+## Security review (25.11.2026) — what guards what
+
+A full check of the system on the owner's request. No secrets in the repository or its history; the live server runs
+on its own `JWT_SECRET`; the README's demo logins do not open production. What was found and closed (rules to keep):
+
+- **Ids of another organization** — the sandbox is a second organization on the same server, and its login is an OWNER.
+  Every service scoped the document asked about, but a REFERENCE inside a request was missed in places (a stock receipt
+  wrote into any `locationId`). `common/org-reference.interceptor.ts` (global `APP_INTERCEPTOR`) now refuses, before the
+  handler, any `…Id`/`…Ids` in params / query / body that exists under another organization and not the caller's (field
+  name → tables in `modelsFor`; an id found nowhere is left to the handler). A NEW kind of reference field whose name
+  does not match needs a line there. The scratch test idea: sign in as one organization, call every route with the
+  other's ids — everything must answer 404/403.
+- **Sign-in guessing**: `auth/login-throttle.ts` — 10 wrong passwords per email + address in 15 min, 100 per email an
+  hour (in memory); an unknown email takes as long as a wrong password. `app.set("trust proxy", true)` for the address.
+- **PIN guessing**: a right PIN no longer wipes the wrong-PIN count (four guesses + one's own PIN went on for ever);
+  5 misses in 5 min lock for 5 min, 30 in a day lock for the day (`auth/till-pin.ts`).
+- **A password change ends earlier sessions**: login tokens carry `pv` (a stamp of the password hash), checked in
+  `validateUserById`; tokens without it run out in their 8 hours.
+- **Till staff** (`TILL_ROLES`) are refused, on the server, what the till never calls (`TILL_REFUSED_PREFIXES` in
+  `common/role-scope.ts`: техкарты, purchases, suppliers, finance, production, margins, dashboard…) and are out of
+  `REVENUE_VIEW_ROLES` (the blind count). A deny-list on purpose — a till call missed by an allow-list would stop sales.
+  A new till feature that needs one of those areas must take its prefix out deliberately.
+- The staff bot's webhook refuses everything when `TELEGRAM_WEBHOOK_SECRET` is not set (it used to accept anyone then);
+  the server refuses to start on Render without a real `JWT_SECRET`; both apps send nosniff / frame / HSTS headers.
+- Known and left: Next.js 14 has open advisories fixed only in 15.5.x (image optimisation runs on Vercel's side and only
+  on our own files; no Pages Router, no rewrites, no server actions) — moving to Next 15 is its own task with a full
+  retest. Login tokens live in localStorage (as before).
 
 ## Prisma migration workflow (this sandbox has no direct prod DB access)
 

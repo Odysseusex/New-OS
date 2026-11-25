@@ -92,6 +92,7 @@ export class UsersService {
       nextLocationId = null;
     } else if (dto.locationId !== undefined) {
       nextLocationId = dto.locationId;
+      if (nextLocationId) await this.assertLocationExists(actor.organizationId, nextLocationId);
     }
     if (!ORG_WIDE_ROLES.includes(nextRole)) {
       if (!nextLocationId) {

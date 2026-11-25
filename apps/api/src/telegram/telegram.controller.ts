@@ -56,7 +56,8 @@ export class TelegramController {
     @Body() update: unknown,
   ): Promise<{ ok: true }> {
     const expected = process.env.TELEGRAM_WEBHOOK_SECRET;
-    if (expected && secretToken !== expected) {
+    // No secret configured = nobody can prove they are Telegram: refuse rather than accept anyone.
+    if (!expected || secretToken !== expected) {
       throw new UnauthorizedException();
     }
     await this.botService.handleUpdate(update as never);

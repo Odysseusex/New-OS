@@ -18,6 +18,18 @@ describe("role scope", () => {
     expect(pathAllowedForRole(Role.CASHIER, "/api/sales")).toBe(true);
   });
 
+  it("refuses the till's staff what the till never calls: техкарты, purchases, finance, margins", () => {
+    for (const role of [Role.CASHIER, Role.SENIOR_CASHIER]) {
+      for (const path of ["/api/recipes", "/api/recipes/abc/breakdown", "/api/procurement/orders", "/api/suppliers", "/api/finance/pnl", "/api/sales/profitability", "/api/inventory/turnover", "/api/production/batches"]) {
+        expect(pathAllowedForRole(role, path)).toBe(false);
+      }
+      for (const path of ["/api/sales", "/api/sales/abc", "/api/sales/abc/returns", "/api/products", "/api/categories", "/api/loyalty/members/lookup", "/api/till-shifts/current", "/api/auth/pin-login", "/api/promotions/coupons/lookup", "/api/locations", "/api/notifications"]) {
+        expect(pathAllowedForRole(role, path, "POST")).toBe(true);
+      }
+    }
+    expect(pathAllowedForRole(Role.STORE_MANAGER, "/api/recipes")).toBe(true);
+  });
+
   it("the JWT guard refuses an out-of-scope route after authentication", () => {
     const guard = new JwtAuthGuard();
     const ctx = (path: string) => ({ switchToHttp: () => ({ getRequest: () => ({ path }) }) }) as unknown as ExecutionContext;

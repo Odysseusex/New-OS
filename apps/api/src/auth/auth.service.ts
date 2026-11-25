@@ -7,6 +7,10 @@ import { BAKER_PHONE_ROLES, LoginResponseDto, CurrentUserDto, Role, SALE_CREATE_
 import { findUserByPin, signTillApproval } from "./till-pin";
 import { recordAudit } from "../audit/audit";
 import { AuthenticatedUser, JwtPayload } from "./auth.types";
+import { assertLoginAllowed, noteLoginFailure } from "./login-throttle";
+
+// Compared when the email is unknown, so an unknown email answers as slowly as a wrong password.
+const DUMMY_HASH = bcrypt.hashSync("no-such-user", 10);
 
 @Injectable()
 export class AuthService {
@@ -15,18 +19,16 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  async login(email: string, password: string): Promise<LoginResponseDto> {
+  async login(email: string, password: string, ip = ""): Promise<LoginResponseDto> {
+    assertLoginAllowed(email, ip);
     const user = await this.prisma.user.findFirst({
       where: { email, isActive: true },
       include: { organization: true },
     });
 
-    if (!user) {
-      throw new UnauthorizedException("Неверный email или пароль");
-    }
-
-    const passwordMatches = await bcrypt.compare(password, user.passwordHash);
-    if (!passwordMatches) {
+    const passwordMatches = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_HASH);
+    if (!user || !passwordMatches) {
+      noteLoginFailure(email, ip);
       throw new UnauthorizedException("Неверный email или пароль");
     }
     // «Помощник» is not a person at a screen: it works only with the key the owner issued.
@@ -34,8 +36,7 @@ export class AuthService {
       throw new ForbiddenException("«Помощник» входит только по ключу — выпустите его в Настройках");
     }
 
-    const payload: JwtPayload = { sub: user.id, organizationId: user.organizationId };
-    const accessToken = await this.jwtService.signAsync(payload);
+    const accessToken = await this.signLogin(user);
 
     return {
       accessToken,
@@ -53,7 +54,7 @@ export class AuthService {
       throw new ForbiddenException("Этот сотрудник работает на другой точке");
     }
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: found.id }, include: { organization: true } });
-    const accessToken = await this.jwtService.signAsync({ sub: user.id, organizationId: user.organizationId } satisfies JwtPayload);
+    const accessToken = await this.signLogin(user);
     return { accessToken, user: this.toCurrentUserDto(user) };
   }
 
@@ -64,6 +65,10 @@ export class AuthService {
   // is switched off.
   private bakerDeviceJwt() {
     return new JwtService({ secret: `${process.env.JWT_SECRET ?? "dev-secret-change-me"}:baker-device` });
+  }
+
+  private signLogin(user: { id: string; organizationId: string; passwordHash: string }): Promise<string> {
+    return this.jwtService.signAsync({ sub: user.id, organizationId: user.organizationId, pv: this.passwordStamp(user.passwordHash) } satisfies JwtPayload);
   }
 
   private passwordStamp(passwordHash: string): string {
@@ -105,7 +110,7 @@ export class AuthService {
     const found = await findUserByPin(this.prisma, actor, pin);
     if (!BAKER_PHONE_ROLES.includes(found.role as Role)) throw new ForbiddenException("Этот PIN не у пекаря");
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: found.id }, include: { organization: true } });
-    const accessToken = await this.jwtService.signAsync({ sub: user.id, organizationId: user.organizationId } satisfies JwtPayload);
+    const accessToken = await this.signLogin(user);
     return { accessToken, user: this.toCurrentUserDto(user) };
   }
 
@@ -129,9 +134,12 @@ export class AuthService {
     return { approvalToken, approverName: approver.fullName };
   }
 
-  async validateUserById(userId: string, assistantKeyId?: string): Promise<AuthenticatedUser | null> {
+  async validateUserById(userId: string, assistantKeyId?: string, passwordStamp?: string): Promise<AuthenticatedUser | null> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || !user.isActive) return null;
+    // Issued under a password that has since been changed. (Tokens from before this check carry no
+    // stamp and simply run out within their 8 hours.)
+    if (passwordStamp !== undefined && passwordStamp !== this.passwordStamp(user.passwordHash)) return null;
     // «Помощник» is let in by its current key alone; that key lets in nobody else.
     const isAssistant = user.role === Role.ASSISTANT;
     if (isAssistant ? !assistantKeyId || assistantKeyId !== user.assistantKeyId : assistantKeyId !== undefined) return null;

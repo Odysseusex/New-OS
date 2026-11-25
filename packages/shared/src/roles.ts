@@ -70,10 +70,13 @@ export const ORG_WIDE_ROLES: Role[] = [
 // Who sees the business's takings as figures: today's/weekly revenue, average
 // ticket, sales reports and dynamics, revenue per point. Everyone but OPERATOR —
 // the owner's decision: the operator rings up sales and works with documents and
-// with the list of individual checks, but not with the totals. The till's
-// cashier keeps the day's takings, which they count against the drawer.
+// with the list of individual checks, but not with the totals.
 // The client manager works only in the CRM and sees no takings either.
-export const REVENUE_VIEW_ROLES: Role[] = Object.values(Role).filter((role) => role !== Role.OPERATOR && role !== Role.CLIENT_MANAGER);
+// The till's own staff are out as well (25.11.2026): they close the shift by a blind count, and the
+// day's takings as a total would hand them the figure the count is meant to check.
+export const REVENUE_VIEW_ROLES: Role[] = Object.values(Role).filter(
+  (role) => role !== Role.OPERATOR && role !== Role.CLIENT_MANAGER && !TILL_ROLES.includes(role),
+);
 
 export const SALE_CREATE_ROLES: Role[] = [
   Role.OWNER,

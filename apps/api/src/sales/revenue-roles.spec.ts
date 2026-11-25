@@ -11,12 +11,13 @@ const rolesOf = (target: object, method: string): Role[] | undefined =>
   Reflect.getMetadata(ROLES_KEY, (target as Record<string, unknown>)[method] as object);
 
 describe("revenue totals", () => {
-  it("are closed to the operator and the client manager, and to no one else", () => {
+  it("are closed to the operator, the client manager and the till's own staff, and to no one else", () => {
     expect(REVENUE_VIEW_ROLES).not.toContain(Role.OPERATOR);
     expect(REVENUE_VIEW_ROLES).not.toContain(Role.CLIENT_MANAGER);
-    expect(REVENUE_VIEW_ROLES).toHaveLength(Object.values(Role).length - 2);
-    // The till's day takings: the cashier counts them against the drawer.
-    expect(REVENUE_VIEW_ROLES).toContain(Role.CASHIER);
+    // The till closes its shift by a blind count: the day's takings as a total would give the answer.
+    expect(REVENUE_VIEW_ROLES).not.toContain(Role.CASHIER);
+    expect(REVENUE_VIEW_ROLES).not.toContain(Role.SENIOR_CASHIER);
+    expect(REVENUE_VIEW_ROLES).toHaveLength(Object.values(Role).length - 4);
   });
 
   it("gate every totals route, but not the list of checks or selling", () => {
