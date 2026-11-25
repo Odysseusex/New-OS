@@ -164,52 +164,50 @@ export function waybillsPrintHtml(list: Waybill[], pack = false): string {
 @page{size:A4 portrait;margin:15mm}
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
-body{font-family:-apple-system,"Segoe UI",Roboto,Arial,Helvetica,sans-serif;font-size:12pt;color:#1c1917;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{font-family:-apple-system,"Segoe UI",Roboto,Arial,Helvetica,sans-serif;font-size:10.5pt;color:#1c1917;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 p{margin:0}
 section{width:100%}
 section+section{break-before:page;page-break-before:always}
-header{display:flex;justify-content:space-between;align-items:flex-start;gap:8mm;margin-bottom:5mm}
-.brand{font-size:20pt;font-weight:700;line-height:1.1}
-.doc{font-size:15pt;font-weight:600;margin-top:1.5mm}
-.when{font-size:11pt;color:#78716c;margin-top:0.8mm}
+header{display:flex;justify-content:space-between;align-items:flex-start;gap:8mm;margin-bottom:6mm}
+.brand{font-size:14pt;font-weight:600;line-height:1.1}
+.doc{font-size:11pt;margin-top:1.6mm}
+.when{font-size:9pt;color:#78716c;margin-top:0.8mm}
 .from{text-align:right;max-width:70mm}
-.from span,.to span{display:block;font-size:10.5pt;color:#78716c}
-.from b{display:block;font-size:13.5pt;margin-top:0.8mm;line-height:1.2}
-.to{background:#f3efe9;border-radius:3.5mm;padding:3.5mm 5mm;margin-bottom:5mm;break-inside:avoid;page-break-inside:avoid}
-.to b{display:block;font-size:22pt;line-height:1.15;margin-top:0.8mm}
+.from span,.to span{display:block;font-size:8.5pt;color:#78716c}
+.from b{display:block;font-size:11pt;font-weight:500;margin-top:0.8mm;line-height:1.2}
+.to{border-top:0.2mm solid #d6d0c8;border-bottom:0.2mm solid #d6d0c8;padding:3.2mm 0 3.6mm;margin-bottom:4mm;break-inside:avoid;page-break-inside:avoid}
+.to b{display:block;font-size:16pt;font-weight:600;line-height:1.2;margin-top:0.8mm}
 table{width:100%;border-collapse:collapse;table-layout:fixed}
-th,td{padding:1mm 2.2mm;height:8.6mm;vertical-align:middle;overflow-wrap:anywhere;border-bottom:0.25mm solid #d6d0c8}
-th{background:#f3efe9;text-align:left;font-size:9.5pt;font-weight:600;color:#57534e;text-transform:uppercase;letter-spacing:0.03em;border-bottom:0.4mm solid #a8a29e}
+th,td{padding:0.8mm 2mm;height:7.6mm;vertical-align:middle;overflow-wrap:anywhere;border-bottom:0.2mm solid #d6d0c8}
+th{text-align:left;font-size:7.5pt;font-weight:500;color:#78716c;text-transform:uppercase;letter-spacing:0.06em;border-bottom:0.2mm solid #a8a29e}
 thead{display:table-header-group}
 tr{break-inside:avoid;page-break-inside:avoid}
 .n{text-align:right;white-space:nowrap}
 .c{text-align:center;white-space:nowrap;padding:0 1mm}
-td.c:first-child{color:#78716c}
-.b{font-weight:600}
-.total{display:flex;justify-content:space-between;align-items:baseline;gap:6mm;margin-top:4mm;padding-top:3mm;border-top:0.6mm solid #1c1917;break-inside:avoid;page-break-inside:avoid}
-.total p{font-size:13pt;font-weight:600}
-.total b{font-size:21pt;white-space:nowrap}
-.pay{margin-top:2mm;break-inside:avoid;page-break-inside:avoid}
-.pay p{display:flex;justify-content:space-between;font-size:12pt;font-weight:600;padding:0.7mm 0}
-.pay span{font-weight:400;color:#57534e}
-.sign{display:flex;gap:10mm;margin-top:11mm;font-size:11.5pt;break-inside:avoid;page-break-inside:avoid}
+td.c{color:#78716c;font-size:9.5pt}
+.b{font-weight:500}
+.total{display:flex;justify-content:space-between;align-items:baseline;gap:6mm;margin-top:4mm;break-inside:avoid;page-break-inside:avoid}
+.total p{font-size:10pt;color:#57534e}
+.total b{font-size:16pt;font-weight:600;white-space:nowrap}
+.pay{margin-top:1.5mm;break-inside:avoid;page-break-inside:avoid}
+.pay p{display:flex;justify-content:space-between;font-size:10pt;font-weight:500;padding:0.6mm 0}
+.pay span{font-weight:400;color:#78716c}
+.sign{display:flex;gap:12mm;margin-top:11mm;font-size:9.5pt;color:#57534e;break-inside:avoid;page-break-inside:avoid}
 .sign div{flex:1}
-.sign p{min-height:5mm;margin-bottom:8mm}
-.sign i{display:block;border-top:0.3mm solid #1c1917;padding-top:1mm;font-style:normal;font-size:9.5pt;color:#78716c}
+.sign p{min-height:4.5mm;margin-bottom:8mm}
+.sign i{display:block;border-top:0.2mm solid #a8a29e;padding-top:1mm;font-style:normal;font-size:8pt;color:#78716c}
 body.pack section+section{break-before:auto;page-break-before:auto}
 body.pack section{position:relative;padding-bottom:4.5mm;margin-bottom:4.5mm}
 body.pack section.cut{border-bottom:0.4mm dashed #78716c}
 body.pack section.cut::after{content:"✂";position:absolute;left:-1mm;bottom:-3.4mm;background:#fff;font-size:12pt;line-height:1;color:#78716c}
 body.pack section.newpage{break-before:page;page-break-before:always}
 body.pack section.last{padding-bottom:0;margin-bottom:0}
-body.pack header{margin-bottom:3mm}
-body.pack .brand{font-size:16pt}
-body.pack .doc{font-size:13pt;margin-top:0.8mm}
-body.pack .to{padding:2.2mm 4mm;margin-bottom:3mm}
-body.pack .to b{font-size:18pt}
-body.pack th,body.pack td{height:6.6mm;padding:0.4mm 2.2mm;line-height:1.15}
-body.pack .total{margin-top:2.5mm;padding-top:2mm}
-body.pack .total b{font-size:17pt}
+body.pack header{margin-bottom:3.5mm}
+body.pack .to{padding:2.2mm 0 2.6mm;margin-bottom:2.5mm}
+body.pack .to b{font-size:14pt}
+body.pack th,body.pack td{height:6.2mm;padding:0.4mm 2mm;line-height:1.15}
+body.pack .total{margin-top:2.5mm}
+body.pack .total b{font-size:14pt}
 body.pack .sign{margin-top:6mm}
 body.pack .sign p{margin-bottom:6mm}
 @media screen{body{padding:15mm;width:210mm;margin:0 auto}}

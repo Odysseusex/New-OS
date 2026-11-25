@@ -1081,8 +1081,11 @@ The two bakers used to write накладные on paper and photograph them; in
 `lib/waybill.ts` (`Waybill` = brand, number, date and time, «Отгружено с», recipient, lines, total, paid / debt, who
 handed over) is the ONE description of a накладная, made by `bakerNoteWaybill(note)` or `saleWaybill(sale, units)` (a
 sale's lines carry no unit — `lib/sale-waybills.ts` reads the products' units once, archived ones too). Two forms of it:
-- **Print** `waybillsPrintHtml(list, pack)` / `printWaybills`: A4, 15 mm margins, full width — header, the soft
-  «Получатель» block (for an own point «Перемещение на точку»), table № / Товар / Кол-во / Ед. / Цена / Сумма, «Итого: N
+- **The look is deliberately quiet** (owner, 25.11.2026, after a first version with a filled recipient block, large
+  bold type and heavy rules: «не такими большими и жирными… минимализма и эстетики»): regular weights, semibold only for
+  the brand, the recipient and the total; hairlines instead of fills and frames; small grey captions. Don't make it louder.
+- **Print** `waybillsPrintHtml(list, pack)` / `printWaybills`: A4, 15 mm margins, full width — header, the
+  «Получатель» block between two hairlines (for an own point «Перемещение на точку»), table № / Товар / Кол-во / Ед. / Цена / Сумма, «Итого: N
   позиций, M шт — сумма», «Оплачено» / «Остаток долга» for a sale to a customer, «Сдал / Принял». `pack` = «Несколько на
   листе» with the same measuring script as before (as many as fit whole — two of the usual length — never a break inside
   one; preference in localStorage `baker_print_pack`). It replaced `baker-note-print.ts` and the sale card's `window.print()`.

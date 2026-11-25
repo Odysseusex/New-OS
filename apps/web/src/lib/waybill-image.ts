@@ -6,11 +6,10 @@ import { waybillMoney, waybillQty, waybillRecipientLabel, waybillSummary } from 
 // wide at double sharpness, white, with nothing of the screen on it. The same look as the printed page.
 
 const W = 1080;
-const PAD = 56;
+const PAD = 72;
 const FONT = `-apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
 const INK = "#1c1917";
 const MUTED = "#78716c";
-const SOFT = "#f3efe9";
 const LINE = "#d6d0c8";
 // A phone's browser refuses a canvas much larger than this many pixels.
 const MAX_PIXELS = 16_000_000;
@@ -40,16 +39,6 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, width: number): strin
   return lines.length > 0 ? lines : [""];
 }
 
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
-
 // Columns: № | Товар | Кол-во | Ед. | Цена | Сумма (right edges for the numbers).
 const COL = { num: 64, qty: 150, unit: 84, price: 150, sum: 190 };
 const INNER = W - PAD * 2;
@@ -76,41 +65,43 @@ function draw(ctx: CanvasRenderingContext2D, w: Waybill, dry: boolean): number {
   let y = PAD;
 
   // Header: who we are and the document on the left, where it left from on the right.
-  ctx.font = font(30, 700);
+  ctx.font = font(26, 500);
   const fromLines = wrap(ctx, w.from, 400);
-  text(w.brand, PAD, y + 44, font(46, 700));
-  text(`Накладная № ${w.number}`, PAD, y + 96, font(34, 600));
-  text(w.dateTime, PAD, y + 136, font(26), MUTED);
-  text("Отгружено с", W - PAD, y + 30, font(24), MUTED, "right");
-  fromLines.forEach((l, i) => text(l, W - PAD, y + 70 + i * 38, font(30, 700), INK, "right"));
-  y += Math.max(150, 46 + fromLines.length * 38) + 30;
+  text(w.brand, PAD, y + 36, font(34, 600));
+  text(`Накладная № ${w.number}`, PAD, y + 80, font(26, 400));
+  text(w.dateTime, PAD, y + 114, font(22), MUTED);
+  text("Отгружено с", W - PAD, y + 28, font(20), MUTED, "right");
+  fromLines.forEach((l, i) => text(l, W - PAD, y + 64 + i * 34, font(26, 500), INK, "right"));
+  y += Math.max(126, 40 + fromLines.length * 34) + 34;
 
-  // Recipient, large: the box is sorted by this line.
-  ctx.font = font(54, 700);
-  const toLines = wrap(ctx, w.recipient, INNER - 64);
-  const toHeight = 62 + toLines.length * 64 + 18;
-  if (!dry) {
-    ctx.fillStyle = SOFT;
-    roundRect(ctx, PAD, y, INNER, toHeight, 22);
-    ctx.fill();
-  }
-  text(waybillRecipientLabel(w), PAD + 32, y + 44, font(24), MUTED);
-  toLines.forEach((l, i) => text(l, PAD + 32, y + 108 + i * 64, font(54, 700)));
-  y += toHeight + 34;
+  // Recipient: the line the box is sorted by — set apart by air and two hairlines, not by weight.
+  const hair = (yy: number) => {
+    if (dry) return;
+    ctx.strokeStyle = LINE;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(PAD, yy);
+    ctx.lineTo(PAD + INNER, yy);
+    ctx.stroke();
+  };
+  hair(y);
+  ctx.font = font(40, 600);
+  const toLines = wrap(ctx, w.recipient, INNER);
+  text(waybillRecipientLabel(w), PAD, y + 46, font(20), MUTED);
+  toLines.forEach((l, i) => text(l, PAD, y + 98 + i * 50, font(40, 600)));
+  y += 76 + toLines.length * 50 + 6;
+  hair(y);
+  y += 30;
 
   // Table.
-  if (!dry) {
-    ctx.fillStyle = SOFT;
-    ctx.fillRect(PAD, y, INNER, 58);
-  }
-  const head = font(21, 600);
-  text("№", X.num, y + 37, head, "#57534e", "center");
-  text("ТОВАР", X.name, y + 37, head, "#57534e");
-  text("КОЛ-ВО", X.qty, y + 37, head, "#57534e", "right");
-  text("ЕД.", X.unit, y + 37, head, "#57534e", "center");
-  text("ЦЕНА", X.price, y + 37, head, "#57534e", "right");
-  text("СУММА", X.sum, y + 37, head, "#57534e", "right");
-  y += 58;
+  const head = font(18, 500);
+  text("№", X.num, y + 34, head, MUTED, "center");
+  text("ТОВАР", X.name, y + 34, head, MUTED);
+  text("КОЛ-ВО", X.qty, y + 34, head, MUTED, "right");
+  text("ЕД.", X.unit, y + 34, head, MUTED, "center");
+  text("ЦЕНА", X.price, y + 34, head, MUTED, "right");
+  text("СУММА", X.sum, y + 34, head, MUTED, "right");
+  y += 52;
   const rule = (yy: number, color: string, width: number) => {
     if (dry) return;
     ctx.strokeStyle = color;
@@ -120,38 +111,37 @@ function draw(ctx: CanvasRenderingContext2D, w: Waybill, dry: boolean): number {
     ctx.lineTo(PAD + INNER, yy);
     ctx.stroke();
   };
-  rule(y, "#a8a29e", 2);
+  rule(y, "#a8a29e", 1);
   w.lines.forEach((l, i) => {
-    ctx.font = font(30);
+    ctx.font = font(27);
     const name = wrap(ctx, l.name, NAME_W);
-    const h = Math.max(66, 26 + name.length * 38);
-    const base = y + (h - name.length * 38) / 2 + 29;
-    text(String(i + 1), X.num, base, font(26), MUTED, "center");
-    name.forEach((line, k) => text(line, X.name, base + k * 38, font(30)));
-    text(waybillQty(l.quantity), X.qty, base, font(30), INK, "right");
-    text(l.unit, X.unit, base, font(26), MUTED, "center");
-    text(waybillMoney(l.price), X.price, base, font(30), INK, "right");
-    text(waybillMoney(l.sum), X.sum, base, font(30, 600), INK, "right");
+    const h = Math.max(60, 24 + name.length * 35);
+    const base = y + (h - name.length * 35) / 2 + 26;
+    text(String(i + 1), X.num, base, font(22), MUTED, "center");
+    name.forEach((line, k) => text(line, X.name, base + k * 35, font(27)));
+    text(waybillQty(l.quantity), X.qty, base, font(27), INK, "right");
+    text(l.unit, X.unit, base, font(22), MUTED, "center");
+    text(waybillMoney(l.price), X.price, base, font(27), "#57534e", "right");
+    text(waybillMoney(l.sum), X.sum, base, font(27, 500), INK, "right");
     y += h;
-    rule(y, LINE, 1.5);
+    rule(y, LINE, 1);
   });
 
   // Totals.
-  y += 26;
-  rule(y, INK, 3);
-  ctx.font = font(30, 600);
-  const summary = wrap(ctx, waybillSummary(w), INNER - 380);
-  summary.forEach((l, i) => text(l, PAD, y + 56 + i * 40, font(30, 600)));
-  text(`${waybillMoney(w.total)} ₸`, W - PAD, y + 66, font(52, 700), INK, "right");
-  y += Math.max(92, 30 + summary.length * 40);
+  y += 18;
+  ctx.font = font(24);
+  const summary = wrap(ctx, waybillSummary(w), INNER - 360);
+  summary.forEach((l, i) => text(l, PAD, y + 50 + i * 34, font(24), "#57534e"));
+  text(`${waybillMoney(w.total)} ₸`, W - PAD, y + 56, font(40, 600), INK, "right");
+  y += Math.max(80, 30 + summary.length * 34);
   if (w.paid !== null && w.debt !== null) {
     for (const [label, value] of [
       ["Оплачено", w.paid],
       ["Остаток долга", w.debt],
     ] as const) {
-      text(label, PAD, y + 34, font(30), "#57534e");
-      text(`${waybillMoney(value)} ₸`, W - PAD, y + 34, font(32, 600), INK, "right");
-      y += 50;
+      text(label, PAD, y + 30, font(24), MUTED);
+      text(`${waybillMoney(value)} ₸`, W - PAD, y + 30, font(26, 500), INK, "right");
+      y += 42;
     }
   }
 
@@ -159,21 +149,21 @@ function draw(ctx: CanvasRenderingContext2D, w: Waybill, dry: boolean): number {
   y += 60;
   const half = (INNER - 60) / 2;
   const sign = (x: number, caption: string) => {
-    ctx.font = font(28);
-    text(wrap(ctx, caption, half)[0], x, y + 28, font(28));
+    ctx.font = font(23);
+    text(wrap(ctx, caption, half)[0], x, y + 26, font(23), "#57534e");
     if (!dry) {
-      ctx.strokeStyle = INK;
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "#a8a29e";
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(x, y + 108);
-      ctx.lineTo(x + half, y + 108);
+      ctx.moveTo(x, y + 100);
+      ctx.lineTo(x + half, y + 100);
       ctx.stroke();
     }
-    text("Подпись", x, y + 138, font(22), MUTED);
+    text("Подпись", x, y + 128, font(19), MUTED);
   };
   sign(PAD, `Сдал: ${w.issuedBy}`);
   sign(PAD + half + 60, "Принял:");
-  y += 150;
+  y += 138;
 
   return y + PAD;
 }
