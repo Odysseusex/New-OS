@@ -1097,7 +1097,7 @@ Only the bakers' notes (owner's choice); sales typed by hand in «Продажи
 ## One look for every накладная — picture for WhatsApp + print (built 25.11.2026)
 
 `lib/waybill.ts` (`Waybill` = brand, number, date and time, «Отгружено с», recipient, lines, total, paid / debt;
-NO person's name — owner, 25.11.2026: «Сдал:» is a blank line to sign, the baker / cashier is never printed) is the ONE description of a накладная, made by `bakerNoteWaybill(note)` or `saleWaybill(sale, units)` (a
+NO person's name and NO «Сдал» — owner, 25.11.2026: only «Принял:» with a line to sign) is the ONE description of a накладная, made by `bakerNoteWaybill(note)` or `saleWaybill(sale, units)` (a
 sale's lines carry no unit — `lib/sale-waybills.ts` reads the products' units once, archived ones too). Two forms of it:
 - **The look is deliberately quiet** (owner, 25.11.2026, after a first version with a filled recipient block, large
   bold type and heavy rules: «не такими большими и жирными… минимализма и эстетики»): regular weights, semibold only for

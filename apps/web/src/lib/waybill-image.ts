@@ -181,8 +181,7 @@ function draw(ctx: CanvasRenderingContext2D, w: Waybill, dry: boolean): number {
     }
     text("Подпись", x, y + 128, font(19), MUTED);
   };
-  // No name (owner, 25.11.2026): the bakers' and cashiers' names stay off the накладная.
-  sign(PAD, "Сдал:");
+  // Only the receiver signs (owner, 25.11.2026): no «Сдал», no baker's or cashier's name on the накладная.
   sign(PAD + half + 60, "Принял:");
   y += 138;
 

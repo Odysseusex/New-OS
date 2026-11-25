@@ -146,7 +146,7 @@ function waybillHtml(w: Waybill): string {
 </table>
 <div class="total"><p>${esc(waybillSummary(w))}</p><b>${waybillMoney(w.total)} ₸</b></div>
 ${money}
-<div class="sign"><div><p>Сдал:</p><i>Подпись</i></div><div><p>Принял:</p><i>Подпись</i></div></div>
+<div class="sign"><div></div><div><p>Принял:</p><i>Подпись</i></div></div>
 </section>`;
 }
 
