@@ -210,7 +210,7 @@ scaled). The till's width cap is in px (`max-w-[1280px]`) so a smaller scale doe
 
 **A till redesign was tried and rolled back (07.11.2026).** After a Dribbble-style rebuild of /pos (coral accent,
 photo cards, own rail, commit 8936c4b) the owner asked for the previous till back the same day; it was reverted whole.
-Don't redo a till restyle without a fresh request. Learned on the way: Tailwind opacity modifiers on the theme colours
+Brought back on 25.11.2026 (no emoji, icons instead) and rolled back AGAIN the same day — owner: «под моноблок вообще не ложится». The work is commit 312d327 if it is ever wanted again, but only for a layout made for the 1366×768 monoblock first. Don't redo a till restyle without a fresh request. Learned on the way: Tailwind opacity modifiers on the theme colours
 (`bg-accent/10`, `border-accent/40`, `text-muted/70`) generate NOTHING here — the colours are plain `var()` without
 `<alpha-value>` — so such classes in existing screens are silent no-ops.
 
@@ -2028,7 +2028,7 @@ with the programme on (else the oldest non-sandbox org).
   `ClubPushNotice`. Endpoints `GET /club/push/key`, `POST /club/push/subscribe|unsubscribe` (club token; only the browsers'
   own push hosts are accepted — the server sends requests there). Worker `public/app/sw.js` (scope `/app/`, the page is
   `/app`, so the code waits for ITS registration, never `serviceWorker.ready`). In the app: an offer on the card screen and
-  a section in «Профиль» (`_components/push.ts`); iPhone only once the app is on the home screen. **Channel order is now
+  a section in «Профиль» (`_components/push.ts`); iPhone only once the app is on the home screen. «Профиль» has NO «Выключить» (owner, 25.11.2026: keep notifications on) — only «Включены» + what they bring, or «Включить»; the phone's settings still switch them off. **Channel order is now
   app → WhatsApp → Telegram** (`CustomerBotService.viaPush`, decided before sending, one channel per notice): purchase,
   return, expiring points, birthday, owner's manual message, plus «Новый уровень» (`recordSale` returns `tierUp`,
   `notifySale(detail, tierUp)`). Verified with a fake transport (`club-push.spec.ts`) and in a browser with the push

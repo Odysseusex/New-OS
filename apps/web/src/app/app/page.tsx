@@ -374,18 +374,15 @@ function PushPanel({ prompt = false }: { prompt?: boolean }) {
         <p style={{ margin: 0, fontSize: 14 }}>Чтобы получать уведомления, добавьте приложение на экран «Домой»: «Поделиться» внизу Safari, затем «На экран “Домой”».</p>
       )}
       {state === "blocked" && <p style={{ margin: 0, fontSize: 14 }}>Уведомления запрещены в настройках телефона. Разрешите их для Ar Amir — и вернитесь сюда.</p>}
-      {state === "off" && <p style={{ margin: 0, fontSize: 14 }}>Сообщим о начисленных бонусах, подарках и новом уровне.</p>}
+      {state === "off" && <p style={{ margin: 0, fontSize: 14 }}>Включите, чтобы не пропустить начисленные бонусы, подарки и сгорание баллов.</p>}
       {error && <div className="aa-error">{error}</div>}
       {state === "off" && (
         <button type="button" className="aa-btn primary" disabled={busy} onClick={() => run(enablePush)}>
           {busy ? "Секунду…" : "Включить уведомления"}
         </button>
       )}
-      {state === "on" && (
-        <button type="button" className="aa-btn ghost" disabled={busy} onClick={() => run(disablePush)}>
-          {busy ? "Секунду…" : "Выключить"}
-        </button>
-      )}
+      {/* No «Выключить» here (owner, 25.11.2026: keep them on); the phone's own settings still turn them off. */}
+      {state === "on" && <p style={{ margin: 0, fontSize: 14 }}>Сообщим о начисленных бонусах, подарках и сгорании баллов.</p>}
     </section>
   );
 }
