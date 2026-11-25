@@ -31,14 +31,15 @@ export function BakerDayTab() {
   const [result, setResult] = useState<BakerDayPostResultDto | null>(null);
   const [busy, setBusy] = useState(false);
   // «Несколько на листе»: short notes share a sheet (cut apart with scissors); remembered on this computer.
-  const [pack, setPack] = useState(false);
+  const [pack, setPack] = useState(true);
   // Notes ticked for printing; none ticked = print them all.
   const [picked, setPicked] = useState<Set<string>>(new Set());
   // Another day or workshop starts with nothing ticked.
   useEffect(() => setPicked(new Set()), [dayKey, sourceId]);
   useEffect(() => {
     try {
-      setPack(localStorage.getItem(PACK_KEY) === "1");
+      // On unless switched off on this computer (owner, 25.11.2026: one note per sheet wastes paper).
+      setPack(localStorage.getItem(PACK_KEY) !== "0");
     } catch {
       /* no storage: one note per sheet */
     }

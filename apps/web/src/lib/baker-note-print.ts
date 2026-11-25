@@ -47,7 +47,7 @@ function noteHtml(note: BakerNoteDto): string {
 // exactly 180 mm wide there), a note that does not fit the rest of the sheet starts the next one; a note taller
 // than a whole sheet starts on the current one if a good part of it is free, and runs over. A cut line goes under
 // every note that has another below it on the same sheet.
-const PACK_SCRIPT = `(function(){
+const PACK_SCRIPT = `(function(){function place(){
 var probe=document.createElement("div");probe.style.height="100mm";document.body.appendChild(probe);
 var mm=probe.getBoundingClientRect().height/100;probe.remove();
 var PAGE=267*mm-2,GAP=8*mm,used=0,prev=null,list=document.querySelectorAll("section");
@@ -57,7 +57,8 @@ if(prev){var free=PAGE-used-GAP;
 if(h<=free||(h>PAGE&&free>PAGE*0.35)){prev.className+=" cut";used+=GAP+h;}
 else{s.className+=" newpage";used=h;}}else{used=h;}
 while(used>PAGE)used-=PAGE;prev=s;}
-if(prev)prev.className+=" last";})();`;
+if(prev)prev.className+=" last";}
+place();window.addEventListener("beforeprint",place);})();`;
 
 // `pack`: several notes on one sheet, one after another with a cut line between them, to save paper.
 // A note that does not fit the rest of the sheet moves whole to the next one; a note longer than a sheet
@@ -106,7 +107,7 @@ body.pack th,body.pack td{height:6.5mm;padding:0.4mm 2mm;line-height:1.15}
 body.pack th{font-size:11pt}
 body.pack tfoot td{height:8mm;font-size:13.5pt}
 body.pack .sign{margin-top:6mm;font-size:12pt}
-@media screen{body{padding:15mm;max-width:210mm;margin:0 auto}}
+@media screen{body{padding:15mm;width:210mm;margin:0 auto}}
 </style></head><body${pack ? ' class="pack"' : ""}>
 ${notes.map(noteHtml).join("\n")}
 ${pack ? `<script>${PACK_SCRIPT}</script>` : ""}
