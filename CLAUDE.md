@@ -1047,7 +1047,10 @@ The two bakers used to write накладные on paper and photograph them; in
   or the account is switched off), kept in localStorage `baker_device_token`. After that `POST /auth/baker-pin
   {deviceToken, pin}` → an ordinary 8-hour login for whichever `BAKER_PHONE_ROLES` user (PRODUCTION_STAFF «Пекарь»,
   PRODUCTION_MANAGER) the PIN belongs to — so every note carries who sent it. A baker = a user with role «Пекарь», the
-  workshop as their point and a PIN (Настройки). `homeFor(PRODUCTION_STAFF)` is `/baker`. What is typed is kept in
+  workshop as their point and a PIN (Настройки). `homeFor(PRODUCTION_STAFF)` is `/baker`. Its own home-screen icon
+  (owner, 25.11.2026: the «ar» with the chef's hat on terracotta) = `public/baker/icon-192|512.png` +
+  `apple-touch-icon.png`, set in `app/baker/layout.tsx` metadata and the manifest; a phone keeps the icon it was added
+  with, so the icon is removed from the home screen and added again to change it. What is typed is kept in
   localStorage until sent (a locked phone loses nothing).
 - **Operator**: Производство → «Накладные пекарей» (`components/baker-day-tab.tsx`, `BAKER_DAY_ROLES` = OWNER, ADMIN,
   PRODUCTION_MANAGER, OPERATOR, ASSISTANT): the day's list, «Печать всех накладных» (`lib/baker-note-print.ts`, its OWN
