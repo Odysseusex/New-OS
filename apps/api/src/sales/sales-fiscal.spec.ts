@@ -223,12 +223,9 @@ describe("SalesService.create with fiscalisation OFF", () => {
     ).rejects.toThrow("Цена до скидки должна быть выше");
   });
 
-  it("sells an open-price line with no stock at all, and moves no stock for it", async () => {
-    // The till's «Произвольная сумма» row: trackInventory=false, no
-    // StockLevel row anywhere, and an amount typed by the cashier rather
-    // than read off the product. Before stock tracking was honoured here,
-    // this failed with «Недостаточно товара» — which is exactly the sort of
-    // thing that stops a till mid-queue.
+  it("refuses the retired «Произвольная сумма» line for every role", async () => {
+    // Removed on the owner's request (24.11.2026): an amount with no product behind it cannot be checked against
+    // the shelf. The old row may still exist in an organization; it is never sold again.
     const openPrice = await prisma.product.create({
       data: {
         organizationId: ORG,
@@ -243,16 +240,14 @@ describe("SalesService.create with fiscalisation OFF", () => {
     });
     openPriceProductId = openPrice.id;
 
-    const sale = await buildService(new ScriptedProvider()).create(user, {
-      locationId,
-      paymentMethod: PaymentMethod.CASH,
-      items: [{ productId: openPrice.id, quantity: 1, unitPrice: 1250 }],
-    });
-    otherSaleIds.push(sale.id);
-
-    expect(sale.totalAmount).toBe(1250);
-    expect(await prisma.stockMovement.count({ where: { productId: openPrice.id } })).toBe(0);
-    expect(await prisma.stockLevel.count({ where: { productId: openPrice.id } })).toBe(0);
+    await expect(
+      buildService(new ScriptedProvider()).create(user, {
+        locationId,
+        paymentMethod: PaymentMethod.CASH,
+        items: [{ productId: openPrice.id, quantity: 1, unitPrice: 1250 }],
+      }),
+    ).rejects.toThrow("«Произвольная сумма» отключена");
+    expect(await prisma.sale.count({ where: { items: { some: { productId: openPrice.id } } } })).toBe(0);
   });
 
   it("splits a mixed payment across two accounts, not one", async () => {

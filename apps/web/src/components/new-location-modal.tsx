@@ -34,7 +34,6 @@ export function NewLocationModal({
   const [lat, setLat] = useState(location?.lat !== null && location?.lat !== undefined ? String(location.lat) : "");
   const [lng, setLng] = useState(location?.lng !== null && location?.lng !== undefined ? String(location.lng) : "");
   const [defaultDirectionId, setDefaultDirectionId] = useState(location?.defaultDirectionId ?? "");
-  const [tillOpenPrice, setTillOpenPrice] = useState(location?.tillOpenPrice ?? false);
   const [strictStock, setStrictStock] = useState(location?.strictStock ?? false);
   const [directions, setDirections] = useState<DirectionDto[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +62,6 @@ export function NewLocationModal({
         address,
         lat: lat ? Number(lat) : undefined,
         lng: lng ? Number(lng) : undefined,
-        tillOpenPrice,
         strictStock,
         ...(directions.length > 0 ? { defaultDirectionId: defaultDirectionId && defaultDirectionId !== retailId ? defaultDirectionId : null } : {}),
       };
@@ -141,13 +139,6 @@ export function NewLocationModal({
               ))}
             </select>
           </div>
-        )}
-
-        {type === LocationType.STORE && (
-          <label className="mb-4 flex items-center gap-2 text-sm text-foreground">
-            <input type="checkbox" checked={tillOpenPrice} onChange={(e) => setTillOpenPrice(e.target.checked)} className="h-4 w-4 accent-accent" />
-            «Произвольная сумма» на кассе
-          </label>
         )}
 
         <label className="mb-4 flex items-center gap-2 text-sm text-foreground">
