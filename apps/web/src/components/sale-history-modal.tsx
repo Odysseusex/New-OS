@@ -4,7 +4,7 @@ import { TextField } from "@/components/text-keypad";
 import { useEffect, useMemo, useState } from "react";
 import { Printer, Search, Undo2, X } from "lucide-react";
 import type { ProductDto, SaleDetailDto, SaleDto, SaleReturnDto, SalesSummaryDto } from "@bakery-os/shared";
-import { PAYMENT_METHOD_LABELS_RU, SALE_RETURN_WITH_APPROVAL_ROLES, TILL_APPROVER_ROLES, UNIT_LABELS_RU } from "@bakery-os/shared";
+import { PAYMENT_METHOD_LABELS_RU, REVENUE_VIEW_ROLES, SALE_RETURN_WITH_APPROVAL_ROLES, TILL_APPROVER_ROLES, UNIT_LABELS_RU } from "@bakery-os/shared";
 import { useAuth } from "@/lib/auth-context";
 import { SaleReturnModal } from "@/components/sale-return-modal";
 import { api } from "@/lib/api";
@@ -59,12 +59,16 @@ export function SaleHistoryModal({
   const [query, setQuery] = useState("");
   const [product, setProduct] = useState<ProductDto | null>(null);
 
+  // The day's totals are not for the till's own staff: they close the shift by a blind count,
+  // and the cash takings here would be the answer (the server refuses them the figure as well).
+  const seesTotals = !!user && REVENUE_VIEW_ROLES.includes(user.role);
   useEffect(() => {
+    if (!seesTotals) return;
     api.sales
       .summary(locationId)
       .then(setSummary)
       .catch(() => setSummary(null));
-  }, [locationId]);
+  }, [locationId, seesTotals]);
 
   // Digits typed in the search = a check number: found on any day, not only today.
   const checkNumber = /^\d+$/.test(query.trim()) ? query.trim() : "";
