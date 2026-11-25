@@ -29,7 +29,6 @@ export interface Waybill {
   // A sale to a customer: what is paid and what is still owed for it.
   paid: number | null;
   debt: number | null;
-  issuedBy: string;
 }
 
 export const WAYBILL_BRAND = "Ar-Amir";
@@ -90,7 +89,6 @@ export function bakerNoteWaybill(note: BakerNoteDto, brand = WAYBILL_BRAND): Way
     total: note.total,
     paid: null,
     debt: null,
-    issuedBy: note.createdByName,
   };
 }
 
@@ -117,7 +115,6 @@ export function saleWaybill(sale: SaleDetailDto, units: UnitByProduct, brand = W
     total: sale.totalAmount,
     paid: sale.customerId ? sale.amountPaid : null,
     debt: sale.customerId ? sale.balanceDue : null,
-    issuedBy: sale.createdByName,
   };
 }
 
@@ -149,7 +146,7 @@ function waybillHtml(w: Waybill): string {
 </table>
 <div class="total"><p>${esc(waybillSummary(w))}</p><b>${waybillMoney(w.total)} ₸</b></div>
 ${money}
-<div class="sign"><div><p>Сдал: ${esc(w.issuedBy)}</p><i>Подпись</i></div><div><p>Принял:</p><i>Подпись</i></div></div>
+<div class="sign"><div><p>Сдал:</p><i>Подпись</i></div><div><p>Принял:</p><i>Подпись</i></div></div>
 </section>`;
 }
 
