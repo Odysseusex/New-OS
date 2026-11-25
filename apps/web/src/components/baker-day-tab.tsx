@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
-import { Pencil, Printer, RefreshCw, Send } from "lucide-react";
+import { Laptop, Pencil, Printer, RefreshCw, Send } from "lucide-react";
 import type { BakerDayDto, BakerDayPostResultDto, BakerDayPreviewDto, BakerNoteDto } from "@bakery-os/shared";
 import { BAKER_DAY_ROLES, BAKER_NOTE_STATUS_LABELS_RU, BakerNoteStatus, UNIT_LABELS_RU } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
@@ -12,6 +12,7 @@ import { bakerNoteWaybill, printWaybills } from "@/lib/waybill";
 import { WaybillShareModal } from "@/components/waybill-share-modal";
 import { zonedDateKey } from "@/lib/reporting-period";
 import { Modal } from "@/components/modal";
+import { SendToLaptopStatus, useSendToLaptop } from "@/components/remote-print";
 
 const PACK_KEY = "baker_print_pack";
 const dayLabel = (key: string) => key.split("-").reverse().join(".");
@@ -37,6 +38,8 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
   // Notes ticked for printing; none ticked = print them all.
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [sharing, setSharing] = useState<BakerNoteDto[] | null>(null);
+  // «На ноутбук выдачи»: print on the door laptop's printer from here (a phone, an iPad, the office).
+  const laptop = useSendToLaptop();
   // Another day or workshop starts with nothing ticked.
   useEffect(() => setPicked(new Set()), [dayKey, sourceId]);
   useEffect(() => {
@@ -183,6 +186,17 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
             <Printer className="h-4 w-4" strokeWidth={1.75} />
             {chosen.length > 0 ? `Печать выбранных (${chosen.length})` : "Печать всех накладных"}
           </button>
+          {!printOnly && (
+            <button
+              type="button"
+              onClick={() => laptop.send(chosen.length > 0 ? chosen : day.notes, pack)}
+              disabled={day.notes.length === 0 || laptop.busy}
+              className={button}
+            >
+              <Laptop className="h-4 w-4" strokeWidth={1.75} />
+              {chosen.length > 0 ? `На ноутбук выдачи (${chosen.length})` : "Все на ноутбук выдачи"}
+            </button>
+          )}
           {chosen.length > 0 && (
             <button type="button" onClick={() => setSharing(chosen)} className={button}>
               <Send className="h-4 w-4" strokeWidth={1.75} />
@@ -213,6 +227,7 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
         </div>
       )}
       {error && <div className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+      {!printOnly && <SendToLaptopStatus sent={laptop.sent} error={laptop.error} onClose={laptop.clear} />}
       {result && (
         <div className={clsx("mb-4 rounded-xl px-4 py-3 text-sm", result.notes.some((n) => !n.ok) ? "bg-amber-50 text-amber-800" : "bg-green-50 text-green-800")}>
           <p className="font-medium">
@@ -359,6 +374,19 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
               <Printer className="h-4 w-4" strokeWidth={1.75} />
               Печать
             </button>
+            {!printOnly && (
+              <button
+                type="button"
+                onClick={() => {
+                  void laptop.send([opened], pack);
+                  setOpened(null);
+                }}
+                className={button}
+              >
+                <Laptop className="h-4 w-4" strokeWidth={1.75} />
+                На ноутбук выдачи
+              </button>
+            )}
             <button type="button" onClick={() => setSharing([opened])} className={button}>
               <Send className="h-4 w-4" strokeWidth={1.75} />
               Отправить в WhatsApp

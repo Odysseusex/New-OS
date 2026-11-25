@@ -9,6 +9,7 @@ import { pinDigest, resetPinThrottle } from "../auth/till-pin";
 import { MaterialRequisitionsService } from "../production/requisitions.service";
 import { BakerNotesService } from "./baker-notes.service";
 import { BakerDayService } from "./baker-day.service";
+import { PrintJobsService } from "./print-jobs.service";
 
 // «Накладные пекарей»: a baker's note is a draft with the right price put in by the server; it moves
 // nothing until «Провести день», which bakes exactly «отгружено + холодильник − что было», then makes a
@@ -18,6 +19,7 @@ process.env.FISCALIZATION_ENABLED = "false";
 const prisma = new PrismaService();
 const services = buildServices(prisma);
 const notes = new BakerNotesService(prisma);
+const printJobs = new PrintJobsService(prisma, notes);
 const days = new BakerDayService(prisma, notes, services.production, new MaterialRequisitionsService(prisma, services.costing), services.sales);
 const auth = new AuthService(prisma, new JwtService({ secret: process.env.JWT_SECRET ?? "dev-secret-change-me", signOptions: { expiresIn: "8h" } }));
 
@@ -134,6 +136,34 @@ it("the door laptop («Выдача накладных») reads every note of th
   expect((await notes.findOne(door, customerNoteId)).editable).toBe(false);
   await expect(notes.update(door, customerNoteId, { kind: BakerNoteKind.DELIVERY, lines: [{ productId: breadId, quantity: 1 }] })).rejects.toThrow(/другого пекаря/);
   await expect(notes.cancel(door, customerNoteId)).rejects.toThrow(/другого пекаря/);
+});
+
+it("«На ноутбук выдачи»: a request from the office is printed by the door laptop exactly once", async () => {
+  const row = await prisma.user.create({
+    data: { organizationId: org.organizationId, fullName: "Ноутбук", email: `door-${org.organizationId}@iso.test`, passwordHash: "hash-n", role: Role.DISPATCHER, locationId: org.storeId },
+  });
+  const door: AuthenticatedUser = { id: row.id, email: row.email, fullName: "Ноутбук", role: Role.DISPATCHER, title: null, organizationId: org.organizationId, regionId: null, locationId: org.storeId };
+  expect(printJobs.laptop(org.user).laptopSeenAt).toBeNull();
+  const job = await printJobs.create(org.user, { noteIds: [customerNoteId, shopNoteId], pack: true });
+  expect(job.claimedAt).toBeNull();
+  await expect(printJobs.create(org.user, { noteIds: ["no-such-note"], pack: false })).rejects.toThrow(/не найдена/);
+
+  const pending = await printJobs.pending(door);
+  expect(pending.map((j) => j.id)).toEqual([job.id]);
+  // The notes come in the order they were sent, with everything the накладная needs.
+  expect(pending[0].notes.map((n) => n.id)).toEqual([customerNoteId, shopNoteId]);
+  expect(pending[0].pack).toBe(true);
+  expect(printJobs.laptop(org.user).laptopSeenAt).not.toBeNull();
+
+  expect(await printJobs.claim(door, job.id)).toEqual({ claimed: true });
+  expect(await printJobs.claim(door, job.id)).toEqual({ claimed: false });
+  expect(await printJobs.pending(door)).toEqual([]);
+  expect((await printJobs.findOne(org.user, job.id)).claimedAt).not.toBeNull();
+
+  // A request nobody printed for hours is not printed the next morning.
+  const old = await printJobs.create(org.user, { noteIds: [shopNoteId], pack: false });
+  await prisma.printJob.update({ where: { id: old.id }, data: { createdAt: new Date(Date.now() - 3 * 3600_000) } });
+  expect(await printJobs.pending(door)).toEqual([]);
 });
 
 it("«Холодильник на завтра» is one sheet per day: saving again replaces it", async () => {

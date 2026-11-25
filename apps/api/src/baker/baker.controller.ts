@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Post, Put, Query, Res, UseGuards } from "@nestjs/common";
 import type { Response } from "express";
-import { BAKER_DAY_ROLES, BAKER_NOTE_ROLES, BAKER_PRINT_ROLES } from "@bakery-os/shared";
+import { BAKER_DAY_ROLES, BAKER_NOTE_ROLES, BAKER_PRINT_ROLES, Role } from "@bakery-os/shared";
 
 // Reading a day / one note: the bakers and the door laptop («Выдача накладных»).
 const NOTE_READ_ROLES = [...new Set([...BAKER_NOTE_ROLES, ...BAKER_PRINT_ROLES])];
@@ -11,8 +11,9 @@ import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { BakerNotesService } from "./baker-notes.service";
 import { BakerDayService } from "./baker-day.service";
-import { AddIntakePhotoInput, BakerDayPostInput, CreateSupplierIntakeInput, ResolveSupplierIntakeInput, SaveBakerNoteInput } from "./baker.dto";
+import { AddIntakePhotoInput, BakerDayPostInput, CreatePrintJobInput, CreateSupplierIntakeInput, ResolveSupplierIntakeInput, SaveBakerNoteInput } from "./baker.dto";
 import { SupplierIntakesService } from "./supplier-intakes.service";
+import { PrintJobsService } from "./print-jobs.service";
 
 // «Накладные пекарей»: the phone screen (/baker) and the operator's «Накладные за день».
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -23,7 +24,40 @@ export class BakerController {
     private notes: BakerNotesService,
     private days: BakerDayService,
     private intakes: SupplierIntakesService,
+    private printJobs: PrintJobsService,
   ) {}
+
+  // ── «Печать на ноутбуке выдачи» ── (named routes before «print-jobs/:id»)
+  @Post("print-jobs")
+  @Roles(...BAKER_PRINT_ROLES)
+  createPrintJob(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreatePrintJobInput) {
+    return this.printJobs.create(user, dto);
+  }
+
+  @Get("print-jobs/laptop")
+  @Roles(...BAKER_PRINT_ROLES)
+  printLaptop(@CurrentUser() user: AuthenticatedUser) {
+    return this.printJobs.laptop(user);
+  }
+
+  // Only the door laptop's own login prints, so an owner's screen open elsewhere never takes the job.
+  @Get("print-jobs/pending")
+  @Roles(Role.DISPATCHER)
+  pendingPrintJobs(@CurrentUser() user: AuthenticatedUser) {
+    return this.printJobs.pending(user);
+  }
+
+  @Post("print-jobs/:id/claim")
+  @Roles(Role.DISPATCHER)
+  claimPrintJob(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
+    return this.printJobs.claim(user, id);
+  }
+
+  @Get("print-jobs/:id")
+  @Roles(...BAKER_PRINT_ROLES)
+  printJob(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
+    return this.printJobs.findOne(user, id);
+  }
 
   // ── «Приход от поставщика» ──
   @Get("intakes")

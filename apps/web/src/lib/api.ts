@@ -7,6 +7,9 @@ import type {
   BakerDayDto,
   BakerDayPostRequestDto,
   BakerDayPostResultDto,
+  CreatePrintJobRequestDto,
+  PendingPrintJobDto,
+  PrintJobStatusDto,
   BakerDayPreviewDto,
   BakerNoteDto,
   SaveBakerNoteRequestDto,
@@ -387,6 +390,12 @@ export const api = {
     cancel: (id: string) => request<BakerNoteDto>(`/baker/notes/${id}/cancel`, { method: "POST" }),
     preview: (day: string, sourceLocationId: string) => request<BakerDayPreviewDto>(withQuery("/baker/day/preview", { day, sourceLocationId })),
     post: (dto: BakerDayPostRequestDto) => request<BakerDayPostResultDto>("/baker/day/post", { method: "POST", body: JSON.stringify(dto) }),
+    // «Печать на ноутбуке выдачи».
+    sendToLaptop: (dto: CreatePrintJobRequestDto) => request<PrintJobStatusDto>("/baker/print-jobs", { method: "POST", body: JSON.stringify(dto) }),
+    printJob: (id: string) => request<PrintJobStatusDto>(`/baker/print-jobs/${id}`),
+    printLaptop: () => request<{ laptopSeenAt: string | null }>("/baker/print-jobs/laptop"),
+    pendingPrintJobs: () => request<PendingPrintJobDto[]>("/baker/print-jobs/pending"),
+    claimPrintJob: (id: string) => request<{ claimed: boolean }>(`/baker/print-jobs/${id}/claim`, { method: "POST" }),
     // «Приход от поставщика»: photographs of a supplier's накладная.
     intakes: (params: { day?: string; pending?: string }) => request<SupplierIntakeDto[]>(withQuery("/baker/intakes", params)),
     myIntakes: () => request<SupplierIntakeDto[]>("/baker/intakes/mine"),

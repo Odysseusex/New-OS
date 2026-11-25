@@ -1094,6 +1094,23 @@ Only the bakers' notes (owner's choice); sales typed by hand in «Продажи
 (or Chrome profile) beside the till so the two logins do not replace each other. Specs: `baker-notes.spec.ts`,
 `role-scope.spec.ts`.
 
+## «На ноутбук выдачи» — print on the door laptop from a phone (built 26.11.2026)
+
+The owner's iPhone/iPad cannot print to a USB printer on the laptop (no AirPrint). So the PROGRAM carries the request:
+Производство → «Накладные пекарей» → «Все на ноутбук выдачи» / «На ноутбук выдачи (N)» (also in an opened note) →
+`POST /baker/print-jobs {noteIds, pack}` (BAKER_PRINT_ROLES) → a `PrintJob` row (migration `20261212120000_print_jobs`,
+additive; plain `organizationId`, `noteIds String[]`, `claimedAt`; removed by clean start, left out of backups). The
+door laptop's `/dispatch` screen — only under the DISPATCHER login (`RemotePrintAgent`, `components/remote-print.tsx`) —
+asks `GET /baker/print-jobs/pending` every 4 s (Role.DISPATCHER only, so an owner's /dispatch never takes a job), claims
+each job with one conditional UPDATE (`POST …/:id/claim`, two laptops never print twice) and prints it in a hidden
+iframe (`printWaybillsInFrame` — a timer may not open a window). Jobs older than `PRINT_JOB_TTL_MINUTES` (2 h) are never
+printed. The sender's screen follows `GET /baker/print-jobs/:id` («печатается…» / «напечатал … (время)» / «не на связи»
+from the in-memory `laptopSeenAt`). SILENT printing needs the laptop's browser started with `--kiosk-printing` (plus
+`--disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows` so a
+minimised window keeps asking) and its own `--user-data-dir` (a Chrome already running ignores flags; also keeps the
+till's login apart); prints go to Windows' default printer. Without the flag the print dialog appears. Spec in
+`baker-notes.spec.ts`.
+
 ## One look for every накладная — picture for WhatsApp + print (built 25.11.2026)
 
 `lib/waybill.ts` (`Waybill` = brand, number, date and time, recipient, lines, total, paid / debt;

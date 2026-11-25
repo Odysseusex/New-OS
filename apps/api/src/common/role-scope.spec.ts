@@ -14,7 +14,7 @@ describe("role scope", () => {
   });
 
   it("keeps «Выдача накладных» to the day's bakers' notes", () => {
-    for (const path of ["/api/auth/me", "/api/baker/day?day=2026-11-25", "/api/baker/notes/abc"]) {
+    for (const path of ["/api/auth/me", "/api/baker/day?day=2026-11-25", "/api/baker/notes/abc", "/api/baker/print-jobs/pending"]) {
       expect(pathAllowedForRole(Role.DISPATCHER, path)).toBe(true);
     }
     for (const path of ["/api/baker/intakes", "/api/baker/catalog", "/api/sales", "/api/products", "/api/finance/pnl", "/api/inventory/stock-levels", "/api/dashboard/summary"]) {

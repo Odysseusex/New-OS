@@ -7,7 +7,7 @@ import { Role, TILL_ROLES } from "@bakery-os/shared";
 export const ROLE_API_SCOPE: Partial<Record<Role, string[]>> = {
   [Role.CLIENT_MANAGER]: ["/auth", "/crm", "/loyalty"],
   // The door laptop: the day's bakers' notes only (reading; every write route there is gated to other roles).
-  [Role.DISPATCHER]: ["/auth", "/baker/day", "/baker/notes"],
+  [Role.DISPATCHER]: ["/auth", "/baker/day", "/baker/notes", "/baker/print-jobs"],
 };
 
 // The till's own staff (cashier, senior cashier) are kept on /pos by the screen, but a login token

@@ -18,7 +18,8 @@ export const EXPORT_VERSION = 1;
 //    customers simply sign in again.
 //  * club_push_subscriptions: the phones that allowed app notifications (addresses
 //    and keys of single devices); after a restore the app subscribes again by itself.
-export const EXCLUDED_TABLES: ReadonlySet<string> = new Set(["_prisma_migrations", "telegram_link_tokens", "club_login_requests", "club_push_subscriptions"]);
+//  * print_jobs: requests to print notes on the door laptop, minutes long; nothing to restore.
+export const EXCLUDED_TABLES: ReadonlySet<string> = new Set(["_prisma_migrations", "telegram_link_tokens", "club_login_requests", "club_push_subscriptions", "print_jobs"]);
 
 // Columns left out of the rows. A restore asks for a temporary password instead.
 export const REDACTED_COLUMNS: Readonly<Record<string, readonly string[]>> = {

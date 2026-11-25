@@ -1,6 +1,6 @@
 import { Type } from "class-transformer";
-import { ArrayMaxSize, IsArray, IsEnum, IsIn, IsNumber, IsOptional, IsString, Matches, MaxLength, Min, ValidateNested } from "class-validator";
-import { BAKER_NOTE_MAX_LINES, BakerNoteKind, SUPPLIER_INTAKE_PHOTO_MAX_CHARS, SupplierIntakePayment, SupplierIntakeStatus } from "@bakery-os/shared";
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsEnum, IsIn, IsNumber, IsOptional, IsString, Matches, MaxLength, Min, ValidateNested } from "class-validator";
+import { BAKER_NOTE_MAX_LINES, BakerNoteKind, PRINT_JOB_MAX_NOTES, SUPPLIER_INTAKE_PHOTO_MAX_CHARS, SupplierIntakePayment, SupplierIntakeStatus } from "@bakery-os/shared";
 
 export class BakerNoteLineInput {
   @IsString()
@@ -101,4 +101,15 @@ export class ResolveSupplierIntakeInput {
   @IsString()
   @MaxLength(300)
   reason?: string;
+}
+
+export class CreatePrintJobInput {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(PRINT_JOB_MAX_NOTES)
+  @IsString({ each: true })
+  noteIds!: string[];
+
+  @IsBoolean()
+  pack!: boolean;
 }

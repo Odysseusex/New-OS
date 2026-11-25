@@ -232,3 +232,38 @@ export function printWhenReady(win: Window): void {
   if (!fonts) return go();
   Promise.race([fonts.ready, new Promise((r) => setTimeout(r, 2500))]).then(go, go);
 }
+
+// «Печать на ноутбуке выдачи»: printed without a click and without a new window — a window opened by a timer
+// would be blocked. The page lives in a hidden frame; on the door laptop the browser is started with
+// --kiosk-printing, so print() goes straight to the default printer (without it the print dialog shows).
+export function printWaybillsInFrame(list: Waybill[], pack = false): Promise<void> {
+  return new Promise((resolve) => {
+    if (list.length === 0) return resolve();
+    const frame = document.createElement("iframe");
+    frame.setAttribute("aria-hidden", "true");
+    // Off screen but laid out at A4 width (a frame with no size would measure the page wrong).
+    frame.style.cssText = "position:fixed;left:-10000px;top:0;width:210mm;height:297mm;border:0;visibility:hidden";
+    document.body.appendChild(frame);
+    const win = frame.contentWindow;
+    if (!win) {
+      frame.remove();
+      return resolve();
+    }
+    win.document.open();
+    win.document.write(waybillsPrintHtml(list, pack));
+    win.document.close();
+    const go = () => {
+      try {
+        win.focus();
+        win.print();
+      } finally {
+        // Leave the frame a moment for the printer to take the page, then clean up.
+        window.setTimeout(() => frame.remove(), 60_000);
+        resolve();
+      }
+    };
+    const fonts = win.document.fonts;
+    if (!fonts) return go();
+    Promise.race([fonts.ready, new Promise((r) => setTimeout(r, 2500))]).then(go, go);
+  });
+}

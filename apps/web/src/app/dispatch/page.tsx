@@ -4,10 +4,11 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
-import { BAKER_PRINT_ROLES } from "@bakery-os/shared";
+import { BAKER_PRINT_ROLES, Role } from "@bakery-os/shared";
 import { useAuth } from "@/lib/auth-context";
 import { homeFor } from "@/lib/nav";
 import { BakerDayTab } from "@/components/baker-day-tab";
+import { RemotePrintAgent } from "@/components/remote-print";
 
 // «Выдача накладных» (owner, 25.11.2026): the laptop by the door where drivers collect goods, with a
 // printer. One screen — the day's bakers' notes, print and WhatsApp; nothing on it changes a note.
@@ -45,6 +46,8 @@ export default function DispatchPage() {
           </button>
         </div>
       </div>
+      {/* Only the laptop's own login prints requests sent from elsewhere. */}
+      {user.role === Role.DISPATCHER && <RemotePrintAgent />}
       <BakerDayTab printOnly />
     </div>
   );

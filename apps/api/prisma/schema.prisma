@@ -957,6 +957,23 @@ model SupplierIntake {
   @@map("supplier_intakes")
 }
 
+// «Печать на ноутбуке выдачи»: a request to print bakers' notes on the door laptop's printer. The laptop's
+// screen asks for open requests, claims one (once, by a conditional UPDATE) and prints it. Moves nothing.
+model PrintJob {
+  id             String    @id @default(cuid())
+  organizationId String
+  noteIds        String[]
+  pack           Boolean   @default(true)
+  createdById    String
+  createdByName  String
+  createdAt      DateTime  @default(now())
+  claimedAt      DateTime?
+  claimedById    String?
+
+  @@index([organizationId, claimedAt, createdAt])
+  @@map("print_jobs")
+}
+
 // A page of the supplier's paper: a JPEG shrunk in the browser, kept in the database (there is no
 // file storage), served only to a signed-in user.
 model SupplierIntakePhoto {

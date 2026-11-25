@@ -35,6 +35,32 @@ export const BAKER_NOTE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.PRODUCTION
 export const BAKER_DAY_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.PRODUCTION_MANAGER, Role.OPERATOR, Role.ASSISTANT];
 // Who may read and print every note of a day without changing anything (the door laptop).
 export const BAKER_PRINT_ROLES: Role[] = [...BAKER_DAY_ROLES, Role.DISPATCHER];
+// «Печать на ноутбуке выдачи»: notes sent from a phone or a computer to the door laptop's printer.
+export const PRINT_JOB_MAX_NOTES = 100;
+// A request nobody printed within this time is dropped (yesterday's request must not come out tomorrow morning).
+export const PRINT_JOB_TTL_MINUTES = 120;
+
+export interface CreatePrintJobRequestDto {
+  noteIds: string[];
+  pack: boolean;
+}
+
+export interface PrintJobStatusDto {
+  id: string;
+  createdAt: string;
+  claimedAt: string | null;
+  // When the door laptop last asked for work (null = not since the server started).
+  laptopSeenAt: string | null;
+}
+
+export interface PendingPrintJobDto {
+  id: string;
+  pack: boolean;
+  createdByName: string;
+  createdAt: string;
+  notes: BakerNoteDto[];
+}
+
 // Who signs in on a baker's phone with a PIN.
 export const BAKER_PHONE_ROLES: Role[] = [Role.PRODUCTION_STAFF, Role.PRODUCTION_MANAGER];
 
