@@ -83,12 +83,6 @@ export class SalesController {
     return this.salesService.openCrmOrders(user);
   }
 
-  @Get("till-stats")
-  @Roles(...SALE_CREATE_ROLES)
-  tillStats(@CurrentUser() user: AuthenticatedUser, @Query("locationId") locationId?: string) {
-    return this.salesService.tillStats(user, locationId);
-  }
-
   @Get("cashiers")
   cashiers(@CurrentUser() user: AuthenticatedUser, @Query("locationId") locationId?: string) {
     return this.salesService.cashiers(user, locationId);

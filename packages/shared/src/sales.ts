@@ -191,15 +191,6 @@ export interface SalesTakingsRowDto {
   amount: number;
 }
 
-// Per product at one point, for the till's cards and its «Ходовые сверху» order: quantities only,
-// never money. `stock` is null for the till's own staff — they count the shelf blind in «Сверка дня».
-export interface TillProductStatsDto {
-  productId: string;
-  soldToday: number;
-  sold30Days: number;
-  stock: number | null;
-}
-
 export interface SalesSummaryDto {
   todayRevenue: number;
   todaySalesCount: number;

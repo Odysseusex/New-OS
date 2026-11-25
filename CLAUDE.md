@@ -208,36 +208,11 @@ spacing and buttons scale together; viewport heights stay whole), kept in that b
 first paint by an inline script in the root layout (`<html suppressHydrationWarning>`; the public `/ar-amir` site is never
 scaled). The till's width cap is in px (`max-w-[1280px]`) so a smaller scale does not make the till narrower.
 
-**The till's own look (/pos) — built 07.11.2026, rolled back the same day, BROUGHT BACK 25.11.2026** (owner: it looked
-great on the iPad and computer, but on the shop's monoblock «качество искажается»; he sends monoblock photos and it is
-fixed from them, not rolled back again). Kept on branch `till-redesign` until the owner says the tills are quiet enough
-to switch. Rules:
-The owner picked a Dribbble POS reference and asked for it
-adapted «строго»: white cards on a cool grey page, ONE coral accent, big product photos. Built from
-`components/till/till-ui.tsx` (rail, category cards, product card, check line, qty stepper, pay-method
-cards); the page logic (cart, coupon, markdown, points, payments, terminal) is unchanged. Rules:
-- Colours come from `.till-theme` in `globals.css` (root of /pos), so every window over the till follows;
-  the rest of ArAmir OS keeps its own palette. **Tailwind opacity modifiers (`bg-accent/10`,
-  `border-accent/40`, `text-muted/70`) generate NOTHING in this project** (colours are plain `var()`
-  without `<alpha-value>`) — use `bg-[var(--accent-soft)]` / `border-[var(--accent-line)]`. Older screens
-  still carry such no-op classes; don't rely on them.
-- The till is edge to edge: `(app)/layout.tsx` drops the Topbar and Sidebar on /pos for everyone; the
-  till's rail has «Выйти», and «В систему» for non-cashiers. Rare buttons (scale, re-pick customer
-  screen) live under «Ещё». Short screens (≤ 820 px high, the 1366×768 monoblock) compact the check via
-  `[@media(max-height:820px)]:` variants.
-- Cards: photo only once ANY product has one (`anyPhoto`) — then every card keeps the picture slot (a
-  drawn lucide icon by category name, `categoryIcon`, until its photo is uploaded); with no photos at all the cards stay compact
-  (owner: no empty squares). «Ходовые сверху» = by quantity sold at the point in 30 days, or «По
-  алфавиту» (per device). `GET /sales/till-stats?locationId` (SALE_CREATE_ROLES): sold today / 30 days
-  and the shelf — `stock` is null for TILL_ROLES (they count blind in «Сверка дня»), quantities only.
-- Payment: pick «Наличные / Карта · Kaspi / Нал + карта», then «Провести оплату · сумма» opens the same
-  three payment windows as before (the terminal decides card vs Kaspi QR). Coupon, check discount and
-  «Оплата заказа» are icon buttons by «Чек»; what is attached shows as a soft row above the lines.
-- **No emoji anywhere on the till** (owner, 25.11.2026): the monoblock is Android and draws emoji in its own crude
-  style. Category/product/empty-check pictures are lucide icons.
-- Carried over from the old till: tap on the search = `TextKeypadModal`, `useTapGuard` on the product grid +
-  `ScrollButtons`, «Обновить» (round icon in the header), the shared point login's «Кассир не выбран» banner and PIN
-  before payment, the card QR scan, «Без приложения» / birthday marks on the bonus client.
+**A till redesign was tried and rolled back (07.11.2026).** After a Dribbble-style rebuild of /pos (coral accent,
+photo cards, own rail, commit 8936c4b) the owner asked for the previous till back the same day; it was reverted whole.
+Brought back on 25.11.2026 (no emoji, icons instead) and rolled back AGAIN the same day — owner: «под моноблок вообще не ложится». The work is commit 312d327 if it is ever wanted again, but only for a layout made for the 1366×768 monoblock first. Don't redo a till restyle without a fresh request. Learned on the way: Tailwind opacity modifiers on the theme colours
+(`bg-accent/10`, `border-accent/40`, `text-muted/70`) generate NOTHING here — the colours are plain `var()` without
+`<alpha-value>` — so such classes in existing screens are silent no-ops.
 
 **«Обновить»** (`lib/refresh.ts` `reloadPage`): an icon in the topbar on every screen plus a labelled button on the till;
 a full page reload (fresh data and, after a deploy, the new app version). The till registers `setReloadGuard` while the
