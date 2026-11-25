@@ -17,6 +17,8 @@ import { shrinkIntakePhoto } from "@/lib/intake-photo";
 import { AuthedImage } from "@/components/authed-image";
 
 const PAYMENTS = [SupplierIntakePayment.CASH, SupplierIntakePayment.KASPI, SupplierIntakePayment.BCC, SupplierIntakePayment.CREDIT];
+// Once the participants' own accounts exist, the bakers pick a person; the business's own tills are not offered.
+const ONLY_CREDIT = [SupplierIntakePayment.CREDIT];
 const timeLabel = (iso: string) =>
   new Date(iso).toLocaleString("ru-RU", { timeZone: "Asia/Almaty", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
@@ -173,21 +175,6 @@ export function IntakeForm({
 
         <h2 className="mb-2 text-base font-semibold text-muted">Как оплатили</h2>
         <div className="mb-5 grid grid-cols-2 gap-2">
-          {PAYMENTS.map((p) => (
-            <button
-              key={p}
-              type="button"
-              disabled={locked}
-              onClick={() => {
-                setPayment(p);
-                setPersonalId(null);
-                setError(null);
-              }}
-              className={choice(payment === p)}
-            >
-              {SUPPLIER_INTAKE_PAYMENT_LABELS_RU[p]}
-            </button>
-          ))}
           {catalog.personalAccounts.map((a) => (
             <button
               key={a.id}
@@ -201,6 +188,21 @@ export function IntakeForm({
               className={choice(payment === SupplierIntakePayment.PERSONAL && personalId === a.id)}
             >
               {a.name}
+            </button>
+          ))}
+          {(catalog.personalAccounts.length > 0 ? ONLY_CREDIT : PAYMENTS).map((p) => (
+            <button
+              key={p}
+              type="button"
+              disabled={locked}
+              onClick={() => {
+                setPayment(p);
+                setPersonalId(null);
+                setError(null);
+              }}
+              className={choice(payment === p)}
+            >
+              {SUPPLIER_INTAKE_PAYMENT_LABELS_RU[p]}
             </button>
           ))}
         </div>
