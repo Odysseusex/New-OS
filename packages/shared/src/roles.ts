@@ -26,6 +26,10 @@ export enum Role {
   // never a screen). Day-to-day documents and every report; nothing that cannot be undone —
   // see ASSISTANT_REFUSALS in the API's role-scope and docs/ASSISTANT.md.
   ASSISTANT = "ASSISTANT",
+  // «Выдача накладных» (owner, 25.11.2026): a shared login on the laptop by the door where drivers
+  // collect goods. One screen (/dispatch): the bakers' notes of the day, print and WhatsApp — it
+  // reads them and changes nothing. The API holds it to that (ROLE_API_SCOPE in role-scope.ts).
+  DISPATCHER = "DISPATCHER",
 }
 
 export const ROLE_LABELS_RU: Record<Role, string> = {
@@ -44,6 +48,7 @@ export const ROLE_LABELS_RU: Record<Role, string> = {
   [Role.CLIENT_MANAGER]: "Менеджер по клиентам",
   [Role.SENIOR_CASHIER]: "Старший кассир",
   [Role.ASSISTANT]: "Помощник",
+  [Role.DISPATCHER]: "Выдача накладных",
 };
 
 // The till's own people: kept on /pos, their price at the till is the point's.
@@ -75,7 +80,7 @@ export const ORG_WIDE_ROLES: Role[] = [
 // The till's own staff are out as well (25.11.2026): they close the shift by a blind count, and the
 // day's takings as a total would hand them the figure the count is meant to check.
 export const REVENUE_VIEW_ROLES: Role[] = Object.values(Role).filter(
-  (role) => role !== Role.OPERATOR && role !== Role.CLIENT_MANAGER && !TILL_ROLES.includes(role),
+  (role) => role !== Role.OPERATOR && role !== Role.CLIENT_MANAGER && role !== Role.DISPATCHER && !TILL_ROLES.includes(role),
 );
 
 export const SALE_CREATE_ROLES: Role[] = [

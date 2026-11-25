@@ -1079,6 +1079,21 @@ The two bakers used to write накладные on paper and photograph them; in
   (`recoverStuck`). One posting at a time per workshop (in-memory — the API is one process). A user tied to a point must
   be tied to the workshop (the sale and the transfer are made as that user).
 
+## «Выдача накладных» — the door laptop (built 25.11.2026)
+
+The laptop at Тәуелсіздік (next to the till's monoblock) has a printer; drivers collect goods and накладные there.
+`Role.DISPATCHER` «Выдача накладных» (migration `20261211120000_dispatcher_role`, enum value only): ONE shared login
+for that laptop (owner chose one login over one per person — the screen only prints), tied to its point like any
+non-org-wide role, but it reads the WORKSHOP's day (`BakerNotesService.pickedByPoint` lets it pick a workshop).
+Screen `/dispatch` (outside `(app)`; `homeFor` → `/dispatch`, the `(app)` layout sends it there) = `BakerDayTab
+printOnly`: the day's notes, print (one / ticked / all, «Несколько на листе»), «Отправить в WhatsApp» — no «Провести
+день», no «Новая накладная», no edit/cancel. Server: `BAKER_PRINT_ROLES` = day roles + DISPATCHER read every note
+(`readsAll`), `canEdit` is always false for it, only `GET /baker/day` and `GET /baker/notes/:id` admit it, and
+`ROLE_API_SCOPE` keeps it to `/auth`, `/baker/day`, `/baker/notes`. Out of revenue views and the staff Telegram bot.
+Only the bakers' notes (owner's choice); sales typed by hand in «Продажи» are not on it. Open it in a second browser
+(or Chrome profile) beside the till so the two logins do not replace each other. Specs: `baker-notes.spec.ts`,
+`role-scope.spec.ts`.
+
 ## One look for every накладная — picture for WhatsApp + print (built 25.11.2026)
 
 `lib/waybill.ts` (`Waybill` = brand, number, date and time, «Отгружено с», recipient, lines, total, paid / debt, who

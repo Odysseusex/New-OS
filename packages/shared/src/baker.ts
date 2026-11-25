@@ -33,6 +33,8 @@ export const BAKER_NOTE_STATUS_LABELS_RU: Record<BakerNoteStatus, string> = {
 export const BAKER_NOTE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.PRODUCTION_MANAGER, Role.PRODUCTION_STAFF, Role.OPERATOR, Role.ASSISTANT];
 // Who sees every baker's notes, corrects them and presses «Провести день».
 export const BAKER_DAY_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.PRODUCTION_MANAGER, Role.OPERATOR, Role.ASSISTANT];
+// Who may read and print every note of a day without changing anything (the door laptop).
+export const BAKER_PRINT_ROLES: Role[] = [...BAKER_DAY_ROLES, Role.DISPATCHER];
 // Who signs in on a baker's phone with a PIN.
 export const BAKER_PHONE_ROLES: Role[] = [Role.PRODUCTION_STAFF, Role.PRODUCTION_MANAGER];
 

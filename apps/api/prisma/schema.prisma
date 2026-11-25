@@ -31,6 +31,8 @@ enum Role {
   SENIOR_CASHIER
   // «Помощник»: the owner's AI assistant, API key only (see User.assistantKeyId).
   ASSISTANT
+  // «Выдача накладных»: the door laptop — reads and prints the day's bakers' notes, nothing else.
+  DISPATCHER
 }
 
 enum LocationType {

@@ -193,6 +193,8 @@ export function canOpen(item: NavItem, role: Role): boolean {
 export function homeFor(role: Role): string {
   if (TILL_ROLES.includes(role)) return "/pos";
   if (role === Role.CLIENT_MANAGER) return "/crm";
+  // The door laptop: only the day's bakers' notes, to print.
+  if (role === Role.DISPATCHER) return "/dispatch";
   // A baker's whole job in the app is the delivery notes on the phone.
   if (role === Role.PRODUCTION_STAFF) return "/baker";
   return REVENUE_VIEW_ROLES.includes(role) ? "/dashboard" : "/sales";

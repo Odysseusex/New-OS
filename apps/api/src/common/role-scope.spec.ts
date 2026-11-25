@@ -13,6 +13,15 @@ describe("role scope", () => {
     }
   });
 
+  it("keeps «Выдача накладных» to the day's bakers' notes", () => {
+    for (const path of ["/api/auth/me", "/api/baker/day?day=2026-11-25", "/api/baker/notes/abc"]) {
+      expect(pathAllowedForRole(Role.DISPATCHER, path)).toBe(true);
+    }
+    for (const path of ["/api/baker/intakes", "/api/baker/catalog", "/api/sales", "/api/products", "/api/finance/pnl", "/api/inventory/stock-levels", "/api/dashboard/summary"]) {
+      expect(pathAllowedForRole(Role.DISPATCHER, path)).toBe(false);
+    }
+  });
+
   it("changes nothing for every other role", () => {
     expect(pathAllowedForRole(Role.OWNER, "/api/finance/pnl")).toBe(true);
     expect(pathAllowedForRole(Role.CASHIER, "/api/sales")).toBe(true);

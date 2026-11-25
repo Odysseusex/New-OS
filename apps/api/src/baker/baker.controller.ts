@@ -1,6 +1,9 @@
 import { Body, Controller, Get, Param, Post, Put, Query, Res, UseGuards } from "@nestjs/common";
 import type { Response } from "express";
-import { BAKER_DAY_ROLES, BAKER_NOTE_ROLES } from "@bakery-os/shared";
+import { BAKER_DAY_ROLES, BAKER_NOTE_ROLES, BAKER_PRINT_ROLES } from "@bakery-os/shared";
+
+// Reading a day / one note: the bakers and the door laptop («Выдача накладных»).
+const NOTE_READ_ROLES = [...new Set([...BAKER_NOTE_ROLES, ...BAKER_PRINT_ROLES])];
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
 import { Roles } from "../common/decorators/roles.decorator";
@@ -75,6 +78,7 @@ export class BakerController {
   }
 
   @Get("day")
+  @Roles(...NOTE_READ_ROLES)
   day(@CurrentUser() user: AuthenticatedUser, @Query("day") day?: string, @Query("sourceLocationId") sourceLocationId?: string) {
     return this.notes.day(user, day, sourceLocationId);
   }
@@ -108,6 +112,7 @@ export class BakerController {
   }
 
   @Get("notes/:id")
+  @Roles(...NOTE_READ_ROLES)
   findOne(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
     return this.notes.findOne(user, id);
   }

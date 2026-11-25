@@ -121,6 +121,21 @@ it("a baker corrects only their own note; the operator sees and corrects every n
   expect(all.notes.every((n) => n.editable)).toBe(true);
 });
 
+it("the door laptop («Выдача накладных») reads every note of the workshop but changes none", async () => {
+  const row = await prisma.user.create({
+    data: { organizationId: org.organizationId, fullName: "Выдача", email: `dispatch-${org.organizationId}@iso.test`, passwordHash: "hash-d", role: Role.DISPATCHER, locationId: org.storeId },
+  });
+  const door: AuthenticatedUser = { id: row.id, email: row.email, fullName: "Выдача", role: Role.DISPATCHER, title: null, organizationId: org.organizationId, regionId: null, locationId: org.storeId };
+  // Tied to a shop, it still reads the workshop's day (it picks a workshop like an org-wide role).
+  const day = await notes.day(door, today);
+  expect(day.sourceLocationId).toBe(workshopId);
+  expect(day.notes.map((n) => n.id)).toEqual([shopNoteId, customerNoteId]);
+  expect(day.notes.some((n) => n.editable)).toBe(false);
+  expect((await notes.findOne(door, customerNoteId)).editable).toBe(false);
+  await expect(notes.update(door, customerNoteId, { kind: BakerNoteKind.DELIVERY, lines: [{ productId: breadId, quantity: 1 }] })).rejects.toThrow(/другого пекаря/);
+  await expect(notes.cancel(door, customerNoteId)).rejects.toThrow(/другого пекаря/);
+});
+
 it("«Холодильник на завтра» is one sheet per day: saving again replaces it", async () => {
   const first = await notes.create(baker, { kind: BakerNoteKind.FRIDGE, lines: [{ productId: breadId, quantity: 8 }] });
   const second = await notes.create(baker2, { kind: BakerNoteKind.FRIDGE, lines: [{ productId: breadId, quantity: 5 }] });

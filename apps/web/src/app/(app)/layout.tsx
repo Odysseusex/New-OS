@@ -23,6 +23,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const isCashier = !!user && TILL_ROLES.includes(user.role);
   // The client manager works only in the CRM, which lives outside this layout.
   const isClientManager = user?.role === Role.CLIENT_MANAGER;
+  // «Выдача накладных» has one screen of its own, outside this layout.
+  const isDispatcher = user?.role === Role.DISPATCHER;
   // A page hidden from this role's menu (e.g. «Отчёты» for an operator) is not
   // reachable by typing its address either.
   const isBlocked = !!user && !isCashier && isBlockedRoute(pathname, user.role);
@@ -42,6 +44,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [isClientManager, router]);
 
   useEffect(() => {
+    if (isDispatcher) router.replace("/dispatch");
+  }, [isDispatcher, router]);
+
+  useEffect(() => {
     if (isCashier && pathname !== CASHIER_ONLY_ROUTE) {
       router.replace(CASHIER_ONLY_ROUTE);
     }
@@ -51,7 +57,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     if (isBlocked && user) router.replace(homeFor(user.role));
   }, [isBlocked, user, router]);
 
-  if (isLoading || !user || (isCashier && pathname !== CASHIER_ONLY_ROUTE) || isBlocked) {
+  if (isLoading || !user || isDispatcher || (isCashier && pathname !== CASHIER_ONLY_ROUTE) || isBlocked) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <p className="text-sm text-muted">Загрузка…</p>

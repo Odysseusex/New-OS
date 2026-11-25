@@ -3,6 +3,7 @@ import { BakerNoteKind as PrismaKind, BakerNoteStatus as PrismaStatus, LocationT
 import {
   BAKER_DAY_ROLES,
   BAKER_NOTE_MAX_LINES,
+  BAKER_PRINT_ROLES,
   BakerCatalogDto,
   BakerDayDto,
   BakerNoteDto,
@@ -56,10 +57,20 @@ export class BakerNotesService {
     return BAKER_DAY_ROLES.includes(user.role);
   }
 
+  // Reads every note of a day: the day roles and the door laptop, which only prints (never edits).
+  readsAll(user: AuthenticatedUser): boolean {
+    return BAKER_PRINT_ROLES.includes(user.role);
+  }
+
+  // The door laptop sits at a shop but prints the workshop's notes, so it picks a workshop like an org-wide role.
+  private pickedByPoint(user: AuthenticatedUser): boolean {
+    return !ORG_WIDE_ROLES.includes(user.role) && user.role !== Role.DISPATCHER;
+  }
+
   // The workshop the notes are written at: a person tied to a point works at that point; an org-wide
   // role picks one (the first workshop by default).
   async resolveSource(user: AuthenticatedUser, requested?: string): Promise<{ source: { id: string; name: string }; sources: { id: string; name: string }[] }> {
-    if (!ORG_WIDE_ROLES.includes(user.role)) {
+    if (this.pickedByPoint(user)) {
       if (!user.locationId) throw new ForbiddenException("Ваш аккаунт не привязан к производству — попросите указать точку в карточке сотрудника");
       if (requested && requested !== user.locationId) throw new ForbiddenException("Нет доступа к другой точке");
       const own = await this.prisma.location.findFirst({ where: { id: user.locationId, organizationId: user.organizationId }, select: { id: true, name: true } });
@@ -319,13 +330,13 @@ export class BakerNotesService {
         sourceLocationId: source.id,
         day,
         status: { not: PrismaStatus.CANCELLED },
-        ...(this.seesAll(user) ? {} : { OR: [{ createdById: user.id }, { kind: PrismaKind.FRIDGE }] }),
+        ...(this.readsAll(user) ? {} : { OR: [{ createdById: user.id }, { kind: PrismaKind.FRIDGE }] }),
       },
       include: BAKER_NOTE_INCLUDE,
       orderBy: { number: "asc" },
     });
     const fridge = rows.find((r) => r.kind === PrismaKind.FRIDGE);
-    const pending = this.seesAll(user)
+    const pending = this.readsAll(user)
       ? await this.prisma.bakerNote.groupBy({
           by: ["day"],
           where: { organizationId: user.organizationId, sourceLocationId: source.id, kind: PrismaKind.DELIVERY, status: PrismaStatus.SENT, day: { not: day } },
@@ -371,13 +382,13 @@ export class BakerNotesService {
   private async load(user: AuthenticatedUser, id: string): Promise<BakerNoteRow> {
     const row = await this.prisma.bakerNote.findFirst({ where: { id, organizationId: user.organizationId }, include: BAKER_NOTE_INCLUDE });
     if (!row) throw new NotFoundException("Накладная не найдена");
-    if (!ORG_WIDE_ROLES.includes(user.role) && user.locationId !== row.sourceLocationId) throw new ForbiddenException("Нет доступа к другой точке");
-    if (!this.seesAll(user) && row.createdById !== user.id && row.kind !== PrismaKind.FRIDGE) throw new ForbiddenException("Это накладная другого пекаря");
+    if (this.pickedByPoint(user) && user.locationId !== row.sourceLocationId) throw new ForbiddenException("Нет доступа к другой точке");
+    if (!this.readsAll(user) && row.createdById !== user.id && row.kind !== PrismaKind.FRIDGE) throw new ForbiddenException("Это накладная другого пекаря");
     return row;
   }
 
   private canEdit(user: AuthenticatedUser, row: { status: string; kind: string; createdById: string }): boolean {
-    if (row.status !== PrismaStatus.SENT) return false;
+    if (row.status !== PrismaStatus.SENT || user.role === Role.DISPATCHER) return false;
     return this.seesAll(user) || row.kind === PrismaKind.FRIDGE || row.createdById === user.id;
   }
 

@@ -19,9 +19,10 @@ const timeLabel = (iso: string) => new Date(iso).toLocaleTimeString("ru-RU", { t
 
 // Производство → «Накладные пекарей»: what the bakers sent from their phones today. A note is a draft
 // until «Провести день» turns the day into «Выпуск за день», transfers to own points and sales on account.
-export function BakerDayTab() {
+// `printOnly`: the door laptop («Выдача накладных») — read and print, nothing that changes a note.
+export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {}) {
   const { user } = useAuth();
-  const canPost = user ? BAKER_DAY_ROLES.includes(user.role) : false;
+  const canPost = !printOnly && (user ? BAKER_DAY_ROLES.includes(user.role) : false);
   const [dayKey, setDayKey] = useState(() => zonedDateKey());
   const [sourceId, setSourceId] = useState<string | undefined>(undefined);
   const [day, setDay] = useState<BakerDayDto | null>(null);
@@ -164,9 +165,11 @@ export function BakerDayTab() {
           Обновить
         </button>
         <div className="ml-auto flex flex-wrap gap-2">
-          <a href="/baker" className={button}>
-            Новая накладная
-          </a>
+          {!printOnly && (
+            <a href="/baker" className={button}>
+              Новая накладная
+            </a>
+          )}
           <label className="flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm text-foreground">
             <input type="checkbox" checked={pack} onChange={(e) => setPackSaved(e.target.checked)} />
             Несколько на листе
@@ -341,12 +344,12 @@ export function BakerDayTab() {
             </tbody>
           </table>
           <div className="mt-5 flex flex-wrap justify-end gap-2">
-            {opened.editable && (
+            {opened.editable && !printOnly && (
               <button type="button" onClick={() => cancel(opened)} className="rounded-xl border border-red-300 px-3.5 py-2 text-sm text-red-700 hover:bg-red-50">
                 Отменить накладную
               </button>
             )}
-            {opened.editable && (
+            {opened.editable && !printOnly && (
               <a href={`/baker?note=${opened.id}`} className={button}>
                 <Pencil className="h-4 w-4" strokeWidth={1.75} />
                 Изменить
