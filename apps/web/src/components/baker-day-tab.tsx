@@ -32,6 +32,10 @@ export function BakerDayTab() {
   const [busy, setBusy] = useState(false);
   // «Несколько на листе»: short notes share a sheet (cut apart with scissors); remembered on this computer.
   const [pack, setPack] = useState(false);
+  // Notes ticked for printing; none ticked = print them all.
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  // Another day or workshop starts with nothing ticked.
+  useEffect(() => setPicked(new Set()), [dayKey, sourceId]);
   useEffect(() => {
     try {
       setPack(localStorage.getItem(PACK_KEY) === "1");
@@ -120,6 +124,15 @@ export function BakerDayTab() {
   if (state === "error" && !day) return <p className="text-sm text-red-700">{error}</p>;
   if (!day) return null;
 
+  const chosen = day.notes.filter((n) => picked.has(n.id));
+  const allPicked = day.notes.length > 0 && chosen.length === day.notes.length;
+  const togglePick = (id: string) =>
+    setPicked((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const waiting = day.notes.filter((n) => n.status === BakerNoteStatus.SENT);
   const total = day.notes.reduce((s, n) => s + n.total, 0);
   const button = "flex items-center gap-1.5 rounded-xl border border-border px-3.5 py-2 text-sm text-foreground hover:bg-surface-muted disabled:opacity-50";
@@ -155,10 +168,20 @@ export function BakerDayTab() {
             <input type="checkbox" checked={pack} onChange={(e) => setPackSaved(e.target.checked)} />
             Несколько на листе
           </label>
-          <button type="button" onClick={() => printBakerNotes(day.notes, pack)} disabled={day.notes.length === 0} className={button}>
+          <button
+            type="button"
+            onClick={() => printBakerNotes(chosen.length > 0 ? chosen : day.notes, pack)}
+            disabled={day.notes.length === 0}
+            className={button}
+          >
             <Printer className="h-4 w-4" strokeWidth={1.75} />
-            Печать всех накладных
+            {chosen.length > 0 ? `Печать выбранных (${chosen.length})` : "Печать всех накладных"}
           </button>
+          {chosen.length > 0 && (
+            <button type="button" onClick={() => setPicked(new Set())} className={button}>
+              Снять выбор
+            </button>
+          )}
           {canPost && (
             <button type="button" onClick={openPreview} disabled={busy} className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-foreground hover:opacity-90 disabled:opacity-50">
               {busy && !preview ? "Считаем…" : "Провести день"}
@@ -207,7 +230,19 @@ export function BakerDayTab() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-surface-muted text-left text-xs text-muted">
-              <th className="px-3 py-2 font-medium">№</th>
+              <th className="px-3 py-2 font-medium">
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    aria-label="Выбрать все накладные"
+                    checked={allPicked}
+                    disabled={day.notes.length === 0}
+                    onChange={(e) => setPicked(e.target.checked ? new Set(day.notes.map((n) => n.id)) : new Set())}
+                  />
+                  №
+                </label>
+              </th>
               <th className="px-3 py-2 font-medium">Время</th>
               <th className="px-3 py-2 font-medium">Получатель</th>
               <th className="px-3 py-2 font-medium">Пекарь</th>
@@ -226,7 +261,12 @@ export function BakerDayTab() {
             )}
             {day.notes.map((n) => (
               <tr key={n.id} onClick={() => setOpened(n)} className="cursor-pointer border-b border-border last:border-b-0 hover:bg-surface-muted">
-                <td className="px-3 py-2 font-medium text-foreground">{n.number}</td>
+                <td className="px-3 py-2 font-medium text-foreground" onClick={(e) => e.stopPropagation()}>
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input type="checkbox" className="h-4 w-4" aria-label={`Выбрать накладную № ${n.number}`} checked={picked.has(n.id)} onChange={() => togglePick(n.id)} />
+                    {n.number}
+                  </label>
+                </td>
                 <td className="px-3 py-2 text-muted">{timeLabel(n.createdAt)}</td>
                 <td className="px-3 py-2 text-foreground">
                   {n.recipient?.name}
