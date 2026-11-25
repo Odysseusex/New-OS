@@ -8,26 +8,12 @@ import { BAKER_DAY_ROLES, BAKER_NOTE_STATUS_LABELS_RU, BakerNoteStatus, UNIT_LAB
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatMoney, formatQuantity } from "@/lib/format";
-import { printSheets } from "@/lib/print-table";
+import { printBakerNotes } from "@/lib/baker-note-print";
 import { zonedDateKey } from "@/lib/reporting-period";
-import type { XlsxSheet } from "@/lib/xlsx";
 import { Modal } from "@/components/modal";
 
 const dayLabel = (key: string) => key.split("-").reverse().join(".");
 const timeLabel = (iso: string) => new Date(iso).toLocaleTimeString("ru-RU", { timeZone: "Asia/Almaty", hour: "2-digit", minute: "2-digit" });
-
-// One sheet per note — it goes into the box with the goods.
-function noteSheet(note: BakerNoteDto): XlsxSheet {
-  return {
-    name: `Накладная ${note.number}`,
-    titleLines: [`Накладная № ${note.number} от ${dayLabel(note.day)}`, `Откуда: ${note.sourceLocationName}`, `Кому: ${note.recipient?.name ?? ""}`, `Пекарь: ${note.createdByName}`],
-    headers: ["Товар", "Количество", "Ед.", "Цена", "Сумма"],
-    rows: [
-      ...note.lines.map((l) => [l.productName, l.quantity, UNIT_LABELS_RU[l.unit], { v: l.unitPrice, fmt: "money" as const }, { v: l.subtotal, fmt: "money" as const }]),
-      ["Итого", "", "", "", { v: note.total, fmt: "money" as const, bold: true }],
-    ],
-  };
-}
 
 // Производство → «Накладные пекарей»: what the bakers sent from their phones today. A note is a draft
 // until «Провести день» turns the day into «Выпуск за день», transfers to own points and sales on account.
@@ -147,7 +133,7 @@ export function BakerDayTab() {
           <a href="/baker" className={button}>
             Новая накладная
           </a>
-          <button type="button" onClick={() => printSheets(day.notes.map(noteSheet))} disabled={day.notes.length === 0} className={button}>
+          <button type="button" onClick={() => printBakerNotes(day.notes)} disabled={day.notes.length === 0} className={button}>
             <Printer className="h-4 w-4" strokeWidth={1.75} />
             Печать всех накладных
           </button>
@@ -295,7 +281,7 @@ export function BakerDayTab() {
                 Изменить
               </a>
             )}
-            <button type="button" onClick={() => printSheets([noteSheet(opened)])} className={button}>
+            <button type="button" onClick={() => printBakerNotes([opened])} className={button}>
               <Printer className="h-4 w-4" strokeWidth={1.75} />
               Печать
             </button>

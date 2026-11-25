@@ -1050,7 +1050,10 @@ The two bakers used to write накладные on paper and photograph them; in
   workshop as their point and a PIN (Настройки). `homeFor(PRODUCTION_STAFF)` is `/baker`. What is typed is kept in
   localStorage until sent (a locked phone loses nothing).
 - **Operator**: Производство → «Накладные пекарей» (`components/baker-day-tab.tsx`, `BAKER_DAY_ROLES` = OWNER, ADMIN,
-  PRODUCTION_MANAGER, OPERATOR, ASSISTANT): the day's list, «Печать всех накладных» (one per sheet), «Изменить» opens the
+  PRODUCTION_MANAGER, OPERATOR, ASSISTANT): the day's list, «Печать всех накладных» (`lib/baker-note-print.ts`, its OWN
+  A4 page — 15 mm margins, «Кому» large and bold for sorting boxes, 12.5 pt rows 9 mm high, tenge without «,00»,
+  «Итого» with the total quantity, «Отпустил / Получил»; one note per sheet; not the small report table of
+  `print-table.ts`, which the owner rejected for this on 25.11.2026), «Изменить» opens the
   note in `/baker?note=<id>`, other days with unposted notes are pointed out. A new note = a live notification
   (`NotificationType.BAKER_NOTE`, until posted) and a Telegram line to linked users of those roles (never awaited).
 - **«Провести день»** (`BakerDayService`, `GET /baker/day/preview`, `POST /baker/day/post`): per product
