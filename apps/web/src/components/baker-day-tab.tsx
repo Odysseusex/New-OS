@@ -12,6 +12,7 @@ import { printBakerNotes } from "@/lib/baker-note-print";
 import { zonedDateKey } from "@/lib/reporting-period";
 import { Modal } from "@/components/modal";
 
+const PACK_KEY = "baker_print_pack";
 const dayLabel = (key: string) => key.split("-").reverse().join(".");
 const timeLabel = (iso: string) => new Date(iso).toLocaleTimeString("ru-RU", { timeZone: "Asia/Almaty", hour: "2-digit", minute: "2-digit" });
 
@@ -29,6 +30,23 @@ export function BakerDayTab() {
   const [preview, setPreview] = useState<BakerDayPreviewDto | null>(null);
   const [result, setResult] = useState<BakerDayPostResultDto | null>(null);
   const [busy, setBusy] = useState(false);
+  // «Несколько на листе»: short notes share a sheet (cut apart with scissors); remembered on this computer.
+  const [pack, setPack] = useState(false);
+  useEffect(() => {
+    try {
+      setPack(localStorage.getItem(PACK_KEY) === "1");
+    } catch {
+      /* no storage: one note per sheet */
+    }
+  }, []);
+  const setPackSaved = (value: boolean) => {
+    setPack(value);
+    try {
+      localStorage.setItem(PACK_KEY, value ? "1" : "0");
+    } catch {
+      /* not remembered, still applied */
+    }
+  };
 
   const load = useCallback(
     (quiet = false) => {
@@ -133,7 +151,11 @@ export function BakerDayTab() {
           <a href="/baker" className={button}>
             Новая накладная
           </a>
-          <button type="button" onClick={() => printBakerNotes(day.notes)} disabled={day.notes.length === 0} className={button}>
+          <label className="flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm text-foreground">
+            <input type="checkbox" checked={pack} onChange={(e) => setPackSaved(e.target.checked)} />
+            Несколько на листе
+          </label>
+          <button type="button" onClick={() => printBakerNotes(day.notes, pack)} disabled={day.notes.length === 0} className={button}>
             <Printer className="h-4 w-4" strokeWidth={1.75} />
             Печать всех накладных
           </button>

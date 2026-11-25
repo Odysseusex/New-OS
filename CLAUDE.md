@@ -1053,7 +1053,11 @@ The two bakers used to write накладные on paper and photograph them; in
   PRODUCTION_MANAGER, OPERATOR, ASSISTANT): the day's list, «Печать всех накладных» (`lib/baker-note-print.ts`, its OWN
   A4 page — 15 mm margins, «Кому» large and bold for sorting boxes, 12.5 pt rows 9 mm high, tenge without «,00»,
   «Итого» with the total quantity, «Отпустил / Получил»; one note per sheet; not the small report table of
-  `print-table.ts`, which the owner rejected for this on 25.11.2026), «Изменить» opens the
+  `print-table.ts`, which the owner rejected for this on 25.11.2026). «Несколько на листе» (checkbox beside the button,
+  localStorage `baker_print_pack`; owner, 25.11.2026, to save paper): a slightly tighter layout and a small inline
+  script in the print window measures each note and places it — a note that does not fit the rest of the sheet starts
+  the next one, a cut line «✂» under each note followed by another on the same sheet (CSS `break-inside: avoid` was
+  tried first: Chrome then pushed EVERY note to a new sheet). «Изменить» opens the
   note in `/baker?note=<id>`, other days with unposted notes are pointed out. A new note = a live notification
   (`NotificationType.BAKER_NOTE`, until posted) and a Telegram line to linked users of those roles (never awaited).
 - **«Провести день»** (`BakerDayService`, `GET /baker/day/preview`, `POST /baker/day/post`): per product

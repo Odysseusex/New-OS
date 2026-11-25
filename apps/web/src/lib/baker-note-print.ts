@@ -43,7 +43,26 @@ function noteHtml(note: BakerNoteDto): string {
 </section>`;
 }
 
-export function bakerNotesPrintHtml(notes: BakerNoteDto[]): string {
+// Lays the notes out on sheets before printing: measured on the screen at the printed width (the page body is
+// exactly 180 mm wide there), a note that does not fit the rest of the sheet starts the next one; a note taller
+// than a whole sheet starts on the current one if a good part of it is free, and runs over. A cut line goes under
+// every note that has another below it on the same sheet.
+const PACK_SCRIPT = `(function(){
+var probe=document.createElement("div");probe.style.height="100mm";document.body.appendChild(probe);
+var mm=probe.getBoundingClientRect().height/100;probe.remove();
+var PAGE=267*mm-2,GAP=8*mm,used=0,prev=null,list=document.querySelectorAll("section");
+for(var i=0;i<list.length;i++){var s=list[i];
+s.className="";var h=s.getBoundingClientRect().height;
+if(prev){var free=PAGE-used-GAP;
+if(h<=free||(h>PAGE&&free>PAGE*0.35)){prev.className+=" cut";used+=GAP+h;}
+else{s.className+=" newpage";used=h;}}else{used=h;}
+while(used>PAGE)used-=PAGE;prev=s;}
+if(prev)prev.className+=" last";})();`;
+
+// `pack`: several notes on one sheet, one after another with a cut line between them, to save paper.
+// A note that does not fit the rest of the sheet moves whole to the next one; a note longer than a sheet
+// runs over pages (its table header repeats).
+export function bakerNotesPrintHtml(notes: BakerNoteDto[], pack = false): string {
   const title = notes.length === 1 ? `Накладная № ${notes[0].number}` : "Накладные пекарей";
   return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${esc(title)}</title>
 <style>
@@ -72,20 +91,36 @@ tfoot td{font-weight:bold;font-size:15pt;height:11mm;border-top:0.6mm solid #000
 .sign p{display:inline-block;width:48%;margin:0}
 .sign p+p{margin-left:4%}
 .sign i{display:inline-block;width:55mm;border-bottom:0.3mm solid #000;margin-left:3mm}
+body.pack section+section{break-before:auto;page-break-before:auto}
+body.pack{font-size:12pt}
+body.pack section{position:relative;padding-bottom:4mm;margin-bottom:4mm}
+body.pack section.cut{border-bottom:0.4mm dashed #555}
+body.pack section.cut::after{content:"✂";position:absolute;left:-1mm;bottom:-3.4mm;background:#fff;font-size:12pt;line-height:1;color:#555}
+body.pack section.newpage{break-before:page;page-break-before:always}
+body.pack section.last{padding-bottom:0;margin-bottom:0}
+body.pack h1{font-size:16pt;margin:0 0 1.5mm}
+body.pack .who{margin:0 0 2mm}
+body.pack .who p{margin:0 0 0.5mm;font-size:11.5pt}
+body.pack .who p.to{font-size:18pt;margin:0.5mm 0 1mm}
+body.pack th,body.pack td{height:6.5mm;padding:0.4mm 2mm;line-height:1.15}
+body.pack th{font-size:11pt}
+body.pack tfoot td{height:8mm;font-size:13.5pt}
+body.pack .sign{margin-top:6mm;font-size:12pt}
 @media screen{body{padding:15mm;max-width:210mm;margin:0 auto}}
-</style></head><body>
+</style></head><body${pack ? ' class="pack"' : ""}>
 ${notes.map(noteHtml).join("\n")}
+${pack ? `<script>${PACK_SCRIPT}</script>` : ""}
 </body></html>`;
 }
 
-export function printBakerNotes(notes: BakerNoteDto[]): void {
+export function printBakerNotes(notes: BakerNoteDto[], pack = false): void {
   if (notes.length === 0) return;
   const win = window.open("", "_blank");
   if (!win) {
     window.alert("Браузер заблокировал окно печати — разрешите всплывающие окна для этого сайта");
     return;
   }
-  win.document.write(bakerNotesPrintHtml(notes));
+  win.document.write(bakerNotesPrintHtml(notes, pack));
   win.document.close();
   win.focus();
   win.print();
