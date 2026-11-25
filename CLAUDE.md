@@ -1076,6 +1076,32 @@ The two bakers used to write накладные on paper and photograph them; in
   (`recoverStuck`). One posting at a time per workshop (in-memory — the API is one process). A user tied to a point must
   be tied to the workshop (the sale and the transfer are made as that user).
 
+## «Приход от поставщика» — photos of suppliers' накладные from the bakers' phones (built 25.11.2026)
+
+The bakers used to send photos of suppliers' накладные to WhatsApp and «Помощник» typed the receipt in from them. Now
+`/baker` has «Приход от поставщика» (`app/baker/intake.tsx`): camera or gallery, several pages, «Куда привезли» (the
+workshop or a STORE point), «Как оплатили» (`SupplierIntakePayment` CASH / KASPI / BCC / CREDIT), optional supplier
+(free text) and the paper's total. `baker/supplier-intakes.service.ts`, routes under `/baker/intakes`, shared `baker.ts`,
+migration `20261209120000_supplier_intakes` (additive: `SupplierIntake`, `SupplierIntakePhoto`,
+`Organization.supplierIntakeSequence`). Spec `baker/supplier-intakes.spec.ts`. Rules that are easy to break:
+
+- **An intake is a DRAFT and stays one**: it moves no stock, money or supplier debt, and nothing reads it. There is NO
+  posting logic here on purpose — the goods are entered with the ordinary приёмка / заказ поставщику, then the intake is
+  marked `POST …/:id/resolve` POSTED (a `purchaseOrderId` and/or a line of text, stored as `documentLabel`) or REJECTED
+  (reason ≥ 3 chars, shown to the baker). Once, by a conditional UPDATE. `BAKER_DAY_ROLES` mark and see everyone's
+  (ASSISTANT among them — `GET /baker/intakes?pending=true` is its queue); a baker sees only their own and marks nothing.
+- **Photos**: shrunk in the browser (`lib/intake-photo.ts`, ≤ 1600 px JPEG, stepping down until the data URL is under
+  `SUPPLIER_INTAKE_PHOTO_MAX_CHARS` — the API's JSON limit is 1 MB), sent ONE per request, kept in the database as
+  base64 (no file storage), ≤ 8 per intake. Status UPLOADING (only its author sees it, in no list) → `send` → SENT; a
+  failed upload is continued by pressing «Отправить» again, never duplicated. The picture is served ONLY with a login
+  (`GET /baker/intakes/:id/photos/:photoId`; the web shows it through `components/authed-image.tsx`, fetch → blob) — a
+  supplier's paper is not public the way a product photo is. They take database space (~0.2–0.4 MB each): on Neon's free
+  0.5 GB that is months, not years — no automatic deletion was built (the owner was told).
+- Operator: Производство → «Приходы» (`components/supplier-intakes-tab.tsx`): a day or «Все непроведённые», photos
+  enlarge on click (arrows / Escape), «Отметить „Проведён“» / «Отклонить». A waiting intake = a live notification
+  (`NotificationType.SUPPLIER_INTAKE`) and a Telegram line «Приход от <пекарь>: N фото, <куда>, <оплата>».
+- Removed by clean start (with its photos). Audited `supplierIntake.send` / `supplierIntake.resolve`.
+
 ## Actual raw material in production + «Отклонения» (built)
 
 «Завершить» shows the norm per ingredient (`GET /production/batches/:id/norm`: the recipe expanded to stocked items,

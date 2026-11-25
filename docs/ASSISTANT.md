@@ -80,6 +80,14 @@ A closed month refuses writes dated in it: tell the owner, do not try another da
   materials, shortages, `blockers`), then — after the owner's «да» — `POST /baker/day/post {day, sourceLocationId, signature}`
   with the preview's `signature`. It makes the release, the transfers and the sales on account itself; do NOT also enter
   them by hand. A wrong note: `PUT /baker/notes/:id` (quantities only, the server sets the prices) or `POST …/cancel`.
+- Suppliers' накладные photographed by the bakers (instead of WhatsApp): `GET /baker/intakes?pending=true` — every
+  intake still waiting, with `locationName` (where it was brought), `payment` (CASH / KASPI / BCC / CREDIT = в долг),
+  optional `supplierName` / `total`, and `photos[].path`; `GET <that path>` (with the same key) returns the JPEG itself.
+  Read the pictures, enter the goods the ordinary way (a purchase order received, or Склад → Приёмка — WITH unit
+  prices for raw materials) after the owner's «да», then mark the intake:
+  `POST /baker/intakes/:id/resolve {status:"POSTED", purchaseOrderId?, document?}` (name the order and/or say what was
+  entered) or `{status:"REJECTED", reason}` when a photo cannot be read — the baker sees the reason. Marking moves
+  nothing by itself; never mark «POSTED» before the goods are really in.
 - Purchasing: `GET|POST /procurement/orders`, `POST /procurement/orders/:id/receive|revise|supplier-return|payments|cancel`.
 - Sales: `GET /sales`, `GET /sales/:id`, `POST /sales` (wholesale), `POST /sales/customer-payments`,
   `GET /sales/report|profitability|dynamics`.

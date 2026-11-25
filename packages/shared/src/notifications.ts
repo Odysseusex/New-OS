@@ -11,6 +11,8 @@ export enum NotificationType {
   OVERDUE_RECEIVABLE = "OVERDUE_RECEIVABLE",
   // A baker sent a delivery note from the phone and it is not posted yet.
   BAKER_NOTE = "BAKER_NOTE",
+  // A baker photographed a supplier's накладная and nobody has entered it yet.
+  SUPPLIER_INTAKE = "SUPPLIER_INTAKE",
 }
 
 export enum NotificationSeverity {

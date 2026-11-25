@@ -5,10 +5,11 @@ import { TelegramModule } from "../telegram/telegram.module";
 import { BakerController } from "./baker.controller";
 import { BakerNotesService } from "./baker-notes.service";
 import { BakerDayService } from "./baker-day.service";
+import { SupplierIntakesService } from "./supplier-intakes.service";
 
 @Module({
   imports: [ProductionModule, SalesModule, TelegramModule],
   controllers: [BakerController],
-  providers: [BakerNotesService, BakerDayService],
+  providers: [BakerNotesService, BakerDayService, SupplierIntakesService],
 })
 export class BakerModule {}

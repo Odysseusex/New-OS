@@ -62,6 +62,8 @@ export const CLEAN_START_DELETES: string[] = [
   byOrg("notification_dismissals"),
   // The bakers' notes of the wiped days (their lines go with them).
   byOrg("baker_notes"),
+  // Photographs of suppliers' papers for receipts that are gone (the pictures go with them).
+  byOrg("supplier_intakes"),
 ];
 
 // Cached figures on what stays, put back to «nothing has happened yet».
@@ -70,7 +72,7 @@ export const CLEAN_START_RESETS: string[] = [
   // The moving average came from purchases that are gone; the card price stands in until the first priced receipt.
   `UPDATE "products" SET "averageUnitCost" = NULL WHERE "organizationId" = $1`,
   `UPDATE "organizations" SET "financeInitializedAt" = NULL, "openingInventoryValue" = NULL, "openingReceivablesValue" = NULL,
-     "openingPayablesValue" = NULL, "ledgerStartsAt" = NULL, "journalEntrySequence" = 0, "saleSequence" = 0, "bakerNoteSequence" = 0 WHERE "id" = $1`,
+     "openingPayablesValue" = NULL, "ledgerStartsAt" = NULL, "journalEntrySequence" = 0, "saleSequence" = 0, "bakerNoteSequence" = 0, "supplierIntakeSequence" = 0 WHERE "id" = $1`,
 ];
 
 // Tables with an organizationId that are deleted (above) …
@@ -80,7 +82,7 @@ export const CLEAN_START_REMOVED_TABLES = [
   "purchase_order_revisions", "purchase_orders", "invoices", "consignment_payments", "sale_payments", "sale_returns", "sales",
   "depreciation_entries", "fixed_assets", "expenses", "production_batches", "material_requisitions", "daily_reconciliations",
   "till_shifts", "delivery_routes", "shifts", "time_entries", "journal_lines", "journal_entries", "accounting_events",
-  "cost_corrections", "period_snapshots", "financial_periods", "notification_dismissals", "baker_notes",
+  "cost_corrections", "period_snapshots", "financial_periods", "notification_dismissals", "baker_notes", "supplier_intakes",
 ];
 
 // … and those that stay: reference data, settings, people and the record of who did what.

@@ -188,3 +188,91 @@ export function bakerDayOutput(shipped: number, fridge: number, onHand: number):
   const need = Math.round((shipped + fridge - Math.max(onHand, 0)) * 1000) / 1000;
   return need >= 0 ? { output: need, surplus: 0 } : { output: 0, surplus: -need };
 }
+
+// ── «Приход от поставщика» ──
+// A baker photographs the supplier's накладная instead of sending it to WhatsApp. An intake is a DRAFT:
+// it moves no stock and no money. Whoever enters the goods (the operator, or «Помощник» through the
+// API) does the ordinary приёмка / заказ поставщику and then marks the intake «Проведён» — or
+// «Отклонён» with a reason.
+
+export enum SupplierIntakeStatus {
+  // Created, photos still being sent from the phone: nobody but its author sees it.
+  UPLOADING = "UPLOADING",
+  SENT = "SENT",
+  POSTED = "POSTED",
+  REJECTED = "REJECTED",
+}
+
+export const SUPPLIER_INTAKE_STATUS_LABELS_RU: Record<SupplierIntakeStatus, string> = {
+  [SupplierIntakeStatus.UPLOADING]: "Отправляется",
+  [SupplierIntakeStatus.SENT]: "Отправлен",
+  [SupplierIntakeStatus.POSTED]: "Проведён",
+  [SupplierIntakeStatus.REJECTED]: "Отклонён",
+};
+
+export enum SupplierIntakePayment {
+  CASH = "CASH",
+  KASPI = "KASPI",
+  BCC = "BCC",
+  CREDIT = "CREDIT",
+}
+
+export const SUPPLIER_INTAKE_PAYMENT_LABELS_RU: Record<SupplierIntakePayment, string> = {
+  [SupplierIntakePayment.CASH]: "Наличные",
+  [SupplierIntakePayment.KASPI]: "Kaspi",
+  [SupplierIntakePayment.BCC]: "BCC",
+  [SupplierIntakePayment.CREDIT]: "В долг",
+};
+
+export const SUPPLIER_INTAKE_MAX_PHOTOS = 8;
+// One photo as it travels (a JPEG data URL): the API's JSON body limit is 1 MB.
+export const SUPPLIER_INTAKE_PHOTO_MAX_CHARS = 900_000;
+
+export interface SupplierIntakePhotoDto {
+  id: string;
+  // Path under the API (needs the login, like every other request): GET returns the JPEG itself.
+  path: string;
+  bytes: number;
+}
+
+export interface SupplierIntakeDto {
+  id: string;
+  number: number;
+  status: SupplierIntakeStatus;
+  // The Almaty day it was sent, YYYY-MM-DD.
+  day: string;
+  locationId: string;
+  locationName: string;
+  payment: SupplierIntakePayment;
+  supplierName: string | null;
+  // The total written on the supplier's paper, as the baker read it.
+  total: number | null;
+  comment: string | null;
+  photos: SupplierIntakePhotoDto[];
+  createdById: string;
+  createdByName: string;
+  createdAt: string;
+  resolvedAt: string | null;
+  resolvedByName: string | null;
+  rejectReason: string | null;
+  // «Заказ поставщику № 12» / what the person who entered it wrote.
+  document: string | null;
+  purchaseOrderId: string | null;
+}
+
+export interface CreateSupplierIntakeRequestDto {
+  locationId: string;
+  payment: SupplierIntakePayment;
+  supplierName?: string;
+  total?: number;
+  comment?: string;
+}
+
+// «Проведён»: name the document it became — a purchase order by id, and/or a line of text
+// (e.g. «Приёмка 25.11, 6 позиций»). «Отклонён»: the reason the baker will read.
+export interface ResolveSupplierIntakeRequestDto {
+  status: SupplierIntakeStatus.POSTED | SupplierIntakeStatus.REJECTED;
+  purchaseOrderId?: string;
+  document?: string;
+  reason?: string;
+}

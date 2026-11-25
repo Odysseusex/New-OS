@@ -10,6 +10,9 @@ import type {
   BakerDayPreviewDto,
   BakerNoteDto,
   SaveBakerNoteRequestDto,
+  CreateSupplierIntakeRequestDto,
+  ResolveSupplierIntakeRequestDto,
+  SupplierIntakeDto,
 } from "@bakery-os/shared";
 import type {
   CashFlowMonthlyDto,
@@ -335,6 +338,18 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// A file behind the login (an <img> cannot send the token): fetched here and shown from memory.
+export async function fetchApiBlob(path: string): Promise<Blob> {
+  const token = typeof window !== "undefined" ? localStorage.getItem("bakery_token") : null;
+  const res = await fetch(`${API_URL}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (!res.ok) {
+    const error = new ApiError(`Ошибка запроса: ${res.status}`);
+    error.status = res.status;
+    throw error;
+  }
+  return res.blob();
+}
+
 // ДДС for one point / one account / one business direction (empty = all).
 export interface CashScope {
   locationId?: string;
@@ -372,6 +387,15 @@ export const api = {
     cancel: (id: string) => request<BakerNoteDto>(`/baker/notes/${id}/cancel`, { method: "POST" }),
     preview: (day: string, sourceLocationId: string) => request<BakerDayPreviewDto>(withQuery("/baker/day/preview", { day, sourceLocationId })),
     post: (dto: BakerDayPostRequestDto) => request<BakerDayPostResultDto>("/baker/day/post", { method: "POST", body: JSON.stringify(dto) }),
+    // «Приход от поставщика»: photographs of a supplier's накладная.
+    intakes: (params: { day?: string; pending?: string }) => request<SupplierIntakeDto[]>(withQuery("/baker/intakes", params)),
+    myIntakes: () => request<SupplierIntakeDto[]>("/baker/intakes/mine"),
+    createIntake: (dto: CreateSupplierIntakeRequestDto) => request<SupplierIntakeDto>("/baker/intakes", { method: "POST", body: JSON.stringify(dto) }),
+    addIntakePhoto: (id: string, dataUrl: string) =>
+      request<SupplierIntakeDto>(`/baker/intakes/${id}/photos`, { method: "POST", body: JSON.stringify({ dataUrl }) }),
+    sendIntake: (id: string) => request<SupplierIntakeDto>(`/baker/intakes/${id}/send`, { method: "POST" }),
+    resolveIntake: (id: string, dto: ResolveSupplierIntakeRequestDto) =>
+      request<SupplierIntakeDto>(`/baker/intakes/${id}/resolve`, { method: "POST", body: JSON.stringify(dto) }),
   },
   tillPin: {
     login: (pin: string) => request<LoginResponseDto>("/auth/pin-login", { method: "POST", body: JSON.stringify({ pin }) }),

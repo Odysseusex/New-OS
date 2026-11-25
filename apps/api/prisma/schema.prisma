@@ -326,6 +326,8 @@ model Organization {
   saleSequence Int @default(0)
   // «Накладные пекарей»: the last number given.
   bakerNoteSequence Int @default(0)
+  // «Приход от поставщика»: the last number given.
+  supplierIntakeSequence Int @default(0)
 
   // How «Прибыль по направлениям» shares the costs no direction owns: null or
   // REVENUE = by net revenue, GROSS_PROFIT = by gross profit, MANUAL = by the
@@ -491,6 +493,7 @@ model Location {
   standingOrderLines StandingOrderLine[] @relation("StandingOrderLocation")
   bakerNotesFrom     BakerNote[]         @relation("BakerNoteSource")
   bakerNotesTo       BakerNote[]         @relation("BakerNoteTarget")
+  supplierIntakes    SupplierIntake[]
 }
 
 // A platform user. Access scope is derived from role + organization + optional
@@ -895,6 +898,71 @@ model BakerNoteLine {
 
   @@unique([noteId, productId])
   @@map("baker_note_lines")
+}
+
+// «Приход от поставщика»: a baker's photographs of a supplier's накладная with where it was brought
+// and how it was paid. A DRAFT for whoever enters the goods: it moves no stock and no money, and
+// nothing in the books reads it. Resolved once: POSTED (naming the document it became) or REJECTED.
+enum SupplierIntakeStatus {
+  UPLOADING
+  SENT
+  POSTED
+  REJECTED
+}
+
+enum SupplierIntakePayment {
+  CASH
+  KASPI
+  BCC
+  CREDIT
+}
+
+model SupplierIntake {
+  id              String                @id @default(cuid())
+  organizationId  String
+  number          Int
+  status          SupplierIntakeStatus  @default(UPLOADING)
+  locationId      String
+  location        Location              @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  payment         SupplierIntakePayment
+  supplierName    String?
+  total           Decimal?              @db.Decimal(14, 2)
+  comment         String?
+  createdById     String
+  createdByName   String
+  sentAt          DateTime?
+  resolvedById    String?
+  resolvedByName  String?
+  resolvedAt      DateTime?
+  rejectReason    String?
+  // The document it became — a plain column, not an FK, so an intake never blocks anything.
+  purchaseOrderId String?
+  documentLabel   String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  photos SupplierIntakePhoto[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status])
+  @@index([organizationId, createdAt])
+  @@map("supplier_intakes")
+}
+
+// A page of the supplier's paper: a JPEG shrunk in the browser, kept in the database (there is no
+// file storage), served only to a signed-in user.
+model SupplierIntakePhoto {
+  id        String         @id @default(cuid())
+  intakeId  String
+  intake    SupplierIntake @relation(fields: [intakeId], references: [id], onDelete: Cascade)
+  position  Int            @default(0)
+  mime      String
+  data      String
+  bytes     Int
+  createdAt DateTime       @default(now())
+
+  @@index([intakeId])
+  @@map("supplier_intake_photos")
 }
 
 model StockLevel {

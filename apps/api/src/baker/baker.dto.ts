@@ -1,6 +1,6 @@
 import { Type } from "class-transformer";
-import { ArrayMaxSize, IsArray, IsEnum, IsNumber, IsOptional, IsString, Matches, MaxLength, Min, ValidateNested } from "class-validator";
-import { BAKER_NOTE_MAX_LINES, BakerNoteKind } from "@bakery-os/shared";
+import { ArrayMaxSize, IsArray, IsEnum, IsIn, IsNumber, IsOptional, IsString, Matches, MaxLength, Min, ValidateNested } from "class-validator";
+import { BAKER_NOTE_MAX_LINES, BakerNoteKind, SUPPLIER_INTAKE_PHOTO_MAX_CHARS, SupplierIntakePayment, SupplierIntakeStatus } from "@bakery-os/shared";
 
 export class BakerNoteLineInput {
   @IsString()
@@ -49,4 +49,52 @@ export class BakerDayPostInput {
   @IsString()
   @MaxLength(64)
   signature!: string;
+}
+
+export class CreateSupplierIntakeInput {
+  @IsString()
+  locationId!: string;
+
+  @IsEnum(SupplierIntakePayment)
+  payment!: SupplierIntakePayment;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  supplierName?: string;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  total?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  comment?: string;
+}
+
+export class AddIntakePhotoInput {
+  @IsString()
+  @MaxLength(SUPPLIER_INTAKE_PHOTO_MAX_CHARS)
+  dataUrl!: string;
+}
+
+export class ResolveSupplierIntakeInput {
+  @IsIn([SupplierIntakeStatus.POSTED, SupplierIntakeStatus.REJECTED])
+  status!: SupplierIntakeStatus.POSTED | SupplierIntakeStatus.REJECTED;
+
+  @IsOptional()
+  @IsString()
+  purchaseOrderId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  document?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  reason?: string;
 }

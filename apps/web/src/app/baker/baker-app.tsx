@@ -2,14 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
-import { ArrowLeft, CheckCircle2, ChevronRight, History, LogOut, Plus, RefreshCw, Search, Snowflake, Store, Truck, X } from "lucide-react";
-import type { BakerCatalogDto, BakerDayDto, BakerNoteDto, BakerRecipientDto, CurrentUserDto } from "@bakery-os/shared";
+import { ArrowLeft, Camera, CheckCircle2, ChevronRight, History, LogOut, Plus, RefreshCw, Search, Snowflake, Store, Truck, X } from "lucide-react";
+import type { BakerCatalogDto, BakerDayDto, BakerNoteDto, BakerRecipientDto, CurrentUserDto, SupplierIntakeDto } from "@bakery-os/shared";
 import { BAKER_NOTE_STATUS_LABELS_RU, BakerNoteKind, BakerNoteStatus, UNIT_LABELS_RU, bakerRecipientKey, bakerSearchMatches, parseBakerQuantity } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { formatMoney, formatQuantity } from "@/lib/format";
+import { IntakeForm, MyIntakes } from "./intake";
 
 type View =
   | { name: "home" }
+  | { name: "intake" }
   | { name: "recipient" }
   | { name: "edit"; kind: BakerNoteKind; recipient: BakerRecipientDto | null; note: BakerNoteDto | null };
 
@@ -22,6 +24,7 @@ const timeLabel = (iso: string) => new Date(iso).toLocaleTimeString("ru-RU", { t
 export function BakerApp({ user, onLock }: { user: CurrentUserDto; onLock: () => void }) {
   const [catalog, setCatalog] = useState<BakerCatalogDto | null>(null);
   const [day, setDay] = useState<BakerDayDto | null>(null);
+  const [intakes, setIntakes] = useState<SupplierIntakeDto[]>([]);
   const [sourceId, setSourceId] = useState<string | undefined>(undefined);
   const [view, setView] = useState<View>({ name: "home" });
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +47,8 @@ export function BakerApp({ user, onLock }: { user: CurrentUserDto; onLock: () =>
       const c = await api.baker.catalog(sourceId);
       setCatalog(c);
       setDay(await api.baker.day(undefined, c.sourceLocationId));
+      // The list of own intakes is a convenience: the screen works without it.
+      api.baker.myIntakes().then(setIntakes).catch(() => undefined);
     } catch (err) {
       fail(err, "Нет связи с программой. Проверьте интернет и нажмите «Обновить».");
     } finally {
@@ -96,6 +101,9 @@ export function BakerApp({ user, onLock }: { user: CurrentUserDto; onLock: () =>
   if (view.name === "recipient") {
     return <RecipientPicker catalog={catalog} onBack={() => setView({ name: "home" })} onPick={(recipient) => setView({ name: "edit", kind: BakerNoteKind.DELIVERY, recipient, note: null })} />;
   }
+  if (view.name === "intake") {
+    return <IntakeForm catalog={catalog} onBack={() => home()} onDone={home} onExpired={onLock} />;
+  }
   if (view.name === "edit") {
     return <NoteEditor key={view.note?.id ?? `${view.kind}:${view.recipient?.id ?? ""}`} catalog={catalog} kind={view.kind} recipient={view.recipient} note={view.note} onBack={() => home()} onDone={home} onExpired={onLock} />;
   }
@@ -146,7 +154,7 @@ export function BakerApp({ user, onLock }: { user: CurrentUserDto; onLock: () =>
       <button
         type="button"
         onClick={() => setView({ name: "edit", kind: BakerNoteKind.FRIDGE, recipient: null, note: fridge })}
-        className="mb-6 flex min-h-[4.5rem] w-full items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3 text-left active:bg-surface-muted"
+        className="mb-3 flex min-h-[4.5rem] w-full items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3 text-left active:bg-surface-muted"
       >
         <Snowflake className="h-7 w-7 shrink-0 text-accent" strokeWidth={1.75} />
         <span className="min-w-0 flex-1">
@@ -154,6 +162,18 @@ export function BakerApp({ user, onLock }: { user: CurrentUserDto; onLock: () =>
           <span className="block text-base text-muted">
             {fridge ? `Заполнен: позиций ${fridge.lines.length}${fridge.status === BakerNoteStatus.POSTED ? " · день проведён" : ""}` : "Не заполнен"}
           </span>
+        </span>
+        <ChevronRight className="h-6 w-6 shrink-0 text-muted" strokeWidth={1.75} />
+      </button>
+      <button
+        type="button"
+        onClick={() => setView({ name: "intake" })}
+        className="mb-6 flex min-h-[4.5rem] w-full items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3 text-left active:bg-surface-muted"
+      >
+        <Camera className="h-7 w-7 shrink-0 text-accent" strokeWidth={1.75} />
+        <span className="min-w-0 flex-1">
+          <span className="block text-lg font-semibold text-foreground">Приход от поставщика</span>
+          <span className="block text-base text-muted">Фото накладной</span>
         </span>
         <ChevronRight className="h-6 w-6 shrink-0 text-muted" strokeWidth={1.75} />
       </button>
@@ -188,6 +208,7 @@ export function BakerApp({ user, onLock }: { user: CurrentUserDto; onLock: () =>
           ))}
         </ul>
       )}
+      <MyIntakes intakes={intakes} />
     </main>
   );
 }

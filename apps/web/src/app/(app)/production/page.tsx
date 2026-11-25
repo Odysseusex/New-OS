@@ -23,6 +23,7 @@ import { AbortBatchModal } from "@/components/abort-batch-modal";
 import { ProductionReleaseModal } from "@/components/production-release-modal";
 import { DistributionTab } from "@/components/distribution-tab";
 import { BakerDayTab } from "@/components/baker-day-tab";
+import { SupplierIntakesTab } from "@/components/supplier-intakes-tab";
 import { ProductionDeviationsTab } from "@/components/production-deviations-tab";
 import { ProductionOutputTab } from "@/components/production-output-tab";
 import { RequisitionsTab } from "@/components/requisitions-tab";
@@ -32,7 +33,7 @@ import { ExportRecipesPdfModal } from "@/components/export-recipes-pdf-modal";
 import { RecipeScaleModal } from "@/components/recipe-scale-modal";
 import { ArchivedBadge, ArchivedToggle, RowActions } from "@/components/row-actions";
 
-type Tab = "batches" | "baker" | "distribution" | "recipes" | "requisitions" | "output" | "deviations";
+type Tab = "batches" | "baker" | "intakes" | "distribution" | "recipes" | "requisitions" | "output" | "deviations";
 
 export default function ProductionPage() {
   const { user } = useAuth();
@@ -46,7 +47,8 @@ export default function ProductionPage() {
   const [tab, setTab] = useState<Tab>("batches");
   // A notification about a baker's note opens its tab directly (/production?tab=baker).
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("tab") === "baker") setTab("baker");
+    const asked = new URLSearchParams(window.location.search).get("tab");
+    if (asked === "baker" || asked === "intakes") setTab(asked);
   }, []);
   const [locations, setLocations] = useState<LocationDto[]>([]);
   const [products, setProducts] = useState<ProductDto[]>([]);
@@ -177,9 +179,14 @@ export default function ProductionPage() {
             Журнал выпуска
           </TabButton>
           {canSeeBakerNotes && (
-            <TabButton active={tab === "baker"} onClick={() => setTab("baker")}>
-              Накладные пекарей
-            </TabButton>
+            <>
+              <TabButton active={tab === "baker"} onClick={() => setTab("baker")}>
+                Накладные пекарей
+              </TabButton>
+              <TabButton active={tab === "intakes"} onClick={() => setTab("intakes")}>
+                Приходы
+              </TabButton>
+            </>
           )}
           <TabButton active={tab === "distribution"} onClick={() => setTab("distribution")}>
             Распределение
@@ -272,6 +279,7 @@ export default function ProductionPage() {
       </div>
 
       {tab === "baker" && canSeeBakerNotes && <BakerDayTab />}
+      {tab === "intakes" && canSeeBakerNotes && <SupplierIntakesTab />}
       {tab === "distribution" && <DistributionTab locations={locations} />}
       {tab === "requisitions" && <RequisitionsTab locations={locations} products={products} />}
       {tab === "output" && <ProductionOutputTab locations={locations} isOrgWide={isOrgWide} />}
