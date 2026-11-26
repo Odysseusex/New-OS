@@ -15,12 +15,13 @@ import { Modal } from "@/components/modal";
 import { NOTES_PRINTED_EVENT, SendToLaptopStatus, useSendToLaptop } from "@/components/remote-print";
 
 const PACK_KEY = "baker_print_pack";
-// Search over a day's notes: every typed word must occur in the recipient, number, baker or a product (ё = е).
+// Search over a day's notes: every typed word must occur in the recipient's name or the number (ё = е). Not products —
+// a product named «Керемет» pulled every note carrying it into a search for the client «Керемет» (owner, 26.11.2026).
 const norm = (s: string) => s.toLowerCase().replace(/ё/g, "е");
 const matchesNote = (n: BakerNoteDto, query: string) => {
   const words = norm(query).split(/\s+/).filter(Boolean);
   if (words.length === 0) return true;
-  const text = norm([n.recipient?.name ?? "", String(n.number), n.createdByName, ...n.lines.map((l) => l.productName)].join(" "));
+  const text = norm([n.recipient?.name ?? "", String(n.number)].join(" "));
   return words.every((w) => text.includes(w));
 };
 const dayLabel = (key: string) => key.split("-").reverse().join(".");
@@ -206,7 +207,7 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
               inputMode="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Поиск: клиент, точка, товар, №"
+              placeholder="Поиск: клиент, точка, №"
               className="w-full rounded-xl border border-border bg-surface py-2 pl-9 pr-8 text-sm text-foreground outline-none focus:border-accent"
             />
             {query && (

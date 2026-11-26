@@ -1123,7 +1123,7 @@ changedSincePrint` (a later edit by the baker → «Изменена после 
 amber), a coloured left edge per row, «Печать новых (N)» and «Новые на ноутбук (N)» (new = never printed or changed
 since). The laptop's agent fires `NOTES_PRINTED_EVENT` so the list refreshes at once. Moves nothing.
 **Search** (owner, 26.11.2026, OWNER/ADMIN only, not on /dispatch): a field above the list filters the day's notes —
-every typed word in recipient / number / baker / product, «ё» = «е» (`matchesNote`); the print / laptop / select-all
+every typed word in the recipient or the number, «ё» = «е» (`matchesNote`; NOT products — a product named «Керемет» matched every note carrying it); the print / laptop / select-all
 buttons then act on the found ones («Печать найденных (N)», «Найденные на ноутбук (N)»), plus «Найденные в WhatsApp
 (N)» — one tap on a phone, where the table's header (select-all) is hidden. The search is within the chosen day.
 
