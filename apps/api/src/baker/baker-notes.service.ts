@@ -240,11 +240,14 @@ export class BakerNotesService {
 
     const row = await this.prisma.$transaction(async (tx) => {
       const { lines, total } = await this.cleanLines(tx, organizationId, dto, target);
-      const org = await tx.organization.update({ where: { id: organizationId }, data: { bakerNoteSequence: { increment: 1 } }, select: { bakerNoteSequence: true } });
+      // Numbers restart every Almaty day. Touching the organization row locks it until commit, so two
+      // notes saved at the same moment never take the same number.
+      await tx.organization.update({ where: { id: organizationId }, data: { bakerNoteSequence: { increment: 1 } }, select: { id: true } });
+      const last = await tx.bakerNote.aggregate({ where: { organizationId, day }, _max: { number: true } });
       const created = await tx.bakerNote.create({
         data: {
           organizationId,
-          number: org.bakerNoteSequence,
+          number: (last._max.number ?? 0) + 1,
           kind: dto.kind as PrismaKind,
           day,
           sourceLocationId: source.id,

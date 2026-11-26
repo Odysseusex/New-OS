@@ -96,6 +96,7 @@ it("a note takes the point's price or the customer's agreed price and moves no s
   expect(shop.status).toBe(BakerNoteStatus.SENT);
   const wholesale = await notes.create(baker2, { kind: BakerNoteKind.DELIVERY, customerId, lines: [{ productId: breadId, quantity: 30 }] });
   expect(wholesale.lines[0].unitPrice).toBe(250);
+  expect(shop.number).toBe(1); // numbers restart every day
   expect(wholesale.number).toBe(shop.number + 1);
   shopNoteId = shop.id;
   customerNoteId = wholesale.id;

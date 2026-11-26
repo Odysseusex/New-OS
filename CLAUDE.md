@@ -1037,7 +1037,9 @@ The two bakers used to write накладные on paper and photograph them; in
 - **A note is a DRAFT: it moves no stock and no money**, and no report reads it. `BakerNoteKind` DELIVERY (to an own STORE
   point or a wholesale customer) / FRIDGE («Холодильник на завтра», one per workshop and day — saving again replaces it,
   partial unique index). Status SENT → POSTING → POSTED, or CANCELLED. Editable only while SENT: a baker their own, the
-  day roles any; the recipient never changes. Numbered per organization. Removed by clean start.
+  day roles any; the recipient never changes. Numbered per organization AND Almaty day — №1 again every morning (owner,
+  26.11.2026; unique `(organizationId, day, number)`, migration `20261214120000`); so the transfer it posts is named
+  «Накладная пекаря № N от ДД.ММ.ГГГГ» (the date keeps `recoverStuck` from finding another day's). Removed by clean start.
 - **A baker never types a price.** The server sets it on every save (`BakerNotesService.cleanLines`): a point = its price
   list (through `price-source`), a wholesale customer = the agreed price (`StandingOrderLine.unitPrice`, the «цены» of
   «Распределение»), else the product's base price. Only own, tracked, active finished goods can be put on a note.

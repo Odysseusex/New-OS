@@ -886,7 +886,7 @@ model BakerNote {
   lines  BakerNoteLine[]
   prints BakerNotePrint[]
 
-  @@unique([organizationId, number])
+  @@unique([organizationId, day, number])
   @@index([organizationId, sourceLocationId, day])
   @@map("baker_notes")
 }

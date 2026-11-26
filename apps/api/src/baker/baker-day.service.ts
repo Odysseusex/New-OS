@@ -26,7 +26,8 @@ import { CreateSaleDto } from "../sales/dto/create-sale.dto";
 import { BAKER_NOTE_INCLUDE, BakerNoteRow, BakerNotesService } from "./baker-notes.service";
 
 const STUCK_AFTER_MS = 3 * 60_000;
-const transferNote = (number: number) => `Накладная пекаря № ${number}`;
+// Numbers restart every day, so the date is part of the text that names the transfer.
+const transferNote = (number: number, day: Date) => `Накладная пекаря № ${number} от ${debtDateKey(day).split("-").reverse().join(".")}`;
 const messageOf = (err: unknown) => {
   if (err instanceof HttpException) {
     const body = err.getResponse();
@@ -143,7 +144,7 @@ export class BakerDayService {
         const doc = await this.requisitions.transfer(user, {
           fromLocationId: note.sourceLocationId,
           toLocationId: note.locationId,
-          note: transferNote(note.number),
+          note: transferNote(note.number, note.day),
           lines: lines.map((l) => ({ productId: l.productId, quantity: l.quantity })),
         });
         done = { requisitionId: doc.id, label: `Перемещение № ${doc.number}` };
@@ -188,7 +189,7 @@ export class BakerDayService {
       let found: { saleId?: string; requisitionId?: string; label: string } | null = null;
       if (note.locationId) {
         const doc = await this.prisma.materialRequisition.findFirst({
-          where: { organizationId, kind: MaterialRequisitionKind.TRANSFER, status: MaterialRequisitionStatus.POSTED, note: transferNote(note.number), toLocationId: note.locationId },
+          where: { organizationId, kind: MaterialRequisitionKind.TRANSFER, status: MaterialRequisitionStatus.POSTED, note: transferNote(note.number, note.day), toLocationId: note.locationId, ...(note.postingStartedAt ? { createdAt: { gte: note.postingStartedAt } } : {}) },
           select: { id: true, number: true },
         });
         if (doc) found = { requisitionId: doc.id, label: `Перемещение № ${doc.number}` };
