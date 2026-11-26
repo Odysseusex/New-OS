@@ -60,7 +60,8 @@ export const CLEAN_START_DELETES: string[] = [
   byOrg("period_snapshots"),
   byOrg("financial_periods"),
   byOrg("notification_dismissals"),
-  // The bakers' notes of the wiped days (their lines go with them).
+  // The bakers' notes of the wiped days (their lines and print marks go with them).
+  byOrg("baker_note_prints"),
   byOrg("baker_notes"),
   // Photographs of suppliers' papers for receipts that are gone (the pictures go with them).
   byOrg("supplier_intakes"),
@@ -84,7 +85,7 @@ export const CLEAN_START_REMOVED_TABLES = [
   "purchase_order_revisions", "purchase_orders", "invoices", "consignment_payments", "sale_payments", "sale_returns", "sales",
   "depreciation_entries", "fixed_assets", "expenses", "production_batches", "material_requisitions", "daily_reconciliations",
   "till_shifts", "delivery_routes", "shifts", "time_entries", "journal_lines", "journal_entries", "accounting_events",
-  "cost_corrections", "period_snapshots", "financial_periods", "notification_dismissals", "baker_notes", "supplier_intakes",
+  "cost_corrections", "period_snapshots", "financial_periods", "notification_dismissals", "baker_note_prints", "baker_notes", "supplier_intakes",
   "print_jobs",
 ];
 

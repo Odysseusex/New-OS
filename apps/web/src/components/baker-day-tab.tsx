@@ -12,7 +12,7 @@ import { bakerNoteWaybill, printWaybills } from "@/lib/waybill";
 import { WaybillShareModal } from "@/components/waybill-share-modal";
 import { zonedDateKey } from "@/lib/reporting-period";
 import { Modal } from "@/components/modal";
-import { SendToLaptopStatus, useSendToLaptop } from "@/components/remote-print";
+import { NOTES_PRINTED_EVENT, SendToLaptopStatus, useSendToLaptop } from "@/components/remote-print";
 
 const PACK_KEY = "baker_print_pack";
 const dayLabel = (key: string) => key.split("-").reverse().join(".");
@@ -81,7 +81,12 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
     load();
     // New notes arrive while the screen is open.
     const timer = window.setInterval(() => load(true), 60_000);
-    return () => window.clearInterval(timer);
+    const onPrinted = () => void load(true);
+    window.addEventListener(NOTES_PRINTED_EVENT, onPrinted);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener(NOTES_PRINTED_EVENT, onPrinted);
+    };
   }, [load]);
 
   async function openPreview() {
@@ -141,6 +146,20 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
       return next;
     });
   const waiting = day.notes.filter((n) => n.status === BakerNoteStatus.SENT);
+  // Not printed yet, or changed by the baker after it was printed.
+  const fresh = day.notes.filter((n) => n.printCount === 0 || n.changedSincePrint);
+  // The print window must open inside the click; the «Напечатана» mark is recorded right after.
+  const printNow = (notes: BakerNoteDto[], packed = pack) => {
+    if (notes.length === 0) return;
+    printWaybills(
+      notes.map((n) => bakerNoteWaybill(n)),
+      packed,
+    );
+    api.baker
+      .markPrinted(notes.map((n) => n.id))
+      .then(() => load(true))
+      .catch(() => undefined);
+  };
   const total = day.notes.reduce((s, n) => s + n.total, 0);
   const button = "flex items-center gap-1.5 rounded-xl border border-border px-3.5 py-2 text-sm text-foreground hover:bg-surface-muted disabled:opacity-50";
 
@@ -179,13 +198,19 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
           </label>
           <button
             type="button"
-            onClick={() => printWaybills((chosen.length > 0 ? chosen : day.notes).map((n) => bakerNoteWaybill(n)), pack)}
+            onClick={() => printNow(chosen.length > 0 ? chosen : day.notes)}
             disabled={day.notes.length === 0}
             className={button}
           >
             <Printer className="h-4 w-4" strokeWidth={1.75} />
             {chosen.length > 0 ? `Печать выбранных (${chosen.length})` : "Печать всех накладных"}
           </button>
+          {chosen.length === 0 && fresh.length > 0 && fresh.length < day.notes.length && (
+            <button type="button" onClick={() => printNow(fresh)} className="flex items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-sm font-medium text-accent-foreground hover:opacity-90">
+              <Printer className="h-4 w-4" strokeWidth={1.75} />
+              Печать новых ({fresh.length})
+            </button>
+          )}
           {!printOnly && (
             <button
               type="button"
@@ -195,6 +220,12 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
             >
               <Laptop className="h-4 w-4" strokeWidth={1.75} />
               {chosen.length > 0 ? `На ноутбук выдачи (${chosen.length})` : "Все на ноутбук выдачи"}
+            </button>
+          )}
+          {!printOnly && chosen.length === 0 && fresh.length > 0 && fresh.length < day.notes.length && (
+            <button type="button" onClick={() => laptop.send(fresh, pack)} disabled={laptop.busy} className={button}>
+              <Laptop className="h-4 w-4" strokeWidth={1.75} />
+              Новые на ноутбук ({fresh.length})
             </button>
           )}
           {chosen.length > 0 && (
@@ -275,20 +306,24 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
               <th className="px-3 py-2 font-medium">Пекарь</th>
               <th className="px-3 py-2 text-right font-medium">Позиций</th>
               <th className="px-3 py-2 text-right font-medium">Сумма</th>
+              <th className="px-3 py-2 font-medium">Печать</th>
               <th className="px-3 py-2 font-medium">Статус</th>
             </tr>
           </thead>
           <tbody>
             {day.notes.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-8 text-center text-muted">
+                <td colSpan={8} className="px-3 py-8 text-center text-muted">
                   За {dayLabel(day.day)} накладных нет
                 </td>
               </tr>
             )}
             {day.notes.map((n) => (
               <tr key={n.id} onClick={() => setOpened(n)} className="cursor-pointer border-b border-border last:border-b-0 hover:bg-surface-muted">
-                <td className="px-3 py-2 font-medium text-foreground" onClick={(e) => e.stopPropagation()}>
+                <td
+                  className={clsx("border-l-4 px-3 py-2 font-medium text-foreground", n.printCount === 0 ? "border-l-rose-400" : n.changedSincePrint ? "border-l-amber-400" : "border-l-sky-400")}
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <label className="flex cursor-pointer items-center gap-2">
                     <input type="checkbox" className="h-4 w-4" aria-label={`Выбрать накладную № ${n.number}`} checked={picked.has(n.id)} onChange={() => togglePick(n.id)} />
                     {n.number}
@@ -302,6 +337,9 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
                 <td className="px-3 py-2 text-muted">{n.createdByName}</td>
                 <td className="px-3 py-2 text-right text-foreground">{n.lines.length}</td>
                 <td className="px-3 py-2 text-right text-foreground">{formatMoney(n.total)}</td>
+                <td className="px-3 py-2">
+                  <PrintMark note={n} />
+                </td>
                 <td className="px-3 py-2">
                   <span className={clsx("rounded-full px-2 py-0.5 text-xs font-medium", n.status === BakerNoteStatus.POSTED ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700")}>
                     {BAKER_NOTE_STATUS_LABELS_RU[n.status]}
@@ -330,6 +368,9 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
             {dayLabel(opened.day)}, {timeLabel(opened.createdAt)} · {opened.createdByName} · {BAKER_NOTE_STATUS_LABELS_RU[opened.status]}
             {opened.document ? ` · ${opened.document}` : ""}
           </p>
+          <div className="mb-3">
+            <PrintMark note={opened} long />
+          </div>
           <table className="w-full text-sm" data-wide="">
             <thead>
               <tr className="border-b border-border text-left text-xs text-muted">
@@ -370,7 +411,7 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
                 Изменить
               </a>
             )}
-            <button type="button" onClick={() => printWaybills([bakerNoteWaybill(opened)])} className={button}>
+            <button type="button" onClick={() => printNow([opened], false)} className={button}>
               <Printer className="h-4 w-4" strokeWidth={1.75} />
               Печать
             </button>
@@ -515,5 +556,27 @@ function Stat({ label, value }: { label: string; value: string }) {
       <p className="text-xs text-muted">{label}</p>
       <p className="mt-1 text-lg font-semibold text-foreground">{value}</p>
     </div>
+  );
+}
+
+// «Напечатана 10:42» / «Изменена после печати» / «Не печаталась» — what is already on paper and what is new.
+function PrintMark({ note, long = false }: { note: BakerNoteDto; long?: boolean }) {
+  const pill = "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap";
+  if (note.printCount === 0 || !note.printedAt) return <span className={clsx(pill, "bg-rose-50 text-rose-700")}>Не печаталась</span>;
+  const at = new Date(note.printedAt);
+  const sameDay = at.toLocaleDateString("sv-SE", { timeZone: "Asia/Almaty" }) === note.day;
+  // A note printed on another day than its own shows that day too.
+  const when = at.toLocaleString("ru-RU", { timeZone: "Asia/Almaty", hour: "2-digit", minute: "2-digit", ...(sameDay ? {} : { day: "2-digit", month: "2-digit" }) });
+  const times = note.printCount % 10 >= 2 && note.printCount % 10 <= 4 && (note.printCount % 100 < 12 || note.printCount % 100 > 14) ? "раза" : "раз";
+  if (note.changedSincePrint) {
+    return <span className={clsx(pill, "bg-amber-50 text-amber-800")}>Изменена после печати{long ? ` (печать в ${when})` : ""}</span>;
+  }
+  return (
+    <span className={clsx(pill, "bg-sky-50 text-sky-700")}>
+      <Printer className="h-3 w-3" strokeWidth={2} />
+      Напечатана {when}
+      {note.printCount > 1 ? ` · ${note.printCount} ${times}` : ""}
+      {long && note.printedByName ? ` · ${note.printedByName}` : ""}
+    </span>
   );
 }

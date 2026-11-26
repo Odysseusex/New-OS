@@ -883,7 +883,8 @@ model BakerNote {
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
-  lines BakerNoteLine[]
+  lines  BakerNoteLine[]
+  prints BakerNotePrint[]
 
   @@unique([organizationId, number])
   @@index([organizationId, sourceLocationId, day])
@@ -955,6 +956,25 @@ model SupplierIntake {
   @@index([organizationId, status])
   @@index([organizationId, createdAt])
   @@map("supplier_intakes")
+}
+
+// Each time a baker's note was printed (a press of «Печать» on a screen, or the door laptop taking a request), so
+// the screens can show what is printed and what is new. `contentKey` = the lines as they were printed: a note edited
+// afterwards reads «Изменена после печати». Append-only in use; moves nothing.
+model BakerNotePrint {
+  id             String    @id @default(cuid())
+  organizationId String
+  noteId         String
+  note           BakerNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  printedAt      DateTime  @default(now())
+  printedById    String
+  printedByName  String
+  remote         Boolean   @default(false)
+  contentKey     String
+
+  @@index([noteId, printedAt])
+  @@index([organizationId])
+  @@map("baker_note_prints")
 }
 
 // «Печать на ноутбуке выдачи»: a request to print bakers' notes on the door laptop's printer. The laptop's

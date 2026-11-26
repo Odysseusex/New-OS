@@ -84,6 +84,10 @@ export class PrintJobsService {
       where: { id, organizationId: user.organizationId, claimedAt: null },
       data: { claimedAt: new Date(), claimedById: user.id },
     });
-    return { claimed: res.count === 1 };
+    if (res.count !== 1) return { claimed: false };
+    // The laptop prints what it claimed: the notes read «Напечатана» everywhere.
+    const job = await this.prisma.printJob.findUnique({ where: { id }, select: { noteIds: true } });
+    if (job) await this.notes.markPrinted(user, job.noteIds, true);
+    return { claimed: true };
   }
 }

@@ -113,3 +113,11 @@ export class CreatePrintJobInput {
   @IsBoolean()
   pack!: boolean;
 }
+
+export class MarkNotesPrintedInput {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @IsString({ each: true })
+  noteIds!: string[];
+}

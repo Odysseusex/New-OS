@@ -33,11 +33,17 @@ export const BAKER_NOTE_INCLUDE = {
   customer: { select: { name: true } },
   location: { select: { name: true } },
   lines: { include: { product: { select: { name: true, unit: true } } }, orderBy: { position: "asc" as const } },
+  prints: { orderBy: { printedAt: "desc" as const }, take: 1, select: { printedAt: true, printedByName: true, contentKey: true } },
+  _count: { select: { prints: true } },
 } satisfies Prisma.BakerNoteInclude;
 export type BakerNoteRow = Prisma.BakerNoteGetPayload<{ include: typeof BAKER_NOTE_INCLUDE }>;
 
 // What a baker may put on a note: our own finished goods that are kept on the books.
 const NOTE_PRODUCT = { isActive: true, type: ProductType.FINISHED_GOOD, trackInventory: true, consignmentSupplierId: null };
+
+// What a printed накладная says: its recipient and lines. A note whose key differs from its last print's was changed.
+export const noteContentKey = (row: { customerId: string | null; locationId: string | null; lines: { productId: string; quantity: Prisma.Decimal | number }[] }) =>
+  [row.customerId ?? row.locationId ?? "", ...row.lines.map((l) => `${l.productId}:${Number(l.quantity)}`).sort()].join("|");
 
 const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const money = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
@@ -432,7 +438,33 @@ export class BakerNotesService {
       document: row.documentLabel,
       postError: row.postError,
       editable: this.canEdit(user, row),
+      printedAt: row.prints[0]?.printedAt.toISOString() ?? null,
+      printedByName: row.prints[0]?.printedByName ?? null,
+      printCount: row._count.prints,
+      changedSincePrint: row.prints.length > 0 && row.prints[0].contentKey !== noteContentKey(row),
     };
+  }
+
+  // «Напечатана»: a press of «Печать» on a screen, or the door laptop taking a request (`remote`). Moves nothing.
+  async markPrinted(user: AuthenticatedUser, noteIds: string[], remote = false): Promise<{ marked: number }> {
+    const ids = [...new Set(noteIds)].slice(0, 200);
+    if (ids.length === 0) return { marked: 0 };
+    const rows = await this.prisma.bakerNote.findMany({
+      where: { id: { in: ids }, organizationId: user.organizationId, status: { not: PrismaStatus.CANCELLED } },
+      select: { id: true, customerId: true, locationId: true, lines: { select: { productId: true, quantity: true } } },
+    });
+    if (rows.length === 0) return { marked: 0 };
+    await this.prisma.bakerNotePrint.createMany({
+      data: rows.map((r) => ({
+        organizationId: user.organizationId,
+        noteId: r.id,
+        printedById: user.id,
+        printedByName: user.fullName,
+        remote,
+        contentKey: noteContentKey(r),
+      })),
+    });
+    return { marked: rows.length };
   }
 
   // The operator's Telegram: one line per new note. Never awaited — a slow Telegram must not hold the baker.

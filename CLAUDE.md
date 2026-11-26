@@ -1111,6 +1111,18 @@ minimised window keeps asking) and its own `--user-data-dir` (a Chrome already r
 till's login apart); prints go to Windows' default printer. Without the flag the print dialog appears. Spec in
 `baker-notes.spec.ts`.
 
+## Print marks on the bakers' notes (built 26.11.2026)
+
+Owner: «понимать что уже распечатано что еще нет». `BakerNotePrint` (migration `20261213120000_baker_note_prints`,
+additive; cascade with the note; removed by clean start): one row per print — a press of «Печать» on a screen
+(`POST /baker/notes/print-marks`, BAKER_PRINT_ROLES, sent right after the print window opens; a cancelled dialog still
+counts) or the door laptop claiming a request (`PrintJobsService.claim` → `markPrinted(…, remote)`). `contentKey` =
+recipient + lines as printed (`noteContentKey`); `BakerNoteDto.printedAt / printedByName / printCount /
+changedSincePrint` (a later edit by the baker → «Изменена после печати»; posting the day does NOT count as a change).
+`BakerDayTab`: column «Печать» (`PrintMark`: «Не печаталась» rose / «Напечатана 10:42» sky / «Изменена после печати»
+amber), a coloured left edge per row, «Печать новых (N)» and «Новые на ноутбук (N)» (new = never printed or changed
+since). The laptop's agent fires `NOTES_PRINTED_EVENT` so the list refreshes at once. Moves nothing.
+
 ## One look for every накладная — picture for WhatsApp + print (built 25.11.2026)
 
 `lib/waybill.ts` (`Waybill` = brand, number, date and time, recipient, lines, total, paid / debt;

@@ -109,6 +109,15 @@ export interface BakerNoteDto {
   postError: string | null;
   // May the asking user still change it.
   editable: boolean;
+  // The last time it was printed (null = never), how many times, and whether its lines changed since.
+  printedAt: string | null;
+  printedByName: string | null;
+  printCount: number;
+  changedSincePrint: boolean;
+}
+
+export interface MarkNotesPrintedRequestDto {
+  noteIds: string[];
 }
 
 export interface SaveBakerNoteRequestDto {

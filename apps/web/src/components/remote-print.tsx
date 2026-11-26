@@ -11,6 +11,8 @@ const timeLabel = (iso: string) => new Date(iso).toLocaleTimeString("ru-RU", { t
 // The laptop asks every few seconds; quieter than this means its screen is closed or the laptop is off.
 const LAPTOP_ONLINE_MS = 30_000;
 const POLL_MS = 4_000;
+// Fired when notes were printed, so an open list refreshes its «Напечатана» marks.
+export const NOTES_PRINTED_EVENT = "baker-notes-printed";
 
 // The door laptop («Выдача накладных»): takes print requests sent from a phone or a computer and prints them.
 export function RemotePrintAgent() {
@@ -35,6 +37,8 @@ export function RemotePrintAgent() {
             job.pack,
           );
           setLast({ at: new Date().toISOString(), by: job.createdByName, count: job.notes.length });
+          // The list below shows the new «Напечатана» marks at once.
+          window.dispatchEvent(new Event(NOTES_PRINTED_EVENT));
         }
       } catch (err) {
         setError(err instanceof ApiError ? err.message : "Нет связи с сервером — повторим через несколько секунд");

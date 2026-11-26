@@ -160,6 +160,20 @@ it("«На ноутбук выдачи»: a request from the office is printed b
   expect(await printJobs.pending(door)).toEqual([]);
   expect((await printJobs.findOne(org.user, job.id)).claimedAt).not.toBeNull();
 
+  // The laptop's print reads «Напечатана» on both notes; a baker's later edit reads «Изменена после печати».
+  const printed = await notes.day(org.user, today, workshopId);
+  const shopAfter = printed.notes.find((n) => n.id === shopNoteId)!;
+  expect(shopAfter.printCount).toBe(1);
+  expect(shopAfter.printedByName).toBe("Ноутбук");
+  expect(shopAfter.changedSincePrint).toBe(false);
+  await notes.markPrinted(org.user, [shopNoteId]);
+  expect((await notes.findOne(org.user, shopNoteId)).printCount).toBe(2);
+  const edited = await notes.update(org.user, customerNoteId, { kind: BakerNoteKind.DELIVERY, lines: [{ productId: breadId, quantity: 41 }] });
+  expect(edited.changedSincePrint).toBe(true);
+  // Back as it was (the tests below count on 40), and the same lines read as printed again.
+  const restored = await notes.update(org.user, customerNoteId, { kind: BakerNoteKind.DELIVERY, lines: [{ productId: breadId, quantity: 40 }] });
+  expect(restored.changedSincePrint).toBe(false);
+
   // A request nobody printed for hours is not printed the next morning.
   const old = await printJobs.create(org.user, { noteIds: [shopNoteId], pack: false });
   await prisma.printJob.update({ where: { id: old.id }, data: { createdAt: new Date(Date.now() - 3 * 3600_000) } });

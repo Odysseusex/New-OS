@@ -390,6 +390,7 @@ export const api = {
     cancel: (id: string) => request<BakerNoteDto>(`/baker/notes/${id}/cancel`, { method: "POST" }),
     preview: (day: string, sourceLocationId: string) => request<BakerDayPreviewDto>(withQuery("/baker/day/preview", { day, sourceLocationId })),
     post: (dto: BakerDayPostRequestDto) => request<BakerDayPostResultDto>("/baker/day/post", { method: "POST", body: JSON.stringify(dto) }),
+    markPrinted: (noteIds: string[]) => request<{ marked: number }>("/baker/notes/print-marks", { method: "POST", body: JSON.stringify({ noteIds }) }),
     // «Печать на ноутбуке выдачи».
     sendToLaptop: (dto: CreatePrintJobRequestDto) => request<PrintJobStatusDto>("/baker/print-jobs", { method: "POST", body: JSON.stringify(dto) }),
     printJob: (id: string) => request<PrintJobStatusDto>(`/baker/print-jobs/${id}`),

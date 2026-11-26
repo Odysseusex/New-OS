@@ -11,7 +11,7 @@ import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { BakerNotesService } from "./baker-notes.service";
 import { BakerDayService } from "./baker-day.service";
-import { AddIntakePhotoInput, BakerDayPostInput, CreatePrintJobInput, CreateSupplierIntakeInput, ResolveSupplierIntakeInput, SaveBakerNoteInput } from "./baker.dto";
+import { AddIntakePhotoInput, BakerDayPostInput, CreatePrintJobInput, MarkNotesPrintedInput, CreateSupplierIntakeInput, ResolveSupplierIntakeInput, SaveBakerNoteInput } from "./baker.dto";
 import { SupplierIntakesService } from "./supplier-intakes.service";
 import { PrintJobsService } from "./print-jobs.service";
 
@@ -138,6 +138,12 @@ export class BakerController {
     @Query("sourceLocationId") sourceLocationId?: string,
   ) {
     return this.notes.previous(user, { kind, customerId, locationId, sourceLocationId });
+  }
+
+  @Post("notes/print-marks")
+  @Roles(...BAKER_PRINT_ROLES)
+  markPrinted(@CurrentUser() user: AuthenticatedUser, @Body() dto: MarkNotesPrintedInput) {
+    return this.notes.markPrinted(user, dto.noteIds);
   }
 
   @Post("notes")
