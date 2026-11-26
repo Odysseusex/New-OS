@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
-import { Laptop, Pencil, Printer, RefreshCw, Send } from "lucide-react";
+import { Laptop, Pencil, Printer, RefreshCw, Search, Send, X } from "lucide-react";
 import type { BakerDayDto, BakerDayPostResultDto, BakerDayPreviewDto, BakerNoteDto } from "@bakery-os/shared";
-import { BAKER_DAY_ROLES, BAKER_NOTE_STATUS_LABELS_RU, BakerNoteStatus, UNIT_LABELS_RU } from "@bakery-os/shared";
+import { BAKER_DAY_ROLES, BAKER_NOTE_STATUS_LABELS_RU, BakerNoteStatus, Role, UNIT_LABELS_RU } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatMoney, formatQuantity } from "@/lib/format";
@@ -15,6 +15,14 @@ import { Modal } from "@/components/modal";
 import { NOTES_PRINTED_EVENT, SendToLaptopStatus, useSendToLaptop } from "@/components/remote-print";
 
 const PACK_KEY = "baker_print_pack";
+// Search over a day's notes: every typed word must occur in the recipient, number, baker or a product (ё = е).
+const norm = (s: string) => s.toLowerCase().replace(/ё/g, "е");
+const matchesNote = (n: BakerNoteDto, query: string) => {
+  const words = norm(query).split(/\s+/).filter(Boolean);
+  if (words.length === 0) return true;
+  const text = norm([n.recipient?.name ?? "", String(n.number), n.createdByName, ...n.lines.map((l) => l.productName)].join(" "));
+  return words.every((w) => text.includes(w));
+};
 const dayLabel = (key: string) => key.split("-").reverse().join(".");
 const timeLabel = (iso: string) => new Date(iso).toLocaleTimeString("ru-RU", { timeZone: "Asia/Almaty", hour: "2-digit", minute: "2-digit" });
 
@@ -38,6 +46,9 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
   // Notes ticked for printing; none ticked = print them all.
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [sharing, setSharing] = useState<BakerNoteDto[] | null>(null);
+  // Search (owner / admin, 26.11.2026): find a client's notes to send them to WhatsApp.
+  const canSearch = !printOnly && !!user && (user.role === Role.OWNER || user.role === Role.ADMIN);
+  const [query, setQuery] = useState("");
   // «На ноутбук выдачи»: print on the door laptop's printer from here (a phone, an iPad, the office).
   const laptop = useSendToLaptop();
   // Another day or workshop starts with nothing ticked.
@@ -136,8 +147,9 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
   if (state === "error" && !day) return <p className="text-sm text-red-700">{error}</p>;
   if (!day) return null;
 
-  const chosen = day.notes.filter((n) => picked.has(n.id));
-  const allPicked = day.notes.length > 0 && chosen.length === day.notes.length;
+  const shown = canSearch && query.trim() ? day.notes.filter((n) => matchesNote(n, query)) : day.notes;
+  const chosen = shown.filter((n) => picked.has(n.id));
+  const allPicked = shown.length > 0 && chosen.length === shown.length;
   const togglePick = (id: string) =>
     setPicked((cur) => {
       const next = new Set(cur);
@@ -147,7 +159,7 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
     });
   const waiting = day.notes.filter((n) => n.status === BakerNoteStatus.SENT);
   // Not printed yet, or changed by the baker after it was printed.
-  const fresh = day.notes.filter((n) => n.printCount === 0 || n.changedSincePrint);
+  const fresh = shown.filter((n) => n.printCount === 0 || n.changedSincePrint);
   // The print window must open inside the click; the «Напечатана» mark is recorded right after.
   const printNow = (notes: BakerNoteDto[], packed = pack) => {
     if (notes.length === 0) return;
@@ -186,6 +198,24 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
           <RefreshCw className="h-4 w-4" strokeWidth={1.75} />
           Обновить
         </button>
+        {canSearch && (
+          <div className="relative min-w-[14rem] flex-1 sm:max-w-xs">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" strokeWidth={1.75} />
+            <input
+              type="text"
+              inputMode="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Поиск: клиент, точка, товар, №"
+              className="w-full rounded-xl border border-border bg-surface py-2 pl-9 pr-8 text-sm text-foreground outline-none focus:border-accent"
+            />
+            {query && (
+              <button type="button" aria-label="Очистить поиск" onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted hover:text-foreground">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )}
         <div className="ml-auto flex flex-wrap gap-2">
           {!printOnly && (
             <a href="/baker" className={button}>
@@ -198,14 +228,14 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
           </label>
           <button
             type="button"
-            onClick={() => printNow(chosen.length > 0 ? chosen : day.notes)}
-            disabled={day.notes.length === 0}
+            onClick={() => printNow(chosen.length > 0 ? chosen : shown)}
+            disabled={shown.length === 0}
             className={button}
           >
             <Printer className="h-4 w-4" strokeWidth={1.75} />
-            {chosen.length > 0 ? `Печать выбранных (${chosen.length})` : "Печать всех накладных"}
+            {chosen.length > 0 ? `Печать выбранных (${chosen.length})` : shown.length < day.notes.length ? `Печать найденных (${shown.length})` : "Печать всех накладных"}
           </button>
-          {chosen.length === 0 && fresh.length > 0 && fresh.length < day.notes.length && (
+          {chosen.length === 0 && fresh.length > 0 && fresh.length < shown.length && (
             <button type="button" onClick={() => printNow(fresh)} className="flex items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-sm font-medium text-accent-foreground hover:opacity-90">
               <Printer className="h-4 w-4" strokeWidth={1.75} />
               Печать новых ({fresh.length})
@@ -214,18 +244,24 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
           {!printOnly && (
             <button
               type="button"
-              onClick={() => laptop.send(chosen.length > 0 ? chosen : day.notes, pack)}
-              disabled={day.notes.length === 0 || laptop.busy}
+              onClick={() => laptop.send(chosen.length > 0 ? chosen : shown, pack)}
+              disabled={shown.length === 0 || laptop.busy}
               className={button}
             >
               <Laptop className="h-4 w-4" strokeWidth={1.75} />
-              {chosen.length > 0 ? `На ноутбук выдачи (${chosen.length})` : "Все на ноутбук выдачи"}
+              {chosen.length > 0 ? `На ноутбук выдачи (${chosen.length})` : shown.length < day.notes.length ? `Найденные на ноутбук (${shown.length})` : "Все на ноутбук выдачи"}
             </button>
           )}
-          {!printOnly && chosen.length === 0 && fresh.length > 0 && fresh.length < day.notes.length && (
+          {!printOnly && chosen.length === 0 && fresh.length > 0 && fresh.length < shown.length && (
             <button type="button" onClick={() => laptop.send(fresh, pack)} disabled={laptop.busy} className={button}>
               <Laptop className="h-4 w-4" strokeWidth={1.75} />
               Новые на ноутбук ({fresh.length})
+            </button>
+          )}
+          {chosen.length === 0 && shown.length > 0 && shown.length < day.notes.length && (
+            <button type="button" onClick={() => setSharing(shown)} className={button}>
+              <Send className="h-4 w-4" strokeWidth={1.75} />
+              Найденные в WhatsApp ({shown.length})
             </button>
           )}
           {chosen.length > 0 && (
@@ -295,8 +331,8 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
                     className="h-4 w-4"
                     aria-label="Выбрать все накладные"
                     checked={allPicked}
-                    disabled={day.notes.length === 0}
-                    onChange={(e) => setPicked(e.target.checked ? new Set(day.notes.map((n) => n.id)) : new Set())}
+                    disabled={shown.length === 0}
+                    onChange={(e) => setPicked(e.target.checked ? new Set(shown.map((n) => n.id)) : new Set())}
                   />
                   №
                 </label>
@@ -311,6 +347,13 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
             </tr>
           </thead>
           <tbody>
+            {day.notes.length > 0 && shown.length === 0 && (
+              <tr>
+                <td colSpan={8} className="px-3 py-8 text-center text-muted">
+                  По «{query.trim()}» ничего не найдено
+                </td>
+              </tr>
+            )}
             {day.notes.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-3 py-8 text-center text-muted">
@@ -318,7 +361,7 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
                 </td>
               </tr>
             )}
-            {day.notes.map((n) => (
+            {shown.map((n) => (
               <tr key={n.id} onClick={() => setOpened(n)} className="cursor-pointer border-b border-border last:border-b-0 hover:bg-surface-muted">
                 <td
                   className={clsx("border-l-4 px-3 py-2 font-medium text-foreground", n.printCount === 0 ? "border-l-rose-400" : n.changedSincePrint ? "border-l-amber-400" : "border-l-sky-400")}
