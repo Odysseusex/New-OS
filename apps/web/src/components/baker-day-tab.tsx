@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
-import { Laptop, Pencil, Printer, RefreshCw, Search, Send, X } from "lucide-react";
-import type { BakerDayDto, BakerDayPostResultDto, BakerDayPreviewDto, BakerNoteDto } from "@bakery-os/shared";
+import { Laptop, Pencil, Printer, RefreshCw, Search, Send, Truck, X } from "lucide-react";
+import type { BakerDayDto, BakerDayPostResultDto, BakerDayPreviewDto, BakerNoteDto, BakerTripStateDto } from "@bakery-os/shared";
 import { BAKER_DAY_ROLES, BAKER_NOTE_STATUS_LABELS_RU, BakerNoteStatus, Role, UNIT_LABELS_RU } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -296,6 +296,7 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
       )}
       {error && <div className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
       {!printOnly && <SendToLaptopStatus sent={laptop.sent} error={laptop.error} onClose={laptop.clear} />}
+      {!printOnly && dayKey === zonedDateKey() && <TripPanel onLaunched={() => void load(true)} />}
       {result && (
         <div className={clsx("mb-4 rounded-xl px-4 py-3 text-sm", result.notes.some((n) => !n.ok) ? "bg-amber-50 text-amber-800" : "bg-green-50 text-green-800")}>
           <p className="font-medium">
@@ -383,6 +384,7 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
                 <td className="px-3 py-2 text-right text-foreground">{formatMoney(n.total)}</td>
                 <td className="px-3 py-2">
                   <PrintMark note={n} />
+                  {n.tripNumber !== null && <span className="mt-0.5 block text-xs text-muted">Рейс {n.tripNumber}</span>}
                 </td>
                 <td className="px-3 py-2">
                   <span className={clsx("rounded-full px-2 py-0.5 text-xs font-medium", n.status === BakerNoteStatus.POSTED ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700")}>
@@ -604,6 +606,60 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 // «Напечатана 10:42» / «Изменена после печати» / «Не печаталась» — what is already on paper and what is new.
+// «Рейс»: the bakers press «Рейс готов» on their phones; when all have, the new notes print on the door
+// laptop. Here: who is still awaited, and «Запустить рейс сейчас» when one of them is not working today.
+function TripPanel({ onLaunched }: { onLaunched: () => void }) {
+  const [trip, setTrip] = useState<BakerTripStateDto | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const refresh = useCallback(() => {
+    api.baker.trip().then(setTrip).catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    refresh();
+    const timer = window.setInterval(refresh, 20_000);
+    return () => window.clearInterval(timer);
+  }, [refresh]);
+  if (!trip || (!trip.waiting && !trip.last)) return null;
+  const at = (iso: string) => new Date(iso).toLocaleTimeString("ru-RU", { timeZone: "Asia/Almaty", hour: "2-digit", minute: "2-digit" });
+  const launch = async () => {
+    if (!window.confirm("Запустить рейс, не дожидаясь остальных пекарей? Новые накладные уйдут на печать на ноутбуке выдачи.")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.baker.tripLaunch();
+      setTrip(res.state);
+      onLaunched();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось запустить рейс");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className={clsx("mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl px-4 py-3 text-sm", trip.waiting ? "bg-amber-50 text-amber-900" : "bg-surface-muted text-foreground")}>
+      <Truck className="h-5 w-5 shrink-0" strokeWidth={1.75} />
+      {trip.waiting ? (
+        <span className="min-w-0 flex-1">
+          <b>Рейс {trip.waiting.number} ждёт:</b> {trip.waiting.missing.map((m) => m.userName).join(", ") || "—"}
+          <span className="text-amber-800"> · нажали: {trip.waiting.confirmed.map((c) => `${c.userName} (${at(c.at)})`).join(", ")}</span>
+        </span>
+      ) : (
+        <span className="min-w-0 flex-1">
+          <b>Рейс {trip.last!.number}</b> запущен в {at(trip.last!.launchedAt!)} · накладных {trip.last!.noteCount}
+          {trip.last!.forcedByName && <span className="text-muted"> · без ожидания: {trip.last!.forcedByName}</span>}
+        </span>
+      )}
+      {trip.waiting && trip.canForce && (
+        <button type="button" disabled={busy} onClick={launch} className="rounded-xl border border-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50">
+          Запустить рейс сейчас
+        </button>
+      )}
+      {error && <span className="w-full text-red-700">{error}</span>}
+    </div>
+  );
+}
+
 function PrintMark({ note, long = false }: { note: BakerNoteDto; long?: boolean }) {
   const pill = "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap";
   if (note.printCount === 0 || !note.printedAt) return <span className={clsx(pill, "bg-rose-50 text-rose-700")}>Не печаталась</span>;

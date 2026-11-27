@@ -883,6 +883,10 @@ model BakerNote {
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
+  // The trip («Рейс») it was sent with; set when the trip is launched.
+  tripId           String?
+  trip             BakerTrip?      @relation(fields: [tripId], references: [id], onDelete: SetNull)
+
   lines  BakerNoteLine[]
   prints BakerNotePrint[]
 
@@ -979,6 +983,63 @@ model BakerNotePrint {
 
 // «Печать на ноутбуке выдачи»: a request to print bakers' notes on the door laptop's printer. The laptop's
 // screen asks for open requests, claims one (once, by a conditional UPDATE) and prints it. Moves nothing.
+enum BakerTripStatus {
+  WAITING
+  LAUNCHED
+  CANCELLED
+}
+
+// «Рейс»: the driver's run. Every baker presses «Рейс готов» on their phone; when the last one has, the
+// day's new notes go to the door laptop's printer at once. One trip waits at a time (partial unique index).
+model BakerTrip {
+  id             String          @id @default(cuid())
+  organizationId String
+  // The Almaty day (midnight); numbered from 1 each day.
+  day            DateTime
+  number         Int
+  status         BakerTripStatus @default(WAITING)
+  createdAt      DateTime        @default(now())
+  launchedAt     DateTime?
+  // Who launched it without waiting for every baker (null = every baker pressed).
+  forcedByName   String?
+  noteCount      Int             @default(0)
+  printJobId     String?
+
+  confirmations BakerTripConfirmation[]
+  notes         BakerNote[]
+
+  @@unique([organizationId, day, number])
+  @@map("baker_trips")
+}
+
+model BakerTripConfirmation {
+  id        String    @id @default(cuid())
+  tripId    String
+  trip      BakerTrip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  userId    String
+  userName  String
+  createdAt DateTime  @default(now())
+
+  @@unique([tripId, userId])
+  @@map("baker_trip_confirmations")
+}
+
+// A staff phone that allowed notifications (the bakers' screen). Plain userId: a gone user's rows are
+// simply skipped (only active users are sent to).
+model StaffPushSubscription {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  endpoint       String   @unique
+  p256dh         String
+  auth           String
+  createdAt      DateTime @default(now())
+  lastSeenAt     DateTime @default(now())
+
+  @@index([userId])
+  @@map("staff_push_subscriptions")
+}
+
 model PrintJob {
   id             String    @id @default(cuid())
   organizationId String

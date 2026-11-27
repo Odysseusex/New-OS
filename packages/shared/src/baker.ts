@@ -114,6 +114,8 @@ export interface BakerNoteDto {
   printedByName: string | null;
   printCount: number;
   changedSincePrint: boolean;
+  // «Рейс N» it went with (null = not sent with a trip yet).
+  tripNumber: number | null;
 }
 
 export interface MarkNotesPrintedRequestDto {
@@ -327,4 +329,55 @@ export interface ResolveSupplierIntakeRequestDto {
   purchaseOrderId?: string;
   document?: string;
   reason?: string;
+}
+
+// ── «Рейс» ──
+// Every baker presses «Рейс готов» when the driver is loaded; the others get a notification. When the last
+// one has pressed, the day's new notes (never printed, or changed since) go to the door laptop's printer.
+export enum BakerTripStatus {
+  WAITING = "WAITING",
+  LAUNCHED = "LAUNCHED",
+  CANCELLED = "CANCELLED",
+}
+
+// Who may launch a waiting trip without the bakers who have not pressed.
+export const BAKER_TRIP_FORCE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.PRODUCTION_MANAGER, Role.OPERATOR];
+
+export interface BakerTripDto {
+  id: string;
+  number: number;
+  status: BakerTripStatus;
+  day: string;
+  createdAt: string;
+  launchedAt: string | null;
+  forcedByName: string | null;
+  noteCount: number;
+  confirmed: { userId: string; userName: string; at: string }[];
+  // Bakers who still have to press (only while waiting).
+  missing: { userId: string; userName: string }[];
+}
+
+export interface BakerTripStateDto {
+  waiting: BakerTripDto | null;
+  // Today's last launched trip.
+  last: BakerTripDto | null;
+  // Notes of the day the next trip would print.
+  newNotes: number;
+  youConfirmed: boolean;
+  // May this user press «Рейс готов» (a baker) / «Запустить рейс сейчас».
+  canConfirm: boolean;
+  canForce: boolean;
+  laptopSeenAt: string | null;
+}
+
+export interface BakerTripActionResultDto {
+  state: BakerTripStateDto;
+  // The trip just launched by this press.
+  launched: BakerTripDto | null;
+}
+
+export interface StaffPushSubscribeRequestDto {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
 }

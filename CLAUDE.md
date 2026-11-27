@@ -1113,6 +1113,25 @@ minimised window keeps asking) and its own `--user-data-dir` (a Chrome already r
 till's login apart); prints go to Windows' default printer. Without the flag the print dialog appears. Spec in
 `baker-notes.spec.ts`.
 
+## «Рейс готов» — the bakers launch the print together (built 27.11.2026)
+
+Owner: the bakers send notes all day and nobody knows when to print them (3 per sheet). Now each baker presses
+«Рейс готов» on `/baker` (`app/baker/trip.tsx`, a confirm step first) when the driver is loaded; the trip WAITS until
+every baker has pressed — required = active users of `BAKER_PHONE_ROLES` with a PIN (both live bakers are tied to the
+same workshop «Производство», so it is per PERSON, not per workshop). Then ONE `PrintJob` (pack) of the day's NEW
+delivery notes (never printed or changed since, any workshop) goes to the door laptop and the notes get `tripId`
+(«Рейс N» in the «Печать» cell). `BakerTrip` + `BakerTripConfirmation` (migration `20261215120000_baker_trips`,
+additive; one WAITING per org by partial unique index; numbered per Almaty day; removed by clean start),
+`baker/baker-trips.service.ts` (org row `FOR UPDATE` per decision; a press with nothing new is refused; taking back
+the last press DELETES the trip so numbers do not skip; a waiting trip of an earlier day is CANCELLED), routes
+`GET /baker/trip`, `POST /baker/trip/ready|withdraw`, `POST /baker/trip/launch` («Запустить рейс сейчас»,
+`BAKER_TRIP_FORCE_ROLES`, on Производство → «Накладные пекарей» `TripPanel`). Notices are never awaited: Web Push to
+the bakers still awaited («Рейс N: ждём вас») and on launch to the others (`StaffPushService`, same derived VAPID keys
+as the customer app, `StaffPushSubscription` — kept by clean start, out of backups; worker `public/baker/sw.js`,
+client `app/baker/push.ts`, «Включить уведомления о рейсе» on the card), Telegram to linked BAKER_DAY_ROLES (not the
+assistant) on the first press and on launch, with «ноутбук выдачи не на связи» when it has not asked for 60 s.
+Audited `bakerTrip.launch`. Spec `baker/baker-trips.spec.ts`. The first real push to a baker's phone is still to be seen.
+
 ## Print marks on the bakers' notes (built 26.11.2026)
 
 Owner: «понимать что уже распечатано что еще нет». `BakerNotePrint` (migration `20261213120000_baker_note_prints`,

@@ -1,4 +1,5 @@
-import type { RequisitionIssueReportDto } from "@bakery-os/shared";
+import type { RequisitionIssueReportDto, BakerTripActionResultDto, BakerTripStateDto, StaffPushSubscribeRequestDto
+} from "@bakery-os/shared";
 import type { CutSourceResultDto, SetCutSourceRequestDto } from "@bakery-os/shared";
 import type { CreateDirectionRequestDto, DirectionDto, UpdateDirectionRequestDto } from "@bakery-os/shared";
 import type { CleanStartPreviewDto, CleanStartResultDto } from "@bakery-os/shared";
@@ -390,6 +391,14 @@ export const api = {
     cancel: (id: string) => request<BakerNoteDto>(`/baker/notes/${id}/cancel`, { method: "POST" }),
     preview: (day: string, sourceLocationId: string) => request<BakerDayPreviewDto>(withQuery("/baker/day/preview", { day, sourceLocationId })),
     post: (dto: BakerDayPostRequestDto) => request<BakerDayPostResultDto>("/baker/day/post", { method: "POST", body: JSON.stringify(dto) }),
+    // «Рейс»: bakers press «Рейс готов»; when all have, the new notes print on the door laptop.
+    trip: () => request<BakerTripStateDto>("/baker/trip"),
+    tripReady: () => request<BakerTripActionResultDto>("/baker/trip/ready", { method: "POST" }),
+    tripWithdraw: () => request<BakerTripActionResultDto>("/baker/trip/withdraw", { method: "POST" }),
+    tripLaunch: () => request<BakerTripActionResultDto>("/baker/trip/launch", { method: "POST" }),
+    pushKey: () => request<{ publicKey: string }>("/baker/push/key"),
+    pushSubscribe: (dto: StaffPushSubscribeRequestDto) => request<{ subscribed: true }>("/baker/push/subscribe", { method: "POST", body: JSON.stringify(dto) }),
+    pushUnsubscribe: (endpoint: string) => request<{ subscribed: false }>("/baker/push/unsubscribe", { method: "POST", body: JSON.stringify({ endpoint }) }),
     markPrinted: (noteIds: string[]) => request<{ marked: number }>("/baker/notes/print-marks", { method: "POST", body: JSON.stringify({ noteIds }) }),
     // «Печать на ноутбуке выдачи».
     sendToLaptop: (dto: CreatePrintJobRequestDto) => request<PrintJobStatusDto>("/baker/print-jobs", { method: "POST", body: JSON.stringify(dto) }),

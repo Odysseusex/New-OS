@@ -63,6 +63,8 @@ export const CLEAN_START_DELETES: string[] = [
   // The bakers' notes of the wiped days (their lines and print marks go with them).
   byOrg("baker_note_prints"),
   byOrg("baker_notes"),
+  // The trips those notes went with (their confirmations go with them).
+  byOrg("baker_trips"),
   // Photographs of suppliers' papers for receipts that are gone (the pictures go with them).
   byOrg("supplier_intakes"),
   // Requests to print notes that are gone.
@@ -85,14 +87,14 @@ export const CLEAN_START_REMOVED_TABLES = [
   "purchase_order_revisions", "purchase_orders", "invoices", "consignment_payments", "sale_payments", "sale_returns", "sales",
   "depreciation_entries", "fixed_assets", "expenses", "production_batches", "material_requisitions", "daily_reconciliations",
   "till_shifts", "delivery_routes", "shifts", "time_entries", "journal_lines", "journal_entries", "accounting_events",
-  "cost_corrections", "period_snapshots", "financial_periods", "notification_dismissals", "baker_note_prints", "baker_notes", "supplier_intakes",
+  "cost_corrections", "period_snapshots", "financial_periods", "notification_dismissals", "baker_note_prints", "baker_notes", "baker_trips", "supplier_intakes",
   "print_jobs",
 ];
 
 // … and those that stay: reference data, settings, people and the record of who did what.
 export const CLEAN_START_KEPT_TABLES = [
   "accounting_policies", "audit_logs", "bank_import_profiles", "bank_rules", "cash_accounts", "categories",
-  "classification_batches", "club_chat_broadcasts", "club_chat_messages", "club_login_requests", "club_push_notices", "club_push_subscriptions", "crm_contacts", "crm_orders", "customers", "directions", "employee_compensations", "employees",
+  "classification_batches", "club_chat_broadcasts", "club_chat_messages", "club_login_requests", "club_push_notices", "club_push_subscriptions", "staff_push_subscriptions", "crm_contacts", "crm_orders", "customers", "directions", "employee_compensations", "employees",
   "finance_categories", "financial_model_scenarios", "ledger_accounts", "locations", "loyalty_birthday_grants",
   "loyalty_consents", "loyalty_family_members", "loyalty_points_entries", "loyalty_members", "loyalty_message_logs", "loyalty_settings",
   "loyalty_telegram_links", "management_plan_lines", "planned_fixed_costs", "product_location_prices", "product_photos",

@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Param, Post, Put, Query, Res, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Param, Post, Put, Query, Res, UseGuards } from "@nestjs/common";
 import type { Response } from "express";
-import { BAKER_DAY_ROLES, BAKER_NOTE_ROLES, BAKER_PRINT_ROLES, Role } from "@bakery-os/shared";
+import { BAKER_DAY_ROLES, BAKER_NOTE_ROLES, BAKER_PRINT_ROLES, BAKER_TRIP_FORCE_ROLES, Role } from "@bakery-os/shared";
 
 // Reading a day / one note: the bakers and the door laptop («Выдача накладных»).
 const NOTE_READ_ROLES = [...new Set([...BAKER_NOTE_ROLES, ...BAKER_PRINT_ROLES])];
@@ -11,9 +11,11 @@ import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { BakerNotesService } from "./baker-notes.service";
 import { BakerDayService } from "./baker-day.service";
-import { AddIntakePhotoInput, BakerDayPostInput, CreatePrintJobInput, MarkNotesPrintedInput, CreateSupplierIntakeInput, ResolveSupplierIntakeInput, SaveBakerNoteInput } from "./baker.dto";
+import { AddIntakePhotoInput, BakerDayPostInput, CreatePrintJobInput, MarkNotesPrintedInput, CreateSupplierIntakeInput, ResolveSupplierIntakeInput, SaveBakerNoteInput, StaffPushSubscribeInput, StaffPushUnsubscribeInput } from "./baker.dto";
 import { SupplierIntakesService } from "./supplier-intakes.service";
 import { PrintJobsService } from "./print-jobs.service";
+import { BakerTripsService } from "./baker-trips.service";
+import { isPushEndpoint, StaffPushService } from "./staff-push.service";
 
 // «Накладные пекарей»: the phone screen (/baker) and the operator's «Накладные за день».
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -25,7 +27,48 @@ export class BakerController {
     private days: BakerDayService,
     private intakes: SupplierIntakesService,
     private printJobs: PrintJobsService,
+    private trips: BakerTripsService,
+    private staffPush: StaffPushService,
   ) {}
+
+  // ── «Рейс» ── (bakers press «Рейс готов»; the day roles watch and may launch without waiting)
+  @Get("trip")
+  trip(@CurrentUser() user: AuthenticatedUser) {
+    return this.trips.state(user);
+  }
+
+  @Post("trip/ready")
+  tripReady(@CurrentUser() user: AuthenticatedUser) {
+    return this.trips.confirm(user);
+  }
+
+  @Post("trip/withdraw")
+  tripWithdraw(@CurrentUser() user: AuthenticatedUser) {
+    return this.trips.withdraw(user);
+  }
+
+  @Post("trip/launch")
+  @Roles(...BAKER_TRIP_FORCE_ROLES)
+  tripLaunch(@CurrentUser() user: AuthenticatedUser) {
+    return this.trips.force(user);
+  }
+
+  // ── Notifications on a baker's phone ──
+  @Get("push/key")
+  pushKey() {
+    return this.staffPush.publicKey();
+  }
+
+  @Post("push/subscribe")
+  pushSubscribe(@CurrentUser() user: AuthenticatedUser, @Body() dto: StaffPushSubscribeInput) {
+    if (!isPushEndpoint(dto.endpoint)) throw new BadRequestException("Неизвестный адрес уведомлений");
+    return this.staffPush.subscribe(user.organizationId, user.id, dto);
+  }
+
+  @Post("push/unsubscribe")
+  pushUnsubscribe(@CurrentUser() user: AuthenticatedUser, @Body() dto: StaffPushUnsubscribeInput) {
+    return this.staffPush.unsubscribe(user.id, dto.endpoint);
+  }
 
   // ── «Печать на ноутбуке выдачи» ── (named routes before «print-jobs/:id»)
   @Post("print-jobs")

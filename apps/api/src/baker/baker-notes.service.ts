@@ -35,6 +35,7 @@ export const BAKER_NOTE_INCLUDE = {
   lines: { include: { product: { select: { name: true, unit: true } } }, orderBy: { position: "asc" as const } },
   prints: { orderBy: { printedAt: "desc" as const }, take: 1, select: { printedAt: true, printedByName: true, contentKey: true } },
   _count: { select: { prints: true } },
+  trip: { select: { number: true } },
 } satisfies Prisma.BakerNoteInclude;
 export type BakerNoteRow = Prisma.BakerNoteGetPayload<{ include: typeof BAKER_NOTE_INCLUDE }>;
 
@@ -445,6 +446,7 @@ export class BakerNotesService {
       printedByName: row.prints[0]?.printedByName ?? null,
       printCount: row._count.prints,
       changedSincePrint: row.prints.length > 0 && row.prints[0].contentKey !== noteContentKey(row),
+      tripNumber: row.trip?.number ?? null,
     };
   }
 

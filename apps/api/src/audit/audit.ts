@@ -73,7 +73,7 @@ export const AUDIT_ACTION_GROUPS = {
   cutSource: ["product.cutSource"],
   assistant: ["user.assistantKey"],
   standingOrders: ["standingOrder.update"],
-  bakerNotes: ["bakerNote.create", "bakerNote.update", "bakerNote.cancel", "bakerDay.post", "supplierIntake.send", "supplierIntake.resolve"],
+  bakerNotes: ["bakerNote.create", "bakerNote.update", "bakerNote.cancel", "bakerDay.post", "bakerTrip.launch", "supplierIntake.send", "supplierIntake.resolve"],
   stocktake: ["stocktake.create", "stocktake.submit", "stocktake.reopen", "stocktake.approve", "stocktake.cancel"],
   stockVoid: ["stockVoid.create"],
   dailyReconciliation: ["dailyReconciliation.save", "dailyReconciliation.apply"],

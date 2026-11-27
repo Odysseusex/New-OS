@@ -30,7 +30,7 @@ const GONE = new Set([404, 410]);
 const CONTACT = "https://ar-amir.com";
 const b64url = (buf: Buffer) => buf.toString("base64url");
 
-function vapidKeys(): { publicKey: string; privateKey: string } {
+export function vapidKeys(): { publicKey: string; privateKey: string } {
   const seed = createHmac("sha256", process.env.JWT_SECRET ?? "dev-secret-change-me").update("club-web-push-vapid").digest();
   const ecdh = createECDH("prime256v1");
   ecdh.setPrivateKey(seed);

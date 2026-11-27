@@ -8,6 +8,7 @@ import { BAKER_NOTE_STATUS_LABELS_RU, BakerNoteKind, BakerNoteStatus, UNIT_LABEL
 import { api, ApiError } from "@/lib/api";
 import { formatMoney, formatQuantity } from "@/lib/format";
 import { IntakeForm, IntakeView, MyIntakes } from "./intake";
+import { TripCard, useTrip } from "./trip";
 
 type View =
   | { name: "home" }
@@ -72,6 +73,8 @@ export function BakerApp({ user, onLock }: { user: CurrentUserDto; onLock: () =>
       .then((note) => setView({ name: "edit", kind: note.kind, recipient: note.recipient, note }))
       .catch((err) => fail(err, "Не удалось открыть накладную"));
   }, [catalog, fail]);
+
+  const trip = useTrip(view.name === "home", fail);
 
   const home = (text?: string) => {
     setView({ name: "home" });
@@ -151,6 +154,8 @@ export function BakerApp({ user, onLock }: { user: CurrentUserDto; onLock: () =>
       )}
       {error && <div className="mb-4 rounded-2xl bg-red-50 px-4 py-4 text-base text-red-700">{error}</div>}
 
+      {trip.urgent && <TripCard trip={trip} />}
+
       <button type="button" onClick={() => setView({ name: "recipient" })} className="mb-3 flex h-20 w-full items-center justify-center gap-3 rounded-2xl bg-accent text-xl font-semibold text-accent-foreground shadow-card active:opacity-90">
         <Plus className="h-7 w-7" strokeWidth={2} />
         Новая накладная
@@ -181,6 +186,8 @@ export function BakerApp({ user, onLock }: { user: CurrentUserDto; onLock: () =>
         </span>
         <ChevronRight className="h-6 w-6 shrink-0 text-muted" strokeWidth={1.75} />
       </button>
+
+      {!trip.urgent && <TripCard trip={trip} />}
 
       <h2 className="mb-2 text-lg font-semibold text-foreground">{catalog.seesAll ? "Накладные за сегодня" : "Мои накладные за сегодня"}</h2>
       {day.notes.length === 0 ? (

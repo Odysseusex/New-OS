@@ -121,3 +121,23 @@ export class MarkNotesPrintedInput {
   @IsString({ each: true })
   noteIds!: string[];
 }
+
+export class StaffPushSubscribeInput {
+  @IsString()
+  @MaxLength(1000)
+  endpoint!: string;
+
+  @IsString()
+  @MaxLength(300)
+  p256dh!: string;
+
+  @IsString()
+  @MaxLength(300)
+  auth!: string;
+}
+
+export class StaffPushUnsubscribeInput {
+  @IsString()
+  @MaxLength(1000)
+  endpoint!: string;
+}
