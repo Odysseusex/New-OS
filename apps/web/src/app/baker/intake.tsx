@@ -16,9 +16,9 @@ import { formatMoney } from "@/lib/format";
 import { shrinkIntakePhoto } from "@/lib/intake-photo";
 import { AuthedImage } from "@/components/authed-image";
 
-const PAYMENTS = [SupplierIntakePayment.CASH, SupplierIntakePayment.KASPI, SupplierIntakePayment.BCC, SupplierIntakePayment.CREDIT];
-// Once the participants' own accounts exist, the bakers pick a person; the business's own tills are not offered.
-const ONLY_CREDIT = [SupplierIntakePayment.CREDIT];
+// Owner, 26.11.2026: the business pays suppliers from Kaspi only (Kaspi Gold) — no BCC, no till cash.
+// Older intakes keep whatever they were sent with (the enum values stay).
+const PAYMENTS = [SupplierIntakePayment.KASPI, SupplierIntakePayment.CREDIT];
 const timeLabel = (iso: string) =>
   new Date(iso).toLocaleString("ru-RU", { timeZone: "Asia/Almaty", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
@@ -190,7 +190,7 @@ export function IntakeForm({
               {a.name}
             </button>
           ))}
-          {(catalog.personalAccounts.length > 0 ? ONLY_CREDIT : PAYMENTS).map((p) => (
+          {PAYMENTS.map((p) => (
             <button
               key={p}
               type="button"
