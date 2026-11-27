@@ -80,6 +80,13 @@ A closed month refuses writes dated in it: tell the owner, do not try another da
   materials, shortages, `blockers`), then — after the owner's «да» — `POST /baker/day/post {day, sourceLocationId, signature}`
   with the preview's `signature`. It makes the release, the transfers and the sales on account itself; do NOT also enter
   them by hand. A wrong note: `PUT /baker/notes/:id` (quantities only, the server sets the prices) or `POST …/cancel`.
+  **«Проводить накладные сразу»** (`GET /baker/settings` → `autoPost`): when on, a delivery note posts ITSELF some
+  minutes after it is sent (release of what the workshop is short of, then the transfer / the sale on account), so at
+  night «Провести день» is left with «Холодильник на завтра» and the notes that did not post (`autoPostFailed`, the
+  reason is in `postError` — fix the cause first: a missing техкарта, raw materials). The preview then shows few or no
+  `documents`; that is expected, do not re-enter the day's deliveries. A POSTED note is corrected with the same
+  `PUT /baker/notes/:id`: the server makes a document for the difference (a transfer / a transfer back, another sale /
+  a return) — never enter such a correction by hand as well.
 - Suppliers' накладные photographed by the bakers (instead of WhatsApp): `GET /baker/intakes?pending=true` — every
   intake still waiting, with `locationName` (where it was brought), `payment` (CASH / KASPI / BCC / CREDIT = в долг),
   optional `supplierName` / `total`, and `photos[].path`; `GET <that path>` (with the same key) returns the JPEG itself.

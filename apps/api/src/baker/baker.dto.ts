@@ -122,6 +122,15 @@ export class MarkNotesPrintedInput {
   noteIds!: string[];
 }
 
+export class BakerAutoPostSettingsInput {
+  @IsBoolean()
+  autoPost!: boolean;
+
+  @IsNumber({ maxDecimalPlaces: 0 })
+  @Min(0)
+  delayMinutes!: number;
+}
+
 export class StaffPushSubscribeInput {
   @IsString()
   @MaxLength(1000)

@@ -128,9 +128,12 @@ export class NotificationsService {
         notifications.push({
           key: `baker-note:${note.id}:${now.toISOString().slice(0, 10)}`,
           type: NotificationType.BAKER_NOTE,
-          severity: NotificationSeverity.INFO,
-          title: `Накладная пекаря № ${note.number}`,
-          message: `→ ${note.customer?.name ?? note.location?.name ?? ""}: позиций ${note._count.lines}, сумма ${Math.round(note.total.toNumber()).toLocaleString("ru-RU")} ₸ (${note.createdByName})`,
+          // The automatic posting could not post it: say why.
+          severity: note.autoPostFailedAt ? NotificationSeverity.WARNING : NotificationSeverity.INFO,
+          title: note.autoPostFailedAt ? `Накладная пекаря № ${note.number} не провелась` : `Накладная пекаря № ${note.number}`,
+          message: note.autoPostFailedAt
+            ? `→ ${note.customer?.name ?? note.location?.name ?? ""}: ${note.postError ?? "причина не записана"}`
+            : `→ ${note.customer?.name ?? note.location?.name ?? ""}: позиций ${note._count.lines}, сумма ${Math.round(note.total.toNumber()).toLocaleString("ru-RU")} ₸ (${note.createdByName})`,
           locationId: note.sourceLocationId,
           locationName: note.sourceLocation.name,
           link: "/production?tab=baker",

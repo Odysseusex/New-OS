@@ -27,8 +27,8 @@ import { BAKER_NOTE_INCLUDE, BakerNoteRow, BakerNotesService } from "./baker-not
 
 const STUCK_AFTER_MS = 3 * 60_000;
 // Numbers restart every day, so the date is part of the text that names the transfer.
-const transferNote = (number: number, day: Date) => `Накладная пекаря № ${number} от ${debtDateKey(day).split("-").reverse().join(".")}`;
-const messageOf = (err: unknown) => {
+export const transferNote = (number: number, day: Date) => `Накладная пекаря № ${number} от ${debtDateKey(day).split("-").reverse().join(".")}`;
+export const messageOf = (err: unknown) => {
   if (err instanceof HttpException) {
     const body = err.getResponse();
     const message = typeof body === "string" ? body : (body as { message?: string | string[] }).message;
@@ -58,6 +58,18 @@ export class BakerDayService {
   private readonly logger = new Logger(BakerDayService.name);
   // One posting at a time per workshop (the API is a single process).
   private readonly running = new Set<string>();
+
+  // The automatic posting shares the lock with «Провести день»: never both at one workshop.
+  tryLock(organizationId: string, sourceLocationId: string): boolean {
+    const key = `${organizationId}:${sourceLocationId}`;
+    if (this.running.has(key)) return false;
+    this.running.add(key);
+    return true;
+  }
+
+  unlock(organizationId: string, sourceLocationId: string): void {
+    this.running.delete(`${organizationId}:${sourceLocationId}`);
+  }
 
   constructor(
     private prisma: PrismaService,
@@ -130,10 +142,12 @@ export class BakerDayService {
 
   // One note → one document. The note is claimed first (only the request that flips SENT → POSTING goes
   // on), so it can never become two documents; a refusal puts it back with the reason.
-  private async postNote(user: AuthenticatedUser, note: BakerNoteRow): Promise<BakerDayPostResultDto["notes"][number]> {
+  // `auto`: the automatic posting during the day — the note must not have changed since it was read, and
+  // the documents say so («автоматически», the baker's name).
+  async postNote(user: AuthenticatedUser, note: BakerNoteRow, auto = false): Promise<BakerDayPostResultDto["notes"][number]> {
     const recipientName = note.customer?.name ?? note.location?.name ?? "";
     const claimed = await this.prisma.bakerNote.updateMany({
-      where: { id: note.id, status: PrismaStatus.SENT },
+      where: { id: note.id, status: PrismaStatus.SENT, ...(auto ? { contentChangedAt: note.contentChangedAt } : {}) },
       data: { status: PrismaStatus.POSTING, postingStartedAt: new Date(), postError: null },
     });
     if (claimed.count !== 1) return { noteId: note.id, number: note.number, recipientName, ok: false, message: "Накладная изменилась — проверьте её" };
@@ -144,7 +158,7 @@ export class BakerDayService {
         const doc = await this.requisitions.transfer(user, {
           fromLocationId: note.sourceLocationId,
           toLocationId: note.locationId,
-          note: transferNote(note.number, note.day),
+          note: transferNote(note.number, note.day) + (auto ? ` · автоматически (${note.createdByName})` : ""),
           lines: lines.map((l) => ({ productId: l.productId, quantity: l.quantity })),
         });
         done = { requisitionId: doc.id, label: `Перемещение № ${doc.number}` };
@@ -164,10 +178,12 @@ export class BakerDayService {
           status: PrismaStatus.POSTED,
           postedAt: new Date(),
           postedById: user.id,
-          postedByName: user.fullName,
+          postedByName: auto ? "Автоматически" : user.fullName,
           saleId: done.saleId ?? null,
           requisitionId: done.requisitionId ?? null,
           documentLabel: done.label,
+          autoPostFailedAt: null,
+          documents: { create: { kind: done.saleId ? "SALE" : "TRANSFER", documentId: (done.saleId ?? done.requisitionId)!, label: done.label } },
         },
       });
       return { noteId: note.id, number: note.number, recipientName, ok: true, message: done.label };
@@ -181,15 +197,21 @@ export class BakerDayService {
 
   // A note left «Проводится» by a server restart: if its document exists it is posted, otherwise it
   // goes back to the queue.
-  private async recoverStuck(organizationId: string): Promise<void> {
+  async recoverStuck(organizationId: string): Promise<void> {
     const stuck = await this.prisma.bakerNote.findMany({
       where: { organizationId, status: PrismaStatus.POSTING, postingStartedAt: { lt: new Date(Date.now() - STUCK_AFTER_MS) } },
     });
     for (const note of stuck) {
+      // A correction of an already posted note was cut short: the note is still posted (its lines say
+      // what was applied).
+      if (note.postedAt) {
+        await this.prisma.bakerNote.updateMany({ where: { id: note.id, status: PrismaStatus.POSTING }, data: { status: PrismaStatus.POSTED } });
+        continue;
+      }
       let found: { saleId?: string; requisitionId?: string; label: string } | null = null;
       if (note.locationId) {
         const doc = await this.prisma.materialRequisition.findFirst({
-          where: { organizationId, kind: MaterialRequisitionKind.TRANSFER, status: MaterialRequisitionStatus.POSTED, note: transferNote(note.number, note.day), toLocationId: note.locationId, ...(note.postingStartedAt ? { createdAt: { gte: note.postingStartedAt } } : {}) },
+          where: { organizationId, kind: MaterialRequisitionKind.TRANSFER, status: MaterialRequisitionStatus.POSTED, note: { startsWith: transferNote(note.number, note.day) }, toLocationId: note.locationId, ...(note.postingStartedAt ? { createdAt: { gte: note.postingStartedAt } } : {}) },
           select: { id: true, number: true },
         });
         if (doc) found = { requisitionId: doc.id, label: `Перемещение № ${doc.number}` };
@@ -203,9 +225,20 @@ export class BakerDayService {
       await this.prisma.bakerNote.updateMany({
         where: { id: note.id, status: PrismaStatus.POSTING },
         data: found
-          ? { status: PrismaStatus.POSTED, postedAt: new Date(), saleId: found.saleId ?? null, requisitionId: found.requisitionId ?? null, documentLabel: found.label }
+          ? {
+              status: PrismaStatus.POSTED,
+              postedAt: new Date(),
+              saleId: found.saleId ?? null,
+              requisitionId: found.requisitionId ?? null,
+              documentLabel: found.label,
+            }
           : { status: PrismaStatus.SENT, postError: "Проведение прервалось — проведите ещё раз" },
       });
+      if (found) {
+        await this.prisma.bakerNoteDocument.create({
+          data: { noteId: note.id, kind: found.saleId ? "SALE" : "TRANSFER", documentId: (found.saleId ?? found.requisitionId)!, label: found.label },
+        });
+      }
     }
   }
 

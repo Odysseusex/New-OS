@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
 import { Laptop, Pencil, Printer, RefreshCw, Search, Send, Truck, X } from "lucide-react";
 import type { BakerDayDto, BakerDayPostResultDto, BakerDayPreviewDto, BakerNoteDto, BakerTripStateDto } from "@bakery-os/shared";
-import { BAKER_DAY_ROLES, BAKER_NOTE_STATUS_LABELS_RU, BakerNoteStatus, Role, UNIT_LABELS_RU } from "@bakery-os/shared";
+import { BAKER_AUTO_POST_MAX_DELAY, BAKER_AUTO_POST_ROLES, BAKER_DAY_ROLES, BAKER_NOTE_STATUS_LABELS_RU, BakerNoteStatus, Role, UNIT_LABELS_RU } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatMoney, formatQuantity } from "@/lib/format";
@@ -297,6 +297,7 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
       {error && <div className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
       {!printOnly && <SendToLaptopStatus sent={laptop.sent} error={laptop.error} onClose={laptop.clear} />}
       {!printOnly && dayKey === zonedDateKey() && <TripPanel onLaunched={() => void load(true)} />}
+      {!printOnly && user && BAKER_AUTO_POST_ROLES.includes(user.role) && <AutoPostSettings day={day} onSaved={() => void load(true)} />}
       {result && (
         <div className={clsx("mb-4 rounded-xl px-4 py-3 text-sm", result.notes.some((n) => !n.ok) ? "bg-amber-50 text-amber-800" : "bg-green-50 text-green-800")}>
           <p className="font-medium">
@@ -390,6 +391,8 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
                   <span className={clsx("rounded-full px-2 py-0.5 text-xs font-medium", n.status === BakerNoteStatus.POSTED ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700")}>
                     {BAKER_NOTE_STATUS_LABELS_RU[n.status]}
                   </span>
+                  {n.autoPostFailed && <span className="mt-0.5 block text-xs font-medium text-red-700">Не провелась</span>}
+                  {n.revisions.length > 0 && <span className="mt-0.5 block text-xs text-muted">Исправлена</span>}
                   {n.document && <span className="ml-2 text-xs text-muted">{n.document}</span>}
                   {n.postError && <span className="mt-1 block text-xs text-red-700">{n.postError}</span>}
                 </td>
@@ -417,6 +420,14 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
           <div className="mb-3">
             <PrintMark note={opened} long />
           </div>
+          {opened.autoPostFailed && (
+            <div className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">Не провелась автоматически: {opened.postError ?? "причина не записана"}</div>
+          )}
+          {day.autoPostSince && opened.createdAt >= day.autoPostSince && opened.status === BakerNoteStatus.SENT && !opened.autoPostFailed && (
+            <div className="mb-3 rounded-xl bg-sky-50 px-3 py-2 text-sm text-sky-900">
+              Проведётся автоматически около {timeLabel(new Date(new Date(opened.contentChangedAt).getTime() + day.autoPostDelayMinutes * 60_000).toISOString())}
+            </div>
+          )}
           <table className="w-full text-sm" data-wide="">
             <thead>
               <tr className="border-b border-border text-left text-xs text-muted">
@@ -445,16 +456,40 @@ export function BakerDayTab({ printOnly = false }: { printOnly?: boolean } = {})
               </tr>
             </tbody>
           </table>
+          {!printOnly && opened.documents.length > 1 && (
+            <div className="mt-4 text-sm">
+              <p className="mb-1 font-medium text-foreground">Документы</p>
+              <ul className="space-y-0.5 text-muted">
+                {opened.documents.map((d, i) => (
+                  <li key={i}>
+                    {timeLabel(d.at)} · {d.label}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {!printOnly && opened.revisions.length > 0 && (
+            <div className="mt-4 text-sm">
+              <p className="mb-1 font-medium text-foreground">История изменений</p>
+              <ul className="space-y-1 text-muted">
+                {opened.revisions.map((r, i) => (
+                  <li key={i}>
+                    {timeLabel(r.at)} · {r.byName}: {r.changes.map((c) => `${c.productName} ${formatQuantity(c.before)} → ${formatQuantity(c.after)}`).join("; ")}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div className="mt-5 flex flex-wrap justify-end gap-2">
             {opened.editable && !printOnly && (
               <button type="button" onClick={() => cancel(opened)} className="rounded-xl border border-red-300 px-3.5 py-2 text-sm text-red-700 hover:bg-red-50">
                 Отменить накладную
               </button>
             )}
-            {opened.editable && !printOnly && (
+            {(opened.editable || (day.autoPost && opened.correctable)) && !printOnly && (
               <a href={`/baker?note=${opened.id}`} className={button}>
                 <Pencil className="h-4 w-4" strokeWidth={1.75} />
-                Изменить
+                {opened.editable ? "Изменить" : "Исправить проведённую"}
               </a>
             )}
             <button type="button" onClick={() => printNow([opened], false)} className={button}>
@@ -653,6 +688,55 @@ function TripPanel({ onLaunched }: { onLaunched: () => void }) {
       {trip.waiting && trip.canForce && (
         <button type="button" disabled={busy} onClick={launch} className="rounded-xl border border-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50">
           Запустить рейс сейчас
+        </button>
+      )}
+      {error && <span className="w-full text-red-700">{error}</span>}
+    </div>
+  );
+}
+
+// «Проводить накладные сразу» (owner / admin): a sent note posts itself after the delay, so the books
+// keep up with the shelf during the day; «Провести день» is then left with the fridge.
+function AutoPostSettings({ day, onSaved }: { day: BakerDayDto; onSaved: () => void }) {
+  const [delay, setDelay] = useState(String(day.autoPostDelayMinutes));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => setDelay(String(day.autoPostDelayMinutes)), [day.autoPostDelayMinutes]);
+  const save = async (autoPost: boolean, minutes: number) => {
+    if (!Number.isInteger(minutes) || minutes < 0 || minutes > BAKER_AUTO_POST_MAX_DELAY) {
+      setError(`Задержка — от 0 до ${BAKER_AUTO_POST_MAX_DELAY} минут`);
+      return;
+    }
+    if (autoPost && !day.autoPost && !window.confirm("Включить? Каждая новая накладная пекаря будет проводиться сама: выпуск, перемещение на точку или продажа клиенту в долг — через указанное число минут после отправки.")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.baker.saveSettings({ autoPost, delayMinutes: minutes });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось сохранить");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground">
+      <label className="flex items-center gap-2">
+        <input type="checkbox" checked={day.autoPost} disabled={busy} onChange={(e) => void save(e.target.checked, Number(delay))} className="h-4 w-4 accent-[var(--accent)]" />
+        Проводить накладные пекарей сразу
+      </label>
+      <label className="flex items-center gap-2 text-muted">
+        Задержка, мин
+        <input
+          value={delay}
+          onChange={(e) => setDelay(e.target.value.replace(/\D/g, ""))}
+          inputMode="numeric"
+          className="w-16 rounded-lg border border-border bg-surface px-2 py-1 text-center text-foreground outline-none focus:border-accent"
+        />
+      </label>
+      {Number(delay) !== day.autoPostDelayMinutes && delay !== "" && (
+        <button type="button" disabled={busy} onClick={() => void save(day.autoPost, Number(delay))} className="rounded-lg border border-border px-3 py-1 hover:bg-surface-muted disabled:opacity-50">
+          Сохранить
         </button>
       )}
       {error && <span className="w-full text-red-700">{error}</span>}

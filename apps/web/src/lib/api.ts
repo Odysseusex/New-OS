@@ -1,4 +1,4 @@
-import type { RequisitionIssueReportDto, BakerTripActionResultDto, BakerTripStateDto, StaffPushSubscribeRequestDto
+import type { RequisitionIssueReportDto, BakerAutoPostSettingsDto, BakerTripActionResultDto, BakerTripStateDto, StaffPushSubscribeRequestDto
 } from "@bakery-os/shared";
 import type { CutSourceResultDto, SetCutSourceRequestDto } from "@bakery-os/shared";
 import type { CreateDirectionRequestDto, DirectionDto, UpdateDirectionRequestDto } from "@bakery-os/shared";
@@ -391,6 +391,8 @@ export const api = {
     cancel: (id: string) => request<BakerNoteDto>(`/baker/notes/${id}/cancel`, { method: "POST" }),
     preview: (day: string, sourceLocationId: string) => request<BakerDayPreviewDto>(withQuery("/baker/day/preview", { day, sourceLocationId })),
     post: (dto: BakerDayPostRequestDto) => request<BakerDayPostResultDto>("/baker/day/post", { method: "POST", body: JSON.stringify(dto) }),
+    // «Проводить накладные сразу».
+    saveSettings: (dto: BakerAutoPostSettingsDto) => request<BakerAutoPostSettingsDto>("/baker/settings", { method: "PUT", body: JSON.stringify(dto) }),
     // «Рейс»: bakers press «Рейс готов»; when all have, the new notes print on the door laptop.
     trip: () => request<BakerTripStateDto>("/baker/trip"),
     tripReady: () => request<BakerTripActionResultDto>("/baker/trip/ready", { method: "POST" }),

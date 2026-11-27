@@ -347,6 +347,10 @@ model Organization {
   // Production and the till may take stock below zero (no stock count yet); the first stocktake then
   // books the opening position (Stocktake.opening). Switched by OWNER/ADMIN, off by default.
   allowNegativeStock Boolean @default(false)
+  // «Проводить накладные пекарей сразу»: set = on since that moment (notes created earlier wait for
+  // «Провести день» as before); a delivery note posts itself this many minutes after its last change.
+  bakerAutoPostSince        DateTime?
+  bakerAutoPostDelayMinutes Int       @default(10)
 
   // The purchasing cutover. Null = the old behaviour (a received purchase
   // order creates no payable; supplier invoices may still be created). Once
@@ -883,16 +887,51 @@ model BakerNote {
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
+  // When its lines last changed (the automatic posting waits a delay from here), and when an automatic
+  // attempt failed (no second automatic attempt until the note is changed; «Провести день» still takes it).
+  contentChangedAt DateTime        @default(now())
+  autoPostFailedAt DateTime?
   // The trip («Рейс») it was sent with; set when the trip is launched.
   tripId           String?
   trip             BakerTrip?      @relation(fields: [tripId], references: [id], onDelete: SetNull)
 
-  lines  BakerNoteLine[]
-  prints BakerNotePrint[]
+  lines     BakerNoteLine[]
+  prints    BakerNotePrint[]
+  documents BakerNoteDocument[]
+  revisions BakerNoteRevision[]
 
   @@unique([organizationId, day, number])
   @@index([organizationId, sourceLocationId, day])
   @@map("baker_notes")
+}
+
+// Every document a note became: the first posting and each later correction (a document for the difference).
+model BakerNoteDocument {
+  id         String    @id @default(cuid())
+  noteId     String
+  note       BakerNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  // TRANSFER | TRANSFER_BACK | SALE | SALE_RETURN
+  kind       String
+  documentId String
+  label      String
+  createdAt  DateTime  @default(now())
+
+  @@index([noteId])
+  @@map("baker_note_documents")
+}
+
+// A change of an already posted note: who, when, what was and what became (per product).
+model BakerNoteRevision {
+  id        String    @id @default(cuid())
+  noteId    String
+  note      BakerNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  actorId   String
+  actorName String
+  changes   Json
+  createdAt DateTime  @default(now())
+
+  @@index([noteId])
+  @@map("baker_note_revisions")
 }
 
 model BakerNoteLine {

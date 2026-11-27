@@ -210,6 +210,7 @@ export function BakerApp({ user, onLock }: { user: CurrentUserDto; onLock: () =>
                       {timeLabel(n.createdAt)} · позиций {n.lines.length} · {formatMoney(n.total)}
                     </span>
                     <StatusChip status={n.status} />
+                    {n.autoPostFailed && <span className="shrink-0 rounded-full bg-red-50 px-3 py-1 text-sm font-medium text-red-700">Не провелась</span>}
                   </span>
                   {catalog.seesAll && <span className="block truncate text-sm text-muted">{n.createdByName}</span>}
                 </span>
@@ -303,15 +304,23 @@ function NoteEditor({
   onExpired: () => void;
 }) {
   const fridge = kind === BakerNoteKind.FRIDGE;
-  const readOnly = !!note && !note.editable;
+  // A posted note can still be corrected while «Проводить накладные сразу» is on: the difference becomes
+  // a document of its own, at once.
+  const correcting = !!note && !fridge && catalog.autoPost && note.correctable && note.status === BakerNoteStatus.POSTED;
+  const readOnly = !!note && !note.editable && !correcting;
   const productById = useMemo(() => new Map(catalog.products.map((p) => [p.id, p])), [catalog]);
   const special = recipient ? catalog.prices[bakerRecipientKey(recipient.kind, recipient.id)] : undefined;
-  const priceOf = useCallback((productId: string) => special?.[productId] ?? productById.get(productId)?.price ?? 0, [special, productById]);
+  const listPrice = useCallback((productId: string) => special?.[productId] ?? productById.get(productId)?.price ?? 0, [special, productById]);
+  // A product already on a posted note keeps the price it was posted at.
+  const priceOf = useCallback(
+    (productId: string) => (correcting ? note?.lines.find((l) => l.productId === productId)?.unitPrice : undefined) ?? listPrice(productId),
+    [correcting, note, listPrice],
+  );
 
   // What was typed survives a locked phone or a closed tab until the note is sent.
   const draftKey = note ? null : `baker_draft:${catalog.sourceLocationId}:${kind}:${recipient ? bakerRecipientKey(recipient.kind, recipient.id) : ""}:${catalog.day}`;
   const [lines, setLines] = useState<Line[]>(() => {
-    if (note) return note.lines.filter((l) => readOnly || productById.has(l.productId)).map((l) => ({ productId: l.productId, qty: formatQuantity(l.quantity) }));
+    if (note) return note.lines.filter((l) => readOnly || correcting || productById.has(l.productId)).map((l) => ({ productId: l.productId, qty: formatQuantity(l.quantity) }));
     try {
       const saved = draftKey ? (JSON.parse(localStorage.getItem(draftKey) ?? "[]") as Line[]) : [];
       return Array.isArray(saved) ? saved.filter((l) => productById.has(l.productId)) : [];
@@ -383,6 +392,17 @@ function NoteEditor({
     const empty = lines.filter((l) => parseBakerQuantity(l.qty) === 0);
     if (empty.length > 0 && !window.confirm(`Без количества: ${empty.map((l) => productById.get(l.productId)?.name).join(", ")}. Эти строки не попадут в накладную. Продолжить?`)) return;
     if (fridge && filled.length === 0 && !window.confirm("Холодильник пустой — на производстве ничего не осталось?")) return;
+    if (correcting && note) {
+      const now = new Map(filled.map((l) => [l.productId, parseBakerQuantity(l.qty)]));
+      const changes = Array.from(new Set(note.lines.map((l) => l.productId).concat(Array.from(now.keys()))))
+        .map((id) => ({ name: productById.get(id)?.name ?? note.lines.find((l) => l.productId === id)?.productName ?? "", was: note.lines.find((l) => l.productId === id)?.quantity ?? 0, now: now.get(id) ?? 0 }))
+        .filter((c) => c.was !== c.now);
+      if (changes.length === 0) {
+        setError("Ничего не изменено");
+        return;
+      }
+      if (!window.confirm(`Накладная уже проведена. Изменение сразу попадёт в учёт:\n${changes.map((c) => `${c.name}: ${formatQuantity(c.was)} → ${formatQuantity(c.now)}`).join("\n")}\nПродолжить?`)) return;
+    }
     setBusy(true);
     setError(null);
     const dto = {
@@ -425,6 +445,18 @@ function NoteEditor({
         {readOnly && note && (
           <div className="mb-4 rounded-2xl bg-green-50 px-4 py-3 text-base text-green-800">
             {note.status === BakerNoteStatus.POSTED ? `Проведена${note.document ? ` · ${note.document}` : ""}. Исправить её уже нельзя.` : BAKER_NOTE_STATUS_LABELS_RU[note.status]}
+          </div>
+        )}
+        {correcting && note && (
+          <div className="mb-4 rounded-2xl bg-amber-50 px-4 py-3 text-base text-amber-900">
+            Накладная проведена{note.document ? ` · ${note.document}` : ""}. Если изменить количество, разница сразу попадёт в учёт отдельным документом.
+          </div>
+        )}
+        {note && !fridge && note.status === BakerNoteStatus.SENT && catalog.autoPostSince && note.createdAt >= catalog.autoPostSince && (
+          <div className={clsx("mb-4 rounded-2xl px-4 py-3 text-base", note.autoPostFailed ? "bg-red-50 text-red-700" : "bg-sky-50 text-sky-900")}>
+            {note.autoPostFailed
+              ? `Не провелась: ${note.postError ?? "причина не записана"}. Сообщите оператору — она проведётся вечером или после исправления.`
+              : `Проведётся сама около ${timeLabel(new Date(new Date(note.contentChangedAt).getTime() + catalog.autoPostDelayMinutes * 60_000).toISOString())}. До этого её можно исправить.`}
           </div>
         )}
         {!readOnly && (

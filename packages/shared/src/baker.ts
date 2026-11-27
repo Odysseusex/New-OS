@@ -116,7 +116,39 @@ export interface BakerNoteDto {
   changedSincePrint: boolean;
   // «Рейс N» it went with (null = not sent with a trip yet).
   tripNumber: number | null;
+  // When its lines last changed: the automatic posting waits its delay from here.
+  contentChangedAt: string;
+  // The automatic posting tried and could not (see postError); «Провести день» will take it.
+  autoPostFailed: boolean;
+  // A posted delivery note the asking user may still correct (a document for the difference is made).
+  // Only meaningful while «Проводить накладные сразу» is on (BakerDayDto / BakerCatalogDto.autoPost).
+  correctable: boolean;
+  // Every document it became, oldest first, and the corrections made after posting.
+  documents: BakerNoteDocumentDto[];
+  revisions: BakerNoteRevisionDto[];
 }
+
+export type BakerNoteDocumentKind = "TRANSFER" | "TRANSFER_BACK" | "SALE" | "SALE_RETURN";
+
+export interface BakerNoteDocumentDto {
+  kind: BakerNoteDocumentKind;
+  label: string;
+  at: string;
+}
+
+export interface BakerNoteRevisionDto {
+  at: string;
+  byName: string;
+  changes: { productId: string; productName: string; before: number; after: number }[];
+}
+
+// «Проводить накладные пекарей сразу».
+export interface BakerAutoPostSettingsDto {
+  autoPost: boolean;
+  delayMinutes: number;
+}
+export const BAKER_AUTO_POST_MAX_DELAY = 180;
+export const BAKER_AUTO_POST_ROLES: Role[] = [Role.OWNER, Role.ADMIN];
 
 export interface MarkNotesPrintedRequestDto {
   noteIds: string[];
@@ -148,6 +180,11 @@ export interface BakerCatalogDto {
   seesAll: boolean;
   // Participants who pay suppliers with their own money («Как оплатили» on a supplier intake).
   personalAccounts: { id: string; name: string }[];
+  // «Проводить накладные сразу»: a sent note posts itself after the delay; a posted one can be corrected.
+  autoPost: boolean;
+  autoPostDelayMinutes: number;
+  // Notes created before this moment wait for «Провести день» as before (null = off).
+  autoPostSince: string | null;
 }
 
 export interface BakerDayDto {
@@ -159,6 +196,10 @@ export interface BakerDayDto {
   fridge: BakerNoteDto | null;
   // Other days that still have notes nobody posted (for whoever posts the day).
   pendingDays: { day: string; count: number }[];
+  autoPost: boolean;
+  autoPostDelayMinutes: number;
+  // Notes created before this moment wait for «Провести день» as before (null = off).
+  autoPostSince: string | null;
 }
 
 export interface BakerDayOutputLineDto {

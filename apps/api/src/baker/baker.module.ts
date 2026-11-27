@@ -9,10 +9,11 @@ import { SupplierIntakesService } from "./supplier-intakes.service";
 import { PrintJobsService } from "./print-jobs.service";
 import { BakerTripsService } from "./baker-trips.service";
 import { StaffPushService } from "./staff-push.service";
+import { BakerAutoPostService } from "./baker-auto-post.service";
 
 @Module({
   imports: [ProductionModule, SalesModule, TelegramModule],
   controllers: [BakerController],
-  providers: [BakerNotesService, BakerDayService, SupplierIntakesService, PrintJobsService, BakerTripsService, StaffPushService],
+  providers: [BakerNotesService, BakerDayService, SupplierIntakesService, PrintJobsService, BakerTripsService, StaffPushService, BakerAutoPostService],
 })
 export class BakerModule {}

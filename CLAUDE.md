@@ -1081,6 +1081,41 @@ The two bakers used to write накладные on paper and photograph them; in
   (`recoverStuck`). One posting at a time per workshop (in-memory — the API is one process). A user tied to a point must
   be tied to the workshop (the sale and the transfer are made as that user).
 
+## «Проводить накладные пекарей сразу» — notes post themselves during the day (built 27.11.2026)
+
+Why (26.11.2026): halves of a cake delivered at 09:52 were not on the shop's books at 12:05 (notes were posted at
+night), so the sale of a half «cut» a whole cake on paper (`makeForSale`); the evening count showed a false shortage of
+halves and surplus of wholes, and cashiers were blamed. The cut-on-sale is NOT switched off (owner) — the books were
+made to keep up. `baker/baker-auto-post.service.ts`, migration `20261216120000_baker_auto_post` (additive), spec
+`baker/baker-auto-post.spec.ts` (ledger on, diagnostics clean). OFF by default; Производство → «Накладные пекарей» has
+the switch + «Задержка, мин» (OWNER/ADMIN, `GET|PUT /baker/settings`, audited `bakerSettings.update`).
+- `Organization.bakerAutoPostSince` (null = off; notes CREATED before it wait for «Провести день» as before) +
+  `bakerAutoPostDelayMinutes` (10). A SENT delivery note is due when `BakerNote.contentChangedAt` (set on create and on
+  every edit — NOT `updatedAt`, which trips and errors also move) is older than the delay.
+- Posting one note = what «Провести день» does for it: `releaseShortage` (per product `bakerDayOutput(qty, 0, workshop
+  stock)`, through `ProductionService.release`; a short product without a техкарта is a refusal), then
+  `BakerDayService.postNote(actor, note, auto)` (same SENT → POSTING claim, plus «the note did not change since read»;
+  the same per-workshop lock as «Провести день» via `tryLock`). So the night's formula needs no change: SENT notes are
+  none, выпуск = холодильник − what the workshop holds.
+- **Made as the organization's first active OWNER (else ADMIN)** — a baker may not make transfers or sales; the
+  transfer's note ends «· автоматически (<пекарь>)», `postedByName` = «Автоматически», audit `bakerNote.autoPost` names
+  the baker. A sale has no note field: the link is the note's document list.
+- A refusal leaves the note SENT with `postError` + `autoPostFailedAt` (no second automatic attempt until the baker
+  edits it; «Провести день» still takes it), the live notification becomes a WARNING «…не провелась: причина», and a
+  Telegram line goes to linked BAKER_DAY_ROLES. Other notes go on.
+- Runs: a 60 s timer (not under jest), at boot, and `kick()` on `/baker/day`, `/baker/trip`, `/baker/print-jobs/pending`
+  (the door laptop asks every 4 s, so the free server stays awake while it is on).
+- **Correcting a POSTED note** (only while the switch is on; the baker their own, day roles any; `PUT /baker/notes/:id`
+  → `BakerAutoPostService.save`): the posted document is never edited — the difference becomes documents, each applied
+  to the note's lines at once (`apply`), so the note always says what is really posted, also after a refused step.
+  To a point: «−» a transfer point → workshop, «+» release of the shortage + a transfer. To a customer: «−» a
+  `SaleReturn` on the note's own sales, newest first (restocked, the debt is cancelled first), «+» another sale on
+  account at the price the line was posted at. `BakerNoteDocument` (every document of a note) and `BakerNoteRevision`
+  (who, when, было → стало) — no `organizationId`, they cascade with the note. POSTED → POSTING → POSTED guards it;
+  `recoverStuck` puts a stuck correction back to POSTED. Audited `bakerNote.correct`. Cancelling a posted note is still
+  refused (correct it to what is true instead; at least one line must stay).
+- The first live run was not watched from here: check the first day after the owner switches it on.
+
 ## «Выдача накладных» — the door laptop (built 25.11.2026)
 
 The laptop at Тәуелсіздік (next to the till's monoblock) has a printer; drivers collect goods and накладные there.

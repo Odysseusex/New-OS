@@ -6,8 +6,10 @@ import {
   BAKER_PRINT_ROLES,
   BakerCatalogDto,
   BakerDayDto,
+  BakerNoteDocumentKind,
   BakerNoteDto,
   BakerNoteKind,
+  BakerNoteRevisionDto,
   BakerNoteStatus,
   BakerRecipientDto,
   ORG_WIDE_ROLES,
@@ -36,6 +38,8 @@ export const BAKER_NOTE_INCLUDE = {
   prints: { orderBy: { printedAt: "desc" as const }, take: 1, select: { printedAt: true, printedByName: true, contentKey: true } },
   _count: { select: { prints: true } },
   trip: { select: { number: true } },
+  documents: { orderBy: { createdAt: "asc" as const } },
+  revisions: { orderBy: { createdAt: "asc" as const } },
 } satisfies Prisma.BakerNoteInclude;
 export type BakerNoteRow = Prisma.BakerNoteGetPayload<{ include: typeof BAKER_NOTE_INCLUDE }>;
 
@@ -159,6 +163,7 @@ export class BakerNotesService {
       products: products.map((p) => ({ id: p.id, name: p.name, sku: p.sku, unit: p.unit as Unit, price: p.price.toNumber() })),
       prices,
       seesAll: this.seesAll(user),
+      ...(await this.autoPostSettings(user.organizationId).then(({ autoPost, autoPostDelayMinutes, since }) => ({ autoPost, autoPostDelayMinutes, autoPostSince: since?.toISOString() ?? null }))),
       personalAccounts: (
         await this.prisma.cashAccount.findMany({
           where: { organizationId: user.organizationId, type: "PERSONAL", isActive: true },
@@ -187,7 +192,7 @@ export class BakerNotesService {
     return special;
   }
 
-  private async cleanLines(db: Db, organizationId: string, dto: SaveBakerNoteRequestDto, target: { customerId: string | null; locationId: string | null }) {
+  async cleanLines(db: Db, organizationId: string, dto: SaveBakerNoteRequestDto, target: { customerId: string | null; locationId: string | null }) {
     const lines = (dto.lines ?? []).filter((l) => l.quantity > 0);
     const fridge = dto.kind === BakerNoteKind.FRIDGE;
     if (!fridge && lines.length === 0) throw new BadRequestException("Добавьте хотя бы один товар");
@@ -287,7 +292,7 @@ export class BakerNotesService {
       // Only a note nobody has started posting may change.
       const claimed = await tx.bakerNote.updateMany({
         where: { id, status: PrismaStatus.SENT },
-        data: { total, comment: dto.comment?.trim().slice(0, 300) || null, postError: null },
+        data: { total, comment: dto.comment?.trim().slice(0, 300) || null, postError: null, contentChangedAt: new Date(), autoPostFailedAt: null },
       });
       if (claimed.count !== 1) throw new BadRequestException("Накладная уже проведена — исправить её нельзя");
       await tx.bakerNoteLine.deleteMany({ where: { noteId: id } });
@@ -362,6 +367,7 @@ export class BakerNotesService {
       notes: rows.filter((r) => r.kind === PrismaKind.DELIVERY).map((r) => this.toDto(r, user)),
       fridge: fridge ? this.toDto(fridge, user) : null,
       pendingDays: pending.map((p) => ({ day: debtDateKey(p.day), count: p._count._all })),
+      ...(await this.autoPostSettings(user.organizationId).then(({ autoPost, autoPostDelayMinutes, since }) => ({ autoPost, autoPostDelayMinutes, autoPostSince: since?.toISOString() ?? null }))),
     };
   }
 
@@ -389,7 +395,7 @@ export class BakerNotesService {
     return { note: row ? this.toDto(row, user) : null };
   }
 
-  private async load(user: AuthenticatedUser, id: string): Promise<BakerNoteRow> {
+  async load(user: AuthenticatedUser, id: string): Promise<BakerNoteRow> {
     const row = await this.prisma.bakerNote.findFirst({ where: { id, organizationId: user.organizationId }, include: BAKER_NOTE_INCLUDE });
     if (!row) throw new NotFoundException("Накладная не найдена");
     if (this.pickedByPoint(user) && user.locationId !== row.sourceLocationId) throw new ForbiddenException("Нет доступа к другой точке");
@@ -400,6 +406,19 @@ export class BakerNotesService {
   private canEdit(user: AuthenticatedUser, row: { status: string; kind: string; createdById: string }): boolean {
     if (row.status !== PrismaStatus.SENT || user.role === Role.DISPATCHER) return false;
     return this.seesAll(user) || row.kind === PrismaKind.FRIDGE || row.createdById === user.id;
+  }
+
+  // A posted delivery note can still be corrected (a document for the difference) by whoever could edit it.
+  canCorrect(user: AuthenticatedUser, row: { status: string; kind: string; createdById: string; saleId: string | null; requisitionId: string | null }): boolean {
+    if (row.status !== PrismaStatus.POSTED || row.kind !== PrismaKind.DELIVERY || user.role === Role.DISPATCHER) return false;
+    if (!row.saleId && !row.requisitionId) return false;
+    return this.seesAll(user) || row.createdById === user.id;
+  }
+
+  // «Проводить накладные сразу» of the organization.
+  async autoPostSettings(organizationId: string): Promise<{ autoPost: boolean; autoPostDelayMinutes: number; since: Date | null }> {
+    const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { bakerAutoPostSince: true, bakerAutoPostDelayMinutes: true } });
+    return { autoPost: !!org?.bakerAutoPostSince, autoPostDelayMinutes: org?.bakerAutoPostDelayMinutes ?? 10, since: org?.bakerAutoPostSince ?? null };
   }
 
   private assertEditable(user: AuthenticatedUser, row: BakerNoteRow): void {
@@ -447,6 +466,11 @@ export class BakerNotesService {
       printCount: row._count.prints,
       changedSincePrint: row.prints.length > 0 && row.prints[0].contentKey !== noteContentKey(row),
       tripNumber: row.trip?.number ?? null,
+      contentChangedAt: row.contentChangedAt.toISOString(),
+      autoPostFailed: row.autoPostFailedAt !== null && row.status === PrismaStatus.SENT,
+      correctable: this.canCorrect(user, row),
+      documents: row.documents.map((d) => ({ kind: d.kind as BakerNoteDocumentKind, label: d.label, at: d.createdAt.toISOString() })),
+      revisions: row.revisions.map((r) => ({ at: r.createdAt.toISOString(), byName: r.actorName, changes: r.changes as unknown as BakerNoteRevisionDto["changes"] })),
     };
   }
 

@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Put, Query, Res, UseGuards } from "@nestjs/common";
 import type { Response } from "express";
-import { BAKER_DAY_ROLES, BAKER_NOTE_ROLES, BAKER_PRINT_ROLES, BAKER_TRIP_FORCE_ROLES, Role } from "@bakery-os/shared";
+import { BAKER_DAY_ROLES, BAKER_NOTE_ROLES, BAKER_PRINT_ROLES, BAKER_AUTO_POST_ROLES, BAKER_TRIP_FORCE_ROLES, Role } from "@bakery-os/shared";
 
 // Reading a day / one note: the bakers and the door laptop («Выдача накладных»).
 const NOTE_READ_ROLES = [...new Set([...BAKER_NOTE_ROLES, ...BAKER_PRINT_ROLES])];
@@ -11,11 +11,12 @@ import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { BakerNotesService } from "./baker-notes.service";
 import { BakerDayService } from "./baker-day.service";
-import { AddIntakePhotoInput, BakerDayPostInput, CreatePrintJobInput, MarkNotesPrintedInput, CreateSupplierIntakeInput, ResolveSupplierIntakeInput, SaveBakerNoteInput, StaffPushSubscribeInput, StaffPushUnsubscribeInput } from "./baker.dto";
+import { AddIntakePhotoInput, BakerDayPostInput, CreatePrintJobInput, MarkNotesPrintedInput, CreateSupplierIntakeInput, ResolveSupplierIntakeInput, SaveBakerNoteInput, BakerAutoPostSettingsInput, StaffPushSubscribeInput, StaffPushUnsubscribeInput } from "./baker.dto";
 import { SupplierIntakesService } from "./supplier-intakes.service";
 import { PrintJobsService } from "./print-jobs.service";
 import { BakerTripsService } from "./baker-trips.service";
 import { isPushEndpoint, StaffPushService } from "./staff-push.service";
+import { BakerAutoPostService } from "./baker-auto-post.service";
 
 // «Накладные пекарей»: the phone screen (/baker) and the operator's «Накладные за день».
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -29,11 +30,26 @@ export class BakerController {
     private printJobs: PrintJobsService,
     private trips: BakerTripsService,
     private staffPush: StaffPushService,
+    private auto: BakerAutoPostService,
   ) {}
+
+  // ── «Проводить накладные сразу» ──
+  @Get("settings")
+  @Roles(...BAKER_DAY_ROLES)
+  settings(@CurrentUser() user: AuthenticatedUser) {
+    return this.auto.settings(user);
+  }
+
+  @Put("settings")
+  @Roles(...BAKER_AUTO_POST_ROLES)
+  saveSettings(@CurrentUser() user: AuthenticatedUser, @Body() dto: BakerAutoPostSettingsInput) {
+    return this.auto.saveSettings(user, dto);
+  }
 
   // ── «Рейс» ── (bakers press «Рейс готов»; the day roles watch and may launch without waiting)
   @Get("trip")
   trip(@CurrentUser() user: AuthenticatedUser) {
+    this.auto.kick();
     return this.trips.state(user);
   }
 
@@ -87,6 +103,7 @@ export class BakerController {
   @Get("print-jobs/pending")
   @Roles(Role.DISPATCHER)
   pendingPrintJobs(@CurrentUser() user: AuthenticatedUser) {
+    this.auto.kick();
     return this.printJobs.pending(user);
   }
 
@@ -157,6 +174,7 @@ export class BakerController {
   @Get("day")
   @Roles(...NOTE_READ_ROLES)
   day(@CurrentUser() user: AuthenticatedUser, @Query("day") day?: string, @Query("sourceLocationId") sourceLocationId?: string) {
+    this.auto.kick();
     return this.notes.day(user, day, sourceLocationId);
   }
 
@@ -202,7 +220,8 @@ export class BakerController {
 
   @Put("notes/:id")
   update(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: SaveBakerNoteInput) {
-    return this.notes.update(user, id, dto);
+    // A sent note is edited; a posted one is corrected by documents for the difference.
+    return this.auto.save(user, id, dto);
   }
 
   @Post("notes/:id/cancel")
