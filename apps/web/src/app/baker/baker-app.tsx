@@ -2,13 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
-import { ArrowLeft, Camera, CheckCircle2, ChevronRight, History, LogOut, Plus, RefreshCw, Search, Snowflake, Store, Truck, X } from "lucide-react";
+import { ArrowLeft, Camera, CheckCircle2, ChevronRight, History, LogOut, Plus, RefreshCw, Search, Send, Snowflake, Store, Truck, X } from "lucide-react";
 import type { BakerCatalogDto, BakerDayDto, BakerNoteDto, BakerRecipientDto, CurrentUserDto, SupplierIntakeDto } from "@bakery-os/shared";
 import { BAKER_NOTE_STATUS_LABELS_RU, BakerNoteKind, BakerNoteStatus, UNIT_LABELS_RU, bakerRecipientKey, bakerSearchMatches, parseBakerQuantity } from "@bakery-os/shared";
 import { api, ApiError } from "@/lib/api";
 import { formatMoney, formatQuantity } from "@/lib/format";
 import { IntakeForm, IntakeView, MyIntakes } from "./intake";
 import { TripCard, useTrip } from "./trip";
+import { bakerNoteWaybill } from "@/lib/waybill";
+import { WaybillShareModal } from "@/components/waybill-share-modal";
 
 type View =
   | { name: "home" }
@@ -31,6 +33,10 @@ export function BakerApp({ user, onLock }: { user: CurrentUserDto; onLock: () =>
   const [view, setView] = useState<View>({ name: "home" });
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // «Отправить в WhatsApp»: the note as a picture, through the phone's own «Поделиться» menu (or saved).
+  const [sharing, setSharing] = useState<BakerNoteDto | null>(null);
+  // The note just sent: offered for sharing right in the green message.
+  const [justSaved, setJustSaved] = useState<BakerNoteDto | null>(null);
   const [loading, setLoading] = useState(true);
 
   // A session that ran out (8 hours) ends at the PIN pad, not at an error.
@@ -76,9 +82,10 @@ export function BakerApp({ user, onLock }: { user: CurrentUserDto; onLock: () =>
 
   const trip = useTrip(view.name === "home", fail);
 
-  const home = (text?: string) => {
+  const home = (text?: string, saved?: BakerNoteDto) => {
     setView({ name: "home" });
     setNotice(text ?? null);
+    setJustSaved(saved && saved.kind === BakerNoteKind.DELIVERY ? saved : null);
     load();
   };
 
@@ -112,7 +119,12 @@ export function BakerApp({ user, onLock }: { user: CurrentUserDto; onLock: () =>
     return <IntakeView intake={view.intake} onBack={() => setView({ name: "home" })} />;
   }
   if (view.name === "edit") {
-    return <NoteEditor key={view.note?.id ?? `${view.kind}:${view.recipient?.id ?? ""}`} catalog={catalog} kind={view.kind} recipient={view.recipient} note={view.note} onBack={() => home()} onDone={home} onExpired={onLock} />;
+    return (
+      <>
+        <NoteEditor key={view.note?.id ?? `${view.kind}:${view.recipient?.id ?? ""}`} catalog={catalog} kind={view.kind} recipient={view.recipient} note={view.note} onBack={() => home()} onDone={home} onShare={setSharing} onExpired={onLock} />
+        {sharing && <WaybillShareModal load={async () => [bakerNoteWaybill(sharing)]} onClose={() => setSharing(null)} />}
+      </>
+    );
   }
 
   const fridge = day.fridge;
@@ -149,7 +161,13 @@ export function BakerApp({ user, onLock }: { user: CurrentUserDto; onLock: () =>
       {notice && (
         <div className="mb-4 flex items-center gap-3 rounded-2xl bg-green-50 px-4 py-4 text-base font-medium text-green-800">
           <CheckCircle2 className="h-6 w-6 shrink-0" strokeWidth={1.75} />
-          {notice}
+          <span className="min-w-0 flex-1">{notice}</span>
+          {justSaved && (
+            <button type="button" onClick={() => setSharing(justSaved)} className="flex h-12 shrink-0 items-center gap-2 rounded-xl border border-green-300 bg-white px-3 text-base font-medium text-green-800">
+              <Send className="h-5 w-5" strokeWidth={1.75} />
+              Поделиться
+            </button>
+          )}
         </div>
       )}
       {error && <div className="mb-4 rounded-2xl bg-red-50 px-4 py-4 text-base text-red-700">{error}</div>}
@@ -195,11 +213,11 @@ export function BakerApp({ user, onLock }: { user: CurrentUserDto; onLock: () =>
       ) : (
         <ul className="space-y-2">
           {day.notes.map((n) => (
-            <li key={n.id}>
+            <li key={n.id} className="flex items-stretch gap-2">
               <button
                 type="button"
                 onClick={() => setView({ name: "edit", kind: n.kind, recipient: n.recipient, note: n })}
-                className="flex w-full items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3 text-left active:bg-surface-muted"
+                className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3 text-left active:bg-surface-muted"
               >
                 <span className="min-w-0 flex-1">
                   <span className="block text-lg font-semibold leading-snug text-foreground">
@@ -216,10 +234,19 @@ export function BakerApp({ user, onLock }: { user: CurrentUserDto; onLock: () =>
                 </span>
                 <ChevronRight className="h-6 w-6 shrink-0 text-muted" strokeWidth={1.75} />
               </button>
+              <button
+                type="button"
+                onClick={() => setSharing(n)}
+                aria-label={`Поделиться накладной № ${n.number}`}
+                className="flex w-14 shrink-0 items-center justify-center rounded-2xl border border-border bg-surface text-accent active:bg-surface-muted"
+              >
+                <Send className="h-6 w-6" strokeWidth={1.75} />
+              </button>
             </li>
           ))}
         </ul>
       )}
+      {sharing && <WaybillShareModal load={async () => [bakerNoteWaybill(sharing)]} onClose={() => setSharing(null)} />}
       <MyIntakes intakes={intakes} onOpen={(intake) => setView({ name: "intakeView", intake })} />
     </main>
   );
@@ -293,6 +320,7 @@ function NoteEditor({
   note,
   onBack,
   onDone,
+  onShare,
   onExpired,
 }: {
   catalog: BakerCatalogDto;
@@ -300,7 +328,8 @@ function NoteEditor({
   recipient: BakerRecipientDto | null;
   note: BakerNoteDto | null;
   onBack: () => void;
-  onDone: (text: string) => void;
+  onDone: (text: string, saved?: BakerNoteDto) => void;
+  onShare: (note: BakerNoteDto) => void;
   onExpired: () => void;
 }) {
   const fridge = kind === BakerNoteKind.FRIDGE;
@@ -414,7 +443,7 @@ function NoteEditor({
     try {
       const saved = note ? await api.baker.update(note.id, dto) : await api.baker.create(dto);
       if (draftKey) localStorage.removeItem(draftKey);
-      onDone(fridge ? "Холодильник на завтра сохранён" : `Накладная № ${saved.number} → ${saved.recipient?.name}: ${note ? "исправлена" : "отправлена"}, ${formatMoney(saved.total)}`);
+      onDone(fridge ? "Холодильник на завтра сохранён" : `Накладная № ${saved.number} → ${saved.recipient?.name}: ${note ? "исправлена" : "отправлена"}, ${formatMoney(saved.total)}`, saved);
     } catch (err) {
       failed(err, "Не удалось отправить. Проверьте интернет и нажмите ещё раз — набранное сохранено.");
     } finally {
@@ -560,8 +589,14 @@ function NoteEditor({
           </ul>
         )}
 
+        {note && !fridge && note.status !== BakerNoteStatus.CANCELLED && (
+          <button type="button" onClick={() => onShare(note)} className="mt-6 flex h-14 w-full items-center justify-center gap-2 rounded-2xl border border-accent bg-surface text-lg font-semibold text-accent">
+            <Send className="h-6 w-6" strokeWidth={1.75} />
+            Отправить в WhatsApp
+          </button>
+        )}
         {note && note.editable && !fridge && (
-          <button type="button" onClick={cancelNote} disabled={busy} className="mt-6 h-14 w-full rounded-2xl border border-red-300 text-lg font-medium text-red-700 disabled:opacity-50">
+          <button type="button" onClick={cancelNote} disabled={busy} className="mt-3 h-14 w-full rounded-2xl border border-red-300 text-lg font-medium text-red-700 disabled:opacity-50">
             Отменить накладную
           </button>
         )}

@@ -1211,6 +1211,9 @@ sale's lines carry no unit — `lib/sale-waybills.ts` reads the products' units 
   «Поделиться» (Web Share with every file at once; the press must be fresh — loading a list of sales first would lose the
   browser's permission to open the menu) or «Скачать» (one PNG, several = a zip by `fflate`). The program never posts into
   a chat itself: the person picks WhatsApp and the chat in the system menu.
+- The bakers share their own notes too (owner, 27.11.2026): on `/baker` a send button beside every note of the day,
+  «Отправить в WhatsApp» in an opened note and «Поделиться» in the green message right after sending — the same
+  `WaybillShareModal` (share or download), one note at a time.
 - Where: Производство → «Накладные пекарей» (ticked notes, and in an opened note), the sale card («Печать накладной» for
   any sale, «Отправить в WhatsApp» for a wholesale one), Продажи list — a checkbox in the «Время» cell of wholesale sales →
   «Отправить в WhatsApp» / «Печать». Never on a накладная: cost, gross profit, margin, markup, staff notes.
