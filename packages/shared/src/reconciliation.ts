@@ -230,3 +230,62 @@ export function summarizeReconciliation(input: {
 
 // The tenders the worksheet counts; MIXED only ever describes a whole sale.
 export const RECONCILIATION_TENDERS = [PaymentMethod.CASH, PaymentMethod.CARD, PaymentMethod.TRANSFER] as const;
+
+// ── «Пересчёт» on the cashiers' phones ──
+// A point's shared phone login counts the shelf: several phones at once, amounts ADD UP per product
+// (the shop floor on one phone, the back room on another). It is blind: nothing here says what the books
+// hold. «Отправить» writes the totals into that day's «Сверка дня» and locks the sheet.
+export enum ShelfCountStatus {
+  OPEN = "OPEN",
+  SENT = "SENT",
+}
+
+export type ShelfCountEntryKind = "ADD" | "SET";
+
+export interface ShelfCountProductDto {
+  productId: string;
+  name: string;
+  sku: string | null;
+  unit: Unit;
+  categoryName: string | null;
+}
+
+export interface ShelfCountEntryDto {
+  clientId: string;
+  productId: string;
+  // What it added to the product's total (a correction is stored as the difference).
+  quantity: number;
+  kind: ShelfCountEntryKind;
+  deviceId: string;
+  at: string;
+}
+
+export interface ShelfCountDto {
+  locationId: string;
+  locationName: string;
+  date: string;
+  status: ShelfCountStatus;
+  sentAt: string | null;
+  // «Сверка дня» of this day was already applied to stock: counting is closed.
+  applied: boolean;
+  products: ShelfCountProductDto[];
+  entries: ShelfCountEntryDto[];
+}
+
+export interface AddShelfCountEntryRequestDto {
+  clientId: string;
+  deviceId: string;
+  productId: string;
+  kind: ShelfCountEntryKind;
+  // ADD: the amount to add; SET: the right total for the product.
+  quantity: number;
+}
+
+// For «Сверка дня»: what the phones have done so far.
+export interface ShelfCountStatusDto {
+  status: ShelfCountStatus | null;
+  sentAt: string | null;
+  countedProducts: number;
+  devices: number;
+  lastEntryAt: string | null;
+}

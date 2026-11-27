@@ -67,8 +67,11 @@ export class AuthService {
     return new JwtService({ secret: `${process.env.JWT_SECRET ?? "dev-secret-change-me"}:baker-device` });
   }
 
-  private signLogin(user: { id: string; organizationId: string; passwordHash: string }): Promise<string> {
-    return this.jwtService.signAsync({ sub: user.id, organizationId: user.organizationId, pv: this.passwordStamp(user.passwordHash) } satisfies JwtPayload);
+  private signLogin(user: { id: string; organizationId: string; passwordHash: string; role?: string }): Promise<string> {
+    const payload = { sub: user.id, organizationId: user.organizationId, pv: this.passwordStamp(user.passwordHash) } satisfies JwtPayload;
+    // The cashiers' phone count: the phone stays signed in for a month (the login opens one blind screen
+    // and nothing else; changing its password ends every phone's session at once).
+    return user.role === Role.SHELF_COUNTER ? this.jwtService.signAsync(payload, { expiresIn: "30d" }) : this.jwtService.signAsync(payload);
   }
 
   private passwordStamp(passwordHash: string): string {

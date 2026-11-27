@@ -25,6 +25,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const isClientManager = user?.role === Role.CLIENT_MANAGER;
   // «Выдача накладных» has one screen of its own, outside this layout.
   const isDispatcher = user?.role === Role.DISPATCHER;
+  // «Пересчёт остатков»: the cashiers' phone screen, also outside this layout.
+  const isCounter = user?.role === Role.SHELF_COUNTER;
   // A page hidden from this role's menu (e.g. «Отчёты» for an operator) is not
   // reachable by typing its address either.
   const isBlocked = !!user && !isCashier && isBlockedRoute(pathname, user.role);
@@ -45,7 +47,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (isDispatcher) router.replace("/dispatch");
-  }, [isDispatcher, router]);
+    if (isCounter) router.replace("/count");
+  }, [isDispatcher, isCounter, router]);
 
   useEffect(() => {
     if (isCashier && pathname !== CASHIER_ONLY_ROUTE) {
@@ -57,7 +60,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     if (isBlocked && user) router.replace(homeFor(user.role));
   }, [isBlocked, user, router]);
 
-  if (isLoading || !user || isDispatcher || (isCashier && pathname !== CASHIER_ONLY_ROUTE) || isBlocked) {
+  if (isLoading || !user || isDispatcher || isCounter || (isCashier && pathname !== CASHIER_ONLY_ROUTE) || isBlocked) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <p className="text-sm text-muted">Загрузка…</p>

@@ -1,4 +1,4 @@
-import type { RequisitionIssueReportDto, BakerAutoPostSettingsDto, BakerTripActionResultDto, BakerTripStateDto, StaffPushSubscribeRequestDto
+import type { RequisitionIssueReportDto, BakerAutoPostSettingsDto, AddShelfCountEntryRequestDto, ShelfCountDto, ShelfCountStatusDto, BakerTripActionResultDto, BakerTripStateDto, StaffPushSubscribeRequestDto
 } from "@bakery-os/shared";
 import type { CutSourceResultDto, SetCutSourceRequestDto } from "@bakery-os/shared";
 import type { CreateDirectionRequestDto, DirectionDto, UpdateDirectionRequestDto } from "@bakery-os/shared";
@@ -645,7 +645,16 @@ export const api = {
     voids: (productId?: string) => request<StockVoidDto[]>(withQuery("/inventory/voids", { productId })),
   },
 
+  // «Пересчёт» on the cashiers' phones.
+  count: {
+    get: () => request<ShelfCountDto>("/count"),
+    addEntry: (dto: AddShelfCountEntryRequestDto) => request<{ saved: true }>("/count/entries", { method: "POST", body: JSON.stringify(dto) }),
+    send: () => request<ShelfCountDto>("/count/send", { method: "POST" }),
+  },
   reconciliation: {
+    phoneCount: (locationId: string, date: string) => request<ShelfCountStatusDto>(withQuery("/reconciliation/phone-count", { locationId, date })),
+    reopenPhoneCount: (locationId: string, date: string) =>
+      request<ShelfCountStatusDto>("/reconciliation/phone-count/reopen", { method: "POST", body: JSON.stringify({ locationId, date }) }),
     get: (locationId: string | undefined, date: string) =>
       request<DailyReconciliationDto>(withQuery("/reconciliation", { locationId, date })),
     save: (dto: SaveDailyReconciliationRequestDto) =>

@@ -76,7 +76,7 @@ export const AUDIT_ACTION_GROUPS = {
   bakerNotes: ["bakerNote.create", "bakerNote.update", "bakerNote.cancel", "bakerDay.post", "bakerNote.autoPost", "bakerNote.correct", "bakerSettings.update", "bakerTrip.launch", "supplierIntake.send", "supplierIntake.resolve"],
   stocktake: ["stocktake.create", "stocktake.submit", "stocktake.reopen", "stocktake.approve", "stocktake.cancel"],
   stockVoid: ["stockVoid.create"],
-  dailyReconciliation: ["dailyReconciliation.save", "dailyReconciliation.apply"],
+  dailyReconciliation: ["dailyReconciliation.save", "shelfCount.reopen", "dailyReconciliation.apply"],
   dataExport: ["dataExport.download"],
   cleanStart: ["organization.cleanStart"],
   loyalty: ["loyaltyMember.create", "loyaltyMember.update", "loyaltyMember.consent", "loyaltyMember.merge", "loyaltyMember.import"],

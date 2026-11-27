@@ -4,8 +4,8 @@ import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from "r
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import clsx from "clsx";
-import { ArrowLeft, Printer, Search } from "lucide-react";
-import type { DailyReconciliationDto, LocationDto, ReconciliationHistoryItemDto } from "@bakery-os/shared";
+import { ArrowLeft, Printer, Search, Smartphone } from "lucide-react";
+import type { DailyReconciliationDto, LocationDto, ReconciliationHistoryItemDto, ShelfCountStatusDto } from "@bakery-os/shared";
 import {
   CASH_MOVEMENT_TYPE_LABELS_RU,
   INVENTORY_MANAGE_ROLES,
@@ -86,6 +86,8 @@ function ReconciliationScreen() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [onlyDifferences, setOnlyDifferences] = useState(false);
+  // Bumped when the cashiers' phones send their count: the day is read again.
+  const [refresh, setRefresh] = useState(0);
   const [trailFor, setTrailFor] = useState<{ productId: string; productName: string } | null>(null);
 
   // A user tied to one location reconciles that location; the server enforces it too.
@@ -142,7 +144,7 @@ function ReconciliationScreen() {
     return () => {
       cancelled = true;
     };
-  }, [allowed, effectiveLocationId, date, fill]);
+  }, [allowed, effectiveLocationId, date, fill, refresh]);
 
   useEffect(() => {
     loadHistory();
@@ -306,6 +308,9 @@ function ReconciliationScreen() {
             </span>
           )}
         </p>
+      )}
+      {day && effectiveLocationId && (
+        <PhoneCount locationId={effectiveLocationId} date={date} isDirty={isDirty} applied={!!day.appliedAt} onSent={() => setRefresh((n) => n + 1)} />
       )}
       {saveError && <div className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{saveError}</div>}
       {loadError && <div className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{loadError}</div>}
@@ -590,6 +595,73 @@ function DifferenceRow({ value }: { value: number | null }) {
     <div className="flex items-center justify-between border-t border-border py-2 text-sm font-semibold">
       <span className="text-foreground">Разница</span>
       <span className={signTone(value)}>{value === null ? "—" : signedMoney(value)}</span>
+    </div>
+  );
+}
+
+// «Пересчёт» on the cashiers' phones: what they have typed so far for this point and day. Once they send
+// it, the counts are already in this worksheet (the day is read again, unless something here is unsaved).
+function PhoneCount({ locationId, date, isDirty, applied, onSent }: { locationId: string; date: string; isDirty: boolean; applied: boolean; onSent: () => void }) {
+  const [status, setStatus] = useState<ShelfCountStatusDto | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [seenSentAt, setSeenSentAt] = useState<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    let alive = true;
+    setSeenSentAt(undefined);
+    const tick = () =>
+      api.reconciliation
+        .phoneCount(locationId, date)
+        .then((s) => alive && setStatus(s))
+        .catch(() => undefined);
+    void tick();
+    const timer = window.setInterval(tick, 20_000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [locationId, date]);
+
+  // The first answer is what the page already shows; a later change of «sent» brings new counts.
+  useEffect(() => {
+    if (!status) return;
+    if (seenSentAt === undefined) setSeenSentAt(status.sentAt);
+    else if (status.sentAt !== seenSentAt && !isDirty) {
+      setSeenSentAt(status.sentAt);
+      if (status.sentAt) onSent();
+    }
+  }, [status, seenSentAt, isDirty, onSent]);
+
+  if (!status || status.status === null) return null;
+  const sent = status.status === "SENT";
+  const reopen = async () => {
+    if (!window.confirm("Вернуть пересчёт кассирам? Они смогут досчитать и отправить заново — их новые цифры заменят присланные.")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setStatus(await api.reconciliation.reopenPhoneCount(locationId, date));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось вернуть на пересчёт");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className={clsx("mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl px-4 py-3 text-sm", sent ? "bg-green-50 text-green-800" : "bg-sky-50 text-sky-900")}>
+      <Smartphone className="h-5 w-5 shrink-0" strokeWidth={1.75} />
+      <span className="min-w-0 flex-1">
+        {sent
+          ? `Пересчёт с телефонов отправлен ${status.sentAt ? formatDateTime(status.sentAt) : ""}: товаров ${status.countedProducts}, телефонов ${status.devices}`
+          : `Кассиры считают с телефонов: посчитано товаров ${status.countedProducts}, телефонов ${status.devices}${status.lastEntryAt ? `, последняя запись ${formatDateTime(status.lastEntryAt)}` : ""}. Цифры появятся здесь, когда они нажмут «Отправить».`}
+        {sent && isDirty && status.sentAt !== seenSentAt ? " Сохраните или обновите страницу, чтобы увидеть новые цифры." : ""}
+      </span>
+      {sent && !applied && date === zonedDateKey() && (
+        <button type="button" disabled={busy} onClick={reopen} className="rounded-xl border border-green-300 bg-white px-3 py-1.5 text-sm font-medium text-green-800 hover:bg-green-100 disabled:opacity-50">
+          Вернуть на пересчёт
+        </button>
+      )}
+      {error && <span className="w-full text-red-700">{error}</span>}
     </div>
   );
 }

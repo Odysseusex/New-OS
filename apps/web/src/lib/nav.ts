@@ -195,6 +195,8 @@ export function homeFor(role: Role): string {
   if (role === Role.CLIENT_MANAGER) return "/crm";
   // The door laptop: only the day's bakers' notes, to print.
   if (role === Role.DISPATCHER) return "/dispatch";
+  // The cashiers' phone count has one screen of its own.
+  if (role === Role.SHELF_COUNTER) return "/count";
   // A baker's whole job in the app is the delivery notes on the phone.
   if (role === Role.PRODUCTION_STAFF) return "/baker";
   return REVENUE_VIEW_ROLES.includes(role) ? "/dashboard" : "/sales";

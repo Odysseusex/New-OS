@@ -47,6 +47,8 @@ export const CLEAN_START_DELETES: string[] = [
   byOrg("material_requisitions"),
   byParent("daily_reconciliation_lines", "reconciliationId", "daily_reconciliations"),
   byOrg("daily_reconciliations"),
+  // The phone counts behind those worksheets (their entries go with them).
+  byOrg("shelf_counts"),
   byOrg("till_shifts"),
   `DELETE FROM "route_stop_items" WHERE "routeStopId" IN (SELECT s.id FROM "route_stops" s JOIN "delivery_routes" r ON r.id = s."routeId" WHERE r."organizationId" = $1)`,
   byParent("route_stops", "routeId", "delivery_routes"),
@@ -85,7 +87,7 @@ export const CLEAN_START_REMOVED_TABLES = [
   "stock_void_lines", "stock_voids", "stock_movements", "stocktakes", "bank_statement_lines", "stock_levels", "fiscal_receipts",
   "customer_advance_applications", "cash_movements", "bank_statements", "purchase_order_payments", "supplier_returns",
   "purchase_order_revisions", "purchase_orders", "invoices", "consignment_payments", "sale_payments", "sale_returns", "sales",
-  "depreciation_entries", "fixed_assets", "expenses", "production_batches", "material_requisitions", "daily_reconciliations",
+  "depreciation_entries", "fixed_assets", "expenses", "production_batches", "material_requisitions", "daily_reconciliations", "shelf_counts",
   "till_shifts", "delivery_routes", "shifts", "time_entries", "journal_lines", "journal_entries", "accounting_events",
   "cost_corrections", "period_snapshots", "financial_periods", "notification_dismissals", "baker_note_prints", "baker_notes", "baker_trips", "supplier_intakes",
   "print_jobs",

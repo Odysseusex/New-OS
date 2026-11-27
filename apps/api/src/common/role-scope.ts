@@ -8,6 +8,8 @@ export const ROLE_API_SCOPE: Partial<Record<Role, string[]>> = {
   [Role.CLIENT_MANAGER]: ["/auth", "/crm", "/loyalty"],
   // The door laptop: the day's bakers' notes only (reading; every write route there is gated to other roles).
   [Role.DISPATCHER]: ["/auth", "/baker/day", "/baker/notes", "/baker/print-jobs"],
+  // The cashiers' phone count: its own screen only.
+  [Role.SHELF_COUNTER]: ["/auth", "/count"],
 };
 
 // The till's own staff (cashier, senior cashier) are kept on /pos by the screen, but a login token
@@ -44,7 +46,7 @@ export const TILL_REFUSED_PREFIXES = [
 
 // Roles kept out of the staff Telegram bot, which reads stock, sales and
 // finance through the services directly.
-export const STAFF_BOT_EXCLUDED_ROLES: Role[] = [Role.CLIENT_MANAGER, Role.ASSISTANT, Role.DISPATCHER];
+export const STAFF_BOT_EXCLUDED_ROLES: Role[] = [Role.CLIENT_MANAGER, Role.ASSISTANT, Role.DISPATCHER, Role.SHELF_COUNTER];
 
 // «Помощник» (the owner's AI assistant) does documents and reads reports. What cannot be undone, and
 // everything about people, access and settings, is refused HERE as well as by each route's own roles —

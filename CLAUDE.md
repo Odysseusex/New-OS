@@ -1574,6 +1574,32 @@ a product twice is refused; an adjustment line that already matches is skipped a
 never read as 0 (that would empty the shelf on a correction). The single-product endpoints are unchanged — the
 Telegram bot still uses them.
 
+## «Пересчёт» — the cashiers count the shelf on their phones (built 28.11.2026)
+
+Owner: the cashiers wrote the count on a printed sheet and it was typed into «Сверка дня» afterwards; finding a product
+in the whole list was slow. Now `/count` (outside `(app)`, own manifest `public/count/`, `app/count/count-app.tsx`):
+search (every word, ё = е), category chips, «Не посчитано: N», a progress line, big rows.
+- **One login per point** (owner's choice): `Role.SHELF_COUNTER` «Пересчёт остатков» (migration
+  `20261217120000_shelf_count`, additive), tied to its point, made in Настройки like any employee; `ROLE_API_SCOPE`
+  keeps it to `/auth` + `/count`; its login token lives 30 days (`AuthService.signLogin`; a password change ends every
+  phone's session); out of revenue views and the staff bot. `homeFor` → `/count`.
+- **Several phones at once, amounts ADD UP**: `ShelfCount` (one per point + Almaty day) + `ShelfCountEntry` (quantity,
+  kind ADD | SET, `deviceId` from the phone's localStorage, unique `clientId`). A product's total = Σ its entries; «Исправить»
+  (SET) is stored as the difference (computed under a row lock), «Нет на полке» = SET 0. A product is counted once it
+  has an entry. The phone keeps what is typed in localStorage (`count_pending`) until the server has it and resends
+  with the same `clientId` — a lost signal loses nothing and doubles nothing; it reads the sheet every 6 s.
+- **Blind**: `GET /count` gives the same product list as «Сверка дня» (`ReconciliationService.get`) with every figure
+  of the books left out (a spec asserts the answer names no opening / closing / price).
+- **«Отправить пересчёт»** (`POST /count/send`): the totals are written into that day's «Сверка дня» through
+  `ReconciliationService.save` (its money figures and products the phones did not touch stay), the sheet becomes SENT
+  and the phones read-only. It moves NO stock — «Применить к остаткам» stays the manager's press. Refused once the day
+  was applied. «Сверка дня» shows what the phones have done (`GET /reconciliation/phone-count`, read again when a send
+  arrives) and «Вернуть на пересчёт» (`POST …/phone-count/reopen`, RECONCILIATION_ROLES, today only, audited
+  `shelfCount.reopen`); the next send replaces the phones' figures.
+- `reconciliation/shelf-count.service.ts` + controller, shared types in `reconciliation.ts`, spec
+  `reconciliation/shelf-count.spec.ts`. Removed by clean start. Not built: names of who counted (a PIN on top, like the
+  bakers), counting a day other than today (a count after midnight belongs to the new day).
+
 ## Кассовая смена (till shift, ТЗ §5.4) — built
 
 The till's «Смена» button (`components/till-shift-control.tsx`): open with the cash counted in the drawer → («Внесение» /

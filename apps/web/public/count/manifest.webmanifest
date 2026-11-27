@@ -1,0 +1,15 @@
+{
+  "name": "Ar Amir — пересчёт остатков",
+  "short_name": "Пересчёт",
+  "description": "Пересчёт товара на точке",
+  "start_url": "/count",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f7f5f2",
+  "theme_color": "#a85333",
+  "icons": [
+    { "src": "/logo.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/logo.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
