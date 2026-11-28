@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { CRM_ROLES } from "@bakery-os/shared";
+import { CRM_ROLES, CRM_VIEW_ROLES } from "@bakery-os/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
 import { Roles } from "../common/decorators/roles.decorator";
@@ -22,6 +22,7 @@ export class CrmController {
   ) {}
 
   @Get("today")
+  @Roles(...CRM_VIEW_ROLES)
   today(@CurrentUser() user: AuthenticatedUser) {
     return this.crm.today(user.organizationId);
   }
@@ -32,16 +33,19 @@ export class CrmController {
   }
 
   @Get("members")
+  @Roles(...CRM_VIEW_ROLES)
   list(@CurrentUser() user: AuthenticatedUser, @Query("q") q?: string, @Query("segment") segment?: string, @Query("sort") sort?: string) {
     return this.crm.list(user.organizationId, { q, segment, sort });
   }
 
   @Get("members/:id")
+  @Roles(...CRM_VIEW_ROLES)
   profile(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
     return this.crm.profile(user.organizationId, id);
   }
 
   @Get("orders")
+  @Roles(...CRM_VIEW_ROLES)
   listOrders(@CurrentUser() user: AuthenticatedUser) {
     return this.orders.list(user.organizationId);
   }
@@ -59,17 +63,20 @@ export class CrmController {
   // ── chats with customers (the app) ────────────────────────────────────────
 
   @Get("chats")
+  @Roles(...CRM_VIEW_ROLES)
   chats(@CurrentUser() user: AuthenticatedUser) {
     return this.chat.list(user.organizationId);
   }
 
   @Get("chats/unread")
+  @Roles(...CRM_VIEW_ROLES)
   async chatsUnread(@CurrentUser() user: AuthenticatedUser) {
     return { unread: await this.chat.unreadForStaff(user.organizationId) };
   }
 
   // Whom a mass message can go to, and the ones already sent.
   @Get("chats/overview")
+  @Roles(...CRM_VIEW_ROLES)
   chatsOverview(@CurrentUser() user: AuthenticatedUser) {
     return this.chat.overview(user.organizationId);
   }
@@ -80,6 +87,7 @@ export class CrmController {
   }
 
   @Get("chats/:memberId")
+  @Roles(...CRM_VIEW_ROLES)
   chatThread(@CurrentUser() user: AuthenticatedUser, @Param("memberId") memberId: string) {
     return this.chat.thread(user.organizationId, memberId);
   }

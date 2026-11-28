@@ -51,8 +51,8 @@ account, article and date; small portions; never «assume» an article or an acc
 
 Refused by the server for this role (do not look for a way around — tell the owner it is his to do on the
 screen): any DELETE; closing/reopening a month; «Начать с чистого листа»; аннулирование; inventory and
-finance settings, «Запустить»; the general ledger; users, PINs, keys; locations, directions; loyalty / CRM /
-promotions; till shifts and till approvals; backup; audit log; fiscal cash register.
+finance settings, «Запустить»; the general ledger; users, PINs, keys; locations, directions; any change in loyalty /
+CRM (reading the customer base, CRM and chats is allowed — never send a message or give points) / promotions; till shifts and till approvals; backup; audit log; fiscal cash register.
 Also not yours even if a route answers: sale returns («Исправить чек»), cash-account balance corrections.
 
 ## Undo

@@ -1,5 +1,5 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { LOYALTY_ADMIN_ROLES, LOYALTY_MANAGE_ROLES, LOYALTY_TILL_ROLES } from "@bakery-os/shared";
+import { LOYALTY_ADMIN_ROLES, LOYALTY_MANAGE_ROLES, LOYALTY_TILL_ROLES, LOYALTY_VIEW_ROLES } from "@bakery-os/shared";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
 import { Roles } from "../common/decorators/roles.decorator";
@@ -47,7 +47,7 @@ export class LoyaltyController {
   }
 
   @Get()
-  @Roles(...LOYALTY_MANAGE_ROLES)
+  @Roles(...LOYALTY_VIEW_ROLES)
   list(@CurrentUser() user: AuthenticatedUser, @Query("q") q?: string, @Query("status") status?: string) {
     return this.loyaltyService.list(user.organizationId, { q, status });
   }
@@ -98,6 +98,7 @@ export class LoyaltyController {
   }
 
   @Get(":id")
+  @Roles(...LOYALTY_TILL_ROLES, ...LOYALTY_VIEW_ROLES)
   findOne(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
     return this.loyaltyService.findOne(user.organizationId, id);
   }
@@ -138,7 +139,7 @@ export class LoyaltyProgramController {
 
   // Клиенты → «Регистрации»: new members of the period by cashier and by day.
   @Get("registrations")
-  @Roles(...LOYALTY_MANAGE_ROLES)
+  @Roles(...LOYALTY_VIEW_ROLES)
   registrations(@CurrentUser() user: AuthenticatedUser, @Query("from") from?: string, @Query("to") to?: string) {
     const end = to ? new Date(to) : new Date();
     const start = from ? new Date(from) : new Date(end.getTime() - 30 * 86_400_000);
@@ -147,7 +148,7 @@ export class LoyaltyProgramController {
   }
 
   @Get("analytics")
-  @Roles(...LOYALTY_MANAGE_ROLES)
+  @Roles(...LOYALTY_VIEW_ROLES)
   analytics(
     @CurrentUser() user: AuthenticatedUser,
     @Query("from") from?: string,
@@ -168,6 +169,7 @@ export class LoyaltyProgramController {
   }
 
   @Get("settings")
+  @Roles(...LOYALTY_TILL_ROLES, ...LOYALTY_VIEW_ROLES)
   settings(@CurrentUser() user: AuthenticatedUser) {
     return this.pointsService.getSettings(user.organizationId);
   }
@@ -179,7 +181,7 @@ export class LoyaltyProgramController {
   }
 
   @Get("summary")
-  @Roles(...LOYALTY_MANAGE_ROLES)
+  @Roles(...LOYALTY_VIEW_ROLES)
   summary(@CurrentUser() user: AuthenticatedUser, @Query("from") from?: string, @Query("to") to?: string) {
     const end = to ? new Date(to) : new Date();
     const start = from ? new Date(from) : new Date(end.getTime() - 30 * 86_400_000);

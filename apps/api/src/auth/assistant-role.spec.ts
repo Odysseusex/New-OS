@@ -1,5 +1,10 @@
 import { JwtService } from "@nestjs/jwt";
 import {
+  CRM_ROLES,
+  CRM_VIEW_ROLES,
+  LOYALTY_ADMIN_ROLES,
+  LOYALTY_MANAGE_ROLES,
+  LOYALTY_VIEW_ROLES,
   CASH_ADJUSTMENT_ROLES,
   HARD_DELETE_ROLES,
   INVENTORY_MANAGE_ROLES,
@@ -57,9 +62,25 @@ it("has the day-to-day rights and none of the irreversible ones", () => {
     STOCKTAKE_APPROVE_ROLES,
     SALE_RETURN_ROLES,
     TILL_SHIFT_ROLES,
+    LOYALTY_MANAGE_ROLES,
+    LOYALTY_ADMIN_ROLES,
+    CRM_ROLES,
   ]) {
     expect(roles).not.toContain(A);
   }
+});
+
+it("reads the customer base and the CRM but cannot change or message anything there", () => {
+  expect(LOYALTY_VIEW_ROLES).toContain(A);
+  expect(CRM_VIEW_ROLES).toContain(A);
+  expect(pathAllowedForRole(A, "/api/crm/members", "GET")).toBe(true);
+  expect(pathAllowedForRole(A, "/api/crm/chats/x", "GET")).toBe(true);
+  expect(pathAllowedForRole(A, "/api/loyalty/analytics", "GET")).toBe(true);
+  expect(pathAllowedForRole(A, "/api/crm/chats/x", "POST")).toBe(false);
+  expect(pathAllowedForRole(A, "/api/crm/chats/broadcast", "POST")).toBe(false);
+  expect(pathAllowedForRole(A, "/api/crm/orders/x", "PATCH")).toBe(false);
+  expect(pathAllowedForRole(A, "/api/loyalty/members/x/points/adjust", "POST")).toBe(false);
+  expect(pathAllowedForRole(A, "/api/loyalty/settings", "PATCH")).toBe(false);
 });
 
 it("the server refuses deletes, people, settings and month closing whatever the route allows", () => {

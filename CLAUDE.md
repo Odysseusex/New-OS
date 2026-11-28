@@ -998,7 +998,9 @@ not development.** What the code holds:
 - `Role.ASSISTANT` «Помощник» (migration `20261205120000_assistant_role`): in the day-to-day arrays (stock, production,
   recipes, products, purchasing incl. revise/return, sales by document, customers, suppliers, bank import, ledger VIEW)
   and `ORG_WIDE_ROLES` (finance view, expenses, supplier payments). NOT in hard delete, period close, users, voids,
-  ledger manage, cash adjustment, stocktake approve, sale returns, till shifts, loyalty.
+  ledger manage, cash adjustment, stocktake approve, sale returns, till shifts, loyalty/CRM writes. It READS the
+  customer base and the CRM (owner, 28.11.2026, for customer analysis): `LOYALTY_VIEW_ROLES` / `CRM_VIEW_ROLES` sit only
+  on GET routes, and `/loyalty`, `/crm` stay in `ASSISTANT_REFUSALS.readOnly`, so it can send, give or change nothing there.
 - **A second lock in one place**: `common/role-scope.ts` `ASSISTANT_REFUSALS` (checked by `JwtAuthGuard` with the
   request method) — no DELETE anywhere, `closed` prefixes take no request, `readOnly` prefixes only GET. `refusedActions`
   = single routes inside an open area: it fills a stock count (create, lines, submit — owner, 24.11.2026) but

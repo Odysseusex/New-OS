@@ -423,6 +423,12 @@ export const LOYALTY_MANAGE_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.STORE_
 // The CRM (/crm): today's follow-ups, the customer cards, groups, cake orders.
 export const CRM_ROLES: Role[] = [Role.OWNER, Role.ADMIN, Role.REGIONAL_MANAGER, Role.STORE_MANAGER, Role.CLIENT_MANAGER];
 
+// Reading the base and the CRM without changing anything: «Помощник» was added on the owner's request
+// (28.11.2026) so it can analyse customers. Writes stay refused twice: these lists sit only on GET routes,
+// and `ASSISTANT_REFUSALS.readOnly` (/loyalty, /crm) refuses any other method for the role.
+export const LOYALTY_VIEW_ROLES: Role[] = [...LOYALTY_MANAGE_ROLES, Role.ASSISTANT];
+export const CRM_VIEW_ROLES: Role[] = [...CRM_ROLES, Role.ASSISTANT];
+
 // Merging duplicates (one-way) and importing a file of customers.
 export const LOYALTY_ADMIN_ROLES: Role[] = HARD_DELETE_ROLES;
 
