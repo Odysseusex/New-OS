@@ -201,7 +201,15 @@ export function CountApp({ onLogout }: { onLogout: () => void }) {
       setError("Сначала дождитесь связи: часть цифр ещё не дошла до программы.");
       return;
     }
-    if (!window.confirm(left > 0 ? `Не посчитано товаров: ${left}. Они останутся пустыми. Отправить пересчёт?` : "Отправить пересчёт? После этого изменить его сможет только управляющий.")) return;
+    if (left > 0) {
+      // Nothing may stay uncounted: show what is left instead of sending.
+      setQuery("");
+      setFilter(UNCOUNTED);
+      setError(`Не посчитано товаров: ${left}. Посчитайте каждый или нажмите у него «Нет на полке».`);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    if (!window.confirm("Отправить пересчёт? После этого изменить его сможет только управляющий.")) return;
     setSending(true);
     setError(null);
     try {
@@ -347,7 +355,7 @@ export function CountApp({ onLogout }: { onLogout: () => void }) {
               className="flex h-16 w-full items-center justify-center gap-2 rounded-2xl bg-accent text-xl font-semibold text-accent-foreground disabled:opacity-40"
             >
               <Send className="h-6 w-6" strokeWidth={2} />
-              {sending ? "Отправляем…" : "Отправить пересчёт"}
+              {sending ? "Отправляем…" : counted < sheet.products.length ? `Осталось посчитать: ${sheet.products.length - counted}` : "Отправить пересчёт"}
             </button>
           </div>
         </footer>

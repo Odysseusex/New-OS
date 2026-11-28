@@ -1590,6 +1590,7 @@ search (every word, ё = е), category chips, «Не посчитано: N», a 
   with the same `clientId` — a lost signal loses nothing and doubles nothing; it reads the sheet every 6 s.
 - **Blind**: `GET /count` gives the same product list as «Сверка дня» (`ReconciliationService.get`) with every figure
   of the books left out (a spec asserts the answer names no opening / closing / price).
+- **Nothing may stay uncounted** (owner, 28.11.2026): `send` refuses while any listed product has no entry («Не посчитано товаров: N (…)»); a product not on the shelf is «Нет на полке» (0). The phone's button reads «Осталось посчитать: N» and a tap shows the uncounted filter instead of sending.
 - **«Отправить пересчёт»** (`POST /count/send`): the totals are written into that day's «Сверка дня» through
   `ReconciliationService.save` (its money figures and products the phones did not touch stay), the sheet becomes SENT
   and the phones read-only. It moves NO stock — «Применить к остаткам» stays the manager's press. Refused once the day

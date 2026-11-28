@@ -67,6 +67,13 @@ it("two phones add up; a resent entry counts once; «Исправить» sets t
   ]);
 });
 
+it("refuses to send while a product is left uncounted", async () => {
+  const cake = await prisma.product.create({ data: { organizationId: org.organizationId, name: "Торт", sku: "SC-CAKE", type: ProductType.FINISHED_GOOD, price: 900, unit: Unit.PCS } });
+  expect((await counts.get(counter)).products.map((p) => p.productId)).toContain(cake.id);
+  await expect(counts.send(counter)).rejects.toThrow("Не посчитано товаров: 1 (Торт)");
+  await entry("phone-a", cake.id, "SET", 0); // «Нет на полке»
+});
+
 it("«Отправить» writes the totals into «Сверка дня», keeps its money, moves no stock and locks the sheet", async () => {
   await reconciliation.save(org.user, { locationId: org.storeId, date: today, countedCash: 12000, lines: [] });
   const sent = await counts.send(counter);
@@ -78,7 +85,7 @@ it("«Отправить» writes the totals into «Сверка дня», keeps
   expect((await prisma.stockLevel.findUniqueOrThrow({ where: { locationId_productId: { locationId: org.storeId, productId: breadId } } })).quantity.toNumber()).toBe(10);
   await expect(entry("phone-a", breadId, "ADD", 1)).rejects.toThrow("уже отправлен");
   await expect(counts.send(counter)).rejects.toThrow("уже отправлен");
-  expect(await counts.status(org.user, org.storeId, today)).toMatchObject({ status: ShelfCountStatus.SENT, countedProducts: 2, devices: 2 });
+  expect(await counts.status(org.user, org.storeId, today)).toMatchObject({ status: ShelfCountStatus.SENT, countedProducts: 3, devices: 2 });
 });
 
 it("a manager can hand the sheet back; the next send replaces the phones' figures", async () => {

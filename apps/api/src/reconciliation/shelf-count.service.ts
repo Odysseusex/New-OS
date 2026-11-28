@@ -105,6 +105,14 @@ export class ShelfCountService {
     if (totals.size === 0) throw new BadRequestException("Ещё ничего не посчитано");
     const day = await this.reconciliation.get(user, locationId, date);
     if (day.appliedAt) throw new BadRequestException("Остатки за этот день уже проведены — пересчёт закрыт");
+    // Owner, 28.11.2026: nothing may stay uncounted — a product not on the shelf is sent as «Нет на полке» (0).
+    const missing = day.lines.filter((l) => !totals.has(l.productId));
+    if (missing.length > 0) {
+      const names = missing.slice(0, 5).map((l) => l.productName).join(", ");
+      throw new BadRequestException(
+        `Не посчитано товаров: ${missing.length} (${names}${missing.length > 5 ? " …" : ""}). Посчитайте их или нажмите «Нет на полке».`,
+      );
+    }
     const lines = new Map(day.lines.filter((l) => l.countedQuantity !== null).map((l) => [l.productId, l.countedQuantity as number]));
     for (const [productId, quantity] of totals) lines.set(productId, Math.max(0, quantity));
     const claimed = await this.prisma.shelfCount.updateMany({ where: { id: sheet.id, status: PrismaStatus.OPEN }, data: { status: PrismaStatus.SENT, sentAt: new Date() } });
